@@ -15,4 +15,4 @@ from docx import Document
 
 
 document = Document('models/FACIL - Trame de fiche RCP CHC.docx')
-document.
+document
