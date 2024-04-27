@@ -1,0 +1,177 @@
+[
+    {
+      "titre": {
+        "nom_etablissement": "string"
+      },
+      "date": {
+        "date_rcp": "string",
+        "nom_responsable": "string",
+        "membres": {
+          "hepatogastroenterologues": [],
+          "oncologues": [],
+          "radiologues_interventionnels": [],
+          "chirurgiens": [],
+          "radiotherapeutes": [],
+          "anatomopathologiste": [],
+          "radiologue_diagnostique": [],
+          "infirmiers": []
+        },
+        "patient": {
+          "sexe": "0,1,2",
+          "date_naissance": "string",
+          "coordonnees_medecin_traitant": "string",
+          "coordonnees_medecin_adresseur": "string",
+          "dossier_passe_RCP": "bool"
+        },
+        "motif": {
+          "1ere_presentation": "bool",
+          "dossier_deja_discute_le": "string",
+          "motif_presentation": {
+            "decision_traitement": "bool",
+            "avis_diagnostique": "bool",
+            "ajustement_therapeutique": "bool",
+            "surveillance_post_traitement": "bool"
+          }
+        },
+        "atcd": {
+          "diabete_cardiovasculaire_comorbidite": "string",
+          "traitement_courant": "string"
+        }
+      },
+      "Donnees_Biologique_moins_de_4_semaines": {
+        "Bilirubine_totale": {
+          "value": "float",
+          "unit": "µmol/L"
+        },
+        "Creatinine": {
+          "value": "float",
+          "unit": "µmol/L"
+        },
+        "Albumine": {
+          "value": "float",
+          "unit": "g/L"
+        },
+        "Plaquettes": {
+          "value": "float",
+          "unit": "G/L"
+        },
+        "TP": {
+          "pourcentage": "float",
+          "AVK_ou_AOD": "bool"
+        },
+        "Facteur_V": {
+          "value": "float",
+          "unit": "%"
+        },
+        "Alpha_foetoproteine": {
+          "value": "float",
+          "unit": "ng/mL"
+        }
+      },
+      "Souhait_prise_en_charge_post_rcp": {
+        "accord": "bool",
+        "souhait_patient": "string",
+        "eligibilite": "bool"
+      },
+      "Information_patient_post_RCP": {
+        "accord_pour_prévenir_prise_en_charge": "bool",
+        "comment_informer": "string"
+      },
+      "Decision_prise_en_charge": {
+        "Transplantation": "bool",
+        "Radio_embolisation": "bool",
+        "Exerese_Chirurgie": {
+          "value": "bool",
+          "precision": "string"
+        },
+        "Chimio_Embolisation": "bool",
+        "Traitement_systemique": "bool",
+        "Essaie_therapeutique": "bool",
+        "Radiotherapie": "bool",
+        "Soins_de_confort": "bool",
+        "Precision_hierarchisation_si_propositions": "string"
+      },
+      "Cirrhose_documentee": "bool",
+      "arguments": {
+        "clinique": "bool",
+        "marqueurs_non_invasifs": "bool",
+        "imagerie": "bool",
+        "biopsie": "bool"
+      },
+      "gastroscopie": {
+        "oui_date_de_la_derniere": "string",
+        "non": "bool",
+        "Varices_oesophagiennes_gastriques": {
+          "Non_recherchees": "bool",
+          "Absentes": "bool",
+          "Presentes_grade_des_VO": "string"
+        }
+      },
+      "ascite": {
+        "Absente": "bool",
+        "Moderee": "bool",
+        "Abondante": "bool",
+        "Pas_ascite_clinique_mais_visible_en_imagerie": "bool",
+        "Pas_ascite_actuellement_mais_ATCD_d_ascite": "bool"
+      },
+      "encephalopathie": {
+        "oui": "bool",
+        "non": "bool",
+        "Si_oui_date_du_diagnostic": "string"
+      },
+      "alcool": {
+        "OUI_depuis_combien_de_temps": "string",
+        "NON_consommation_actuelle_d_alcool": "float"
+      },
+      "histoire_de_la_maladie": {
+        "date_du_diagnostic": "string",
+        "Prouve_histologiquement": "bool",
+        "traitements_locoregionaux": {
+          "intervention_1": {
+            "Type_intervention": "string",
+            "Nombre_de_cures": "int",
+            "Date_derniere_intervention": "string",
+            "Localisation": "string",
+            "Taille": "float",
+            "Information_complementaire": "string"
+          },
+          "intervention_2": {
+            "Type_intervention": "string",
+            "Nombre_de_cures": "int",
+            "Date_derniere_intervention": "string",
+            "Localisation": "string",
+            "Taille": "float",
+            "Information_complementaire": "string"
+          },
+          "intervention_3": {
+            "Type_intervention": "string",
+            "Nombre_de_cures": "int",
+            "Date_derniere_intervention": "string",
+            "Localisation": "string",
+            "Taille": "float",
+            "Information_complementaire": "string"
+          }
+        },
+        "traitements_systemiques": [
+          {
+            "Nombre_de_lignes": "int",
+            "traitements": [
+              {
+                "type": "string",
+                "Date_de_debut": "string",
+                "Date_de_fin": "string",
+                "Motif_arret": "string"
+              }
+            ],
+            "Soins_de_confort": "bool",
+            "Si_oui_preciser": "string"
+          }
+        ]
+      },
+      "imc": {
+        "IMC": "float",
+        "ECOG": "float"
+      }
+    }
+  ]
+  
