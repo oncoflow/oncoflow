@@ -1,8 +1,5 @@
 [
     {
-      "titre": {
-        "nom_etablissement": "string"
-      },
       "date": {
         "date_rcp": "string",
         "nom_responsable": "string",
@@ -37,59 +34,6 @@
           "diabete_cardiovasculaire_comorbidite": "string",
           "traitement_courant": "string"
         }
-      },
-      "Donnees_Biologique_moins_de_4_semaines": {
-        "Bilirubine_totale": {
-          "value": "float",
-          "unit": "µmol/L"
-        },
-        "Creatinine": {
-          "value": "float",
-          "unit": "µmol/L"
-        },
-        "Albumine": {
-          "value": "float",
-          "unit": "g/L"
-        },
-        "Plaquettes": {
-          "value": "float",
-          "unit": "G/L"
-        },
-        "TP": {
-          "pourcentage": "float",
-          "AVK_ou_AOD": "bool"
-        },
-        "Facteur_V": {
-          "value": "float",
-          "unit": "%"
-        },
-        "Alpha_foetoproteine": {
-          "value": "float",
-          "unit": "ng/mL"
-        }
-      },
-      "Souhait_prise_en_charge_post_rcp": {
-        "accord": "bool",
-        "souhait_patient": "string",
-        "eligibilite": "bool"
-      },
-      "Information_patient_post_RCP": {
-        "accord_pour_prévenir_prise_en_charge": "bool",
-        "comment_informer": "string"
-      },
-      "Decision_prise_en_charge": {
-        "Transplantation": "bool",
-        "Radio_embolisation": "bool",
-        "Exerese_Chirurgie": {
-          "value": "bool",
-          "precision": "string"
-        },
-        "Chimio_Embolisation": "bool",
-        "Traitement_systemique": "bool",
-        "Essaie_therapeutique": "bool",
-        "Radiotherapie": "bool",
-        "Soins_de_confort": "bool",
-        "Precision_hierarchisation_si_propositions": "string"
       },
       "Cirrhose_documentee": "bool",
       "arguments": {
@@ -171,6 +115,59 @@
       "imc": {
         "IMC": "float",
         "ECOG": "float"
+      },
+      "Donnees_Biologique_moins_de_4_semaines": {
+        "Bilirubine_totale": {
+          "value": "float",
+          "unit": "µmol/L"
+        },
+        "Creatinine": {
+          "value": "float",
+          "unit": "µmol/L"
+        },
+        "Albumine": {
+          "value": "float",
+          "unit": "g/L"
+        },
+        "Plaquettes": {
+          "value": "float",
+          "unit": "G/L"
+        },
+        "TP": {
+          "pourcentage": "float",
+          "AVK_ou_AOD": "bool"
+        },
+        "Facteur_V": {
+          "value": "float",
+          "unit": "%"
+        },
+        "Alpha_foetoproteine": {
+          "value": "float",
+          "unit": "ng/mL"
+        }
+      },
+      "Souhait_prise_en_charge_post_rcp": {
+        "accord": "bool",
+        "souhait_patient": "string",
+        "eligibilite": "bool"
+      },
+      "Information_patient_post_RCP": {
+        "accord_pour_prévenir_prise_en_charge": "bool",
+        "comment_informer": "string"
+      },
+      "Decision_prise_en_charge": {
+        "Transplantation": "bool",
+        "Radio_embolisation": "bool",
+        "Exerese_Chirurgie": {
+          "value": "bool",
+          "precision": "string"
+        },
+        "Chimio_Embolisation": "bool",
+        "Traitement_systemique": "bool",
+        "Essaie_therapeutique": "bool",
+        "Radiotherapie": "bool",
+        "Soins_de_confort": "bool",
+        "Precision_hierarchisation_si_propositions": "string"
       }
     }
   ]
