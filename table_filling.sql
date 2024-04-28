@@ -1,0 +1,10 @@
+INSERT INTO rcp VALUES ('fiche_rcp1.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp2.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp3.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp4.pdf', 0, 1, 1, 1, 1, 0, 1, 0, 5, 1);
+INSERT INTO rcp VALUES ('fiche_rcp5.pdf', 0, 1, 0, 0, 1, 0, 1, 0, 3, 1);
+INSERT INTO rcp VALUES ('fiche_rcp6.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp7.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp8.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp9.pdf', 0, 1, 1, 0, 1, 0, 1, 0, 4, 1);
+INSERT INTO rcp VALUES ('fiche_rcp10.pdf', 0, 1, 1, 1, 1, 0, 1, 0, 5, 1);
