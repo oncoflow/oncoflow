@@ -15,7 +15,8 @@ class ReaderConfig():
     """
     
     config_list = {
-        "apiparserurl": str
+        "apiparserurl": str,
+        "chromaHost": str
     }
 
     config_keys = {}
