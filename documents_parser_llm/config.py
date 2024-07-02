@@ -17,6 +17,12 @@ class ReaderConfig():
     config_list = {
         "apiparserurl": str,
         "chromaHost": str
+        ## ici on pourrait rajouter les autres parametres de config list genre chunksize= 2048, et même un chunksize : default=2048 et values =[ 1024, 2048] etc comme ca on pourrait après faire des test en faisant un for i in values
+        # dans les parametres je verai bien : chunk_size, overlap, embedding model, retrieval_model : phi3, llama3, gemma2, et j'ai vu un llama3_chatqa spécial pour les questions réponses à rester j'ai installé sur mon ollama
+        # je pense que temperature doit être à 0 forcémenet ? sinon pareil on peut mettre un peu d'originalité mais après il faut faire une médiane, à voir car cela va peut être dépendre du type de donnée que l'on cherche
+        # et le type de loader document, je vois pour le moment soit de l'embedding direct avec pymupdf, soit en passant par un markdown avec https://pymupdf4llm.readthedocs.io/en/latest/#features
+        # si les résultats sont équivalents, alors avantage à markdown pour gérer l'anonymization +++++++
+        
     }
 
     config_keys = {}
