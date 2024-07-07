@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 # from environ-config
 import environ
-from pythonjsonlogger import jsonlogger
+#from pythonjsonlogger import jsonlogger
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -21,6 +21,9 @@ class AppConfig():
 
     @environ.config
     class Configllm:
+        """
+        Class for configuring the llm system.
+        """
         type = environ.var(default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
@@ -28,7 +31,10 @@ class AppConfig():
         temp = environ.var(default="0", converter=int, help="Temperature of llm system")
 
     @environ.config
-    class Databases_vectorial:
+    class DatabasesVectorial:
+        """
+        Class for configuring the vectorial database settings.
+        """
         type = environ.var(default="ChromaDB", help="type of DB")
         collection = environ.var(default="oncoflowDocs", help="Collectionname to use")
         client = environ.var(default="PersistentClient", help="PersistentClient or HttpClient")
@@ -38,6 +44,9 @@ class AppConfig():
 
     @environ.config
     class RCP:
+        """
+        Class for configuring the retrieval pipeline configuration.
+        """
         path = environ.var(
             default=f"{os.path.dirname(os.path.realpath(__file__))}/rcp", converter=Path, help="Path to find RCP files")
 
@@ -53,7 +62,7 @@ class AppConfig():
                 raise ValueError(f"Path {var} not found.")
 
     llm = environ.group(Configllm)
-    dbvec = environ.group(Databases_vectorial)
+    dbvec = environ.group(DatabasesVectorial)
     rcp = environ.group(RCP)
 
 
