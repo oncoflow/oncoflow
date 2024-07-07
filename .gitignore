@@ -2,3 +2,5 @@ venv
 venv*
 __pycache__
 chromadb
+*/__pycache__*
+*/chroma
