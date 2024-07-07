@@ -1,6 +1,9 @@
 
 import os
 import logging
+from pathlib import Path
+# from environ-config
+import environ
 from pythonjsonlogger import jsonlogger
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
@@ -9,49 +12,58 @@ from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
 )
 
-class ReaderConfig():
+
+@environ.config(prefix="APP")
+class AppConfig():
     """
     Class for reading and configuring application settings from environment variables.
     """
-    
-    config_list = {
-        "apiparserurl": str,
-        "chromaHost": str
-        ## ici on pourrait rajouter les autres parametres de config list genre chunksize= 2048, et même un chunksize : default=2048 et values =[ 1024, 2048] etc comme ca on pourrait après faire des test en faisant un for i in values
-        # dans les parametres je verai bien : chunk_size, overlap, embedding model, retrieval_model : phi3, llama3, gemma2, et j'ai vu un llama3_chatqa spécial pour les questions réponses à rester j'ai installé sur mon ollama
-        # je pense que temperature doit être à 0 forcémenet ? sinon pareil on peut mettre un peu d'originalité mais après il faut faire une médiane, à voir car cela va peut être dépendre du type de donnée que l'on cherche
-        # et le type de loader document, je vois pour le moment soit de l'embedding direct avec pymupdf, soit en passant par un markdown avec https://pymupdf4llm.readthedocs.io/en/latest/#features
-        # si les résultats sont équivalents, alors avantage à markdown pour gérer l'anonymization +++++++
+
+    @environ.config
+    class Configllm:
+        type = environ.var(default="Ollama", help="Type of llm system (ex Ollama)")
+        url = environ.var(default="http://127.0.0.1", help="URL of llm system")
+        port = environ.var(default="11434", help="Port of llm system")
+        model = environ.var(default="llama3", help="Model of llm system")
+        temp = environ.var(default="0", converter=int, help="Temperature of llm system")
+
+    @environ.config
+    class Databases_vectorial:
+        type = environ.var(default="ChromaDB", help="type of DB")
+        collection = environ.var(default="oncoflowDocs", help="Collectionname to use")
+        client = environ.var(default="PersistentClient", help="PersistentClient or HttpClient")
+        host = environ.var(default="localhost", help="Hostname when HttpClient used" )
+        port = environ.var(default="8000", help="Port when HttpClient used")
+        model = environ.var(default="all-MiniLM-L6-v2", help="embeddings Model to use")
+
+    @environ.config
+    class RCP:
+        path = environ.var(
+            default=f"{os.path.dirname(os.path.realpath(__file__))}/rcp", converter=Path, help="Path to find RCP files")
+
+        doc_type = environ.var(default="PyMuPDFLoader", help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ")
+        chunk_size = environ.var(default="1000", converter=int, help="chunk_size of document")
+        chunk_overlap = environ.var(default="10", converter=int, help="chunk_overlap of document")
         
-    }
+        manual_query = environ.bool_var(default=True, help="Manual prompting for debug")
 
-    config_keys = {}
+        @path.validator
+        def _ensure_path_exists(self, var, path):
+            if not path.exists():
+                raise ValueError(f"Path {var} not found.")
 
+    llm = environ.group(Configllm)
+    dbvec = environ.group(Databases_vectorial)
+    rcp = environ.group(RCP)
+
+
+class AppLogger():
     def __init__(self):
         """
         Initializes the readerConfig object and sets up logging and tracing.
         """
         self.logger()
-   
-    def setConfig(self):
-        """
-        Sets the configuration keys from environment variables.
-        """
-        for config in self.config_list:
-            self.config_keys[config] = os.getenv(config.toLower(), config.toUpper())
-   
-    def getConfig(self, key):
-        """
-        Returns the value of the given configuration key.
 
-        Args:
-            key: The key of the configuration setting to retrieve.
-
-        Returns:
-            str: The value of the configuration setting.
-        """
-        return self.config_keys[key]
-   
     def otel(self):
         """
         Initializes OpenTelemetry tracing.
@@ -62,11 +74,11 @@ class ReaderConfig():
 
         # Sets the global default tracer provider
         trace.set_tracer_provider(provider)
-       
+
     def logger(self):
         """
         Initializes and returns a logging object using the `jsonlogger` formatter.
-        
+
         Returns:
             logging.Logger: A logger object configured to use the `jsonlogger` formatter.
         """
