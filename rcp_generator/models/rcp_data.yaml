@@ -1,0 +1,467 @@
+---
+pages:
+  1:
+    cirrhose:
+      elem:
+        - type: list
+          values:
+            - name: "oui"
+              position:
+                x: 4.9
+                y: 27.4
+              elem:
+                - type: list
+                  values:
+                    - name: clinique
+                      position:
+                        x: 7.05
+                        y: 26.9
+                    - name: marqueur
+                      position:
+                        x: 9.3
+                        y: 26.9
+                    - name: imagerie
+                      position:
+                        x: 13.7
+                        y: 26.9
+                    - name: biopsie
+                      position:
+                        x: 16.6
+                        y: 26.9
+            - name: "non"
+              position:
+                x: 5.9
+                y: 27.4
+    gastroscopie:
+      elem:
+        - type: list
+          values:
+            - name: "oui"
+              position:
+                x: 3.66
+                y: 25.96
+              elem:
+                - type: date
+                  position:
+                    x: 7.64
+                    y: 25.96
+                - type: list
+                  values:
+                    - name: Non recherchées
+                      position:
+                        x: 6.7
+                        y: 25.47
+                    - name: Absentes
+                      position:
+                        x: 10.37
+                        y: 25.47
+                    - name: Présentes
+                      position:
+                        x: 12.83
+                        y: 25.47
+                      elem:
+                        - type: string
+                          position:
+                            x: 17.2
+                            y: 25.47
+                          values:
+                            - A
+                            - B
+                            - C
+            - name: "non"
+              position:
+                x: 9.95
+                y: 25.96
+    ascite:
+      elem:
+        - type: list
+          values:
+            - name: Absente
+              position:
+                x: 2.57
+                y: 24.47
+            - name: Modérée
+              position:
+                x: 4.92
+                y: 24.47
+            - name: Abondante
+              position:
+                x: 7.35
+                y: 24.47
+            - name: Pas d’ascite clinique mais visible en imagerie
+              position:
+                x: 2.55
+                y: 23.95
+            - name: Pas d’ascite actuellement mais ATCD d’ascite
+              position:
+                x: 9.73
+                y: 23.95
+    encephalopathie:
+      elem:
+        - type: list
+          values:
+            - name: oui
+              position:
+                x: 4.12
+                y: 23.09
+              elem:
+                - type: date
+                  position:
+                    x: 12
+                    y: 23.09
+            - name: non
+              position:
+                x: 5.74
+                y: 23.09
+    surconsommation:
+      elem:
+        - type: list
+          values:
+            - name: oui
+              position:
+                x: 1.5
+                y: 21.54
+              elem:
+                - type: int
+                  between:
+                    - 3
+                    - 365
+                  unit: jours
+                  position:
+                    x: 6.51
+                    y: 21.54
+            - name: non
+              position:
+                x: 9.39
+                y: 21.54
+              elem:
+                - type: float
+                  between:
+                    - 1
+                    - 3
+                  unit: ""
+                  position:
+                    x: 15.4
+                    y: 21.54
+    histoire:
+      elem:
+        - type: date
+          position:
+            x: 5.68
+            y: 19.5
+        - type: list
+          values:
+            - name: "oui"
+              position:
+                x: 5.1
+                y: 19
+              elem:
+                - type: list_many
+                  name: list_histoire
+                  number_max: 3
+                  values:
+                    - name: Chirurgie
+                      position:
+                        x: 4.43
+                        y: 16.98
+                    - name: Destruction percutanée
+                      position:
+                        x: 6.75
+                        y: 16.98
+                    - name: Chimio embolisation
+                      position:
+                        x: 4.46
+                        y: 16.4
+                    - name: Radio embolisation
+                      position:
+                        x: 8.28
+                        y: 16.4
+                    - name: Radiothérapie
+                      position:
+                        x: 12.11
+                        y: 16.4
+                - type: lines
+                  height: 1.77
+                  number_ref: list_histoire
+                  values:
+                    type: line
+                    elem:
+                      - type: date
+                        position:
+                          x: 1.68
+                          y: 15.39
+                      - name: Type d’intervention
+                        type: string
+                        position:
+                          x: 7.3
+                          y: 15.6
+                        value_ref: list_histoire
+                      - name: Nombre de cures
+                        type: int
+                        unit: ""
+                        between:
+                          - 1
+                          - 10
+                        position:
+                          x: 11.45
+                          y: 15.6
+                      - name: Date de la dernière intervention
+                        type: date
+                        position:
+                          x: 9.18
+                          y: 15.18
+                      - name: Localisation
+                        type: string
+                        position:
+                          x: 12.33
+                          y: 15.18
+                        values:
+                          - ici
+                      - name: Taille
+                        type: float
+                        unit: cm
+                        between:
+                          - 0.1
+                          - 10
+                        position:
+                          x: 14.57
+                          y: 15.18
+                      - name: Information complémentaire
+                        type: string
+                        values:
+                          - ceci est une info
+                        position:
+                          x: 8.63
+                          y: 14.7
+
+            - name: "non"
+              position:
+                x: 6.03
+                y: 19
+    Traitements:
+      elem:
+        - type: lines
+          height: 0.9
+          between:
+            - 0
+            - 3
+          values:
+            type: line
+            elem:
+              - name: type
+                type: string
+                position:
+                  x: 3
+                  y: 8.36
+                values:
+                  - le Type
+              - type: date
+                name: Traitements_debut
+                position:
+                  x: 8.6
+                  y: 8.36
+              - type: date
+                after: Traitements_debut
+                position:
+                  x: 11.26
+                  y: 8.36
+              - name: Motif
+                type: string
+                position:
+                  x: 13.63
+                  y: 8.36
+                values:
+                  - était malade
+        - type: list
+          name: Soins de conforts
+          values:
+            - name: oui
+              position:
+                x: 4.3
+                y: 5.84
+              elem:
+                - type: string
+                  values:
+                    - un coussin
+                  position:
+                    x: 4.18
+                    y: 5.32
+            - name: non
+              position:
+                x: 5.26
+                y: 5.84
+    clinique:
+      elem:
+        - type: int
+          name: poids
+          unit: Kg
+          between:
+            - 50
+            - 120
+          position:
+            x: 2.46
+            y: 3.5
+        - type: float
+          name: Taille
+          unit: m
+          between:
+            - 1.5
+            - 2.1
+          position:
+            x: 8.85
+            y: 3.5
+        - type: string
+          name: ECOG
+          values:
+            - ne sait pas
+          position:
+            x: 15.06
+            y: 3.5
+  2:
+    donnees_biologiques:
+      elem:
+        - type: float
+          name: Bilirubine 
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 4.15
+            y: 26.8
+        - type: float
+          name: Créatinine 
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 9.46
+            y: 26.8
+        - type: float
+          name: Albumine 
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 15.32
+            y: 26.8
+        - type: float
+          name: Plaquettes 
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 3.34
+            y: 25.9
+        - type: float
+          name: TP  
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 8.37
+            y: 25.9
+        - type: list
+          name: AVK ou AOD
+          zero_value: true
+          position:
+            x: 15.32
+            y: 26.8
+          values:
+            - name: avd_check
+              position:
+                x: 11.6
+                y: 25.4
+        - type: float
+          name: INR  
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 14.74
+            y: 25.9
+        - type: float
+          name: Facteur V  
+          between:
+            - 0
+            - 100
+          unit: ""
+          position:
+            x: 3.79
+            y: 24.73
+        - type: float
+          name: Facteur V  
+          between:
+            - 0
+            - 5
+          unit: ""
+          position:
+            x: 10.73
+            y: 24.73
+    imagerie:
+      elem:
+        - type: date
+          position:
+            x: 15.71
+            y: 22.6
+    Description histologique:
+      elem:
+        - type: date
+          position:
+            x: 11.19
+            y: 19.6
+    Souhait de prise en charge:
+      elem:
+        - type: list
+          values:
+            - name: oui
+              position:
+                x: 1.51
+                y: 17.17
+              elem:
+                - type: list
+                  values:
+                    - name: oui
+                      position:
+                        x: 13.25
+                        y: 16.13
+                    - name: non
+                      position:
+                        x: 14.58
+                        y: 16.13
+            - name: NON, quel que soit le traitement proposé
+              position:
+                x: 8.35
+                y: 17.17
+            - name: NON pour ces traitements
+              position:
+                x: 1.54
+                y: 16.7
+    Information du patient après la RCP:
+      elem:
+        - type: list
+          values:
+            - name: oui
+              position:
+                x: 1.55
+                y: 13.5
+              elem:
+                - type: list
+                  values:
+                    - name: Appel 
+                      position:
+                        x: 5.5
+                        y: 12.95
+                    - name: Consultation 
+                      position:
+                        x: 9.35
+                        y: 12.95
+            - name: non
+              position:
+                x: 12
+                y: 13.5
