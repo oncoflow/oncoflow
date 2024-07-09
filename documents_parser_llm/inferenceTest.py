@@ -22,7 +22,7 @@ class chainTest ():
              for i in self.promptsList:
                   ## fonction timer à ce moment pour le temps d'inférence ?
                   
-                  response = self.rag.askInDocument(i)
+                  response = self.rag.ask_in_document(i)
                   ## timer stop 
 
                   self.responsesList.append(response)
