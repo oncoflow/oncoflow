@@ -5,9 +5,10 @@ from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
 
-from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 from config import AppConfig
+from llm import Llm
 
 # Define a class for working with vectorial databases.
 class vectorial_db:
@@ -25,8 +26,13 @@ class vectorial_db:
                  self.client = chromadb.PersistentClient()
             # Clear system cache and get or create a collection based on the configuration.
             self.client.clear_system_cache()
-            self.collection = self.client.get_or_create_collection(config.dbvec.collection)
-            self.embeddings = SentenceTransformerEmbeddings(model_name=config.dbvec.model)     
+            self.coll_name = config.dbvec.collection
+            
+            #self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
+            self.embeddings = Llm(config, embeddings=True).model
+            
+            self.set_clientdb(flush=True)
+               
         else:
             raise ValueError(
                 f"{str(config.dbvec.client)} not yet supported")
@@ -48,19 +54,17 @@ class vectorial_db:
         """
         if isinstance(self.client, chromadb.ClientAPI):
             if flush:
-                coll_name = self.collection.name
                 # Delete and recreate the collection based on the configuration.
-                self.client.delete_collection(coll_name)
-                self.collection = self.client.get_or_create_collection(coll_name)
+                self.client.delete_collection(self.coll_name)
+            self.collection = self.client.get_or_create_collection(self.coll_name)
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
             self.clientdb = Chroma(
                 client=self.client,
-                collection_name=self.collection.name,
+                collection_name=self.coll_name,
                 embedding_function=self.embeddings,
             )
-            
     
-    def get_retriever(self) -> VectorStoreRetriever:
+    def get_retriever(self, words_number = 2) -> VectorStoreRetriever:
         """
         Returns a VectorStoreRetriever instance for this vectorial database.
 
@@ -69,7 +73,7 @@ class vectorial_db:
         
         :return: A VectorStoreRetriever instance
         """
-        return self.clientdb.as_retriever()
+        return self.clientdb.as_retriever(search_kwargs={"k": words_number})
         
     # Add a document to the collection.
     
