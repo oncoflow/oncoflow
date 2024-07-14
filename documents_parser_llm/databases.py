@@ -5,8 +5,6 @@ from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
 
-from langchain_huggingface import HuggingFaceEmbeddings
-
 from config import AppConfig
 from llm import Llm
 
