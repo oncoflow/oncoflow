@@ -32,7 +32,7 @@ class Llm:
         if config.llm.type.lower() == "ollama":
             if embeddings:
                 self.model = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
-                                              model="all-minilm")
+                                              model=config.llm.embeddings)
             else:
                 self.model = ChatOllama(
                     base_url=f"{config.llm.url}:{config.llm.port}",

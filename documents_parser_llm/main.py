@@ -39,11 +39,11 @@ def manual_prompt(dir, config):
 
 def all_asked(dir, config):
     prompts_list = ["Quel est l'âge du patient ?",
-                        "Est-ce qu'une biopsie avec un résultat anatomopathologique a déja été obtenu ?",
-                        "Est-ce qu'il est fait mention d'un traitement par anticoagulants ?",
-                        "Quel sont les examens d'imagerie réalisés chez ce patient, je souhaite un format en sortie avec date de réalisation, type d'examen, résultat principal ?",
-                        "Quel est le stade OMS du patient ?",
-                        "Est-ce qu'un traitement par chimiothérapie à déja été réalisé ?"]
+                    "Est-ce qu'une biopsie avec un résultat anatomopathologique a déja été obtenu ?",
+                    "Est-ce qu'il est fait mention d'un traitement par anticoagulants ?",
+                    "Quel sont les examens d'imagerie réalisés chez ce patient, je souhaite un format en sortie avec date de réalisation, type d'examen, résultat principal ?",
+                    "Quel est le stade OMS du patient ?",
+                    "Est-ce qu'un traitement par chimiothérapie à déja été réalisé ?"]
     for f in listdir(dir):
         if isfile(join(dir, f)):
             print(f"- Start reading {f} ...")

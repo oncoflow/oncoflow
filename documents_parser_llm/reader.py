@@ -87,7 +87,6 @@ class DocumentReader:
 
         self.llm.create_chain(self.vecdb.get_retriever())
 
-
     def ask_in_document(self, query):
         """
         Asks a question about the document and returns the answer.

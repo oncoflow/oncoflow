@@ -9,11 +9,14 @@ from config import AppConfig
 from llm import Llm
 
 # Define a class for working with vectorial databases.
+
+
 class vectorial_db:
     client = None
- 
+
     # Initialize the client, collection and embeddings based on configuration.
     """Initialize the client, collection and embeddings based on configuration."""
+
     def __init__(self, config=AppConfig):
         if config.dbvec.type.lower() == "chromadb":
             # Use either HttpClient or PersistentClient depending on the configuration.
@@ -21,32 +24,32 @@ class vectorial_db:
                 self.client = chromadb.HttpClient(
                     host=config.dbvec.host, port=config.dbvec.port)
             elif config.dbvec.client == "PersistentClient":
-                 self.client = chromadb.PersistentClient()
+                self.client = chromadb.PersistentClient()
             # Clear system cache and get or create a collection based on the configuration.
             self.client.clear_system_cache()
             self.coll_name = config.dbvec.collection
-            
-            #self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
+
+            # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
             self.embeddings = Llm(config, embeddings=True).model
-            
+
             self.set_clientdb(flush=True)
-               
+
         else:
             raise ValueError(
                 f"{str(config.dbvec.client)} not yet supported")
 
         # Set clientdb after initialization.
         self.set_clientdb()
-   
+
     def set_clientdb(self, flush=False):
         """
         Set the clientdb based on the initialized client, collection and embeddings.
 
         Parameters:
         flush (bool): Whether to delete and recreate the collection. Defaults to False.
-        
+
         Returns: None
-        
+
         Raises:
         ValueError: If the client type is not supported
         """
@@ -54,27 +57,28 @@ class vectorial_db:
             if flush:
                 # Delete and recreate the collection based on the configuration.
                 self.client.delete_collection(self.coll_name)
-            self.collection = self.client.get_or_create_collection(self.coll_name)
+            self.collection = self.client.get_or_create_collection(
+                self.coll_name)
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
             self.clientdb = Chroma(
                 client=self.client,
                 collection_name=self.coll_name,
                 embedding_function=self.embeddings,
             )
-    
-    def get_retriever(self, words_number = 2) -> VectorStoreRetriever:
+
+    def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """
         Returns a VectorStoreRetriever instance for this vectorial database.
 
         This method creates a retriever that can be used to fetch vectors from the underlying database. The retriever is
         bound to this specific database, so all operations will be performed on the data stored in this database.
-        
+
         :return: A VectorStoreRetriever instance
         """
         return self.clientdb.as_retriever(search_kwargs={"k": words_number})
-        
+
     # Add a document to the collection.
-    
+
     def add_to_collection(self, doc, flush_before=False):
         """
         Adds a document to the collection.
@@ -88,17 +92,16 @@ class vectorial_db:
         if flush_before:
             # Flush and recreate the clientdb before adding the document.
             self.set_clientdb(flush=True)
-        
+
         # Add the document to the collection with metadata and page content.
         self.collection.add(
-                ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content)
-        
+            ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content)
 
     def add_chunked_to_collection(self, chunked_documents, flush_before=False):
         """
         This method adds a chunked list of documents to the collection. It first checks if flushing is required
         and then iterates over each document in the chunked list, adding it to the collection using the add_to_collection method.
-        
+
         Parameters:
             - chunked_documents: A list of documents that need to be added to the collection
             - flush_before (Optional): If True, the clientdb is flushed before adding the documents
