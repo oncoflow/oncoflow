@@ -7,4 +7,3 @@ environ_config>=23
 inquirer>=3.3
 sentence_transformers>=3
 PyMuPDF>=1.24
-langchain_huggingface>=0.0
