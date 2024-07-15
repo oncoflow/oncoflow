@@ -1,5 +1,6 @@
 
 from langchain_community.chat_models.ollama import ChatOllama
+from langchain_community.embeddings import OllamaEmbeddings
 
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
@@ -7,7 +8,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
 
-from langchain_community.embeddings import OllamaEmbeddings
+import ollama
 
 from config import AppConfig
 
@@ -23,23 +24,32 @@ class Llm:
     Methods:
         __init__(self, config=AppConfig): Initializes the llm object with the configuration.
     """
-    model = None
-    chain = None
+    model = {}
+    chain = {}
+    embeddings = None
 
     default_prompt = ChatPromptTemplate
 
     def __init__(self, config=AppConfig, embeddings=False):
         if config.llm.type.lower() == "ollama":
             if embeddings:
-                self.model = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
-                                              model=config.llm.embeddings)
+                self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
+                                                   model=config.llm.embeddings)
             else:
-                self.model = ChatOllama(
-                    base_url=f"{config.llm.url}:{config.llm.port}",
-                    format="json",
-                    model=config.llm.model,
-                    temperature=config.llm.temp
-                )
+                if config.llm.models == "all":
+                    ocl = ollama.Client(
+                        host=f"{config.llm.url}:{config.llm.port}")
+                    models = [m["name"] for m in ocl.list()["models"] if m["name"].split(":")[0] not in [
+                        "mxbai-embed-large", "nomic-embed-text", "all-minilm"]]
+                else:
+                    models = config.llm.models.split(",")
+                for model in models:
+                    self.model[model] = ChatOllama(
+                        base_url=f"{config.llm.url}:{config.llm.port}",
+                        format="json",
+                        model=model,
+                        temperature=config.llm.temp
+                    )
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
 
@@ -54,15 +64,18 @@ class Llm:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
 
-    def create_chain(self, context, parser = JsonOutputParser()):
-        self.chain = (
-            {"context": context, "question": RunnablePassthrough()}
-            | self.default_prompt
-            | self.model
-            | parser
-        )
+    def create_chain(self, context, parser=JsonOutputParser()):
+        print(self.model)
+        for name, model in self.model.items():
+            print(name)
+            self.chain[name] = (
+                {"context": context, "question": RunnablePassthrough()}
+                | self.default_prompt
+                | model
+                | parser
+            )
 
-    def invoke_chain(self, query, parser = JsonOutputParser() ):
+    def invoke_chain(self, query, parser=JsonOutputParser()):
         """
         Asks a question about the document and returns the answer.
 
@@ -72,16 +85,20 @@ class Llm:
         Returns:
             The answer to the question.
         """
-     
 
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
                 template=query + " \n {format_instructions} \n ",
                 input_variables=[],
-                partial_variables={"format_instructions": parser.get_format_instructions()}
+                partial_variables={
+                    "format_instructions": parser.get_format_instructions()}
             )
         )
-        print( parser.get_format_instructions())
+        print(parser.get_format_instructions())
         print(f" -- PROMPT : {prompt.format().content}")
-        print(f" ---- {self.chain.get_prompts()}")
-        return self.chain.invoke(prompt.format().content)
+        results = {}
+        for name, model in self.model.items():
+            print(f"Processing {name} ...")
+            # print(f" ---- {self.chain[name].get_prompts()}")
+            results[name] = self.chain[name].invoke(prompt.format().content)
+        return results
