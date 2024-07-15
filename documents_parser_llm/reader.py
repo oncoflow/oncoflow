@@ -29,13 +29,14 @@ print(answer)
 from langchain_community import document_loaders
 
 from langchain_text_splitters import CharacterTextSplitter
-
+from langchain_core.output_parsers import PydanticOutputParser
 # import pymupdf4llm
 # from langchain.text_splitter import MarkdownTextSplitter
 
 from config import AppConfig
 from llm import Llm
 from databases import vectorial_db
+from rcp import rcp
 
 
 class DocumentReader:
@@ -85,8 +86,6 @@ class DocumentReader:
         self.vecdb.add_chunked_to_collection(
             chunked_documents, flush_before=True)
 
-        self.llm.create_chain(self.vecdb.get_retriever())
-
     def ask_in_document(self, query):
         """
         Asks a question about the document and returns the answer.
@@ -97,4 +96,10 @@ class DocumentReader:
         Returns:
             The answer to the question.
         """
-        return self.llm.invoke_chain(query)
+        fiche_rcp = rcp()
+        parser = PydanticOutputParser(pydantic_object=fiche_rcp.patient)
+
+
+        self.llm.create_chain(self.vecdb.get_retriever(), parser)
+
+        return self.llm.invoke_chain(query, parser)

@@ -1,7 +1,7 @@
 
 from langchain_community.chat_models.ollama import ChatOllama
 
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 
 from langchain.schema.runnable import RunnablePassthrough
@@ -54,15 +54,15 @@ class Llm:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
 
-    def create_chain(self, context):
+    def create_chain(self, context, parser = JsonOutputParser()):
         self.chain = (
             {"context": context, "question": RunnablePassthrough()}
             | self.default_prompt
             | self.model
-            | JsonOutputParser()
+            | parser
         )
 
-    def invoke_chain(self, query):
+    def invoke_chain(self, query, parser = JsonOutputParser() ):
         """
         Asks a question about the document and returns the answer.
 
@@ -74,4 +74,12 @@ class Llm:
         """
         print(f" -- {query}")
         print(f" ---- {self.chain.get_prompts()}")
-        return self.chain.invoke(query)
+        
+        prompt = HumanMessagePromptTemplate(
+            prompt=PromptTemplate(
+                template=query + '\n {format_instructions}',
+                input_variables=[],
+                partial_variables={"format_instructions": parser.get_format_instructions()}
+            )
+        )
+        return self.chain.invoke(prompt)
