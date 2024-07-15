@@ -28,10 +28,10 @@ print(answer)
 
 from langchain_community import document_loaders
 
-from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.output_parser import StrOutputParser
-
 from langchain_text_splitters import CharacterTextSplitter
+
+# import pymupdf4llm
+# from langchain.text_splitter import MarkdownTextSplitter
 
 from config import AppConfig
 from llm import Llm
@@ -62,12 +62,12 @@ class DocumentReader:
         ])
 
         loader = self._load_document(config.rcp.doc_type)
+
         self.text_splitter = CharacterTextSplitter(
             chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap)
 
         self.read_document(loader)
 
-    
     def _load_document(self, loader_type=None):
         """Loads a document from the specified path using the given loader type."""
         cla = getattr(document_loaders, loader_type)
@@ -82,14 +82,10 @@ class DocumentReader:
         pages = loader.load()
 
         chunked_documents = self.text_splitter.split_documents(pages)
-        self.vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
+        self.vecdb.add_chunked_to_collection(
+            chunked_documents, flush_before=True)
 
-        self.chain = (
-            {"context": self.vecdb.get_retriever(), "question": RunnablePassthrough()}
-            | self.llm.default_prompt
-            | self.llm.model
-            | StrOutputParser()
-        )
+        self.llm.create_chain(self.vecdb.get_retriever())
 
     def ask_in_document(self, query):
         """
@@ -101,6 +97,4 @@ class DocumentReader:
         Returns:
             The answer to the question.
         """
-        print(query)
-        print(self.chain.get_prompts())
-        return self.chain.invoke(query)
+        return self.llm.invoke_chain(query)
