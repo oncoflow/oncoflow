@@ -9,6 +9,7 @@ RUN mkdir app/ && useradd -m python && \
 
 USER python
 
+
 COPY documents_parser_llm/ app/
 
 WORKDIR app
