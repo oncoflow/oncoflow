@@ -47,7 +47,7 @@ class DocumentReader:
     def __init__(self, config=AppConfig,  pdf=str):
         self.config = config
         self.document_path = str(config.rcp.path) + "/" + pdf
-        self.llm = Llm(config)
+        self.llm = Llm(config, embeddings=False)
         self.vecdb = vectorial_db(config)
 
         self.llm.make_default_prompt([

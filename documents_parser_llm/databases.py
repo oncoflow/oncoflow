@@ -30,7 +30,7 @@ class vectorial_db:
             self.coll_name = config.dbvec.collection
 
             # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
-            self.embeddings = Llm(config, embeddings=True).model
+            self.embeddings = Llm(config, embeddings=True).embeddings
 
             self.set_clientdb(flush=True)
 
