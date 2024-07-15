@@ -72,14 +72,16 @@ class Llm:
         Returns:
             The answer to the question.
         """
-        print(f" -- {query}")
-        print(f" ---- {self.chain.get_prompts()}")
-        
+     
+
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
-                template=query + '\n {format_instructions}',
+                template=query + " \n {format_instructions} \n ",
                 input_variables=[],
                 partial_variables={"format_instructions": parser.get_format_instructions()}
             )
         )
-        return self.chain.invoke(prompt)
+        print( parser.get_format_instructions())
+        print(f" -- PROMPT : {prompt.format().content}")
+        print(f" ---- {self.chain.get_prompts()}")
+        return self.chain.invoke(prompt.format().content)
