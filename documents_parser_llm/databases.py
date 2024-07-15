@@ -58,8 +58,9 @@ class vectorial_db:
                 # Delete and recreate the collection based on the configuration.
                 try:
                     self.client.get_collection(self.coll_name)
-                except ValueError:
                     self.client.delete_collection(self.coll_name)
+                except ValueError:
+                    pass  
             self.collection = self.client.get_or_create_collection(
                 self.coll_name)
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
