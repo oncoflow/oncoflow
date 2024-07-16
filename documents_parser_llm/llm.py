@@ -64,12 +64,15 @@ class Llm:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
 
-    def create_chain(self, context, parser=JsonOutputParser()):
-        print(self.model)
+    def create_chain(self, context, additionnal_context = None, parser=JsonOutputParser()):
+        base_chain = {"context": context, "question": RunnablePassthrough()}
+        if additionnal_context is not None:
+            for context in additionnal_context:
+                base_chain |= {context["name"]: context["retriever"]}
+        print(base_chain)
         for name, model in self.model.items():
-            print(name)
             self.chain[name] = (
-                {"context": context, "question": RunnablePassthrough()}
+                base_chain
                 | self.default_prompt
                 | model
                 | parser
@@ -88,14 +91,13 @@ class Llm:
 
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
-                template=query + " \n {format_instructions} \n ",
+                template=query + "\n {format_instructions}",
                 input_variables=[],
                 partial_variables={
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        print(parser.get_format_instructions())
-        print(f" -- PROMPT : {prompt.format().content}")
+        #print(f" -- PROMPT : {prompt.format().content}")
         results = {}
         for name, model in self.model.items():
             print(f"Processing {name} ...")

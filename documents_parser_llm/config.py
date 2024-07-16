@@ -55,7 +55,8 @@ class AppConfig():
         """
         path = environ.var(
             default=f"{os.path.dirname(os.path.realpath(__file__))}/rcp", converter=Path, help="Path to find RCP files")
-
+        additional_path =  environ.var(
+            default=f"{os.path.dirname(os.path.realpath(__file__))}/ressources", converter=Path, help="Path to additionnal files")
         doc_type = environ.var(
             default="PyMuPDFLoader", help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ")
         chunk_size = environ.var(
