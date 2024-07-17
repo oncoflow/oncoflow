@@ -12,9 +12,7 @@ class RcpFiche():
 
     base_prompt = [
         ("system",
-         "Tu es un spécialiste de la cancérologie digestive. Tu dois répondre aux questions concernant le dossier de ce patient : {context}."),
-        ("human", "As-tu compris?"),
-        ("ai", "Oui, grâce aux éléments je vais pouvoir répondre, si il me manque un élément de réponse je répondrai par : inconnu"),
+         "Tu es un assistant spécialiste dans le domaine de la cancérologie digestive. Tu dois répondre aux questions avec les informations qui sont présentes dans le dossier de ce patient : {context}."),
     ]
     
     def __init__(self) -> None:  
@@ -36,14 +34,23 @@ class RcpFiche():
         ressources: ClassVar[list] = []
     
     class Patient(default_model):
-        name: str = Field(description="full name of Patient")
-        age: int = Field(description="Age of Patient")
+        name: str = Field(description="Nom complet du patient")
+        age: int = Field(description="Age du patient")
+        tumor_type: int = Field(description="Type de tumeur primitive présente ou suspectée chez le patient")
+        performance_status: int = Field(description="Stade OMS du patient")
+        cardiac_deasise: int = Field(description="Antécédant de maladie cardiaque présent chez ce patient")
 
-        question: ClassVar[str] = "Donne moi les informations patient de la fiche RCP"
+        question: ClassVar[str] = "A partir des informations du dossier du patient, renseigne le maximum d'éléments"
+
+    class Maladie(default_model):
+
+        tumor_type: int = Field(description="Type de tumeur primitive présente ou suspectée chez le patient")
+
+        question: ClassVar[str] = "A partir des informations du document qui concerne le patient, renseigne le maximum d'éléments"
 
     class Cardiologue(default_model):
-        necessary: bool = Field(description="caridiologue est necessaire")
-        reason: str = Field(description="Pourquoi")
+        necessary: bool = Field(description="Est-ce que l'évaluation par un cardiologue est nécessaire pour traiter ce patient ?")
+        reason: str = Field(description="Pourquoi ?")
         base_prompt: ClassVar[list] = [
             ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
             ("ai", "inconnu"),
@@ -51,7 +58,63 @@ class RcpFiche():
             ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
-        models: ClassVar[list] = ["mistral"]
-        ressources: ClassVar[list] = ["tncdchc.pdf"]
-        question: ClassVar[str] = "En te basant sur les documents de références, est-ce qu'un cardialogue est nécessaire ? "
+        models: ClassVar[list] = ["phi3"]
+        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+        question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un cardiologue est nécessaire ? "
 
+    class ChirurgienPancreatique(default_model):
+        necessary: bool = Field(description="Est-ce que l'évaluation par un chirurgien pancréatique est nécessaire ?")
+        reason: str = Field(description="Pourquoi ?")
+        base_prompt: ClassVar[list] = [
+            ("human", "Je vais te demander si une évaluation du dossier par un chirurgien pancréatique est nécessaire, quels éléments te permettraient de répondre correctement à la question ?"),
+            ("ai", "Je dois vérifier que le patient ne présente pas de métastases ou d'envahissement artériel qui contre-indiquerai la chirurgie selon les recommandations du TNCD"),
+            ("human", "Exactement, et si tu n'es pas certains de la réponse ?"),
+            ("ai", "Alors je réponds qu'une évaluation par un chirurgien est souhaitable et je justifie avec les éléments du TNCD et du dossier du patient"),
+            ("human", "{question}"),
+        ]
+        models: ClassVar[list] = ["phi3", "llama3-chatqa"]
+        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+        question: ClassVar[str] = "Alors réponds moi, est-qu'une une évaluation du dossier par un chirurgien pancréatique est nécessaire  ?"
+
+    class ChirurgienHepatique(default_model):
+        necessary: bool = Field(description="Est-ce que l'évaluation par un chirurgien hépatique est nécessaire ?")
+        reason: str = Field(description="Pourquoi ?")
+        base_prompt: ClassVar[list] = [
+            ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
+            ("ai", "inconnu"),
+            ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
+            ("ai", "Oui, quelle est la question concernant ce patient ?"),
+            ("human", "{question}"),
+        ]
+        models: ClassVar[list] = ["phi3"]
+        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+        question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un chirurgien hépatique est nécessaire ?"
+
+    class ChirurgienColorectal(default_model):
+        necessary: bool = Field(description="Est-ce que l'évaluation par un chirurgien colorectal est nécessaire ?")
+        reason: str = Field(description="Pourquoi ?")
+        base_prompt: ClassVar[list] = [
+            ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
+            ("ai", "inconnu"),
+            ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
+            ("ai", "Oui, quelle est la question concernant ce patient ?"),
+            ("human", "{question}"),
+        ]
+        models: ClassVar[list] = ["phi3"]
+        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+        question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un chirurgien colorectal est nécessaire ?"
+
+    class EssaiClinique(default_model):
+        necessary: bool = Field(description="Est-ce qu'un essai clinique peut être proposé au patient ?")
+        reason: str = Field(description="Pourquoi ?")
+        trial_name: str = Field(description="Nom de l'essai clinique à proposer au patient")
+        base_prompt: ClassVar[list] = [
+            ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
+            ("ai", "inconnu"),
+            ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
+            ("ai", "Oui, quelle est la question concernant ce patient ?"),
+            ("human", "{question}"),
+        ]
+        models: ClassVar[list] = ["phi3"]
+        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+        question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un chirurgien colorectal est nécessaire ?"
