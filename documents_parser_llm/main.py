@@ -5,13 +5,14 @@ from optparse import OptionParser
 from pprint import pprint
 
 import environ
+import inspect
 
 import inquirer
 
 from config import AppConfig
 from reader import DocumentReader
 
-from langchain_core.exceptions import OutputParserException
+from langchain_core.pydantic_v1 import BaseModel
 
 from rcp import RcpFiche
 
@@ -39,32 +40,27 @@ def manual_prompt(dir, config):
 
         if answers["question"].lower() == "quit":
             break
-        rag = DocumentReader(config,  answers["file"],  docs_pdf=["tncdchc.pdf"])
+        rag = DocumentReader(
+            config,  answers["file"],  docs_pdf=["tncdchc.pdf"])
         pprint(rag.ask_in_document(answers["question"]), compact=True)
 
 
 def all_asked(dir, config):
     fiche_rcp = RcpFiche()
-    prompts_list = [
-        {"question": "Donne moi les informations patient de la fiche RCP", "class_type": fiche_rcp.Patient},
-        {"question": "En te basant sur les documents de références, est-ce qu'un cardialogue est nécessaire ? ", "class_type": fiche_rcp.Cardiologue}]
-    # "Est-ce qu'une biopsie avec un résultat anatomopathologique a déja été obtenu ?",
-    # "Est-ce qu'il est fait mention d'un traitement par anticoagulants ?",
-    # "Quel sont les examens d'imagerie réalisés chez ce patient, je souhaite un format en sortie avec date de réalisation, type d'examen, résultat principal ?",
-    # "Quel est le stade OMS du patient ?",
-    # "Est-ce qu'un traitement par chimiothérapie à déja été réalisé ?"]
+
     for f in listdir(dir):
         if isfile(join(dir, f)):
             print(f"- Start reading {f} ...")
-            rag = DocumentReader(config, f, docs_pdf=["tncdchc.pdf"])
-            for p in prompts_list:
-                print(f" -- Question : {p['question']}")
-                try:
-                    pprint(rag.ask_in_document(p["question"], p["class_type"]),  compact=True)
-                except OutputParserException as e:
-                    print(f"llm say : {e.llm_output}")
-                    print(f"observation : {e.observation}")
-                    raise
+            for cl in fiche_rcp.basemodel_list:
+                cl_prompt = fiche_rcp.base_prompt
+                cl_prompt.extend(cl.base_prompt)
+                rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
+                                     prompt=cl_prompt, models=cl.models)
+                print(f" -- Process {cl.__name__}")
+                print(f" -- Question : {cl.question}")
+                pprint(rag.ask_in_document(query=cl.question,
+                       class_type=cl, models=cl.models), compact=True)
+                del rag
 
 
 if __name__ == "__main__":

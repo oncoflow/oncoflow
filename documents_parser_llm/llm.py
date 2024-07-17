@@ -1,12 +1,16 @@
 
+from typing import Self
 from langchain_community.chat_models.ollama import ChatOllama
 from langchain_community.embeddings import OllamaEmbeddings
 
 from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.exceptions import OutputParserException
 
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
+
+from langchain.output_parsers import RetryOutputParser
 
 import ollama
 
@@ -24,32 +28,38 @@ class Llm:
     Methods:
         __init__(self, config=AppConfig): Initializes the llm object with the configuration.
     """
-    model = {}
-    chain = {}
-    embeddings = None
+    def __init__(self, config=AppConfig, embeddings=False, models=None):
+        self.model = {}
+        self.chain = {}
+        self.embeddings = None
 
-    default_prompt = ChatPromptTemplate
+        self.default_prompt = ChatPromptTemplate
 
-    def __init__(self, config=AppConfig, embeddings=False):
         if config.llm.type.lower() == "ollama":
             if embeddings:
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
             else:
-                if config.llm.models == "all":
+                if models is None or not models:
+                    list_models = config.llm.models.split(",")
+                else:
+                    list_models = models
+                print(list_models)
+                    
+                if list_models == "all":
                     ocl = ollama.Client(
                         host=f"{config.llm.url}:{config.llm.port}")
-                    models = [m["name"] for m in ocl.list()["models"] if m["name"].split(":")[0] not in [
+                    list_models = [m["name"] for m in ocl.list()["models"] if m["name"].split(":")[0] not in [
                         "mxbai-embed-large", "nomic-embed-text", "all-minilm"]]
-                else:
-                    models = config.llm.models.split(",")
-                for model in models:
+
+                for model in list_models:
                     self.model[model] = ChatOllama(
                         base_url=f"{config.llm.url}:{config.llm.port}",
                         format="json",
                         model=model,
                         temperature=config.llm.temp
                     )
+                print(self.model)
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
 
@@ -69,7 +79,6 @@ class Llm:
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
-        print(base_chain)
         for name, model in self.model.items():
             self.chain[name] = (
                 base_chain
@@ -101,6 +110,11 @@ class Llm:
         results = {}
         for name, model in self.model.items():
             print(f"Processing {name} ...")
-            # print(f" ---- {self.chain[name].get_prompts()}")
-            results[name] = self.chain[name].invoke(prompt.format().content)
+            #print(f" ---- {self.chain[name].get_prompts()}")
+            try:
+                results[name] = self.chain[name].invoke(prompt.format().content)
+            except OutputParserException as e:
+                    print("! Failed")
+                    print(f"llm say : {e.llm_output}")
+                    print(f"observation : {e.observation}")
         return results

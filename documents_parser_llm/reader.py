@@ -45,11 +45,11 @@ class DocumentReader:
     additional_pdf = None
     docs_pdf = {}
 
-    def __init__(self, config=AppConfig,  document=str, docs_pdf=None):
+    def __init__(self, config=AppConfig,  document=str, docs_pdf=None, prompt = [], models = None):
         self.config = config
         self.document_path = str(config.rcp.path) + "/" + document
 
-        self.llm = Llm(config, embeddings=False)
+        self.llm = Llm(config, embeddings=False, models=models)
         self.vecdb = vectorial_db(config)
 
         default_prompt = []
@@ -64,17 +64,7 @@ class DocumentReader:
                 self.docs_pdf.update({doc_pdf: pdf_dict})
                 default_prompt.extend(
                     [("system", "Apprend les éléments de ce document de référence : {" + pdf_dict["name"] + "}")])
-        default_prompt.extend([
-            ("system",
-             "Tu es un spécialiste de la cancérologie digestive. Tu dois répondre aux questions concernant le dossier de ce patient : {context}."),
-            ("human", "As-tu compris?"),
-            ("ai", "Oui, grâce aux éléments je vais pouvoir répondre, si il me manque un élément de réponse je répondrai par : inconnu"),
-            ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
-            ("ai", "inconnu"),
-            ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
-            ("ai", "Oui, quelle est la question concernant ce patient ?"),
-            ("human", "{question}"),
-        ])
+        default_prompt.extend(prompt)
 
         self.llm.make_default_prompt(default_prompt)
         self.default_loader = config.rcp.doc_type
@@ -112,7 +102,7 @@ class DocumentReader:
             infos["vecdb"].add_chunked_to_collection(
                 chunked_documents, flush_before=True)
 
-    def ask_in_document(self, query, class_type=None):
+    def ask_in_document(self, query, class_type=None, models=None):
         """
         Asks a question about the document and returns the answer.
 
