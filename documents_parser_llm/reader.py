@@ -36,57 +36,73 @@ from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 from config import AppConfig
 from llm import Llm
 from databases import vectorial_db
-from rcp import RcpFiche
 
 
 class DocumentReader:
     document = str
     collectionName = "oncoflowDocs"
     retriever = None
+    additional_pdf = None
+    docs_pdf = {}
 
-    def __init__(self, config=AppConfig,  pdf=str):
+    def __init__(self, config=AppConfig,  document=str, docs_pdf=None, prompt = [], models = None):
         self.config = config
-        self.document_path = str(config.rcp.path) + "/" + pdf
-        self.llm = Llm(config)
+        self.document_path = str(config.rcp.path) + "/" + document
+
+        self.llm = Llm(config, embeddings=False, models=models)
         self.vecdb = vectorial_db(config)
 
-        self.llm.make_default_prompt([
-            ("system",
-             "Tu es un spécialiste de la cancérologie digestive. Tu dois répondre aux questions concernant le dossier de ce patient : {context}."),
-            ("human", "As-tu compris?"),
-            ("ai", "Oui, grâce aux éléments je vais pouvoir répondre, si il me manque un élément de réponse je répondrai par : inconnu"),
-            ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
-            ("ai", "inconnu"),
-            ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
-            ("ai", "Oui, quelle est la question concernant ce patient ?"),
-            ("human", "{question}"),
-        ])
+        default_prompt = []
 
-        loader = self._load_document(config.rcp.doc_type)
+        if docs_pdf is not None:
+            for doc_pdf in docs_pdf:
+                pdf_dict = {
+                    "vecdb": vectorial_db(config, coll_prefix="additional"),
+                    "path": str(config.rcp.additional_path) + "/" + doc_pdf,
+                    "name": doc_pdf.replace(".", "")
+                }
+                self.docs_pdf.update({doc_pdf: pdf_dict})
+                default_prompt.extend(
+                    [("system", "Apprend les éléments de ce document de référence : {" + pdf_dict["name"] + "}")])
+        default_prompt.extend(prompt)
+
+        self.llm.make_default_prompt(default_prompt)
+        self.default_loader = config.rcp.doc_type
 
         self.text_splitter = CharacterTextSplitter(
             chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap)
 
-        self.read_document(loader)
+        self.read_document()
 
-    def _load_document(self, loader_type=None):
+    def _load_document(self, document=str, loader_type=None):
         """Loads a document from the specified path using the given loader type."""
+        if loader_type is None:
+            loader_type = self.default_loader
         cla = getattr(document_loaders, loader_type)
-        return cla(self.document_path)
+        return cla(document)
 
-    def read_document(self, loader):
+    def read_document(self):
         """
         Reads a document from the specified loader and splits it into chunks.
         Then, adds the chunks to a VectorStore.
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
+        loader = self._load_document(self.document_path)
         pages = loader.load()
 
         chunked_documents = self.text_splitter.split_documents(pages)
+
         self.vecdb.add_chunked_to_collection(
             chunked_documents, flush_before=True)
 
-    def ask_in_document(self, query, class_type = None):
+        for doc_pdf, infos in self.docs_pdf.items():
+            loader = self._load_document(infos["path"])
+            pages = loader.load()
+            chunked_documents = self.text_splitter.split_documents(pages)
+            infos["vecdb"].add_chunked_to_collection(
+                chunked_documents, flush_before=True)
+
+    def ask_in_document(self, query, class_type=None, models=None):
         """
         Asks a question about the document and returns the answer.
 
@@ -101,7 +117,7 @@ class DocumentReader:
         else:
             parser = JsonOutputParser()
 
-
-        self.llm.create_chain(self.vecdb.get_retriever(), parser)
+        self.llm.create_chain(self.vecdb.get_retriever(), [
+                              {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
 
         return self.llm.invoke_chain(query, parser)

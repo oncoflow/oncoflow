@@ -28,7 +28,7 @@ class AppConfig():
             default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
-        model = environ.var(default="llama3", help="Model of llm system")
+        models = environ.var(default="llama3-chatqa,phi3", help="Model of llm system, type all for test all ollama models")
         temp = environ.var(default="0", converter=int,
                            help="Temperature of llm system")
         embeddings = environ.var(default="all-minilm",
@@ -55,7 +55,8 @@ class AppConfig():
         """
         path = environ.var(
             default=f"{os.path.dirname(os.path.realpath(__file__))}/rcp", converter=Path, help="Path to find RCP files")
-
+        additional_path =  environ.var(
+            default=f"{os.path.dirname(os.path.realpath(__file__))}/ressources", converter=Path, help="Path to additionnal files")
         doc_type = environ.var(
             default="PyMuPDFLoader", help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ")
         chunk_size = environ.var(
@@ -64,7 +65,7 @@ class AppConfig():
             default="10", converter=int, help="chunk_overlap of document")
 
         manual_query = environ.bool_var(
-            default=True, help="Manual prompting for debug")
+            default=False, help="Manual prompting for debug")
 
         @path.validator
         def _ensure_path_exists(self, var, path):

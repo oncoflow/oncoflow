@@ -17,7 +17,7 @@ class vectorial_db:
     # Initialize the client, collection and embeddings based on configuration.
     """Initialize the client, collection and embeddings based on configuration."""
 
-    def __init__(self, config=AppConfig):
+    def __init__(self, config=AppConfig, coll_prefix = None):
         if config.dbvec.type.lower() == "chromadb":
             # Use either HttpClient or PersistentClient depending on the configuration.
             if config.dbvec.client == "HttpClient":
@@ -27,10 +27,13 @@ class vectorial_db:
                 self.client = chromadb.PersistentClient()
             # Clear system cache and get or create a collection based on the configuration.
             self.client.clear_system_cache()
-            self.coll_name = config.dbvec.collection
+            if coll_prefix is None:
+                self.coll_name = config.dbvec.collection
+            else:
+                self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
 
             # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
-            self.embeddings = Llm(config, embeddings=True).model
+            self.embeddings = Llm(config, embeddings=True).embeddings
 
             self.set_clientdb(flush=True)
 
