@@ -114,11 +114,11 @@ class Llm:
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        self.logger.debug("Set human prompt : %s", prompt.format().content, extra={
-                          "model": self.model.keys()})
+        #print(f" -- PROMPT : {prompt.format().content}")
         results = {}
         for name, model in self.model.items():
-            self.logger.info("Asking LLM .... ", extra={"model": name})
+            print(f"Processing {name} ...")
+            #print(f" ---- {self.chain[name].get_prompts()}")
             try:
                 results[name] = self.chain[name].invoke(
                     prompt.format().content)
