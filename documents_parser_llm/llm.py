@@ -106,11 +106,11 @@ class Llm:
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        #print(f" -- PROMPT : {prompt.format().content}")
+        print(f" -- PROMPT : {prompt.format().content}")
         results = {}
         for name, model in self.model.items():
             print(f"Processing {name} ...")
-            #print(f" ---- {self.chain[name].get_prompts()}")
+            print(f" ---- {self.chain[name].get_prompts()}")
             try:
                 results[name] = self.chain[name].invoke(prompt.format().content)
             except OutputParserException as e:
