@@ -1,5 +1,6 @@
+from enum import Enum, IntEnum
 from typing import List, Optional, ClassVar
-from datetime import date
+from datetime import date, datetime
 from langchain_core.pydantic_v1 import BaseModel, Field, validator
 import inspect
 
@@ -8,28 +9,60 @@ import inspect
     # "Quel sont les examens d'imagerie réalisés chez ce patient, je souhaite un format en sortie avec date de réalisation, type d'examen, résultat principal ?",
     # "Quel est le stade OMS du patient ?",
     # "Est-ce qu'un traitement par chimiothérapie à déja été réalisé ?"]
+class TypeImagerie(str, Enum):
+    scanner = 'scanner'
+    MRI = 'MRI'
+    TEP = 'TEP'
+
+class Gender(str, Enum):
+    male = 'male'
+    female = 'female'
+    other = 'other'
+    not_given = 'not_given'
+
+class PerformanceStatus(IntEnum):
+    '''
+    Cette classe liste les différentes valeurs que doit prendre le stade OMS ou Performance Status
+    '''
+    ecog0 = '0'
+    ecog1 = '1'
+    ecog2 = '2'
+    ecog3 = '3'
+    ecog4 = '4'
 
 class ExamenImagerie(BaseModel):
     '''
-    Cette classe permet de stocker les informations d'un examen d'imagerie present dans le dossier medical
+    Cette classe contient les informations concernant un seul examen d'imagerie
     '''
-    date_imagerie: date = Field(description="Date de realisation de l'examen d'imagerie") 
-    type_imagerie:  str= Field(description="Type d'examen d'imagerie")  #to do : valider que cela soit soit IRM/TDM/TEP
-    centre_imagerie: str= Field(description="Lieu de realisation de l'examen d'imagerie")
-    radiologue: str= Field(description="Radiologue ayant interprete l'examen d'imagerie")
-    interpretation: str= Field(description="Compte rendu de l'examen d'imagerie")
-    relecture: bool= Field(description="Relecture de l'examen d'imagerie")
-    relectureur: str= Field(description="Radiologue ayant realise la relecture de l'examen d'imagerie")
-    reinterpretation: str= Field(description="Compte rendu de la relecture de l'examen d'imagerie")
+    date: datetime = Field(description="Contient la date de realisation de l'examen d'imagerie") 
+    type:  TypeImagerie= Field(description="Contient le type d'examen d'imagerie")  #to do : valider que cela soit soit IRM/TDM/TEP
+    centre: Optional[str]= Field(description="Contient le nom de la structure médicale ou a été réalisé l'examen d'imagerie")
+    centre_expert: bool= Field(description="Décrit si l'imagerie a ete realisee en centre expert")
+    radiologue: Optional[str]= Field(description="Contient le nom du radiologue ayant interprete l'examen d'imagerie")
+    interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
+    interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
+    relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
+    relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
+    reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
+
+class ExamenAnapath(BaseModel):
+    '''
+    Cette classe contient les informations concernant un seul examen d'histologie
+    '''
+    date: datetime = Field(description="Contient la date de realisation de l'examen d'imagerie")
+    contributif: bool = Field(description="Determine si le resultat de l'examen est contributif")
 
 class ExamensImagerie(BaseModel):
     '''
-    Cette classe permet de stocker une liste d'examens d'imagerie presents dans le dossier medical
+    Cette classe contient les informations d'une liste d'examens d'imagerie
     '''
-    examens: list[ExamenImagerie]= Field(description="Liste des examens d'imagerie")
+    examensall: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie du patient")
+    scanAll: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie par scanner du patient")
+    MRIAll: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie par IRM du patient")
+    TEPAll: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie par TEP du patient")
 class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
     '''
-    Cette classe permet de stocker toutes les informations d'une fiche de reunion de concertation pluridisciplinaire
+    Cette classe contient les informations d'une fiche de reunion de concertation pluridisciplinaire
     '''
 
     base_prompt = [
@@ -45,10 +78,10 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
-            ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
-            ("ai", "inconnu"),
-            ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
-            ("ai", "Oui, quelle est la question concernant ce patient ?"),
+            # ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
+            # ("ai", "inconnu"),
+            # ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
+            # ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
         prompt: ClassVar[list] = []
@@ -62,16 +95,16 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         '''
         name: str = Field(description="Nom complet du patient")
         age: int = Field(description="Age du patient")
-        tumor_type: int = Field(
-            description="Type de tumeur primitive présente ou suspectée chez le patient")
-        performance_status: int = Field(description="Stade OMS du patient")
+        gender: Gender = Field(description="Genre du patient")
+        tumor_type: int = Field(description="Type de tumeur primitive présente ou suspectée chez le patient")
+        performance_status: PerformanceStatus = Field(description="Stade OMS du patient")
         cardiac_deasise: bool = Field(description="Presence d'un antecedant de maladie cardio-vasculaire")
         dossier_radiologique: ExamensImagerie = Field(description="Ensemble des examens radiologiques du patient")
         base_prompt: ClassVar[list] = [
         
    
         ]
-        question: ClassVar[str] = "Quelles sont les caractéristiques medicales presentes dans ce dossier ? "
+        question: ClassVar[str] = "Quelles sont les caractéristiques suivantes du patient : nom, âge, genre, type de tumeur, présence d'un antécédant cardiovasculaire et dossier radiologique"
 
     class Maladie(default_model):
         '''
@@ -83,7 +116,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         base_prompt: ClassVar[list] = [
    
         ]
-        question: ClassVar[str] = "Quel est le type de tumeur et de quand date le diagnostic de la tumeur dans ce dossier ? "
+        question: ClassVar[str] = "Quelles sont les caractéristiques de la tumeur"
 
     # class TumeurPancreas(BaseModel):
     #     '''
