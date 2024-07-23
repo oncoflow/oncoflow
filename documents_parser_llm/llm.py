@@ -11,7 +11,7 @@ from langchain.schema.runnable import RunnablePassthrough
 from langchain.schema.output_parser import StrOutputParser
 
 from langchain.output_parsers import RetryOutputParser
-
+from icecream import ic
 import ollama
 
 from config import AppConfig
@@ -73,12 +73,17 @@ class Llm:
         if prompt is None:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
+        ic(self.default_prompt)
 
     def create_chain(self, context, additionnal_context = None, parser=JsonOutputParser()):
+        ic(context)
         base_chain = {"context": context, "question": RunnablePassthrough()}
+        ic(base_chain)
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
+                print("ADDITIONNAL CONTEXT")
+            ic(base_chain)
         for name, model in self.model.items():
             self.chain[name] = (
                 base_chain
@@ -86,6 +91,7 @@ class Llm:
                 | model
                 | parser
             )
+            ic(self.chain)
 
     def invoke_chain(self, query, parser=JsonOutputParser()):
         """

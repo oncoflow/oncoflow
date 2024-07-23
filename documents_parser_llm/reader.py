@@ -37,6 +37,7 @@ from config import AppConfig
 from llm import Llm
 from databases import vectorial_db
 
+from icecream import ic
 
 class DocumentReader:
     document = str
@@ -48,7 +49,7 @@ class DocumentReader:
     def __init__(self, config=AppConfig,  document=str, docs_pdf=None, prompt = [], models = None):
         self.config = config
         self.document_path = str(config.rcp.path) + "/" + document
-
+        ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
         self.vecdb = vectorial_db(config)
 
@@ -78,7 +79,9 @@ class DocumentReader:
         """Loads a document from the specified path using the given loader type."""
         if loader_type is None:
             loader_type = self.default_loader
+        ic(loader_type)
         cla = getattr(document_loaders, loader_type)
+        ic(document)
         return cla(document)
 
     def read_document(self):
@@ -116,8 +119,10 @@ class DocumentReader:
             parser = PydanticOutputParser(pydantic_object=class_type)
         else:
             parser = JsonOutputParser()
-
+        ic(parser)
+        ic(self.vecdb)
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
-
+        print("Asking in document")
+        ic(query)
         return self.llm.invoke_chain(query, parser)
