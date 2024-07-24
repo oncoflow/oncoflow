@@ -11,7 +11,7 @@ import inspect
     # "Quel est le stade OMS du patient ?",
     # "Est-ce qu'un traitement par chimiothérapie à déja été réalisé ?"]
 class ImageryType(str, Enum):
-    scanner = 'scanner'
+    CT = 'CT'
     MRI = 'MRI'
     PET = 'PET'
 
@@ -21,9 +21,16 @@ class Gender(str, Enum):
     other = 'other'
     not_given = 'not_given'
 
+class MetastaticLocalisationsEnum(str, Enum):
+    liver = 'liver'
+    lung = 'lung'
+    peritoneal = 'peritoneal'
+    bone = 'bone'
+    other = 'other'
+
 class PerformanceStatus(IntEnum):
     '''
-    This class contains all allowed ECOG values
+    This class contains all allowed ECOG or Performance Status values
     '''
     ecog0 = '0'
     ecog1 = '1'
@@ -31,44 +38,55 @@ class PerformanceStatus(IntEnum):
     ecog3 = '3'
     ecog4 = '4'
 
-class ExamenImagerie(BaseModel):
+class TumorTypes(str, Enum):
+    liverHCC = 'liver hepatocarcinoma'
+    liverBiliary = 'intra hepatic cholangiocarcinoma'
+    extrabiliary = 'extra hepatic biliary tract cholangiocarcinoma'
+    pancreaticCarcinoma = 'pancreas adenocarcinoma'
+    colon = 'colon cancer'
+    rectum = 'rectal cancer'
+    oesophagus = 'oesophagus'
+
+class RadiologicalExamination(BaseModel):
     '''
     This class contains all informations about one imagery exam
     '''
-    date: datetime = Field(description="Contient la date de realisation de l'examen d'imagerie") 
-    type:  ImageryType= Field(description="Contient le type d'examen d'imagerie")  #to do : valider que cela soit soit IRM/TDM/TEP
-    centre: Optional[str]= Field(description="Contient le nom de la structure médicale ou a été réalisé l'examen d'imagerie")
-    centre_expert: bool= Field(description="Décrit si l'imagerie a ete realisee en centre expert")
-    radiologue: Optional[str]= Field(description="Contient le nom du radiologue ayant interprete l'examen d'imagerie")
+    date: datetime = Field(description="The date when the radiological examination was performed.") 
+    type:  ImageryType= Field(description="The type of radiological examination performed.")  #to do : valider que cela soit soit IRM/TDM/TEP
+    centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
+    centre_expert: Optional[bool]= Field(description="Whether the where the radiological examination was performed is a tertiary center.")
+    radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
     interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
     interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
     relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
     relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
     reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
 
+    
+
 class ExamenAnapath(BaseModel):
     '''
     This class contains all informations about one pathology exam
     '''
-    date: datetime = Field(description="Contient la date de realisation de l'examen d'imagerie")
-    contributif: bool = Field(description="Determine si le resultat de l'examen est contributif")
+    date: datetime = Field(description="Contains the date when the biopsy or resection was performed")
+    contributif: bool = Field(description="Indicates whether the results are conclusive or not")
 
-class ExamensImagerie(BaseModel):
+class RadiologicalExaminations(BaseModel):
     '''
-    This class contains all imagery exams information
+    This class list all the patient's radiology studies
     '''
-    examensall: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie du patient")
-    scanAll: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie par scanner du patient")
-    MRIAll: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie par IRM du patient")
-    TEPAll: list[ExamenImagerie]= Field(description="Contient la liste de tous les examens d'imagerie par TEP du patient")
+    Examsall: list[RadiologicalExamination]= Field(description="List all the patient's radiology studies")
+    CTAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology CT scan studies")
+    MRIAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology MRI studies")
+    PETAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology PET studies")
 class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
     '''
-    This class contains all patient and tumor informations
+    This class contains all patient and oncological disease information.
     '''
 
     base_prompt = [
         ("system",
-         "You are a medical assistant. You have to base your replies on this patient : {context}."),
+         "You are a medical assistant, you must base your answers on this patient record: {context}."),
     ]
     
     def __init__(self) -> None:  
@@ -79,14 +97,10 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
-            # ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
-            # ("ai", "inconnu"),
-            # ("human", "Es tu prêt à répondre de manière brève et en francais à une question?"),
-            # ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
         prompt: ClassVar[list] = []
-        models: ClassVar[list] = ['llama3']
+        models: ClassVar[list] = ['llama3-chatqa']
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
     
@@ -97,24 +111,22 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         name: str = Field(description="Full name of the patient")
         age: int = Field(description="Patient's age")
         gender: Gender = Field(description="Patient gender")
-        tumor_type: str = Field(description="Type of tumor discussed in this patient")
+        # tumor_type: str = Field(description="Type of tumor present in this patient")
         performance_status: PerformanceStatus = Field(description="ECOG ou performance status")
         cardiaovascular_disease: bool = Field(description="Cardiovascular history")
-        dossier_radiologique: ExamensImagerie = Field(description="Radiologic exams")
+        # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams")
+        question: ClassVar[str] = "Describe this patient's characteristics : name, age, gender, performance status, cardiovascular disease history."
 
-        question: ClassVar[str] = "Describe patient characteristics : name, age, gender, tumor type, performance status, cardiovascular disease and past radiologic exams"
-
-    class Maladie(default_model):
+    class TumorBaseCharacteristics(default_model):
         '''
         This class is about tumor caracteristics
         '''
-        date_diagnostic: date = Field(description="Date of tumor diagnoses")
+        date_diagnosis: date = Field(description="Date of tumor diagnosis")
         tumor_type: str = Field(description="Type of tumor present or suspected")
-        tumor_stade: str = Field(description="Tumor stade")
-        base_prompt: ClassVar[list] = [
-   
-        ]
-        question: ClassVar[str] = "Describe tumor characteristics"
+        metastatic_deasise: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
+        metastatic_localisation: Optional[list[MetastaticLocalisationsEnum]] = Field(description="Indicates in which organs are located metastasis")
+        # tumor_stade: str = Field(description="Tumor grade")
+        question: ClassVar[str] = "Describe the tumor basics characteristics : type, date of diagnosis and metastatic state"
 
     # class TumeurPancreas(BaseModel):
     #     '''
