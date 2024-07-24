@@ -12,7 +12,6 @@ from opentelemetry.sdk.trace.export import (
     ConsoleSpanExporter,
 )
 
-
 @environ.config(prefix="APP")
 class AppConfig():
     """
@@ -28,7 +27,7 @@ class AppConfig():
             default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
-        models = environ.var(default="llama3-chatqa,phi3", help="Model of llm system, type all for test all ollama models")
+        models = environ.var(default="llama3, gemma2, mistral, phi3", help="Model of llm system, type all for test all ollama models")
         temp = environ.var(default="0", converter=int,
                            help="Temperature of llm system")
         embeddings = environ.var(default="all-minilm",
@@ -60,9 +59,9 @@ class AppConfig():
         doc_type = environ.var(
             default="PyMuPDFLoader", help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ")
         chunk_size = environ.var(
-            default="1000", converter=int, help="chunk_size of document")
+            default="2000", converter=int, help="chunk_size of document")
         chunk_overlap = environ.var(
-            default="10", converter=int, help="chunk_overlap of document")
+            default="200", converter=int, help="chunk_overlap of document")
 
         manual_query = environ.bool_var(
             default=False, help="Manual prompting for debug")
