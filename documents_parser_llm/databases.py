@@ -17,7 +17,7 @@ class vectorial_db:
     # Initialize the client, collection and embeddings based on configuration.
     """Initialize the client, collection and embeddings based on configuration."""
 
-    def __init__(self, config=AppConfig, coll_prefix = None):
+    def __init__(self, config=AppConfig, coll_prefix=None):
         if config.dbvec.type.lower() == "chromadb":
             # Use either HttpClient or PersistentClient depending on the configuration.
             if config.dbvec.client == "HttpClient":
@@ -35,14 +35,17 @@ class vectorial_db:
             # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
             self.embeddings = Llm(config, embeddings=True).embeddings
 
-            self.set_clientdb(flush=True)
-
         else:
             raise ValueError(
                 f"{str(config.dbvec.client)} not yet supported")
 
-        # Set clientdb after initialization.
-        self.set_clientdb()
+        self.logger = config.set_logger("vectorial_db", default_context={
+                "collection": self.coll_name,
+                "embeddings": self.embeddings,
+                "db_version": str(self.client.get_version()),
+                "db_type": config.dbvec.type.lower()})
+        self.logger.info("Class vectorial_db succesfully init")
+        self.set_clientdb(flush=True)
 
     def set_clientdb(self, flush=False):
         """
@@ -60,10 +63,12 @@ class vectorial_db:
             if flush:
                 # Delete and recreate the collection based on the configuration.
                 try:
+                    self.logger.debug("Flushing collection")
                     self.client.get_collection(self.coll_name)
                     self.client.delete_collection(self.coll_name)
+                    self.client.clear_system_cache()
                 except ValueError:
-                    pass  
+                    pass
             self.collection = self.client.get_or_create_collection(
                 self.coll_name)
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
@@ -82,6 +87,7 @@ class vectorial_db:
 
         :return: A VectorStoreRetriever instance
         """
+        self.logger.debug("Return receiver with words_number=%s", str(words_number))
         return self.clientdb.as_retriever(search_kwargs={"k": words_number})
 
     # Add a document to the collection.
