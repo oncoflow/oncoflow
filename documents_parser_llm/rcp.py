@@ -4,11 +4,6 @@ from datetime import date, datetime
 from langchain_core.pydantic_v1 import BaseModel, Field, validator
 import inspect
 
-    # "Est-ce qu'une biopsie avec un résultat anatomopathologique a déja été obtenu ?",
-    # "Est-ce qu'il est fait mention d'un traitement par anticoagulants ?",
-    # "Quel sont les examens d'imagerie réalisés chez ce patient, je souhaite un format en sortie avec date de réalisation, type d'examen, résultat principal ?",
-    # "Quel est le stade OMS du patient ?",
-    # "Est-ce qu'un traitement par chimiothérapie à déja été réalisé ?"]
 class ImageryType(str, Enum):
     CT = 'CT'
     MRI = 'MRI'
@@ -20,16 +15,30 @@ class Gender(str, Enum):
     other = 'other'
     not_given = 'not_given'
 
-class MetastaticLocalisationsEnum(str, Enum):
+class RevealingMode(str, Enum):
+    '''
+    This class lists the ways in which the tumor can be revealed 
+    '''
+    symptoms = 'symptoms'
+    incidental_radiologic = 'incidental radiologic finding'
+    incidental_biologic = 'incidental biologic finding'
+    follow_up = 'follow up'
+    unknown  = 'unknown'
+
+class MetastaticLocationsEnum(str, Enum):
+    '''
+    This class lists possible metastatic sites
+    '''
     liver = 'liver'
     lung = 'lung'
     peritoneal = 'peritoneal'
     bone = 'bone'
+    brain = 'brain'
     other = 'other'
 
 class PerformanceStatus(IntEnum):
     '''
-    This class contains all allowed ECOG or Performance Status values
+    This class enumerates WHO (World Health Organisation, i.e. OMS in French) performance index or ECOG performance status values.
     '''
     ecog0 = '0'
     ecog1 = '1'
@@ -37,23 +46,42 @@ class PerformanceStatus(IntEnum):
     ecog3 = '3'
     ecog4 = '4'
 
-class TumorTypes(str, Enum):
-    liverHCC = 'liver hepatocarcinoma'
-    liverBiliary = 'intra hepatic cholangiocarcinoma'
-    extrabiliary = 'extra hepatic biliary tract cholangiocarcinoma'
-    pancreaticCarcinoma = 'pancreas adenocarcinoma'
-    colon = 'colon cancer'
-    rectum = 'rectal cancer'
+class OrgansEnum(str, Enum):
+    liver = 'liver'
+    biliary_tract = 'biliary tract'
+    pancreas = 'pancreas'
+    colon = 'colon'
+    rectum = 'rectum'
     oesophagus = 'oesophagus'
+
+class PancreaticTumorEnum(str, Enum):
+    adenocarcinoma = 'adenocarcinoma'
+    neuroendocrin = 'neuroendocrine tumor'
+    unknown = 'unknow'
+
+
+class PancreaticSymptomsEnum(str, Enum):
+    pain = 'pain'
+    jaundice = 'jaundice'
+    mass = 'mass'
+    weight_loss = 'weight loss'
+
+class LiverSymptomsEnum(str, Enum):
+    ascite = 'ascite'
+    jaundice = 'jaundice'
+    digestive_bleeding = 'digestive bleeding'
+    encephalopathy = 'encephalopathy'
+
+
 
 class RadiologicalExamination(BaseModel):
     '''
-    This class contains all informations about one imagery exam
+    This class contains all possible informations about one imagery exam
     '''
     date: datetime = Field(description="The date when the radiological examination was performed.") 
     type:  ImageryType= Field(description="The type of radiological examination performed.")  #to do : valider que cela soit soit IRM/TDM/TEP
     centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
-    centre_expert: Optional[bool]= Field(description="Whether the where the radiological examination was performed is a tertiary center.")
+    centre_expert: Optional[bool]= Field(description="Whether the radiological examination was performed is a tertiary center.")
     radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
     interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
     interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
@@ -61,14 +89,15 @@ class RadiologicalExamination(BaseModel):
     relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
     reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
 
-    
 
-class ExamenAnapath(BaseModel):
+
+class HistologicAnalysis(BaseModel):
     '''
-    This class contains all informations about one pathology exam
+    This class contains all informations about one histologic analysis
     '''
     date: datetime = Field(description="Contains the date when the biopsy or resection was performed")
-    contributif: bool = Field(description="Indicates whether the results are conclusive or not")
+    contributive: bool = Field(description="Indicates whether the results are conclusive or not")
+    result: str = Field(description='Contains the full histological result')
 
 class RadiologicalExaminations(BaseModel):
     '''
@@ -85,7 +114,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     base_prompt = [
         ("system",
-         "You are a medical assistant, you must base your answers on this patient record: {context}."),
+         "You're a medical assistant who's skilled at investigating complex digestive oncology cases, you must base your answers on this patient record: {context}."),
     ]
 
     def __init__(self) -> None:
@@ -99,7 +128,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
             ("human", "{question}"),
         ]
         prompt: ClassVar[list] = []
-        models: ClassVar[list] = ['llama3-chatqa']
+        models: ClassVar[list] = ['llama3.1']
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
 
@@ -111,27 +140,39 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         age: int = Field(description="Patient's age")
         gender: Gender = Field(description="Patient gender")
         # tumor_type: str = Field(description="Type of tumor present in this patient")
-        performance_status: PerformanceStatus = Field(description="ECOG ou performance status")
-        cardiaovascular_disease: bool = Field(description="Cardiovascular history")
+        performance_status: PerformanceStatus = Field(description="WHO performance index or ECOG performance status")
+        cardiovascular_disease: bool = Field(description="Cardiovascular history")
         # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams")
-        question: ClassVar[str] = "Describe this patient's characteristics : name, age, gender, performance status, cardiovascular disease history."
+        question: ClassVar[str] = "Describe this patient's characteristics : name, age, gender, performance status i.e. OMS status , cardiovascular disease history."
 
     class TumorBaseCharacteristics(default_model):
         '''
         This class is about tumor caracteristics
         '''
+        revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
         date_diagnosis: date = Field(description="Date of tumor diagnosis")
-        tumor_type: str = Field(description="Type of tumor present or suspected")
-        metastatic_deasise: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
-        metastatic_localisation: Optional[list[MetastaticLocalisationsEnum]] = Field(description="Indicates in which organs are located metastasis")
+        organ: OrgansEnum = Field(description="Primary tumor organ")
+        histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
+        metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
+        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
         # tumor_stade: str = Field(description="Tumor grade")
-        question: ClassVar[str] = "Describe the tumor basics characteristics : type, date of diagnosis and metastatic state"
+        question: ClassVar[str] = "Describe the tumor basics characteristics : primary tumor organ, date of diagnosis, tumor type, histologic results and metastatic state"
 
-    # class TumeurPancreas(BaseModel):
-    #     '''
-    #     Cette classe permet de stocker les informations spécifiques à une tumeur pancréatique
-    #     '''
-    #     symptomes_initiaux: List[Symptomes initiaux] = Field(description="Liste de symptômes ayant conduit aux premiers examens")
+    class PancreaticTumor(BaseModel):
+        '''
+        This class contains pancreatic tumor specific items
+        '''
+        
+        onset_symptoms: Optional[List[PancreaticSymptomsEnum]] = Field(description="Contains initials symptoms")
+        actual_symptoms: Optional[List[PancreaticSymptomsEnum]] = Field(description="Contains actual symptoms")
+
+    class LiverTumor(BaseModel):
+        '''
+        This class contains pancreatic tumor specific items
+        '''
+        
+        onset_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains initials symptoms")
+        actual_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains actual symptoms")
     
     # class Cardiologue(default_model):
     #     necessary: bool = Field(description="Est-ce que l'évaluation par un cardiologue est nécessaire pour traiter ce patient ?")
