@@ -46,13 +46,20 @@ class PerformanceStatus(IntEnum):
     ecog3 = '3'
     ecog4 = '4'
 
-class OrgansEnum(str, Enum):
-    liver = 'liver'
-    biliary_tract = 'biliary tract'
-    pancreas = 'pancreas'
-    colon = 'colon'
-    rectum = 'rectum'
-    oesophagus = 'oesophagus'
+class CancerTypesEnum(str, Enum):
+    oesophagus_junction = 'cancer of the oesophagus and oesogastric junction'
+    gastric = 'gastric cancer'
+    colon_metafree = 'non-metastatic colon cancer'
+    metastatic_colorectal ='metastatic colorectal cancer'
+    rectum = 'rectal cancer'
+    anal_canal = 'anal canal cancer'
+    liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
+    biliary_tract ='biliary tract cancer'
+    pancreas = 'pancreatic cancer'
+    ampulloma = 'tumor of the ampulla of Vater'
+
+
+
 
 class PancreaticTumorEnum(str, Enum):
     adenocarcinoma = 'adenocarcinoma'
@@ -114,7 +121,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     base_prompt = [
         ("system",
-         "You're a medical assistant who's skilled at investigating complex digestive oncology cases, you must base your answers on this patient record: {context}."),
+         "You're a medical assistant skilled at investigating complex digestive oncology cases. Your objective is to extract medical informations. You must base your answers only on this patient record: {context}."),
     ]
     
     def __init__(self) -> None:  
@@ -140,10 +147,10 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         age: int = Field(description="Patient's age")
         gender: Gender = Field(description="Patient gender")
         # tumor_type: str = Field(description="Type of tumor present in this patient")
-        performance_status: PerformanceStatus = Field(description="WHO performance index or ECOG performance status")
+        performance_status: PerformanceStatus = Field(description="This class contains patient's WHO performance index or ECOG performance status")
         cardiovascular_disease: bool = Field(description="Cardiovascular history")
         # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams")
-        question: ClassVar[str] = "Describe this patient's characteristics : name, age, gender, performance status i.e. OMS status , cardiovascular disease history."
+        question: ClassVar[str] = "Extract these patient's characteristics : name, age, gender, performance status i.e. OMS status , cardiovascular disease history."
 
     class TumorBaseCharacteristics(default_model):
         '''
@@ -151,12 +158,12 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         '''
         revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
         date_diagnosis: date = Field(description="Date of tumor diagnosis")
-        organ: OrgansEnum = Field(description="Primary tumor organ")
+        cancer_type: CancerTypesEnum = Field(description="Which is the type of cancer")
         histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
         metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
         metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
         # tumor_stade: str = Field(description="Tumor grade")
-        question: ClassVar[str] = "Describe the tumor basics characteristics : primary tumor organ, date of diagnosis, tumor type, histologic results and metastatic state"
+        question: ClassVar[str] = "Extract these tumor characteristics : revelation's mode, date of diagnosis, cancer type, histologic results and metastatic state"
 
     class PancreaticTumor(BaseModel):
         '''

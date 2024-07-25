@@ -11,7 +11,7 @@ from llm import Llm
 # Define a class for working with vectorial databases.
 
 
-class vectorial_db:
+class VectorialDataBase:
     client = None
 
     # Initialize the client, collection and embeddings based on configuration.

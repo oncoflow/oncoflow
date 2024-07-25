@@ -27,7 +27,7 @@ class AppConfig():
             default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
-        models = environ.var(default="llama3, gemma2, mistral, phi3", help="Model of llm system, type all for test all ollama models")
+        models = environ.var(default="llama3.1", help="Model of llm system, type all for test all ollama models")
         temp = environ.var(default="0", converter=int,
                            help="Temperature of llm system")
         embeddings = environ.var(default="all-minilm",

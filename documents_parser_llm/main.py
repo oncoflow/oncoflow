@@ -11,10 +11,11 @@ import inquirer
 
 from config import AppConfig
 from reader import DocumentReader
+from rcp import RcpFiche
+
 
 from langchain_core.pydantic_v1 import BaseModel
-
-from rcp import RcpFiche
+from icecream import ic
 
 
 def manual_prompt(dir, config):
@@ -52,8 +53,11 @@ def all_asked(dir, config):
         if isfile(join(dir, f)):
             print(f"- Start reading {f} ...")
             for cl in fiche_rcp.basemodel_list:
+                
                 cl_prompt = fiche_rcp.base_prompt
+                ic(cl_prompt)
                 cl_prompt.extend(cl.base_prompt)
+                ic(cl_prompt)
                 rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
                                      prompt=cl_prompt, models=cl.models)
                 print(f" -- Process {cl.__name__}")

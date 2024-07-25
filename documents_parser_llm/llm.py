@@ -37,6 +37,7 @@ class Llm:
 
         if config.llm.type.lower() == "ollama":
             if embeddings:
+                print('EMBEDDING')
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
             else:
@@ -76,14 +77,14 @@ class Llm:
         ic(self.default_prompt)
 
     def create_chain(self, context, additionnal_context = None, parser=JsonOutputParser()):
-        ic(context)
+        # ic(context)
         base_chain = {"context": context, "question": RunnablePassthrough()}
-        ic(base_chain)
+        # ic(base_chain)
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
                 print("ADDITIONNAL CONTEXT")
-            ic(base_chain)
+            # ic(base_chain)
         for name, model in self.model.items():
             self.chain[name] = (
                 base_chain
@@ -91,7 +92,7 @@ class Llm:
                 | model
                 | parser
             )
-            ic(self.chain)
+            # ic(self.chain)
 
     def invoke_chain(self, query, parser=JsonOutputParser()):
         """
@@ -116,7 +117,7 @@ class Llm:
         results = {}
         for name, model in self.model.items():
             print(f"Processing {name} ...")
-            print(f" ---- {self.chain[name].get_prompts()}")
+            # print(f" ---- {self.chain[name].get_prompts()}")
             try:
                 results[name] = self.chain[name].invoke(prompt.format().content)
             except OutputParserException as e:
