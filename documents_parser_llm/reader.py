@@ -35,7 +35,7 @@ from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 
 from config import AppConfig
 from llm import Llm
-from databases import vectorial_db
+from databases import VectorialDataBase
 
 from icecream import ic
 
@@ -51,14 +51,14 @@ class DocumentReader:
         self.document_path = str(config.rcp.path) + "/" + document
         ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
-        self.vecdb = vectorial_db(config)
+        self.vecdb = VectorialDataBase(config)
 
         default_prompt = []
 
         if docs_pdf is not None:
             for doc_pdf in docs_pdf:
                 pdf_dict = {
-                    "vecdb": vectorial_db(config, coll_prefix="additional"),
+                    "vecdb": VectorialDataBase(config, coll_prefix="additional"),
                     "path": str(config.rcp.additional_path) + "/" + doc_pdf,
                     "name": doc_pdf.replace(".", "")
                 }
@@ -83,7 +83,7 @@ class DocumentReader:
         """Loads a document from the specified path using the given loader type."""
         if loader_type is None:
             loader_type = self.default_loader
-        ic(loader_type)
+        # ic(loader_type)
         cla = getattr(document_loaders, loader_type)
         self.logger.debug("Loader type is set to %s", str(cla) )
         return cla(document)
@@ -96,12 +96,16 @@ class DocumentReader:
         """
         self.logger.info("Start reading document")
         loader = self._load_document(self.document_path)
+        print(f"Document {self.document_path} ready to load")
         pages = loader.load()
+        print(f"Document {self.document_path} loaded")
 
         chunked_documents = self.text_splitter.split_documents(pages)
 
         self.vecdb.add_chunked_to_collection(
             chunked_documents, flush_before=True)
+        
+        print(f"Document {self.document_path} added to base")
 
         for doc_pdf, infos in self.docs_pdf.items():
             self.logger.debug("Start reading ressource %s", doc_pdf )
@@ -123,6 +127,7 @@ class DocumentReader:
         """
         if class_type is not None:
             parser = PydanticOutputParser(pydantic_object=class_type)
+
         else:
             parser = JsonOutputParser()
         
@@ -131,5 +136,5 @@ class DocumentReader:
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
         print("Asking in document")
-        ic(query)
+        # ic(query)
         return self.llm.invoke_chain(query, parser)

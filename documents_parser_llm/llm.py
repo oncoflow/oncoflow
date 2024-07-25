@@ -34,6 +34,7 @@ class Llm:
 
         if config.llm.type.lower() == "ollama":
             if embeddings:
+                print('EMBEDDING')
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models  = [config.llm.embeddings]
@@ -82,12 +83,12 @@ class Llm:
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
         base_chain = {"context": context, "question": RunnablePassthrough()}
-        ic(base_chain)
+        # ic(base_chain)
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
                 print("ADDITIONNAL CONTEXT")
-            ic(base_chain)
+            # ic(base_chain)
         for name, model in self.model.items():
             self.chain[name] = (
                 base_chain
