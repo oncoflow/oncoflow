@@ -135,7 +135,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
             ("human", "{question}"),
         ]
         prompt: ClassVar[list] = []
-        models: ClassVar[list] = ['llama3.1']
+        models: ClassVar[list] = []
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
     
@@ -147,8 +147,10 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         age: int = Field(description="Patient's age")
         gender: Gender = Field(description="Patient gender")
         # tumor_type: str = Field(description="Type of tumor present in this patient")
-        performance_status: PerformanceStatus = Field(description="This class contains patient's WHO performance index or ECOG performance status")
+        performance_status: PerformanceStatus = Field(description="Patient's WHO performance index or ECOG performance status")
         cardiovascular_disease: bool = Field(description="Cardiovascular history")
+        clinical_trial_involvment: bool = Field(description="Whether the patient is included in a clinical trial")
+        clinical_trial_name: str = Field(description="Name of the clinical trial")
         # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams")
         question: ClassVar[str] = "Extract these patient's characteristics : name, age, gender, performance status i.e. OMS status , cardiovascular disease history."
 
@@ -158,12 +160,13 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         '''
         revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
         date_diagnosis: date = Field(description="Date of tumor diagnosis")
-        cancer_type: CancerTypesEnum = Field(description="Which is the type of cancer")
+        cancer_type: CancerTypesEnum = Field(description="The type of cancer")
+        cancer_type_justification: str = Field(description="Justification of the type of cancer found")
         histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
         metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
         metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
         # tumor_stade: str = Field(description="Tumor grade")
-        question: ClassVar[str] = "Extract these tumor characteristics : revelation's mode, date of diagnosis, cancer type, histologic results and metastatic state"
+        question: ClassVar[str] = "Extract and justify the tumor characteristics : revelation's mode, date of diagnosis, cancer type, histologic results and metastatic state"
 
     class PancreaticTumor(BaseModel):
         '''
