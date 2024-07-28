@@ -1,5 +1,4 @@
 
-from typing import Self
 from langchain_community.chat_models.ollama import ChatOllama
 from langchain_community.embeddings import OllamaEmbeddings
 
@@ -8,9 +7,6 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
 from langchain.schema.runnable import RunnablePassthrough
-from langchain.schema.output_parser import StrOutputParser
-
-from langchain.output_parsers import RetryOutputParser
 
 import ollama
 
@@ -28,6 +24,7 @@ class Llm:
     Methods:
         __init__(self, config=AppConfig): Initializes the llm object with the configuration.
     """
+
     def __init__(self, config=AppConfig, embeddings=False, models=None):
         self.model = {}
         self.chain = {}
@@ -39,13 +36,13 @@ class Llm:
             if embeddings:
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
+                list_models  = [config.llm.embeddings]
             else:
                 if models is None or not models:
                     list_models = config.llm.models.split(",")
                 else:
                     list_models = models
-                print(list_models)
-                    
+
                 if list_models == "all":
                     ocl = ollama.Client(
                         host=f"{config.llm.url}:{config.llm.port}")
@@ -59,9 +56,16 @@ class Llm:
                         model=model,
                         temperature=config.llm.temp
                     )
-                print(self.model)
+
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
+        
+        
+        self.logger = config.set_logger("llm", default_context={
+            "llm_type": config.llm.type.lower(),
+            "list_models": list_models},  additional_context=["model"])
+
+        self.logger.debug("Class llm succesfully init", extra={"model": ""})
 
     def make_default_prompt(self, prompt=None):
         """
@@ -73,8 +77,10 @@ class Llm:
         if prompt is None:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
+        self.logger.debug("Default prompt = %s", self.default_prompt, extra={
+                          "model": self.model.keys()})
 
-    def create_chain(self, context, additionnal_context = None, parser=JsonOutputParser()):
+    def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
         base_chain = {"context": context, "question": RunnablePassthrough()}
         if additionnal_context is not None:
             for context in additionnal_context:
@@ -86,6 +92,8 @@ class Llm:
                 | model
                 | parser
             )
+            self.logger.debug(
+                "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
 
     def invoke_chain(self, query, parser=JsonOutputParser()):
         """
@@ -106,15 +114,17 @@ class Llm:
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        #print(f" -- PROMPT : {prompt.format().content}")
+        self.logger.debug("Set human prompt : %s", prompt.format().content, extra={
+                          "model": self.model.keys()})
         results = {}
         for name, model in self.model.items():
-            print(f"Processing {name} ...")
-            #print(f" ---- {self.chain[name].get_prompts()}")
+            self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                results[name] = self.chain[name].invoke(prompt.format().content)
+                results[name] = self.chain[name].invoke(
+                    prompt.format().content)
             except OutputParserException as e:
-                    print("! Failed")
-                    print(f"llm say : {e.llm_output}")
-                    print(f"observation : {e.observation}")
+                self.logger.exception(
+                    "llm say : %s", e.llm_output, extra={"model": name})
+                self.logger.exception(
+                    "Observation : %s", e.observation, extra={"model": name})
         return results

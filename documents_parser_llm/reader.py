@@ -65,13 +65,17 @@ class DocumentReader:
                 default_prompt.extend(
                     [("system", "Apprend les éléments de ce document de référence : {" + pdf_dict["name"] + "}")])
         default_prompt.extend(prompt)
+        self.logger = config.set_logger("reader", default_context={
+            "document": document,
+            "ressources": docs_pdf,
+            "list_models": models})
 
         self.llm.make_default_prompt(default_prompt)
         self.default_loader = config.rcp.doc_type
-
+        
+        self.logger.info("Class reader succesfully init, Start reading documents")
         self.text_splitter = CharacterTextSplitter(
             chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap)
-
         self.read_document()
 
     def _load_document(self, document=str, loader_type=None):
@@ -79,6 +83,7 @@ class DocumentReader:
         if loader_type is None:
             loader_type = self.default_loader
         cla = getattr(document_loaders, loader_type)
+        self.logger.debug("Loader type is set to %s", str(cla) )
         return cla(document)
 
     def read_document(self):
@@ -87,6 +92,7 @@ class DocumentReader:
         Then, adds the chunks to a VectorStore.
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
+        self.logger.info("Start reading document")
         loader = self._load_document(self.document_path)
         pages = loader.load()
 
@@ -96,6 +102,7 @@ class DocumentReader:
             chunked_documents, flush_before=True)
 
         for doc_pdf, infos in self.docs_pdf.items():
+            self.logger.debug("Start reading ressource %s", doc_pdf )
             loader = self._load_document(infos["path"])
             pages = loader.load()
             chunked_documents = self.text_splitter.split_documents(pages)
@@ -116,6 +123,8 @@ class DocumentReader:
             parser = PydanticOutputParser(pydantic_object=class_type)
         else:
             parser = JsonOutputParser()
+        
+        self.logger.debug("Ask \"%s\" in document with parser %s", query, str(parser))
 
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)

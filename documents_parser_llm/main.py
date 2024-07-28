@@ -50,14 +50,14 @@ def all_asked(dir, config):
 
     for f in listdir(dir):
         if isfile(join(dir, f)):
-            print(f"- Start reading {f} ...")
+            logger.info(f"Start reading {f} ...")
             for cl in fiche_rcp.basemodel_list:
                 cl_prompt = fiche_rcp.base_prompt
                 cl_prompt.extend(cl.base_prompt)
                 rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
                                      prompt=cl_prompt, models=cl.models)
-                print(f" -- Process {cl.__name__}")
-                print(f" -- Question : {cl.question}")
+                logger.info(f"Process {cl.__name__}")
+                logger.info(f"Question : {cl.question}")
                 pprint(rag.ask_in_document(query=cl.question,
                        class_type=cl, models=cl.models), compact=True)
                 del rag
@@ -75,8 +75,11 @@ if __name__ == "__main__":
         print(environ.generate_help(AppConfig, display_defaults=True))
     else:
         app_conf = environ.to_config(AppConfig)
+        logger = app_conf.set_logger("main")
 
         if app_conf.rcp.manual_query:
+            logger.info("Start manual prompting")
             manual_prompt(app_conf.rcp.path, app_conf)
         else:
+            logger.info("Start auto prompting")
             all_asked(app_conf.rcp.path, app_conf)
