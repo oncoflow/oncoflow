@@ -85,7 +85,6 @@ class DocumentReader:
             loader_type = self.default_loader
         # ic(loader_type)
         cla = getattr(document_loaders, loader_type)
-        self.logger.debug("Loader type is set to %s", str(cla) )
         return cla(document)
 
     def read_document(self):
@@ -130,8 +129,6 @@ class DocumentReader:
 
         else:
             parser = JsonOutputParser()
-        
-        self.logger.debug("Ask \"%s\" in document with parser %s", query, str(parser))
 
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)

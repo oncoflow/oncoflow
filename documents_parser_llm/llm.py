@@ -35,6 +35,7 @@ class Llm:
         if config.llm.type.lower() == "ollama":
             if embeddings:
                 print('EMBEDDING')
+                print('EMBEDDING')
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models  = [config.llm.embeddings]
@@ -84,9 +85,12 @@ class Llm:
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
         base_chain = {"context": context, "question": RunnablePassthrough()}
         # ic(base_chain)
+        # ic(base_chain)
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
+                print("ADDITIONNAL CONTEXT")
+            # ic(base_chain)
                 print("ADDITIONNAL CONTEXT")
             # ic(base_chain)
         for name, model in self.model.items():
@@ -113,16 +117,17 @@ class Llm:
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
                 template="You have to answer the user question." + "\n {format_instructions}\n question: " + query,
+                template="You have to answer the user question." + "\n {format_instructions}\n question: " + query,
                 input_variables=[],
                 partial_variables={
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        #print(f" -- PROMPT : {prompt.format().content}")
+        print(f" -- PROMPT : {prompt.format().content}")
         results = {}
         for name, model in self.model.items():
             print(f"Processing {name} ...")
-            #print(f" ---- {self.chain[name].get_prompts()}")
+            # print(f" ---- {self.chain[name].get_prompts()}")
             try:
                 results[name] = self.chain[name].invoke(
                     prompt.format().content)

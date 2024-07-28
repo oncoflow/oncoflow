@@ -69,7 +69,9 @@ class AppConfig():
             default="PyMuPDFLoader", help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ")
         chunk_size = environ.var(
             default="2000", converter=int, help="chunk_size of document")
+            default="2000", converter=int, help="chunk_size of document")
         chunk_overlap = environ.var(
+            default="200", converter=int, help="chunk_overlap of document")
             default="200", converter=int, help="chunk_overlap of document")
 
         manual_query = environ.bool_var(
