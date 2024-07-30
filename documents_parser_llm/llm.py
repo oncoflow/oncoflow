@@ -80,14 +80,14 @@ class Llm:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
         print("MAKING DEFAUT PROMPT")
-        ic(self.default_prompt)
+        # ic(self.default_prompt)
         self.logger.debug("Default prompt = %s", self.default_prompt, extra={
                           "model": self.model.keys()})
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
         base_chain = {"context": context, "question": RunnablePassthrough()}
         print("CREATING CHAIN")
-        ic(context)
+        # ic(context)
     
         if additionnal_context is not None:
             for context in additionnal_context:

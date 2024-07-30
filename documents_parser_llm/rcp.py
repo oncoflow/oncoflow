@@ -121,7 +121,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     base_prompt = [
         ("system",
-         "You're a medical assistant skilled at investigating complex digestive oncology cases. Your objective is to extract medical informations."),
+         "You are a medical assistant who respond answers on this patient tumor record: {context}."),
     ]
 
     def __init__(self) -> None:
@@ -132,9 +132,6 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
-            ("ai", "How can i help you ?"),
-            ("human" ,  "You must base your answers only on this patient record: {context}."),
-            ("ai" , "What is the question a have to answer and how should I format the answer ?"),
             ("human", "{question}"),
         ]
         prompt: ClassVar[list] = []
@@ -144,48 +141,48 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class Patient(default_model):
         '''
-        This class is about patient's characteristics
+        Patient informations
         '''
         name: str = Field(description="Full name of the patient")
-        age: int = Field(description="Patient's age")
-        gender: Gender = Field(description="Patient gender")
+        age: int = Field(description="Age of the")
+        gender: Gender = Field(description="Gender of the patient")
         # tumor_type: str = Field(description="Type of tumor present in this patient")
-        performance_status: PerformanceStatus = Field(description="Patient's WHO performance index or ECOG performance status")
-        cardiovascular_disease: bool = Field(description="Cardiovascular history")
-        clinical_trial_involvment: bool = Field(description="Whether the patient is included in a clinical trial")
-        clinical_trial_name: str = Field(description="Name of the clinical trial")
-        # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams")
-        question: ClassVar[str] = "Extract these patient's characteristics : name, age, gender, performance status i.e. OMS status , cardiovascular disease history."
+        performance_status: PerformanceStatus = Field(description="OMS performance status of the patient")
+        # cardiovascular_disease: bool = Field(description="Cardiovascular history")
+        # clinical_trial_involvment: bool = Field(description="Whether the patient is included in a clinical trial")
+        # clinical_trial_name: str = Field(description="Name of the clinical trial")
+        # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams") performance status i.e. OMS status , cardiovascular disease history
+        question: ClassVar[str] = "Find the name, age, gender and OMS performance status of the patient."
 
     class TumorBaseCharacteristics(default_model):
         '''
-        This class is about tumor caracteristics
+        Tumor informations
         '''
-        revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
-        date_diagnosis: date = Field(description="Date of tumor diagnosis")
-        cancer_type: CancerTypesEnum = Field(description="The type of cancer")
-        cancer_type_justification: str = Field(description="Justification of the type of cancer found")
-        histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
-        metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
-        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
-        # tumor_stade: str = Field(description="Tumor grade")
-        question: ClassVar[str] = "Extract and justify the tumor characteristics : revelation's mode, date of diagnosis, cancer type, histologic results and metastatic state"
+        # revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
+        # date_diagnosis: date = Field(description="Date of tumor diagnosis")
+        cancer_type: CancerTypesEnum = Field(description="Cancer type")
+        # cancer_type_justification: str = Field(description="Justification of the type of cancer found")
+        # histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
+        # metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
+        # metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
+        # tumor_stade: str = Field(description="Tumor grade")revelation's mode, date of diagnosis, histologic results and metastatic state and justify with text quoting
+        question: ClassVar[str] = "Find the tumor  cancer type."
 
-    class PancreaticTumor(BaseModel):
-        '''
-        This class contains pancreatic tumor specific items
-        '''
+    # class PancreaticTumor(BaseModel):
+    #     '''
+    #     This class contains pancreatic tumor specific items
+    #     '''
         
-        onset_symptoms: Optional[List[PancreaticSymptomsEnum]] = Field(description="Contains initials symptoms")
-        actual_symptoms: Optional[List[PancreaticSymptomsEnum]] = Field(description="Contains actual symptoms")
+    #     onset_symptoms: Optional[List[PancreaticSymptomsEnum]] = Field(description="Contains initials symptoms")
+    #     actual_symptoms: Optional[List[PancreaticSymptomsEnum]] = Field(description="Contains actual symptoms")
 
-    class LiverTumor(BaseModel):
-        '''
-        This class contains pancreatic tumor specific items
-        '''
+    # class LiverTumor(BaseModel):
+    #     '''
+    #     This class contains pancreatic tumor specific items
+    #     '''
         
-        onset_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains initials symptoms")
-        actual_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains actual symptoms")
+    #     onset_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains initials symptoms")
+    #     actual_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains actual symptoms")
     
     # class Cardiologue(default_model):
     #     necessary: bool = Field(description="Est-ce que l'évaluation par un cardiologue est nécessaire pour traiter ce patient ?")

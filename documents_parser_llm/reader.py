@@ -49,7 +49,7 @@ class DocumentReader:
     def __init__(self, config=AppConfig,  document=str, docs_pdf=None, prompt = [], models = None):
         self.config = config
         self.document_path = str(config.rcp.path) + "/" + document
-        ic(self.document_path)
+        # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
         self.vecdb = VectorialDataBase(config)
 
