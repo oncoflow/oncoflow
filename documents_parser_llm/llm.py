@@ -117,7 +117,6 @@ class Llm:
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
                 template="You have to answer the user question." + "\n {format_instructions}\n question: " + query,
-                template="You have to answer the user question." + "\n {format_instructions}\n question: " + query,
                 input_variables=[],
                 partial_variables={
                     "format_instructions": parser.get_format_instructions()}
