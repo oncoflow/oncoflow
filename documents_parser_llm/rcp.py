@@ -121,7 +121,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     base_prompt = [
         ("system",
-         "You're a medical assistant skilled at investigating complex digestive oncology cases. Your objective is to extract medical informations. You must base your answers only on this patient record: {context}."),
+         "You're a medical assistant skilled at investigating complex digestive oncology cases. Your objective is to extract medical informations."),
     ]
 
     def __init__(self) -> None:
@@ -132,6 +132,9 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
+            ("ai", "How can i help you ?"),
+            ("human" ,  "You must base your answers only on this patient record: {context}."),
+            ("ai" , "What is the question a have to answer and how should I format the answer ?"),
             ("human", "{question}"),
         ]
         prompt: ClassVar[list] = []

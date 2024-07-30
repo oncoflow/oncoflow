@@ -12,6 +12,7 @@ import ollama
 
 from config import AppConfig
 
+from icecream import ic
 
 class Llm:
     """
@@ -34,7 +35,6 @@ class Llm:
 
         if config.llm.type.lower() == "ollama":
             if embeddings:
-                print('EMBEDDING')
                 print('EMBEDDING')
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
@@ -79,18 +79,20 @@ class Llm:
         if prompt is None:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
+        print("MAKING DEFAUT PROMPT")
+        ic(self.default_prompt)
         self.logger.debug("Default prompt = %s", self.default_prompt, extra={
                           "model": self.model.keys()})
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
         base_chain = {"context": context, "question": RunnablePassthrough()}
-        # ic(base_chain)
-        # ic(base_chain)
+        print("CREATING CHAIN")
+        ic(context)
+    
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
-                print("ADDITIONNAL CONTEXT")
-            # ic(base_chain)
+ 
                 print("ADDITIONNAL CONTEXT")
             # ic(base_chain)
         for name, model in self.model.items():
@@ -122,6 +124,8 @@ class Llm:
                     "format_instructions": parser.get_format_instructions()}
             )
         )
+        print('LAST PROMPT TEMPLATE')
+        ic(prompt)
         print(f" -- PROMPT : {prompt.format().content}")
         results = {}
         for name, model in self.model.items():
