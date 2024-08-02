@@ -39,6 +39,9 @@ from databases import VectorialDataBase
 
 from icecream import ic
 
+
+
+
 class DocumentReader:
     document = str
     collectionName = "oncoflowDocs"
@@ -95,16 +98,16 @@ class DocumentReader:
         """
         self.logger.info("Start reading document")
         loader = self._load_document(self.document_path)
-        print(f"Document {self.document_path} ready to load")
+        # print(f"Document {self.document_path} ready to load")
         pages = loader.load()
-        print(f"Document {self.document_path} loaded")
+        # print(f"Document {self.document_path} loaded")
 
         chunked_documents = self.text_splitter.split_documents(pages)
 
         self.vecdb.add_chunked_to_collection(
             chunked_documents, flush_before=True)
         
-        print(f"Document {self.document_path} added to base")
+        # print(f"Document {self.document_path} added to base")
 
         for doc_pdf, infos in self.docs_pdf.items():
             self.logger.debug("Start reading ressource %s", doc_pdf )
@@ -113,7 +116,7 @@ class DocumentReader:
             chunked_documents = self.text_splitter.split_documents(pages)
             infos["vecdb"].add_chunked_to_collection(
                 chunked_documents, flush_before=True)
-
+    
     def ask_in_document(self, query, class_type=None, models=None):
         """
         Asks a question about the document and returns the answer.
@@ -132,6 +135,6 @@ class DocumentReader:
 
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
-        print("Asking in document")
+        # print("Asking in document")
         # ic(query)
         return self.llm.invoke_chain(query, parser)

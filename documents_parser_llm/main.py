@@ -55,13 +55,13 @@ def all_asked(dir, config):
             for cl in fiche_rcp.basemodel_list:
                 
                 cl_prompt = fiche_rcp.base_prompt
-                ic(cl_prompt)
+                # ic(cl_prompt)
                 cl_prompt.extend(cl.base_prompt)
-                ic(cl_prompt)
+                # ic(cl_prompt)
                 rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
                                      prompt=cl_prompt, models=cl.models)
-                logger.info(f"Process {cl.__name__}")
-                logger.info(f"Question : {cl.question}")
+                # logger.info(f"Process {cl.__name__}")
+                # logger.info(f"Question : {cl.question}")
                 pprint(rag.ask_in_document(query=cl.question,
                        class_type=cl, models=cl.models), compact=True)
                 del rag

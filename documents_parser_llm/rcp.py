@@ -36,18 +36,35 @@ class MetastaticLocationsEnum(str, Enum):
     brain = 'brain'
     other = 'other'
 
-class PerformanceStatus(IntEnum):
-    '''
-    This class enumerates WHO (World Health Organisation, i.e. OMS in French) performance index or ECOG performance status values.
-    '''
-    ecog0 = '0'
-    ecog1 = '1'
-    ecog2 = '2'
-    ecog3 = '3'
-    ecog4 = '4'
+
+class OMSPerformanceStatus(str, Enum):
+    asymptomatique = "0"
+    symptomes_legeres = "1"
+    symptomes_modere = "2"
+    symptomes_severes = "3"
+    incapacite_totale = "4"
+
+    @classmethod
+    def labels(cls) -> dict:
+        return {
+            cls.asymptomatique: "Asymptomatique",
+            cls.symptomes_legeres: "Symptômes légers, capacité à travailler",
+            cls.symptomes_modere: "Symptômes modérés, nécessite une aide occasionnelle",
+            cls.symptomes_severes: "Symptômes sévères, nécessite une aide constante",
+            cls.incapacite_totale: "Incapacité totale"
+        }
+# class PerformanceStatus(IntEnum):
+#     '''
+#     This class enumerates WHO (World Health Organisation, i.e. OMS in French) performance index or ECOG performance status values.
+#     '''
+#     ecog0 = '0'
+#     ecog1 = '1'
+#     ecog2 = '2'
+#     ecog3 = '3'
+#     ecog4 = '4'
 
 class CancerTypesEnum(str, Enum):
-    oesophagus_junction = 'cancer of the oesophagus and oesogastric junction'
+    oesophagus_junction = 'oesophagus and oesogastric junction cancer'
     gastric = 'gastric cancer'
     colon_metafree = 'non-metastatic colon cancer'
     metastatic_colorectal ='metastatic colorectal cancer'
@@ -121,7 +138,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     base_prompt = [
         ("system",
-         "You are a medical assistant who respond answers on this patient tumor record: {context}."),
+         "You are a medical assistant, you have to responds questions on this patient tumor record: {context}."),
     ]
 
     def __init__(self) -> None:
@@ -147,26 +164,40 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         age: int = Field(description="Age of the")
         gender: Gender = Field(description="Gender of the patient")
         # tumor_type: str = Field(description="Type of tumor present in this patient")
-        performance_status: PerformanceStatus = Field(description="OMS performance status of the patient")
+        performance_status: OMSPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
         # cardiovascular_disease: bool = Field(description="Cardiovascular history")
         # clinical_trial_involvment: bool = Field(description="Whether the patient is included in a clinical trial")
-        # clinical_trial_name: str = Field(description="Name of the clinical trial")
+        # clinical_trial_name: Optional[str] = Field(description="Name of the clinical trial")
         # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams") performance status i.e. OMS status , cardiovascular disease history
-        question: ClassVar[str] = "Find the name, age, gender and OMS performance status of the patient."
+        question: ClassVar[str] = "Tell me the full name, age, gender and OMS performance status of the patient (0-4)."
 
     class TumorBaseCharacteristics(default_model):
         '''
-        Tumor informations
+        Type of cancer
         '''
         # revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
         # date_diagnosis: date = Field(description="Date of tumor diagnosis")
-        cancer_type: CancerTypesEnum = Field(description="Cancer type")
+        cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
         # cancer_type_justification: str = Field(description="Justification of the type of cancer found")
         # histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
         # metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
         # metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
         # tumor_stade: str = Field(description="Tumor grade")revelation's mode, date of diagnosis, histologic results and metastatic state and justify with text quoting
-        question: ClassVar[str] = "Find the tumor  cancer type."
+        question: ClassVar[str] = "Tell me what is the tumor cancer type."
+
+    class MetastaticState(default_model):
+        '''
+        Metastatic state of the tumor
+        '''
+        # revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
+        # date_diagnosis: date = Field(description="Date of tumor diagnosis")
+        # cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
+        # cancer_type_justification: str = Field(description="Justification of the type of cancer found")
+        # histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
+        metastatic_disease: bool = Field(description="Metastatic state")
+        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs with metastasis")
+        # tumor_stade: str = Field(description="Tumor grade")revelation's mode, date of diagnosis, histologic results and metastatic state and justify with text quoting
+        question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
 
     # class PancreaticTumor(BaseModel):
     #     '''
