@@ -15,7 +15,7 @@ from config import AppConfig
 import os, time
 from functools import wraps
 
-from icecream import ic
+# from icecream import ic
 
 def timed(func):
     @wraps(func)
@@ -66,7 +66,7 @@ class Llm:
 
         if config.llm.type.lower() == "ollama":
             if embeddings:
-                # print('EMBEDDING')
+                
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models  = [config.llm.embeddings]

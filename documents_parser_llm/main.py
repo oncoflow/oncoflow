@@ -11,7 +11,7 @@ import inquirer
 
 from config import AppConfig
 from reader import DocumentReader
-from rcp import RcpFiche
+from rcp import PatientMDTOncologicForm
 
 
 from langchain_core.pydantic_v1 import BaseModel
@@ -43,11 +43,11 @@ def manual_prompt(dir, config):
             break
         rag = DocumentReader(
             config,  answers["file"],  docs_pdf=["tncdchc.pdf"])
-        pprint(rag.ask_in_document(answers["question"]), compact=True)
+        # pprint(rag.ask_in_document(answers["question"]), compact=True)
 
 
 def all_asked(dir, config):
-    fiche_rcp = RcpFiche()
+    fiche_rcp = PatientMDTOncologicForm()
 
     for f in listdir(dir):
         if isfile(join(dir, f)):
@@ -60,10 +60,10 @@ def all_asked(dir, config):
                 # ic(cl_prompt)
                 rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
                                      prompt=cl_prompt, models=cl.models)
-                # logger.info(f"Process {cl.__name__}")
-                # logger.info(f"Question : {cl.question}")
-                pprint(rag.ask_in_document(query=cl.question,
-                       class_type=cl, models=cl.models), compact=True)
+                logger.info(f"Process {cl.__name__}")
+                logger.info(f"Question : {cl.question}")
+                # pprint(rag.ask_in_document(query=cl.question,
+                    #    class_type=cl, models=cl.models), compact=True)
                 del rag
 
 

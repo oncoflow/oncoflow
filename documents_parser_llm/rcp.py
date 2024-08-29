@@ -3,6 +3,7 @@ from typing import List, Optional, ClassVar
 from datetime import date, datetime
 from langchain_core.pydantic_v1 import BaseModel, Field, validator
 import inspect
+import json
 
 class ImageryType(str, Enum):
     CT = 'CT'
@@ -55,36 +56,36 @@ class WHOPerformanceStatus(int, Enum):
         }
 
 
-    class CancerTypesEnum(str, Enum):
-        """
-        Types of digestive tract and associated organ cancers.
+class CancerTypesEnum(str, Enum):
+    """
+    Types of digestive tract and associated organ cancers.
 
-        This enumeration contains the following types of cancer:
+    This enumeration contains the following types of cancer:
 
-        * oesophagus_junction : Esophageal and esophagogastric junction cancer
-        * gastric : Gastric cancer
-        * localized_colon_cancer : Localized colon cancer, where cancer cells have not spread to distant parts of the body
-        * metastatic_colorectal : Metastatic colorectal cancer
-        * rectum : Rectal cancer
-        * anal_canal : Anal canal cancer
-        * liverhcc : Hepatocellular carcinoma (primary liver cancer)
-        * biliary_tract : Biliary tract cancer
-        * pancreas : Pancreatic cancer
-        * ampulloma : Tumor of the ampulla of Vater
+    * oesophagus_junction : Esophageal and esophagogastric junction cancer
+    * gastric : Gastric cancer
+    * localized_colon_cancer : Localized colon cancer, where cancer cells have not spread to distant parts of the body
+    * metastatic_colorectal : Metastatic colorectal cancer
+    * rectum : Rectal cancer
+    * anal_canal : Anal canal cancer
+    * liverhcc : Hepatocellular carcinoma (primary liver cancer)
+    * biliary_tract : Biliary tract cancer
+    * pancreas : Pancreatic cancer
+    * ampulloma : Tumor of the ampulla of Vater
 
-        Use this enumeration to specify the type of cancer in corresponding fields.
-        """
+    Use this enumeration to specify the type of cancer in corresponding fields.
+    """
 
-        oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
-        gastric = 'gastric cancer'
-        localized_colon_cancer = 'localized colon cancer, without distant metastasis'
-        metastatic_colorectal ='metastatic colorectal cancer'
-        rectum = 'rectal cancer'
-        anal_canal = 'anal canal cancer'
-        liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
-        biliary_tract ='biliary tract cancer'
-        pancreas = 'pancreatic cancer'
-        ampulloma = 'tumor of the ampulla of Vater'
+    oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
+    gastric = 'gastric cancer'
+    localized_colon_cancer = 'localized colon cancer, without distant metastasis'
+    metastatic_colorectal ='metastatic colorectal cancer'
+    rectum = 'rectal cancer'
+    anal_canal = 'anal canal cancer'
+    liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
+    biliary_tract ='biliary tract cancer'
+    pancreas = 'pancreatic cancer'
+    ampulloma = 'tumor of the ampulla of Vater'
 
 
 class PancreaticTumorEnum(str, Enum):
@@ -124,7 +125,7 @@ class ChildPugh(BaseModel):
                 encephalopathie=False
             )
     """
-    bilirubine: int = Field(description="Bilirubin level in blood")
+    bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
     ascite: bool = Field(description="Presence of ascites")
@@ -138,14 +139,14 @@ class RadiologicalExamination(BaseModel):
     '''
     date: datetime = Field(description="The date when the radiological examination was performed.") 
     type:  ImageryType= Field(description="The type of radiological examination performed.")  #to do : valider que cela soit soit IRM/TDM/TEP
-    centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
-    centre_expert: Optional[bool]= Field(description="Whether the radiological examination was performed is a tertiary center.")
-    radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
-    interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
-    interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
-    relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
-    relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
-    reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
+    # centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
+    # centre_expert: Optional[bool]= Field(description="Whether the radiological examination was performed is a tertiary center.")
+    # radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
+    # interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
+    # interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
+    # relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
+    # relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
+    # reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
 
 class HistologicAnalysis(BaseModel):
     '''
@@ -189,9 +190,10 @@ class RadiologicalExaminations(BaseModel):
     ct_scans: list[RadiologicalExamination] = Field("The patient's computed tomography (CT) scans")
     mri_studies: list[RadiologicalExamination] = Field("The patient's magnetic resonance imaging (MRI) studies")
     pet_scans: list[RadiologicalExamination] = Field("The patient's positron emission tomography (PET) scans")
-class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
+    
+class PatientMDTOncologicForm():  
     '''
-    This class contains all patient and oncological disease information.
+    This class contains all patient and oncological disease information for the report.
     '''
 
     base_prompt = [
@@ -228,19 +230,27 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class Patient(default_model):
         '''
-        Patient base informations
+        Patient administrative informations
         '''
         name: str = Field(description="Full name of the patient")
         age: int = Field(description="Age of the patient")
         gender: Gender = Field(description="Gender of the patient")
+        question: ClassVar[str] = "Tell me the full name, age and gender of the patient."
+        
+    class Patient(default_model):
+        '''
+        Patient WHO performance status
+        '''
+
         performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
-        question: ClassVar[str] = "Tell me the full name, age, gender and OMS performance status of the patient (0-4)."
+        question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
+
 
     class TumorType(default_model):
         '''
         Type of cancer
         '''
-
+        
         cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
         question: ClassVar[str] = "Tell me what is the tumor cancer type."
 
@@ -262,6 +272,12 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
 
         question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+        
+    class RadiologicExams(default_model):
+        
+        exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+        
+        question: ClassVar[str] = "List all radiologic exams."
         
     
 
@@ -293,15 +309,18 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
     #     ]
     #     models: ClassVar[list] = ["phi3"]
     #     ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
-    #     question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un cardiologue est nécessaire ? "
-
-    # class ChirurgienPancreatique(default_model):
-    #     necessary: bool = Field(description="Est-ce que l'évaluation par un chirurgien pancréatique est nécessaire ?")
-    #     reason: str = Field(description="Pourquoi ?")
-    #     base_prompt: ClassVar[list] = [
-    #         ("human", "Je vais te demander si une évaluation du dossier par un chirurgien pancréatique est nécessaire, quels éléments te permettraient de répondre correctement à la question ?"),
-    #         ("ai", "Je dois vérifier que le patient ne présente pas de métastases ou d'envahissement artériel qui contre-indiquerai la chirurgie selon les recommandations du TNCD"),
-    #         ("human", "Exactement, et si tu n'es pas certains de la réponse ?"),
+        necessary: bool = Field(description="Is a pancreatic surgeon evaluation necessary for this patient?")
+        reason: str = Field(description="Why?")
+        base_prompt: ClassVar[list] = [
+            ("human", "What information would you need to answer the question about whether a pancreatic surgeon is necessary?"),
+            ("ai", "I must verify that the patient does not have any metastases or arterial invasion that would contraindicate surgery according to the TNCD recommendations."),
+            ("human", "Exactly, and what if you're unsure of the answer?"),
+            ("ai", "Then I respond that a pancreatic surgeon evaluation is desirable and justify with the elements of the TNCD and the patient's file."),
+            ("human", "{question}"),
+        ]
+        models: ClassVar[list] = ["phi3"]
+        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+        question: ClassVar[str] = "Based on possible treatments for this patient, is a pancreatic surgeon evaluation necessary?"
     #         ("ai", "Alors je réponds qu'une évaluation par un chirurgien est souhaitable et je justifie avec les éléments du TNCD et du dossier du patient"),
     #         ("human", "{question}"),
     #     ]
