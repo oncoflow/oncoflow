@@ -37,12 +37,12 @@ class AppConfig():
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(default="llama3.1:8b-instruct-q8_0",
                              help="Model of llm system, type all for test all ollama models")
-        temp = environ.var(default="0", converter=int,
+        temp = environ.var(default="0.1", converter=float,
                            help="Temperature of llm system")
         embeddings = environ.var(default="all-minilm",
                                  help="embeddings Model to use")
 
-# llama3.1:70b-instruct-q4_0, mixtral:8x7b-instruct-v0.1-q8_0
+# llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
 
     @environ.config
     class DatabasesVectorial:

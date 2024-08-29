@@ -1,11 +1,11 @@
 from enum import Enum, IntEnum
 from typing import List, Optional, ClassVar
-from datetime import date, datetime
+from datetime import date
 from langchain_core.pydantic_v1 import BaseModel, Field, validator
 import inspect
 import json
 
-class ImageryType(str, Enum):
+class RadiologicExamType(str, Enum):
     CT = 'CT'
     MRI = 'MRI'
     PET = 'PET'
@@ -55,29 +55,22 @@ class WHOPerformanceStatus(int, Enum):
             cls._4: "Complete limitation of activities; unable to perform any activity"
         }
 
+class PrimaryOrganEnum(str, Enum):
+    
+    pancreas = 'Pancreas'
+    colon = "Colon "
+    liver = "Liver"
+    stomach = "Stomach"
+    oesophagus = "Oesophagus"
+    rectum = "Rectum"
+    intra_hepatic_bile_duct = "Intra-hepatic bile duct"
+    extra_hepatic_bile_duct = "Extra-hepatic bile duct"
+    unknown = "unknown"
+    
+    
+class TNCDCancerTypesEnum(str, Enum):
 
-class CancerTypesEnum(str, Enum):
-    """
-    Types of digestive tract and associated organ cancers.
-
-    This enumeration contains the following types of cancer:
-
-    * oesophagus_junction : Esophageal and esophagogastric junction cancer
-    * gastric : Gastric cancer
-    * localized_colon_cancer : Localized colon cancer, where cancer cells have not spread to distant parts of the body
-    * metastatic_colorectal : Metastatic colorectal cancer
-    * rectum : Rectal cancer
-    * anal_canal : Anal canal cancer
-    * liverhcc : Hepatocellular carcinoma (primary liver cancer)
-    * biliary_tract : Biliary tract cancer
-    * pancreas : Pancreatic cancer
-    * ampulloma : Tumor of the ampulla of Vater
-
-    Use this enumeration to specify the type of cancer in corresponding fields.
-    """
-
-    oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
-    gastric = 'gastric cancer'
+    ampulloma = 'tumor of the ampulla of Vater'
     localized_colon_cancer = 'localized colon cancer, without distant metastasis'
     metastatic_colorectal ='metastatic colorectal cancer'
     rectum = 'rectal cancer'
@@ -85,8 +78,32 @@ class CancerTypesEnum(str, Enum):
     liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
     biliary_tract ='biliary tract cancer'
     pancreas = 'pancreatic cancer'
-    ampulloma = 'tumor of the ampulla of Vater'
+    
+    gastric = 'gastric cancer'
+    oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
+    unknown = 'unknown cancer type'
 
+class CancerTypesEnum(str, Enum):
+
+   
+    colorectal_cancer = 'rectum and colon primitive cancer'
+
+    liver_primary_cancer = 'hepatocellular carcinoma (primary liver cancer)'
+    biliary_tract_cancer ='biliary tract cancer'
+    pancreatic_cancer = 'pancreatic cancer'
+    
+    gastric_cancer = 'gastric cancer'
+    oesophagus_junction_cancer = 'oesophagus and esophagogastric junction cancer'
+    unknown = 'unknown cancer type'
+
+class TreatmentEnum(str, Enum):
+    
+    curative_surgery = "Curative surgery"
+    palliative_surgery = "Palliative surgery"
+    chemotherapy = "Chemotherapy"
+    radiotherapy = "Radiotherapy"
+    immunotherapy = "Immunotherapy"
+    
 
 class PancreaticTumorEnum(str, Enum):
     adenocarcinoma = 'adenocarcinoma'
@@ -137,8 +154,17 @@ class RadiologicalExamination(BaseModel):
     '''
     This class contains all possible informations about one imagery exam
     '''
-    date: datetime = Field(description="The date when the radiological examination was performed.") 
-    type:  ImageryType= Field(description="The type of radiological examination performed.")  #to do : valider que cela soit soit IRM/TDM/TEP
+    exam_name: str = Field(description="The name of the radiological exam")
+    exam_date: date = Field(description="The date in datetime format when the radiological examination was performed.") 
+    exam_type: RadiologicExamType = Field(description="The type of radiological examination performed (e.g., CT, MRI, X-ray).")
+    exam_result: Optional[str] = Field(description='Result of the radiological exam')
+    # Added a new field 'description' to provide more context about the exam
+    # description: str = Field(description="A brief description of the radiological examination.")
+    
+    # Added a new field 'findings' to record any notable findings from the exam
+    # key_findings: str = Field(description="Any notable findings of the radiological examination.")
+
+# Removed the placeholder and added actual code
     # centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
     # centre_expert: Optional[bool]= Field(description="Whether the radiological examination was performed is a tertiary center.")
     # radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
@@ -164,7 +190,7 @@ class HistologicAnalysis(BaseModel):
                 result="Result of a detailed histological analysis"
             )
     '''
-    date: datetime = Field(description="Date of biopsy or resection")
+    histology_date: date = Field(description="Date of biopsy or resection")
     contributive: bool = Field(description="Importance of results (conclusive or not)")
     result: str = Field(description='Complete result of the histological analysis')
 
@@ -227,57 +253,70 @@ class PatientMDTOncologicForm():
         models: ClassVar[list] = []
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
-
-    class Patient(default_model):
-        '''
-        Patient administrative informations
-        '''
-        name: str = Field(description="Full name of the patient")
-        age: int = Field(description="Age of the patient")
-        gender: Gender = Field(description="Gender of the patient")
-        question: ClassVar[str] = "Tell me the full name, age and gender of the patient."
         
-    class Patient(default_model):
-        '''
-        Patient WHO performance status
-        '''
+        #  // // // // // Working classes // // // // // 
 
-        performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
-        question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
-
-
-    class TumorType(default_model):
-        '''
-        Type of cancer
-        '''
+    # class PatientAdministrative(default_model):
+    #     '''
+    #     Patient administrative informations
+    #     '''
+    #     first_name: str = Field(description="First name of the patient")
+    #     last_name: str = Field(description="Last name of the patient")
+    #     age: int = Field(description="Age of the patient")
+    #     date_birth: Optional[int] = Field(description="Date of birth of the patient")
+    #     gender: Gender = Field(description="Gender of the patient")
+    #     question: ClassVar[str] = "Tell me the first name, Last name, age, date of birth and gender of the patient."
         
-        cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
-        question: ClassVar[str] = "Tell me what is the tumor cancer type."
+    # class PatientPerformanceStatus(default_model):
+    #     '''
+    #     Patient WHO performance status
+    #     '''
 
-    class MetastaticState(default_model):
-        """
-        Tumor metastatic state.
+    #     performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
+    #     question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
+    
+    
+    #  // // // // // //  WORK IN PROGRESS
+    
+    class TumorLocation(default_model):
+        '''
+        Location of the tumor
+        '''
+        tumor_location: PrimaryOrganEnum = Field(description="Organ where the primary tumor is present")
+        # cancer_name: str = Field(description="Location of the tumor")
+        question: ClassVar[str] = "Tell me where is located the primary tumor ?"
 
-        Attributes:
-            metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
-            metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
+    # class TumorType(default_model):
 
-        Examples:
-            >>> metastatic_state = MetastaticState(
-                    metastatic_disease=True,
-                    metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
-                )
-        """
-        metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
-        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+    #     # cancer_location: CancerTypesEnum = Field(description="Location of the tumor")
+    #     tumor: str = Field(description="Tumor present")
+    #     # cancer_name: str = Field(description="Location of the tumor")
+    #     question: ClassVar[str] = "Tell me where is located the primary tumor ?"
 
-        question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+    # class MetastaticState(default_model):
+    #     """
+    #     Tumor metastatic state.
+
+    #     Attributes:
+    #         metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
+    #         metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
+
+    #     Examples:
+    #         >>> metastatic_state = MetastaticState(
+    #                 metastatic_disease=True,
+    #                 metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
+    #             )
+    #     """
+    #     metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
+    #     metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+
+    #     question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
         
-    class RadiologicExams(default_model):
+    # class RadiologicExams(default_model):
         
-        exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+    #     exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
         
-        question: ClassVar[str] = "List all radiologic exams."
+    #     question: ClassVar[str] = "Give me a list of the radiological exams with date, name and type "
         
     
 
@@ -309,18 +348,6 @@ class PatientMDTOncologicForm():
     #     ]
     #     models: ClassVar[list] = ["phi3"]
     #     ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
-        necessary: bool = Field(description="Is a pancreatic surgeon evaluation necessary for this patient?")
-        reason: str = Field(description="Why?")
-        base_prompt: ClassVar[list] = [
-            ("human", "What information would you need to answer the question about whether a pancreatic surgeon is necessary?"),
-            ("ai", "I must verify that the patient does not have any metastases or arterial invasion that would contraindicate surgery according to the TNCD recommendations."),
-            ("human", "Exactly, and what if you're unsure of the answer?"),
-            ("ai", "Then I respond that a pancreatic surgeon evaluation is desirable and justify with the elements of the TNCD and the patient's file."),
-            ("human", "{question}"),
-        ]
-        models: ClassVar[list] = ["phi3"]
-        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
-        question: ClassVar[str] = "Based on possible treatments for this patient, is a pancreatic surgeon evaluation necessary?"
     #         ("ai", "Alors je réponds qu'une évaluation par un chirurgien est souhaitable et je justifie avec les éléments du TNCD et du dossier du patient"),
     #         ("human", "{question}"),
     #     ]

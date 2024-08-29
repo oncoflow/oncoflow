@@ -173,4 +173,5 @@ class Llm:
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
+        
         return results

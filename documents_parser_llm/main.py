@@ -62,8 +62,8 @@ def all_asked(dir, config):
                                      prompt=cl_prompt, models=cl.models)
                 logger.info(f"Process {cl.__name__}")
                 logger.info(f"Question : {cl.question}")
-                # pprint(rag.ask_in_document(query=cl.question,
-                    #    class_type=cl, models=cl.models), compact=True)
+                pprint(rag.ask_in_document(query=cl.question,
+                       class_type=cl, models=cl.models), compact=True)
                 del rag
 
 
