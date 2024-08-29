@@ -289,6 +289,7 @@ class PatientMDTOncologicForm():
     ]
 
     def __init__(self) -> None:
+        self.datas = {}
         self.basemodel_list = [cls_attribute for cls_attribute in self.__class__.__dict__.values()
                                if inspect.isclass(cls_attribute)
                                and issubclass(cls_attribute, self.default_model) and cls_attribute.__name__ != "default_model"]
@@ -305,6 +306,11 @@ class PatientMDTOncologicForm():
         else:
             raise ValueError("Invalid input")
 
+        for basemodel in self.basemodel_list:
+            self.datas[basemodel.__name__] = basemodel
+            
+    def set_datas(self, basemodel, datas) -> None:
+        self.datas[basemodel.__name__] = datas
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [

@@ -28,7 +28,7 @@ print(answer)
 
 from langchain_community import document_loaders
 
-from langchain_text_splitters import CharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 # import pymupdf4llm
 # from langchain.text_splitter import MarkdownTextSplitter
@@ -78,7 +78,7 @@ class DocumentReader:
         self.default_loader = config.rcp.doc_type
         
         self.logger.info("Class reader succesfully init, Start reading documents")
-        self.text_splitter = CharacterTextSplitter(
+        self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap)
         self.read_document()
 

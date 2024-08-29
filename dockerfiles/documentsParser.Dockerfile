@@ -1,5 +1,7 @@
 FROM python:3.11-slim
 
+LABEL LABEL org.opencontainers.image.source https://github.com/oncoflow/oncoflow
+
 RUN mkdir app/ && useradd -m python && \
     mkdir -p app/chroma && chown python: app/chroma && \
     apt-get update && \

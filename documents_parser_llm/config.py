@@ -91,6 +91,7 @@ class AppConfig():
          
     def set_logger(self, name, default_context = {}, additional_context=None):
         
+        logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
         context = additional_context if additional_context is not None else []
 
         logger = logging.getLogger(name)
