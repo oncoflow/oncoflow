@@ -132,4 +132,4 @@ class DocumentReader:
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
 
-        return self.llm.invoke_chain(query, parser)
+        return self.llm.invoke_multimodels_chain(query, parser)
