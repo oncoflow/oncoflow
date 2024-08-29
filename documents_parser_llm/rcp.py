@@ -10,10 +10,10 @@ class ImageryType(str, Enum):
     PET = 'PET'
 
 class Gender(str, Enum):
-    male = 'male'
-    female = 'female'
-    other = 'other'
-    not_given = 'not_given'
+    male = "male"
+    female = "female"
+    other = "other"
+    not_given = "not_given"
 
 class RevealingMode(str, Enum):
     '''
@@ -37,43 +37,55 @@ class MetastaticLocationsEnum(str, Enum):
     other = 'other'
 
 
-class OMSPerformanceStatus(str, Enum):
-    asymptomatique = "0"
-    symptomes_legeres = "1"
-    symptomes_modere = "2"
-    symptomes_severes = "3"
-    incapacite_totale = "4"
+class WHOPerformanceStatus(int, Enum):
+    _0 = 0
+    _1 = 1
+    _2 = 2
+    _3 = 3
+    _4 = 4
 
     @classmethod
     def labels(cls) -> dict:
         return {
-            cls.asymptomatique: "Asymptomatique",
-            cls.symptomes_legeres: "Symptômes légers, capacité à travailler",
-            cls.symptomes_modere: "Symptômes modérés, nécessite une aide occasionnelle",
-            cls.symptomes_severes: "Symptômes sévères, nécessite une aide constante",
-            cls.incapacite_totale: "Incapacité totale"
+            cls._0: "No limitation of activities (none)",
+            cls._1: "Limitation in strenuous activities, but able to do light work or other activities",
+            cls._2: "Considerable limitation in activities; some assistance occasionally needed",
+            cls._3: "Severe limitation in activities; frequent assistance required",
+            cls._4: "Complete limitation of activities; unable to perform any activity"
         }
-# class PerformanceStatus(IntEnum):
-#     '''
-#     This class enumerates WHO (World Health Organisation, i.e. OMS in French) performance index or ECOG performance status values.
-#     '''
-#     ecog0 = '0'
-#     ecog1 = '1'
-#     ecog2 = '2'
-#     ecog3 = '3'
-#     ecog4 = '4'
 
-class CancerTypesEnum(str, Enum):
-    oesophagus_junction = 'oesophagus and oesogastric junction cancer'
-    gastric = 'gastric cancer'
-    colon_metafree = 'non-metastatic colon cancer'
-    metastatic_colorectal ='metastatic colorectal cancer'
-    rectum = 'rectal cancer'
-    anal_canal = 'anal canal cancer'
-    liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
-    biliary_tract ='biliary tract cancer'
-    pancreas = 'pancreatic cancer'
-    ampulloma = 'tumor of the ampulla of Vater'
+
+    class CancerTypesEnum(str, Enum):
+        """
+        Types of digestive tract and associated organ cancers.
+
+        This enumeration contains the following types of cancer:
+
+        * oesophagus_junction : Esophageal and esophagogastric junction cancer
+        * gastric : Gastric cancer
+        * localized_colon_cancer : Localized colon cancer, where cancer cells have not spread to distant parts of the body
+        * metastatic_colorectal : Metastatic colorectal cancer
+        * rectum : Rectal cancer
+        * anal_canal : Anal canal cancer
+        * liverhcc : Hepatocellular carcinoma (primary liver cancer)
+        * biliary_tract : Biliary tract cancer
+        * pancreas : Pancreatic cancer
+        * ampulloma : Tumor of the ampulla of Vater
+
+        Use this enumeration to specify the type of cancer in corresponding fields.
+        """
+
+        oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
+        gastric = 'gastric cancer'
+        localized_colon_cancer = 'localized colon cancer, without distant metastasis'
+        metastatic_colorectal ='metastatic colorectal cancer'
+        rectum = 'rectal cancer'
+        anal_canal = 'anal canal cancer'
+        liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
+        biliary_tract ='biliary tract cancer'
+        pancreas = 'pancreatic cancer'
+        ampulloma = 'tumor of the ampulla of Vater'
+
 
 class PancreaticTumorEnum(str, Enum):
     adenocarcinoma = 'adenocarcinoma'
@@ -92,6 +104,34 @@ class LiverSymptomsEnum(str, Enum):
     digestive_bleeding = 'digestive bleeding'
     encephalopathy = 'encephalopathy'
 
+class ChildPugh(BaseModel):
+    """
+    Evaluation of the Child-Pugh score.
+
+    Attributes:
+        bilirubine: Bilirubin level in blood.
+        albumine: Albumin level in blood.
+        prothrombine: Prothrombin time.
+        ascite: Presence of ascites.
+        encephalopathie: Presence of encephalopathy.
+
+    Examples:
+        >>> child_pugh = ChildPugh(
+                bilirubine=2,
+                albumine=3,
+                prothrombine=50,
+                ascite=False,
+                encephalopathie=False
+            )
+    """
+    bilirubine: int = Field(description="Bilirubin level in blood")
+    albumine: int = Field(description="Albumin level in blood")
+    prothrombine: int = Field(description="Prothrombin time")
+    ascite: bool = Field(description="Presence of ascites")
+    encephalopathie: bool = Field(description="Presence of encephalopathy")
+
+    question: ClassVar[str] = "Tell me the Child-Pugh score."
+
 class RadiologicalExamination(BaseModel):
     '''
     This class contains all possible informations about one imagery exam
@@ -109,22 +149,47 @@ class RadiologicalExamination(BaseModel):
 
 class HistologicAnalysis(BaseModel):
     '''
-    This class contains all informations about one histologic analysis
+    This class contains all informations related to a histological analysis.
+
+    Attributes:
+        date (datetime): Date when the biopsy or resection was performed.
+        contributive (bool): Indicator of the importance of the results (conclusive or not).
+        result (str): Complete result of the histological analysis.
+
+    Examples:
+        >>> analysis = HistologicAnalysis(
+                date=datetime.date(2022, 1, 1),
+                contributive=True,
+                result="Result of a detailed histological analysis"
+            )
     '''
-    date: datetime = Field(description="Contains the date when the biopsy or resection was performed")
-    contributive: bool = Field(description="Indicates whether the results are conclusive or not")
-    result: str = Field(description='Contains the full histological result')
+    date: datetime = Field(description="Date of biopsy or resection")
+    contributive: bool = Field(description="Importance of results (conclusive or not)")
+    result: str = Field(description='Complete result of the histological analysis')
 
 class RadiologicalExaminations(BaseModel):
-    '''
-    This class list all the patient's radiology studies
-    '''
-    Examsall: list[RadiologicalExamination]= Field(description="List all the patient's radiology studies")
-    CTAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology CT scan studies")
-    MRIAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology MRI studies")
-    PETAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology PET studies")
+    """
+    A container for a patient's radiology studies.
 
-class PatientMDTOncologyReport():  
+    Attributes:
+        exams_all (list[RadiologicalExamination]): All of the patient's radiology studies.
+        ct_scans (list[RadiologicalExamination]): The patient's computed tomography (CT) scans.
+        mri_studies (list[RadiologicalExamination]): The patient's magnetic resonance imaging (MRI) studies.
+        pet_scans (list[RadiologicalExamination]): The patient's positron emission tomography (PET) scans.
+
+    Examples:
+        >>> exams = RadiologicalExaminations(
+                exams_all=[RadiologicalExamination(...)],
+                ct_scans=[RadiologicalExamination(...)],
+                mri_studies=[RadiologicalExamination(...)],
+                pet_scans=[RadiologicalExamination(...)]
+            )
+    """
+    exams_all: list[RadiologicalExamination] = Field("All of the patient's radiology studies")
+    ct_scans: list[RadiologicalExamination] = Field("The patient's computed tomography (CT) scans")
+    mri_studies: list[RadiologicalExamination] = Field("The patient's magnetic resonance imaging (MRI) studies")
+    pet_scans: list[RadiologicalExamination] = Field("The patient's positron emission tomography (PET) scans")
+class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
     '''
     This class contains all patient and oncological disease information.
     '''
@@ -138,6 +203,18 @@ class PatientMDTOncologyReport():
         self.basemodel_list = [cls_attribute for cls_attribute in self.__class__.__dict__.values()
                                if inspect.isclass(cls_attribute)
                                and issubclass(cls_attribute, self.default_model) and cls_attribute.__name__ != "default_model"]
+        
+    def json(self):
+        return self.dict()
+
+    @classmethod
+    def parse_raw(cls, value):
+        if isinstance(value, dict):
+            return cls(**value)
+        elif isinstance(value, str):
+            return cls.parse_raw(json.loads(value))
+        else:
+            raise ValueError("Invalid input")
 
 
     class default_model(BaseModel):
@@ -151,49 +228,39 @@ class PatientMDTOncologyReport():
 
     class Patient(default_model):
         '''
-        Patient administrative informations
+        Patient base informations
         '''
         name: str = Field(description="Full name of the patient")
-        age: int = Field(description="Age of the")
+        age: int = Field(description="Age of the patient")
         gender: Gender = Field(description="Gender of the patient")
-
-
-        question: ClassVar[str] = "Tell me the full name, age and gender of the patient."
-        
-    class Patient(default_model):
-        '''
-        WHO Performance status
-        '''
-        performance_status: OMSPerformanceStatus = Field(description="WHO (OMS) performance status of the patient, from 0 to 4")
-
-        question: ClassVar[str] = "Tell me the WHO (OMS) performance status of the patient (0-4)."
+        performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
+        question: ClassVar[str] = "Tell me the full name, age, gender and OMS performance status of the patient (0-4)."
 
     class TumorType(default_model):
         '''
         Type of cancer
         '''
-        # revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
-        # date_diagnosis: date = Field(description="Date of tumor diagnosis")
+
         cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
-        # cancer_type_justification: str = Field(description="Justification of the type of cancer found")
-        # histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
-        # metastatic_disease: bool = Field(description="Indicates whether the patient's tumor is metastatic, i.e. with secondary localizations in other organs, or non-metastatic.")
-        # metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Indicates in which organs are located metastasis")
-        # tumor_stade: str = Field(description="Tumor grade")revelation's mode, date of diagnosis, histologic results and metastatic state and justify with text quoting
         question: ClassVar[str] = "Tell me what is the tumor cancer type."
 
     class MetastaticState(default_model):
-        '''
-        Metastatic state of the tumor
-        '''
-        # revelation_mode : RevealingMode = Field(description="How the tumor is revealed")
-        # date_diagnosis: date = Field(description="Date of tumor diagnosis")
-        # cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
-        # cancer_type_justification: str = Field(description="Justification of the type of cancer found")
-        # histologic_results: Optional[List[HistologicAnalysis]] = Field(description='Contains all histological results')
-        metastatic_disease: bool = Field(description="Metastatic state")
-        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs with metastasis")
-        # tumor_stade: str = Field(description="Tumor grade")revelation's mode, date of diagnosis, histologic results and metastatic state and justify with text quoting
+        """
+        Tumor metastatic state.
+
+        Attributes:
+            metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
+            metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
+
+        Examples:
+            >>> metastatic_state = MetastaticState(
+                    metastatic_disease=True,
+                    metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
+                )
+        """
+        metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
+        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+
         question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
         
     
