@@ -16,7 +16,7 @@ class AppConfig():
     @environ.config
     class Log:
         level = environ.var(
-            default="INFO", help="Log level of app")
+            default="INFO", help="Log level of ap")
         type = environ.var(
             default="text", help="Log type (text or json) of app")
 
