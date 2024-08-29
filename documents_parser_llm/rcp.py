@@ -1,7 +1,7 @@
 from enum import Enum, IntEnum
 from typing import List, Optional, ClassVar
 from datetime import date
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
 import inspect
 import json
 
@@ -84,25 +84,54 @@ class TNCDCancerTypesEnum(str, Enum):
     unknown = 'unknown cancer type'
 
 class CancerTypesEnum(str, Enum):
-
    
     colorectal_cancer = 'rectum and colon primitive cancer'
-
     liver_primary_cancer = 'hepatocellular carcinoma (primary liver cancer)'
     biliary_tract_cancer ='biliary tract cancer'
-    pancreatic_cancer = 'pancreatic cancer'
-    
+    pancreatic_cancer = 'pancreatic cancer' 
     gastric_cancer = 'gastric cancer'
     oesophagus_junction_cancer = 'oesophagus and esophagogastric junction cancer'
     unknown = 'unknown cancer type'
 
 class TreatmentEnum(str, Enum):
     
-    curative_surgery = "Curative surgery"
-    palliative_surgery = "Palliative surgery"
+    surgery = "Surgery"
     chemotherapy = "Chemotherapy"
     radiotherapy = "Radiotherapy"
     immunotherapy = "Immunotherapy"
+    
+    
+class TreatmentStatusEnum(str, Enum):
+    
+    curative = "Curative"
+    palliative = "Palliative"
+    adjuvant = "Adjuvant"
+    neo_adjuvant = "Neo-adjuvant"
+    
+class TreatmentToleranceEnum(str, Enum):
+    
+    good = "Good"
+    medium = "Medium"
+    poor = "Poor"
+    
+class ChemotherapyData(BaseModel):
+    
+    chemotherapy_name: str= Field(description="Name of the chemotherapy") 
+    chemotherapy_start_date: Optional[date] = Field(description="Date of the beginning of the chemotherapy") 
+    chemotherapy_end_date: Optional[date] = Field(description="Date of the end of the chemotherapy")
+    chemotherapy_tolerance: TreatmentToleranceEnum = Field(description="Tolerance of the chemotherapy")
+    
+# class CurativeSurgery(BaseModel):
+    
+#     surgery_date: date = Field(description="Date of the surgery")
+#     surgeon_name: Optional[str] = Field(description="Name of the surgeon")
+#     surgery_name: Optional[str] = Field(description="Name of the surgery")
+    
+class PreviousTreatmentData(BaseModel):
+    
+    treatment_date: PastDate = Field(deacription="Date of the treatment")
+    treatment_name: TreatmentEnum = Field(description="Name of the treatment")
+    treatment_status: TreatmentStatusEnum = Field(description="Status of the treatment on the deasise")
     
 
 class PancreaticTumorEnum(str, Enum):
@@ -155,24 +184,10 @@ class RadiologicalExamination(BaseModel):
     This class contains all possible informations about one imagery exam
     '''
     exam_name: str = Field(description="The name of the radiological exam")
-    exam_date: date = Field(description="The date in datetime format when the radiological examination was performed.") 
+    exam_date: date = Field(description="The date when the radiological examination was performed.") 
     exam_type: RadiologicExamType = Field(description="The type of radiological examination performed (e.g., CT, MRI, X-ray).")
     exam_result: Optional[str] = Field(description='Result of the radiological exam')
-    # Added a new field 'description' to provide more context about the exam
-    # description: str = Field(description="A brief description of the radiological examination.")
-    
-    # Added a new field 'findings' to record any notable findings from the exam
-    # key_findings: str = Field(description="Any notable findings of the radiological examination.")
 
-# Removed the placeholder and added actual code
-    # centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
-    # centre_expert: Optional[bool]= Field(description="Whether the radiological examination was performed is a tertiary center.")
-    # radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
-    # interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
-    # interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
-    # relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
-    # relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
-    # reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
 
 class HistologicAnalysis(BaseModel):
     '''
@@ -254,37 +269,87 @@ class PatientMDTOncologicForm():
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
         
-        #  // // // // // Working classes // // // // // 
+     #  // // // // // Tested and Working classes // // // // // 
 
-    # class PatientAdministrative(default_model):
-    #     '''
-    #     Patient administrative informations
-    #     '''
-    #     first_name: str = Field(description="First name of the patient")
-    #     last_name: str = Field(description="Last name of the patient")
-    #     age: int = Field(description="Age of the patient")
-    #     date_birth: Optional[int] = Field(description="Date of birth of the patient")
-    #     gender: Gender = Field(description="Gender of the patient")
-    #     question: ClassVar[str] = "Tell me the first name, Last name, age, date of birth and gender of the patient."
+    class PatientAdministrative(default_model):
+        '''
+        Patient administrative informations
+        '''
+        first_name: str = Field(description="First name of the patient")
+        last_name: str = Field(description="Last name of the patient")
+        age: int = Field(description="Age of the patient")
+        date_birth: Optional[int] = Field(description="Date of birth of the patient")
+        gender: Gender = Field(description="Gender of the patient")
         
-    # class PatientPerformanceStatus(default_model):
-    #     '''
-    #     Patient WHO performance status
-    #     '''
+        question: ClassVar[str] = "Tell me the first name, Last name, age, date of birth and gender of the patient."
+        
+    class PatientPerformanceStatus(default_model):
+        '''
+        Patient WHO performance status
+        '''
 
-    #     performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
-    #     question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
-    
-    
-    #  // // // // // //  WORK IN PROGRESS
+        performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
+        
+        question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
     
     class TumorLocation(default_model):
         '''
         Location of the tumor
         '''
+        
         tumor_location: PrimaryOrganEnum = Field(description="Organ where the primary tumor is present")
-        # cancer_name: str = Field(description="Location of the tumor")
+        
         question: ClassVar[str] = "Tell me where is located the primary tumor ?"
+        
+    class RadiologicExams(default_model):
+        '''
+        List of radiological exams
+        '''  
+        
+        exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+        
+        question: ClassVar[str] = "Give me a list of the radiological exams with date, name and type "
+        
+    class PreviousCurativeSurgery(default_model):
+        '''
+        Previous curative surgery
+        '''
+        
+        previous_curative_surgery: bool = Field(description="If a curative surgery has already been done") 
+        previous_curative_surgery_date: Optional[PastDate] = Field(description="Date of the surgery") 
+        
+        question: ClassVar[str] = "Tell me if a curative surgery has already been done for this tumor ?"
+        
+    class PlannedCurativeSurgery(default_model):
+        '''
+        Planned curative surgery
+        '''
+        
+        planned_curative_surgery: bool = Field(description="If a curative surgery has been planned") 
+        
+        question: ClassVar[str] = "Tell me if a curative surgery has been planned for this tumor ?"
+    
+    class ChemotherapyTreament(default_model):
+        '''
+        Chemotherapy treatments
+        '''
+        
+        chemotherapy: bool = Field(description="If a chemotherapy has already been done") 
+        chemotherapy_list: Optional[List[ChemotherapyData]] = Field(description="List of chemotherapies that have been done")
+        
+        question: ClassVar[str] = "Tell me if one or several chemotherapies have already been done for this tumor?"
+    
+    #  // // // // // //  WORK IN PROGRESS
+    
+
+        
+    # class PreviousTreatments(default_model):
+        
+    #     treaments: Optional[List[PreviousTreatmentData]] = Field(description="List of treaments already done, can be None")
+        
+    #     question: ClassVar[str] = "Tell me if curative or palliative treaments like surgery, chemotherapy, radiotherapy and immunotherapy have already been done ?"
+         
+
 
     # class TumorType(default_model):
 

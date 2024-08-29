@@ -2,7 +2,7 @@ from os import listdir
 from os.path import isfile, join
 from optparse import OptionParser
 
-from pprint import pprint
+# from pprint import pprint
 
 import environ
 import inspect
@@ -15,7 +15,7 @@ from rcp import PatientMDTOncologicForm
 
 
 from langchain_core.pydantic_v1 import BaseModel
-from icecream import ic
+
 
 
 def manual_prompt(dir, config):
@@ -55,17 +55,18 @@ def all_asked(dir, config):
             for cl in fiche_rcp.basemodel_list:
                 
                 cl_prompt = fiche_rcp.base_prompt
-                # ic(cl_prompt)
                 cl_prompt.extend(cl.base_prompt)
-                # ic(cl_prompt)
+                
                 rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
                                      prompt=cl_prompt, models=cl.models)
-                logger.info(f"Process {cl.__name__}")
+                logger.info(f"Processing {cl.__name__}")
                 logger.info(f"Question : {cl.question}")
-                pprint(rag.ask_in_document(query=cl.question,
-                       class_type=cl, models=cl.models), compact=True)
+                # pprint(rag.ask_in_document(query=cl.question,
+                #        class_type=cl, models=cl.models), compact=True)
+                logger.info("Done : %s", rag.ask_in_document(query=cl.question,
+                       class_type=cl, models=cl.models))
                 del rag
-
+            logger.info(f"Stop reading {f} ...")
 
 if __name__ == "__main__":
 

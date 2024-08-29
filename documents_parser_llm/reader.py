@@ -37,7 +37,7 @@ from config import AppConfig
 from llm import Llm
 from databases import VectorialDataBase
 
-from icecream import ic
+
 
 
 
@@ -86,7 +86,7 @@ class DocumentReader:
         """Loads a document from the specified path using the given loader type."""
         if loader_type is None:
             loader_type = self.default_loader
-        # ic(loader_type)
+
         cla = getattr(document_loaders, loader_type)
         return cla(document)
 
@@ -97,17 +97,13 @@ class DocumentReader:
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
         self.logger.info("Start reading document")
-        loader = self._load_document(self.document_path)
-        # print(f"Document {self.document_path} ready to load")
+        loader = self._load_document(self.document_path)   
         pages = loader.load()
-        # print(f"Document {self.document_path} loaded")
 
         chunked_documents = self.text_splitter.split_documents(pages)
 
         self.vecdb.add_chunked_to_collection(
             chunked_documents, flush_before=True)
-        
-        # print(f"Document {self.document_path} added to base")
 
         for doc_pdf, infos in self.docs_pdf.items():
             self.logger.debug("Start reading ressource %s", doc_pdf )
@@ -135,6 +131,5 @@ class DocumentReader:
 
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
-        # print("Asking in document")
-        # ic(query)
+
         return self.llm.invoke_chain(query, parser)

@@ -15,7 +15,6 @@ from config import AppConfig
 import os, time
 from functools import wraps
 
-# from icecream import ic
 
 def timed(func):
     @wraps(func)
@@ -39,8 +38,7 @@ def timed(func):
             formatted_time += f"{remaining_seconds}sec"
         
             
-        # print(f"INFO - {func.__name__} ran in {formatted_time}")
-        # ic(result)
+        print(f"INFO - {func.__name__} ran in {formatted_time}") # comment ajouter cela dans logger ?
         return result
     
     return wrapper
@@ -159,13 +157,10 @@ class Llm:
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        # print('LAST PROMPT TEMPLATE')
-        # ic(prompt)
-        # print(f" -- PROMPT : {prompt.format().content}")
+
         results = {}
         for name, model in self.model.items():
-            # print(f"Processing {name} ...")
-            # print(f" ---- {self.chain[name].get_prompts()}")
+
             try:
                 results[name] = self.timed_invoke_chain(name, prompt)
             except OutputParserException as e:
@@ -173,5 +168,6 @@ class Llm:
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
-        
+            self.logger.debug(
+                "Result : %s", results)
         return results
