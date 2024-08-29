@@ -7,6 +7,9 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
 from langchain.schema.runnable import RunnablePassthrough
+from langchain.retrievers.multi_query import MultiQueryRetriever
+from langchain.output_parsers import RetryOutputParser
+from langchain_core.runnables import RunnableLambda, RunnableParallel
 
 import ollama
 
@@ -37,6 +40,9 @@ class Llm:
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models  = [config.llm.embeddings]
+                self.logger = config.set_logger("embeddings", default_context={
+                    "llm_type": config.llm.type.lower(),
+                    "list_models": list_models},  additional_context=["model"])
             else:
                 if models is None or not models:
                     list_models = config.llm.models.split(",")
@@ -56,14 +62,15 @@ class Llm:
                         model=model,
                         temperature=config.llm.temp
                     )
+                self.logger = config.set_logger("llm", default_context={
+                    "llm_type": config.llm.type.lower(),
+                    "list_models": list_models},  additional_context=["model"])
 
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
         
         
-        self.logger = config.set_logger("llm", default_context={
-            "llm_type": config.llm.type.lower(),
-            "list_models": list_models},  additional_context=["model"])
+        
 
         self.logger.debug("Class llm succesfully init", extra={"model": ""})
 
@@ -85,10 +92,15 @@ class Llm:
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
-        for name, model in self.model.items():
-            self.chain[name] = (
+        
+        self.base_chain = (
                 base_chain
                 | self.default_prompt
+        )
+        
+        for name, model in self.model.items():
+            self.chain[name] = (
+                self.base_chain
                 | model
                 | parser
             )
@@ -105,7 +117,7 @@ class Llm:
         Returns:
             The answer to the question.
         """
-
+        
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
                 template=query + "\n {format_instructions}",
@@ -114,17 +126,22 @@ class Llm:
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        self.logger.debug("Set human prompt : %s", prompt.format().content, extra={
+        
+        self.logger.debug("Set human prompt : %s", prompt.format(), extra={
                           "model": self.model.keys()})
         results = {}
         for name, model in self.model.items():
+            retry_parser = RetryOutputParser.from_llm(parser=parser, llm=model)
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                results[name] = self.chain[name].invoke(
-                    prompt.format().content)
+                chain = RunnableParallel( 
+                           completion=self.chain[name], prompt_value=self.base_chain) | RunnableLambda(lambda x: retry_parser.parse_with_prompt(**x))
+                
+                results[name] = chain.invoke({"question": prompt.format().content })
             except OutputParserException as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
+            self.logger.debug("LLM say correct result : %s", results, extra={"model": name})
         return results

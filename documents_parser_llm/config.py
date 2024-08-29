@@ -35,7 +35,7 @@ class AppConfig():
             default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
-        models = environ.var(default="llama3-chatqa,phi3",
+        models = environ.var(default="llama3",
                              help="Model of llm system, type all for test all ollama models")
         temp = environ.var(default="0", converter=int,
                            help="Temperature of llm system")
@@ -88,6 +88,7 @@ class AppConfig():
          
     def set_logger(self, name, default_context = {}, additional_context=None):
         
+        logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
         context = additional_context if additional_context is not None else []
 
         logger = logging.getLogger(name)

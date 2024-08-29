@@ -58,9 +58,13 @@ def all_asked(dir, config):
                                      prompt=cl_prompt, models=cl.models)
                 logger.info(f"Process {cl.__name__}")
                 logger.info(f"Question : {cl.question}")
-                pprint(rag.ask_in_document(query=cl.question,
-                       class_type=cl, models=cl.models), compact=True)
+                datas = rag.ask_in_document(query=cl.question,
+                                            class_type=cl, models=cl.models)
+                if datas:
+                    # Set first response
+                    fiche_rcp.set_datas(cl, datas)
                 del rag
+    pprint(fiche_rcp.__dict__, compact=True)
 
 
 if __name__ == "__main__":

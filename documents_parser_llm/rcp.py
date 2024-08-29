@@ -17,9 +17,15 @@ class RcpFiche():
     ]
 
     def __init__(self) -> None:
+        self.datas = {}
         self.basemodel_list = [cls_attribute for cls_attribute in self.__class__.__dict__.values()
                                if inspect.isclass(cls_attribute)
                                and issubclass(cls_attribute, self.default_model) and cls_attribute.__name__ != "default_model"]
+        for basemodel in self.basemodel_list:
+            self.datas[basemodel.__name__] = basemodel
+            
+    def set_datas(self, basemodel, datas) -> None:
+        self.datas[basemodel.__name__] = datas
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
@@ -63,7 +69,7 @@ class RcpFiche():
             ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
-        models: ClassVar[list] = ["phi3"]
+        #models: ClassVar[list] = ["phi3"]
         ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
         question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un cardiologue est nécessaire ? "
 
@@ -78,7 +84,7 @@ class RcpFiche():
             ("ai", "Alors je réponds qu'une évaluation par un chirurgien est souhaitable et je justifie avec les éléments du TNCD et du dossier du patient"),
             ("human", "{question}"),
         ]
-        models: ClassVar[list] = ["phi3", "llama3-chatqa"]
+        #models: ClassVar[list] = ["llama3"]
         ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
         question: ClassVar[str] = "Alors réponds moi, est-qu'une une évaluation du dossier par un chirurgien pancréatique est nécessaire  ?"
 
@@ -93,7 +99,7 @@ class RcpFiche():
             ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
-        models: ClassVar[list] = ["phi3"]
+        #models: ClassVar[list] = ["phi3"]
         ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
         question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un chirurgien hépatique est nécessaire ?"
 
@@ -108,7 +114,7 @@ class RcpFiche():
             ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
-        models: ClassVar[list] = ["phi3"]
+        #models: ClassVar[list] = ["phi3"]
         ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
         question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un chirurgien colorectal est nécessaire ?"
 
@@ -125,6 +131,6 @@ class RcpFiche():
             ("ai", "Oui, quelle est la question concernant ce patient ?"),
             ("human", "{question}"),
         ]
-        models: ClassVar[list] = ["phi3"]
+        #models: ClassVar[list] = ["phi3"]
         ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
         question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un chirurgien colorectal est nécessaire ?"
