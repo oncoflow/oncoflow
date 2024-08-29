@@ -1,10 +1,11 @@
 from enum import Enum, IntEnum
 from typing import List, Optional, ClassVar
-from datetime import date, datetime
-from langchain_core.pydantic_v1 import BaseModel, Field, validator
+from datetime import date
+from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
 import inspect
+import json
 
-class ImageryType(str, Enum):
+class RadiologicExamType(str, Enum):
     CT = 'CT'
     MRI = 'MRI'
     PET = 'PET'
@@ -54,44 +55,89 @@ class WHOPerformanceStatus(int, Enum):
             cls._4: "Complete limitation of activities; unable to perform any activity"
         }
 
+class PrimaryOrganEnum(str, Enum):
+    
+    pancreas = 'Pancreas'
+    colon = "Colon "
+    liver = "Liver"
+    stomach = "Stomach"
+    oesophagus = "Oesophagus"
+    rectum = "Rectum"
+    intra_hepatic_bile_duct = "Intra-hepatic bile duct"
+    extra_hepatic_bile_duct = "Extra-hepatic bile duct"
+    unknown = "unknown"
+    
+    
+class TNCDCancerTypesEnum(str, Enum):
 
-    class CancerTypesEnum(str, Enum):
-        """
-        Types of digestive tract and associated organ cancers.
+    ampulloma = 'tumor of the ampulla of Vater'
+    localized_colon_cancer = 'localized colon cancer, without distant metastasis'
+    metastatic_colorectal ='metastatic colorectal cancer'
+    rectum = 'rectal cancer'
+    anal_canal = 'anal canal cancer'
+    liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
+    biliary_tract ='biliary tract cancer'
+    pancreas = 'pancreatic cancer'
+    
+    gastric = 'gastric cancer'
+    oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
+    unknown = 'unknown cancer type'
 
-        This enumeration contains the following types of cancer:
+class CancerTypesEnum(str, Enum):
+   
+    colorectal_cancer = 'rectum and colon primitive cancer'
+    liver_primary_cancer = 'hepatocellular carcinoma (primary liver cancer)'
+    biliary_tract_cancer ='biliary tract cancer'
+    pancreatic_cancer = 'pancreatic cancer' 
+    gastric_cancer = 'gastric cancer'
+    oesophagus_junction_cancer = 'oesophagus and esophagogastric junction cancer'
+    unknown = 'unknown cancer type'
 
-        * oesophagus_junction : Esophageal and esophagogastric junction cancer
-        * gastric : Gastric cancer
-        * localized_colon_cancer : Localized colon cancer, where cancer cells have not spread to distant parts of the body
-        * metastatic_colorectal : Metastatic colorectal cancer
-        * rectum : Rectal cancer
-        * anal_canal : Anal canal cancer
-        * liverhcc : Hepatocellular carcinoma (primary liver cancer)
-        * biliary_tract : Biliary tract cancer
-        * pancreas : Pancreatic cancer
-        * ampulloma : Tumor of the ampulla of Vater
-
-        Use this enumeration to specify the type of cancer in corresponding fields.
-        """
-
-        oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
-        gastric = 'gastric cancer'
-        localized_colon_cancer = 'localized colon cancer, without distant metastasis'
-        metastatic_colorectal ='metastatic colorectal cancer'
-        rectum = 'rectal cancer'
-        anal_canal = 'anal canal cancer'
-        liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
-        biliary_tract ='biliary tract cancer'
-        pancreas = 'pancreatic cancer'
-        ampulloma = 'tumor of the ampulla of Vater'
-
+class TreatmentEnum(str, Enum):
+    
+    surgery = "Surgery"
+    chemotherapy = "Chemotherapy"
+    radiotherapy = "Radiotherapy"
+    immunotherapy = "Immunotherapy"
+    
+    
+class TreatmentStatusEnum(str, Enum):
+    
+    curative = "Curative"
+    palliative = "Palliative"
+    adjuvant = "Adjuvant"
+    neo_adjuvant = "Neo-adjuvant"
+    
+class TreatmentToleranceEnum(str, Enum):
+    
+    good = "Good"
+    medium = "Medium"
+    poor = "Poor"
+    
+class ChemotherapyData(BaseModel):
+    
+    chemotherapy_name: str= Field(description="Name of the chemotherapy") 
+    chemotherapy_start_date: Optional[date] = Field(description="Date of the beginning of the chemotherapy") 
+    chemotherapy_end_date: Optional[date] = Field(description="Date of the end of the chemotherapy")
+    chemotherapy_tolerance: TreatmentToleranceEnum = Field(description="Tolerance of the chemotherapy")
+    
+# class CurativeSurgery(BaseModel):
+    
+#     surgery_date: date = Field(description="Date of the surgery")
+#     surgeon_name: Optional[str] = Field(description="Name of the surgeon")
+#     surgery_name: Optional[str] = Field(description="Name of the surgery")
+    
+class PreviousTreatmentData(BaseModel):
+    
+    treatment_date: PastDate = Field(deacription="Date of the treatment")
+    treatment_name: TreatmentEnum = Field(description="Name of the treatment")
+    treatment_status: TreatmentStatusEnum = Field(description="Status of the treatment on the deasise")
+    
 
 class PancreaticTumorEnum(str, Enum):
     adenocarcinoma = 'adenocarcinoma'
     neuroendocrin = 'neuroendocrine tumor'
     unknown = 'unknow'
-
 
 class PancreaticSymptomsEnum(str, Enum):
     pain = 'pain'
@@ -125,7 +171,7 @@ class ChildPugh(BaseModel):
                 encephalopathie=False
             )
     """
-    bilirubine: int = Field(description="Bilirubin level in blood")
+    bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
     ascite: bool = Field(description="Presence of ascites")
@@ -137,17 +183,10 @@ class RadiologicalExamination(BaseModel):
     '''
     This class contains all possible informations about one imagery exam
     '''
-    date: datetime = Field(description="The date when the radiological examination was performed.") 
-    type:  ImageryType= Field(description="The type of radiological examination performed.")  #to do : valider que cela soit soit IRM/TDM/TEP
-    centre: Optional[str]= Field(description="The place where the radiological examination was performed.")
-    centre_expert: Optional[bool]= Field(description="Whether the radiological examination was performed is a tertiary center.")
-    radiologue: Optional[str]= Field(description="The contains the name of the radiologist who performed the examination.")
-    interpretationfull: Optional[str]= Field(description="Contient le compte rendu complet de l'examen d'imagerie")
-    interpretationcut: Optional[str]= Field(description="Contient un résumé de l'examen d'imagerie")
-    relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
-    relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
-    reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
-
+    exam_name: str = Field(description="The name of the radiological exam")
+    exam_date: date = Field(description="The date when the radiological examination was performed.") 
+    exam_type: RadiologicExamType = Field(description="The type of radiological examination performed (e.g., CT, MRI, X-ray).")
+    exam_result: Optional[str] = Field(description='Result of the radiological exam')
 
 
 class HistologicAnalysis(BaseModel):
@@ -166,7 +205,7 @@ class HistologicAnalysis(BaseModel):
                 result="Result of a detailed histological analysis"
             )
     '''
-    date: datetime = Field(description="Date of biopsy or resection")
+    histology_date: date = Field(description="Date of biopsy or resection")
     contributive: bool = Field(description="Importance of results (conclusive or not)")
     result: str = Field(description='Complete result of the histological analysis')
 
@@ -192,14 +231,15 @@ class RadiologicalExaminations(BaseModel):
     ct_scans: list[RadiologicalExamination] = Field("The patient's computed tomography (CT) scans")
     mri_studies: list[RadiologicalExamination] = Field("The patient's magnetic resonance imaging (MRI) studies")
     pet_scans: list[RadiologicalExamination] = Field("The patient's positron emission tomography (PET) scans")
-class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
+    
+class PatientMDTOncologicForm():  
     '''
-    This class contains all patient and oncological disease information.
+    This class contains all patient and oncological disease information for the report.
     '''
 
     base_prompt = [
         ("system",
-         "You are a medical assistant, you have to responds questions on this patient tumor record: {context}."),
+         "You are a medical assistant, you have to answer questions based on this patient record: {context}."),
     ]
 
     def __init__(self) -> None:
@@ -228,43 +268,122 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         models: ClassVar[list] = []
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
+        
+     #  // // // // // Tested and Working classes // // // // // 
 
-    class Patient(default_model):
+    class PatientAdministrative(default_model):
         '''
-        Patient base informations
+        Patient administrative informations
         '''
-        name: str = Field(description="Full name of the patient")
+        first_name: str = Field(description="First name of the patient")
+        last_name: str = Field(description="Last name of the patient")
         age: int = Field(description="Age of the patient")
+        date_birth: Optional[int] = Field(description="Date of birth of the patient")
         gender: Gender = Field(description="Gender of the patient")
+        
+        question: ClassVar[str] = "Tell me the first name, Last name, age, date of birth and gender of the patient."
+        
+    class PatientPerformanceStatus(default_model):
+        '''
+        Patient WHO performance status
+        '''
+
         performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
-        question: ClassVar[str] = "Tell me the full name, age, gender and OMS performance status of the patient (0-4)."
-
-    class TumorBaseCharacteristics(default_model):
+        
+        question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
+    
+    class TumorLocation(default_model):
         '''
-        Type of cancer
+        Location of the tumor
         '''
+        
+        tumor_location: PrimaryOrganEnum = Field(description="Organ where the primary tumor is present")
+        
+        question: ClassVar[str] = "Tell me where is located the primary tumor ?"
+        
+    class RadiologicExams(default_model):
+        '''
+        List of radiological exams
+        '''  
+        
+        exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+        
+        question: ClassVar[str] = "Give me a list of the radiological exams with date, name and type "
+        
+    class PreviousCurativeSurgery(default_model):
+        '''
+        Previous curative surgery
+        '''
+        
+        previous_curative_surgery: bool = Field(description="If a curative surgery has already been done") 
+        previous_curative_surgery_date: Optional[PastDate] = Field(description="Date of the surgery") 
+        
+        question: ClassVar[str] = "Tell me if a curative surgery has already been done for this tumor ?"
+        
+    class PlannedCurativeSurgery(default_model):
+        '''
+        Planned curative surgery
+        '''
+        
+        planned_curative_surgery: bool = Field(description="If a curative surgery has been planned") 
+        
+        question: ClassVar[str] = "Tell me if a curative surgery has been planned for this tumor ?"
+    
+    class ChemotherapyTreament(default_model):
+        '''
+        Chemotherapy treatments
+        '''
+        
+        chemotherapy: bool = Field(description="If a chemotherapy has already been done") 
+        chemotherapy_list: Optional[List[ChemotherapyData]] = Field(description="List of chemotherapies that have been done")
+        
+        question: ClassVar[str] = "Tell me if one or several chemotherapies have already been done for this tumor?"
+    
+    #  // // // // // //  WORK IN PROGRESS
+    
 
-        cancer_type: CancerTypesEnum = Field(description="Cancer type among cancer type enum list")
-        question: ClassVar[str] = "Tell me what is the tumor cancer type."
+        
+    # class PreviousTreatments(default_model):
+        
+    #     treaments: Optional[List[PreviousTreatmentData]] = Field(description="List of treaments already done, can be None")
+        
+    #     question: ClassVar[str] = "Tell me if curative or palliative treaments like surgery, chemotherapy, radiotherapy and immunotherapy have already been done ?"
+         
 
-    class MetastaticState(default_model):
-        """
-        Tumor metastatic state.
 
-        Attributes:
-            metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
-            metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
+    # class TumorType(default_model):
 
-        Examples:
-            >>> metastatic_state = MetastaticState(
-                    metastatic_disease=True,
-                    metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
-                )
-        """
-        metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
-        metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+    #     # cancer_location: CancerTypesEnum = Field(description="Location of the tumor")
+    #     tumor: str = Field(description="Tumor present")
+    #     # cancer_name: str = Field(description="Location of the tumor")
+    #     question: ClassVar[str] = "Tell me where is located the primary tumor ?"
 
-        question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+    # class MetastaticState(default_model):
+    #     """
+    #     Tumor metastatic state.
+
+    #     Attributes:
+    #         metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
+    #         metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
+
+    #     Examples:
+    #         >>> metastatic_state = MetastaticState(
+    #                 metastatic_disease=True,
+    #                 metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
+    #             )
+    #     """
+    #     metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
+    #     metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+
+    #     question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+        
+    # class RadiologicExams(default_model):
+        
+    #     exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+        
+    #     question: ClassVar[str] = "Give me a list of the radiological exams with date, name and type "
+        
+    
 
     # class PancreaticTumor(BaseModel):
     #     '''
@@ -294,15 +413,6 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
     #     ]
     #     models: ClassVar[list] = ["phi3"]
     #     ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
-    #     question: ClassVar[str] = "En te basant sur les traitements possibles à proposer à ce patient, est-ce qu'une évaluation par un cardiologue est nécessaire ? "
-
-    # class ChirurgienPancreatique(default_model):
-    #     necessary: bool = Field(description="Est-ce que l'évaluation par un chirurgien pancréatique est nécessaire ?")
-    #     reason: str = Field(description="Pourquoi ?")
-    #     base_prompt: ClassVar[list] = [
-    #         ("human", "Je vais te demander si une évaluation du dossier par un chirurgien pancréatique est nécessaire, quels éléments te permettraient de répondre correctement à la question ?"),
-    #         ("ai", "Je dois vérifier que le patient ne présente pas de métastases ou d'envahissement artériel qui contre-indiquerai la chirurgie selon les recommandations du TNCD"),
-    #         ("human", "Exactement, et si tu n'es pas certains de la réponse ?"),
     #         ("ai", "Alors je réponds qu'une évaluation par un chirurgien est souhaitable et je justifie avec les éléments du TNCD et du dossier du patient"),
     #         ("human", "{question}"),
     #     ]
