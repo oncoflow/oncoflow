@@ -15,7 +15,7 @@ from config import AppConfig
 import os, time
 from functools import wraps
 
-from icecream import ic
+# from icecream import ic
 
 def timed(func):
     @wraps(func)
@@ -39,8 +39,8 @@ def timed(func):
             formatted_time += f"{remaining_seconds}sec"
         
             
-        print(f"INFO - {func.__name__} ran in {formatted_time}")
-        ic(result)
+        # print(f"INFO - {func.__name__} ran in {formatted_time}")
+        # ic(result)
         return result
     
     return wrapper
@@ -66,7 +66,7 @@ class Llm:
 
         if config.llm.type.lower() == "ollama":
             if embeddings:
-                # print('EMBEDDING')
+                
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models  = [config.llm.embeddings]
@@ -124,7 +124,7 @@ class Llm:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
  
-                print("ADDITIONNAL CONTEXT")
+                # print("ADDITIONNAL CONTEXT")
             # ic(base_chain)
         for name, model in self.model.items():
             self.chain[name] = (
@@ -164,7 +164,7 @@ class Llm:
         # print(f" -- PROMPT : {prompt.format().content}")
         results = {}
         for name, model in self.model.items():
-            print(f"Processing {name} ...")
+            # print(f"Processing {name} ...")
             # print(f" ---- {self.chain[name].get_prompts()}")
             try:
                 results[name] = self.timed_invoke_chain(name, prompt)
@@ -173,4 +173,5 @@ class Llm:
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
+        
         return results

@@ -4,7 +4,9 @@ from datetime import date
 from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
 import inspect
 import json
+import json
 
+class RadiologicExamType(str, Enum):
 class RadiologicExamType(str, Enum):
     CT = 'CT'
     MRI = 'MRI'
@@ -172,6 +174,7 @@ class ChildPugh(BaseModel):
             )
     """
     bilirubin: int = Field(description="Bilirubin level in blood")
+    bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
     ascite: bool = Field(description="Presence of ascites")
@@ -206,6 +209,7 @@ class HistologicAnalysis(BaseModel):
             )
     '''
     histology_date: date = Field(description="Date of biopsy or resection")
+    histology_date: date = Field(description="Date of biopsy or resection")
     contributive: bool = Field(description="Importance of results (conclusive or not)")
     result: str = Field(description='Complete result of the histological analysis')
 
@@ -233,12 +237,16 @@ class RadiologicalExaminations(BaseModel):
     pet_scans: list[RadiologicalExamination] = Field("The patient's positron emission tomography (PET) scans")
     
 class PatientMDTOncologicForm():  
+    
+class PatientMDTOncologicForm():  
     '''
+    This class contains all patient and oncological disease information for the report.
     This class contains all patient and oncological disease information for the report.
     '''
 
     base_prompt = [
         ("system",
+         "You are a medical assistant, you have to answer questions based on this patient record: {context}."),
          "You are a medical assistant, you have to answer questions based on this patient record: {context}."),
     ]
 
@@ -361,7 +369,13 @@ class PatientMDTOncologicForm():
     # class MetastaticState(default_model):
     #     """
     #     Tumor metastatic state.
+    # class MetastaticState(default_model):
+    #     """
+    #     Tumor metastatic state.
 
+    #     Attributes:
+    #         metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
+    #         metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
     #     Attributes:
     #         metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
     #         metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
@@ -374,7 +388,24 @@ class PatientMDTOncologicForm():
     #     """
     #     metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
     #     metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+    #     Examples:
+    #         >>> metastatic_state = MetastaticState(
+    #                 metastatic_disease=True,
+    #                 metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
+    #             )
+    #     """
+    #     metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
+    #     metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
 
+    #     question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+        
+    # class RadiologicExams(default_model):
+        
+    #     exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+        
+    #     question: ClassVar[str] = "Give me a list of the radiological exams with date, name and type "
+        
+    
     #     question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
         
     # class RadiologicExams(default_model):
