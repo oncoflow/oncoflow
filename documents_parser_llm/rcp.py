@@ -75,14 +75,10 @@ class CancerTypesEnum(str, Enum):
     pancreas = 'pancreatic cancer'
     ampulloma = 'tumor of the ampulla of Vater'
 
-
-
-
 class PancreaticTumorEnum(str, Enum):
     adenocarcinoma = 'adenocarcinoma'
     neuroendocrin = 'neuroendocrine tumor'
     unknown = 'unknow'
-
 
 class PancreaticSymptomsEnum(str, Enum):
     pain = 'pain'
@@ -95,8 +91,6 @@ class LiverSymptomsEnum(str, Enum):
     jaundice = 'jaundice'
     digestive_bleeding = 'digestive bleeding'
     encephalopathy = 'encephalopathy'
-
-
 
 class RadiologicalExamination(BaseModel):
     '''
@@ -112,8 +106,6 @@ class RadiologicalExamination(BaseModel):
     relecture: Optional[bool]= Field(description="Indique si une relecture de l'examen d'imagerie en centre expert a ete realisee")
     relecteur: Optional[str]= Field(description="Contient le nom du radiologue en centre expert ayant realise la relecture de l'examen d'imagerie")
     reinterpretation: Optional[str]= Field(description="Contient le cCompte rendu de la relecture de l'examen d'imagerie en centre expert")
-
-
 
 class HistologicAnalysis(BaseModel):
     '''
@@ -131,14 +123,15 @@ class RadiologicalExaminations(BaseModel):
     CTAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology CT scan studies")
     MRIAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology MRI studies")
     PETAll: list[RadiologicalExamination]= Field(description="List all the patient's radiology PET studies")
-class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
+
+class PatientMDTOncologyReport():  
     '''
     This class contains all patient and oncological disease information.
     '''
 
     base_prompt = [
         ("system",
-         "You are a medical assistant, you have to responds questions on this patient tumor record: {context}."),
+         "You are a medical assistant, you have to answer questions based on this patient record: {context}."),
     ]
 
     def __init__(self) -> None:
@@ -158,20 +151,24 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
 
     class Patient(default_model):
         '''
-        Patient informations
+        Patient administrative informations
         '''
         name: str = Field(description="Full name of the patient")
         age: int = Field(description="Age of the")
         gender: Gender = Field(description="Gender of the patient")
-        # tumor_type: str = Field(description="Type of tumor present in this patient")
-        performance_status: OMSPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
-        # cardiovascular_disease: bool = Field(description="Cardiovascular history")
-        # clinical_trial_involvment: bool = Field(description="Whether the patient is included in a clinical trial")
-        # clinical_trial_name: Optional[str] = Field(description="Name of the clinical trial")
-        # dossier_radiologique: RadiologicalExaminations = Field(description="Radiologic exams") performance status i.e. OMS status , cardiovascular disease history
-        question: ClassVar[str] = "Tell me the full name, age, gender and OMS performance status of the patient (0-4)."
 
-    class TumorBaseCharacteristics(default_model):
+
+        question: ClassVar[str] = "Tell me the full name, age and gender of the patient."
+        
+    class Patient(default_model):
+        '''
+        WHO Performance status
+        '''
+        performance_status: OMSPerformanceStatus = Field(description="WHO (OMS) performance status of the patient, from 0 to 4")
+
+        question: ClassVar[str] = "Tell me the WHO (OMS) performance status of the patient (0-4)."
+
+    class TumorType(default_model):
         '''
         Type of cancer
         '''
@@ -198,6 +195,8 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs with metastasis")
         # tumor_stade: str = Field(description="Tumor grade")revelation's mode, date of diagnosis, histologic results and metastatic state and justify with text quoting
         question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+        
+    
 
     # class PancreaticTumor(BaseModel):
     #     '''
