@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 # from environ-config
 import environ
+import langchain
 
 
 @environ.config(prefix="APP")
@@ -16,7 +17,9 @@ class AppConfig():
     @environ.config
     class Log:
         level = environ.var(
-            default="INFO", help="Log level of ap")
+            default="INFO", help="Log level of app")
+        langchain_debug = environ.var(
+            default=True, converter=bool, help="langchain Log level of app")
         type = environ.var(
             default="text", help="Log type (text or json) of app")
 
@@ -120,5 +123,7 @@ class AppConfig():
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)
         logger.addHandler(ch)
+        
+        langchain.debug = self.logs.langchain_debug    
         
         return logger
