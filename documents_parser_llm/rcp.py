@@ -236,7 +236,7 @@ class RadiologicalExaminations(BaseModel):
     mri_studies: list[RadiologicalExamination] = Field("The patient's magnetic resonance imaging (MRI) studies")
     pet_scans: list[RadiologicalExamination] = Field("The patient's positron emission tomography (PET) scans")
     
-class PatientMDTOncologicForm():  
+
     
 class PatientMDTOncologicForm():  
     '''
