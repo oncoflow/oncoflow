@@ -88,26 +88,28 @@ class Llm:
                           "model": self.model.keys()})
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
-        base_chain = {"context": context, "question": RunnablePassthrough()}
+        base_chain = {"context": context, "format_instructions": RunnablePassthrough(), "question": RunnablePassthrough()}
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
-        
-        self.base_chain = (
+        chain = (
                 base_chain
                 | self.default_prompt
         )
         
+        
         for name, model in self.model.items():
-            self.chain[name] = (
-                self.base_chain
-                | model
-                | parser
-            )
-            self.logger.debug(
-                "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
+            self.chain[name] = (chain | model | parser)
+            # print(completion)
+            # retry_parser = RetryOutputParser.from_llm(parser=parser, llm=model)
+            # self.chain[name] = RunnableParallel(
+            #     completion = completion,
+            #     prompt_value = chain
+            # ) | RunnableLambda(lambda x: retry_parser.parse_with_prompt(**x))
+            # self.logger.debug(
+            #     "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
 
-    def invoke_chain(self, query, parser=JsonOutputParser()):
+    def invoke_multimodels_chain(self, query, parser=JsonOutputParser()):
         """
         Asks a question about the document and returns the answer.
 
@@ -118,30 +120,37 @@ class Llm:
             The answer to the question.
         """
         
-        prompt = HumanMessagePromptTemplate(
-            prompt=PromptTemplate(
-                template=query + "\n {format_instructions}",
-                input_variables=[],
-                partial_variables={
-                    "format_instructions": parser.get_format_instructions()}
-            )
-        )
-        
-        self.logger.debug("Set human prompt : %s", prompt.format(), extra={
+        self.logger.debug("Set human prompt : %s", query, extra={
                           "model": self.model.keys()})
         results = {}
         for name, model in self.model.items():
-            retry_parser = RetryOutputParser.from_llm(parser=parser, llm=model)
+            
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                chain = RunnableParallel( 
-                           completion=self.chain[name], prompt_value=self.base_chain) | RunnableLambda(lambda x: retry_parser.parse_with_prompt(**x))
-                
-                results[name] = chain.invoke({"question": prompt.format().content })
+                results[name] = self.invoke_chain(query, name, parser=parser)
             except OutputParserException as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
-            self.logger.debug("LLM say correct result : %s", results, extra={"model": name})
+                
         return results
+    
+    def invoke_chain(self, query, model_name, parser):
+        max_retry=5
+        curr_retry=0
+        while(curr_retry < max_retry):
+            try:
+                self.logger.debug("Full prompt : %s", str(self.chain[model_name]), extra={
+                            "model": model_name})
+                result = self.chain[model_name].invoke({"format_instructions": parser.get_format_instructions(),"question": query})
+                self.logger.debug("LLM say correct result : %s", result, extra={"model": model_name})
+                return result
+            except OutputParserException as e:
+                self.logger.exception(
+                    "llm say : %s", e.llm_output, extra={"model": model_name})
+                self.logger.exception(
+                    "Observation : %s", e.observation, extra={"model": model_name})
+                curr_retry += 1
+        return {}
+                
