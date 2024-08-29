@@ -37,7 +37,7 @@ def timed(func):
         if remaining_seconds > 0:
             formatted_time += f"{remaining_seconds}sec"
         
-            
+        
         print(f"INFO - {func.__name__} ran in {formatted_time}") # comment ajouter cela dans logger ?
         return result
     
