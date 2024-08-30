@@ -2,7 +2,7 @@ from os import listdir
 from os.path import isfile, join
 from optparse import OptionParser
 
-from pprint import pprint
+# from pprint import pprint
 
 import environ
 import inspect
@@ -11,10 +11,11 @@ import inquirer
 
 from config import AppConfig
 from reader import DocumentReader
+from rcp import PatientMDTOncologicForm
+
 
 from langchain_core.pydantic_v1 import BaseModel
 
-from rcp import RcpFiche
 
 
 def manual_prompt(dir, config):
@@ -42,26 +43,30 @@ def manual_prompt(dir, config):
             break
         rag = DocumentReader(
             config,  answers["file"],  docs_pdf=["tncdchc.pdf"])
-        pprint(rag.ask_in_document(answers["question"]), compact=True)
+        # pprint(rag.ask_in_document(answers["question"]), compact=True)
 
 
 def all_asked(dir, config):
-    fiche_rcp = RcpFiche()
+    fiche_rcp = PatientMDTOncologicForm()
 
     for f in listdir(dir):
         if isfile(join(dir, f)):
             logger.info(f"Start reading {f} ...")
             for cl in fiche_rcp.basemodel_list:
+                
                 cl_prompt = fiche_rcp.base_prompt
                 cl_prompt.extend(cl.base_prompt)
+                
                 rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
                                      prompt=cl_prompt, models=cl.models)
-                logger.info(f"Process {cl.__name__}")
+                logger.info(f"Processing {cl.__name__}")
                 logger.info(f"Question : {cl.question}")
-                pprint(rag.ask_in_document(query=cl.question,
-                       class_type=cl, models=cl.models), compact=True)
+                # pprint(rag.ask_in_document(query=cl.question,
+                #        class_type=cl, models=cl.models), compact=True)
+                logger.info("Done : %s", rag.ask_in_document(query=cl.question,
+                       class_type=cl, models=cl.models))
                 del rag
-
+            logger.info(f"Stop reading {f} ...")
 
 if __name__ == "__main__":
 

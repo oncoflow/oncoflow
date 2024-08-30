@@ -35,7 +35,11 @@ from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 
 from config import AppConfig
 from llm import Llm
-from databases import vectorial_db
+from databases import VectorialDataBase
+
+
+
+
 
 
 class DocumentReader:
@@ -48,16 +52,16 @@ class DocumentReader:
     def __init__(self, config=AppConfig,  document=str, docs_pdf=None, prompt = [], models = None):
         self.config = config
         self.document_path = str(config.rcp.path) + "/" + document
-
+        # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
-        self.vecdb = vectorial_db(config)
+        self.vecdb = VectorialDataBase(config)
 
         default_prompt = []
 
         if docs_pdf is not None:
             for doc_pdf in docs_pdf:
                 pdf_dict = {
-                    "vecdb": vectorial_db(config, coll_prefix="additional"),
+                    "vecdb": VectorialDataBase(config, coll_prefix="additional"),
                     "path": str(config.rcp.additional_path) + "/" + doc_pdf,
                     "name": doc_pdf.replace(".", "")
                 }
@@ -82,8 +86,8 @@ class DocumentReader:
         """Loads a document from the specified path using the given loader type."""
         if loader_type is None:
             loader_type = self.default_loader
+
         cla = getattr(document_loaders, loader_type)
-        self.logger.debug("Loader type is set to %s", str(cla) )
         return cla(document)
 
     def read_document(self):
@@ -93,7 +97,7 @@ class DocumentReader:
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
         self.logger.info("Start reading document")
-        loader = self._load_document(self.document_path)
+        loader = self._load_document(self.document_path)   
         pages = loader.load()
 
         chunked_documents = self.text_splitter.split_documents(pages)
@@ -108,7 +112,7 @@ class DocumentReader:
             chunked_documents = self.text_splitter.split_documents(pages)
             infos["vecdb"].add_chunked_to_collection(
                 chunked_documents, flush_before=True)
-
+    
     def ask_in_document(self, query, class_type=None, models=None):
         """
         Asks a question about the document and returns the answer.
@@ -121,10 +125,9 @@ class DocumentReader:
         """
         if class_type is not None:
             parser = PydanticOutputParser(pydantic_object=class_type)
+
         else:
             parser = JsonOutputParser()
-        
-        self.logger.debug("Ask \"%s\" in document with parser %s", query, str(parser))
 
         self.llm.create_chain(self.vecdb.get_retriever(), [
                               {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)

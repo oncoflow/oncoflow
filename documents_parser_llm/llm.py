@@ -12,6 +12,36 @@ import ollama
 
 from config import AppConfig
 
+import os, time
+from functools import wraps
+
+
+def timed(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.time()
+        result = func(*args, **kwargs)
+        end = time.time()
+
+        seconds = round(end - start, 2)
+        minutes = int((seconds % 3600) // 60)
+        hours = int(seconds // 3600)
+        remaining_seconds = round(seconds % 60)
+
+        # Build the formatted time string
+        formatted_time = ""
+        if hours > 0:
+            formatted_time += f"{hours}h"
+        if minutes > 0:
+            formatted_time += f"{minutes}min"
+        if remaining_seconds > 0:
+            formatted_time += f"{remaining_seconds}sec"
+        
+        
+        print(f"INFO - {func.__name__} ran in {formatted_time}") # comment ajouter cela dans logger ?
+        return result
+    
+    return wrapper
 
 class Llm:
     """
@@ -34,6 +64,7 @@ class Llm:
 
         if config.llm.type.lower() == "ollama":
             if embeddings:
+                
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models  = [config.llm.embeddings]
@@ -47,7 +78,7 @@ class Llm:
                     ocl = ollama.Client(
                         host=f"{config.llm.url}:{config.llm.port}")
                     list_models = [m["name"] for m in ocl.list()["models"] if m["name"].split(":")[0] not in [
-                        "mxbai-embed-large", "nomic-embed-text", "all-minilm"]]
+                         "all-minilm"]]
 
                 for model in list_models:
                     self.model[model] = ChatOllama(
@@ -77,14 +108,22 @@ class Llm:
         if prompt is None:
             prompt = []
         self.default_prompt = ChatPromptTemplate.from_messages(prompt)
+        # print("MAKING DEFAUT PROMPT")
+        # ic(self.default_prompt)
         self.logger.debug("Default prompt = %s", self.default_prompt, extra={
                           "model": self.model.keys()})
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
         base_chain = {"context": context, "question": RunnablePassthrough()}
+        # print("CREATING CHAIN")
+        # ic(context)
+    
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
+ 
+                # print("ADDITIONNAL CONTEXT")
+            # ic(base_chain)
         for name, model in self.model.items():
             self.chain[name] = (
                 base_chain
@@ -94,7 +133,11 @@ class Llm:
             )
             self.logger.debug(
                 "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
-
+            
+    @timed
+    def timed_invoke_chain(self, name, prompt):
+        return self.chain[name].invoke(prompt.format().content)
+    
     def invoke_chain(self, query, parser=JsonOutputParser()):
         """
         Asks a question about the document and returns the answer.
@@ -108,23 +151,23 @@ class Llm:
 
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
-                template=query + "\n {format_instructions}",
+                template="You have to answer the user question." + "\n {format_instructions}\n question: " + query,
                 input_variables=[],
                 partial_variables={
                     "format_instructions": parser.get_format_instructions()}
             )
         )
-        self.logger.debug("Set human prompt : %s", prompt.format().content, extra={
-                          "model": self.model.keys()})
+
         results = {}
         for name, model in self.model.items():
-            self.logger.info("Asking LLM .... ", extra={"model": name})
+
             try:
-                results[name] = self.chain[name].invoke(
-                    prompt.format().content)
+                results[name] = self.timed_invoke_chain(name, prompt)
             except OutputParserException as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
+            self.logger.debug(
+                "Result : %s", results)
         return results
