@@ -1,23 +1,21 @@
 from enum import Enum, IntEnum
 from typing import List, Optional, ClassVar
-from datetime import date
-from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
-from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
+from datetime import date, datetime
+from langchain_core.pydantic_v1 import BaseModel, Field, validator
 import inspect
 import json
 import json
 
-class RadiologicExamType(str, Enum):
-class RadiologicExamType(str, Enum):
+class ImageryType(str, Enum):
     CT = 'CT'
     MRI = 'MRI'
     PET = 'PET'
 
 class Gender(str, Enum):
-    male = "male"
-    female = "female"
-    other = "other"
-    not_given = "not_given"
+    male = 'male'
+    female = 'female'
+    other = 'other'
+    not_given = 'not_given'
 
 class RevealingMode(str, Enum):
     '''
