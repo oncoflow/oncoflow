@@ -160,7 +160,7 @@ class RcpFiche():   # pourquoi RCPFiche n'est pas un basemodel ?
         prompt: ClassVar[list] = []
         models: ClassVar[list] = []
         question: ClassVar[str] = ""
-        ressources: ClassVar[list] = []
+        ressources: ClassVar[list] = ["tncdchc.pdf"]
 
     class Patient(default_model):
         '''

@@ -39,7 +39,7 @@ class Llm:
             if embeddings:
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
-                list_models  = [config.llm.embeddings]
+                list_models = [config.llm.embeddings]
                 self.logger = config.set_logger("embeddings", default_context={
                     "llm_type": config.llm.type.lower(),
                     "list_models": list_models},  additional_context=["model"])
@@ -68,9 +68,6 @@ class Llm:
 
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
-        
-        
-        
 
         self.logger.debug("Class llm succesfully init", extra={"model": ""})
 
@@ -88,16 +85,16 @@ class Llm:
                           "model": self.model.keys()})
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
-        base_chain = {"context": context, "format_instructions": RunnablePassthrough(), "question": RunnablePassthrough()}
+        base_chain = {"context": context, "format_instructions": RunnablePassthrough(
+        ), "question": RunnablePassthrough()}
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
         chain = (
-                base_chain
-                | self.default_prompt
+            base_chain
+            | self.default_prompt
         )
-        
-        
+
         for name, model in self.model.items():
             self.chain[name] = (chain | model | parser)
             # print(completion)
@@ -119,12 +116,12 @@ class Llm:
         Returns:
             The answer to the question.
         """
-        
+
         self.logger.debug("Set human prompt : %s", query, extra={
                           "model": self.model.keys()})
         results = {}
         for name, model in self.model.items():
-            
+
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
                 results[name] = self.invoke_chain(query, name, parser=parser)
@@ -133,18 +130,20 @@ class Llm:
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
-                
+
         return results
-    
+
     def invoke_chain(self, query, model_name, parser):
-        max_retry=5
-        curr_retry=0
-        while(curr_retry < max_retry):
+        max_retry = 5
+        curr_retry = 0
+        while (curr_retry < max_retry):
             try:
                 self.logger.debug("Full prompt : %s", str(self.chain[model_name]), extra={
-                            "model": model_name})
-                result = self.chain[model_name].invoke({"format_instructions": parser.get_format_instructions(),"question": query})
-                self.logger.debug("LLM say correct result : %s", result, extra={"model": model_name})
+                    "model": model_name})
+                result = self.chain[model_name].invoke(
+                    {"format_instructions": parser.get_format_instructions(), "question": query})
+                self.logger.debug("LLM say correct result : %s",
+                                  result, extra={"model": model_name})
                 return result
             except OutputParserException as e:
                 self.logger.exception(
@@ -153,4 +152,3 @@ class Llm:
                     "Observation : %s", e.observation, extra={"model": model_name})
                 curr_retry += 1
         return {}
-                

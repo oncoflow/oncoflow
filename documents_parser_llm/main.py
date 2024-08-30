@@ -5,14 +5,11 @@ from optparse import OptionParser
 from pprint import pprint
 
 import environ
-import inspect
 
 import inquirer
 
 from config import AppConfig
 from reader import DocumentReader
-
-from langchain_core.pydantic_v1 import BaseModel
 
 from rcp import RcpFiche
 
@@ -51,11 +48,14 @@ def all_asked(dir, config):
     for f in listdir(dir):
         if isfile(join(dir, f)):
             logger.info(f"Start reading {f} ...")
+            rag = DocumentReader(config, document=f)
             for cl in fiche_rcp.basemodel_list:
                 cl_prompt = fiche_rcp.base_prompt
                 cl_prompt.extend(cl.base_prompt)
-                rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
-                                     prompt=cl_prompt, models=cl.models)
+                
+                rag.set_prompt(prompt=cl_prompt)
+                rag.read_additionnal_document(docs_pdf=cl.ressources)
+
                 logger.info(f"Process {cl.__name__}")
                 logger.info(f"Question : {cl.question}")
                 datas = rag.ask_in_document(query=cl.question,
@@ -63,8 +63,8 @@ def all_asked(dir, config):
                 if datas:
                     # Set first response
                     fiche_rcp.set_datas(cl, datas)
-                del rag
-    pprint(fiche_rcp.__dict__, compact=True)
+            del rag
+    pprint(fiche_rcp.__dict__["datas"], compact=True)
 
 
 if __name__ == "__main__":
