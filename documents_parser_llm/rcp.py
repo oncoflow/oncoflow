@@ -301,6 +301,16 @@ class PatientMDTOncologicForm():
         
         question: ClassVar[str] = "Tell me where is located the primary tumor ?"
         
+    class TumorBiology(default_model):
+        '''
+        Biology of the tumor
+        '''
+        
+        msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
+        
+        
+        question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
+        
     class RadiologicExams(default_model):
         '''
         List of radiological exams
@@ -340,6 +350,17 @@ class PatientMDTOncologicForm():
         question: ClassVar[str] = "Tell me if one or several chemotherapies have already been done for this tumor?"
     
     #  // // // // // //  WORK IN PROGRESS
+
+    # class ClinicalTrial(default_model):
+        
+    #     trial_title: str = Field(description="Title of the trial")
+    #     inclusion_criteria: List[str] = Field(description="List of inclusion criteria")
+    #     non_inclusion_criteria: List[str] = Field(description="List of non-inclusion criteria")
+        
+    #     question: ClassVar[str] = "Tell me the name, inclusion and non-inclusion criteria of this clinical trial ?"
+    
+    
+    
     
 
         
