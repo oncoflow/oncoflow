@@ -2,10 +2,9 @@ from os import listdir
 from os.path import isfile, join
 from optparse import OptionParser
 
-# from pprint import pprint
+from pprint import pprint
 
 import environ
-import inspect
 
 import inquirer
 
@@ -52,21 +51,25 @@ def all_asked(dir, config):
     for f in listdir(dir):
         if isfile(join(dir, f)):
             logger.info(f"Start reading {f} ...")
+            rag = DocumentReader(config, document=f)
             for cl in fiche_rcp.basemodel_list:
                 
                 cl_prompt = fiche_rcp.base_prompt
                 cl_prompt.extend(cl.base_prompt)
                 
-                rag = DocumentReader(config, document=f, docs_pdf=cl.ressources,
-                                     prompt=cl_prompt, models=cl.models)
-                logger.info(f"Processing {cl.__name__}")
+                rag.set_prompt(prompt=cl_prompt)
+                rag.read_additionnal_document(docs_pdf=cl.ressources)
+
+                logger.info(f"Process {cl.__name__}")
                 logger.info(f"Question : {cl.question}")
-                # pprint(rag.ask_in_document(query=cl.question,
-                #        class_type=cl, models=cl.models), compact=True)
-                logger.info("Done : %s", rag.ask_in_document(query=cl.question,
-                       class_type=cl, models=cl.models))
-                del rag
-            logger.info(f"Stop reading {f} ...")
+                datas = rag.ask_in_document(query=cl.question,
+                                            class_type=cl, models=cl.models)
+                if datas:
+                    # Set first response
+                    fiche_rcp.set_datas(cl, datas)
+            del rag
+    pprint(fiche_rcp.__dict__["datas"], compact=True)
+
 
 if __name__ == "__main__":
 

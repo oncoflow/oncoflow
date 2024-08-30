@@ -7,6 +7,11 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
 from langchain.schema.runnable import RunnablePassthrough
+from langchain.retrievers.multi_query import MultiQueryRetriever
+from langchain.output_parsers import RetryOutputParser
+from langchain_core.runnables import RunnableLambda, RunnableParallel
+
+from pydantic.v1 import error_wrappers
 
 import ollama
 
@@ -67,7 +72,10 @@ class Llm:
                 
                 self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
-                list_models  = [config.llm.embeddings]
+                list_models = [config.llm.embeddings]
+                self.logger = config.set_logger("embeddings", default_context={
+                    "llm_type": config.llm.type.lower(),
+                    "list_models": list_models},  additional_context=["model"])
             else:
                 if models is None or not models:
                     list_models = config.llm.models.split(",")
@@ -87,14 +95,12 @@ class Llm:
                         model=model,
                         temperature=config.llm.temp
                     )
+                self.logger = config.set_logger("llm", default_context={
+                    "llm_type": config.llm.type.lower(),
+                    "list_models": list_models},  additional_context=["model"])
 
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
-        
-        
-        self.logger = config.set_logger("llm", default_context={
-            "llm_type": config.llm.type.lower(),
-            "list_models": list_models},  additional_context=["model"])
 
         self.logger.debug("Class llm succesfully init", extra={"model": ""})
 
@@ -114,31 +120,28 @@ class Llm:
                           "model": self.model.keys()})
 
     def create_chain(self, context, additionnal_context=None, parser=JsonOutputParser()):
-        base_chain = {"context": context, "question": RunnablePassthrough()}
-        # print("CREATING CHAIN")
-        # ic(context)
-    
+        base_chain = {"context": context, "format_instructions": RunnablePassthrough(
+        ), "question": RunnablePassthrough()}
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
- 
-                # print("ADDITIONNAL CONTEXT")
-            # ic(base_chain)
+        chain = (
+            base_chain
+            | self.default_prompt
+        )
+
         for name, model in self.model.items():
-            self.chain[name] = (
-                base_chain
-                | self.default_prompt
-                | model
-                | parser
-            )
-            self.logger.debug(
-                "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
-            
-    @timed
-    def timed_invoke_chain(self, name, prompt):
-        return self.chain[name].invoke(prompt.format().content)
-    
-    def invoke_chain(self, query, parser=JsonOutputParser()):
+            self.chain[name] = (chain | model | parser)
+            # print(completion)
+            # retry_parser = RetryOutputParser.from_llm(parser=parser, llm=model)
+            # self.chain[name] = RunnableParallel(
+            #     completion = completion,
+            #     prompt_value = chain
+            # ) | RunnableLambda(lambda x: retry_parser.parse_with_prompt(**x))
+            # self.logger.debug(
+            #     "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
+
+    def invoke_multimodels_chain(self, query, parser=JsonOutputParser()):
         """
         Asks a question about the document and returns the answer.
 
@@ -149,25 +152,38 @@ class Llm:
             The answer to the question.
         """
 
-        prompt = HumanMessagePromptTemplate(
-            prompt=PromptTemplate(
-                template="You have to answer the user question." + "\n {format_instructions}\n question: " + query,
-                input_variables=[],
-                partial_variables={
-                    "format_instructions": parser.get_format_instructions()}
-            )
-        )
-
+        self.logger.debug("Set human prompt : %s", query, extra={
+                          "model": self.model.keys()})
         results = {}
         for name, model in self.model.items():
 
+            self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                results[name] = self.timed_invoke_chain(name, prompt)
-            except OutputParserException as e:
+                results[name] = self.invoke_chain(query, name, parser=parser)
+            except (OutputParserException, error_wrappers.ValidationError) as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
-            self.logger.debug(
-                "Result : %s", results)
+
         return results
+
+    def invoke_chain(self, query, model_name, parser):
+        max_retry = 5
+        curr_retry = 0
+        while (curr_retry < max_retry):
+            try:
+                self.logger.debug("Full prompt : %s", str(self.chain[model_name]), extra={
+                    "model": model_name})
+                result = self.chain[model_name].invoke(
+                    {"format_instructions": parser.get_format_instructions(), "question": query})
+                self.logger.debug("LLM say correct result : %s",
+                                  result, extra={"model": model_name})
+                return result
+            except OutputParserException as e:
+                self.logger.exception(
+                    "llm say : %s", e.llm_output, extra={"model": model_name})
+                self.logger.exception(
+                    "Observation : %s", e.observation, extra={"model": model_name})
+                curr_retry += 1
+        return {}
