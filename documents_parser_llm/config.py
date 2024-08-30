@@ -18,13 +18,13 @@ class AppConfig():
     class Log:
         level = environ.var(
             default="INFO", help="Log level of app")
-        langchain_debug = environ.var(
-            default=True, converter=bool, help="langchain Log level of app")
+        langchaindebug = environ.var(
+            default=False, converter=bool, help="langchain Log level of app")
         type = environ.var(
             default="text", help="Log type (text or json) of app")
 
         @level.validator
-        def _log_level_selctor(self, var, log_level):
+        def _log_level_selector(self, var, log_level):
             if log_level not in logging._levelToName.values():
                 raise ValueError(
                     f"{log_level} not valid, valid choices : {logging._levelToName.values()}")
@@ -124,6 +124,6 @@ class AppConfig():
         ch.setFormatter(formatter)
         logger.addHandler(ch)
         
-        langchain.debug = self.logs.langchain_debug    
+        langchain.debug = self.logs.langchaindebug    
         
         return logger
