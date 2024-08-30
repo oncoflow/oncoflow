@@ -37,11 +37,6 @@ from config import AppConfig
 from llm import Llm
 from databases import VectorialDataBase
 
-
-
-
-
-
 class DocumentReader:
     document = str
     collectionName = "oncoflowDocs"
@@ -81,7 +76,7 @@ class DocumentReader:
             additionnal_prompt=[]
             for doc_pdf in docs_pdf:
                 pdf_dict = {
-                    "vecdb": vectorial_db(self.config , coll_prefix="additional"),
+                    "vecdb": VectorialDataBase(self.config , coll_prefix="additional"),
                     "path": str(self.config.rcp.additional_path) + "/" + doc_pdf,
                     "name": doc_pdf.replace(".", "")
                 }
@@ -106,7 +101,7 @@ class DocumentReader:
         cla = getattr(document_loaders, loader_type)
         return cla(document)
 
-    def read_document(self, vecdb: vectorial_db, document_path: str):
+    def read_document(self, vecdb: VectorialDataBase, document_path: str):
         """
         Reads a document from the specified loader and splits it into chunks.
         Then, adds the chunks to a VectorStore.

@@ -11,6 +11,8 @@ from langchain.retrievers.multi_query import MultiQueryRetriever
 from langchain.output_parsers import RetryOutputParser
 from langchain_core.runnables import RunnableLambda, RunnableParallel
 
+from pydantic.v1 import error_wrappers
+
 import ollama
 
 from config import AppConfig
@@ -158,7 +160,7 @@ class Llm:
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
                 results[name] = self.invoke_chain(query, name, parser=parser)
-            except OutputParserException as e:
+            except (OutputParserException, error_wrappers.ValidationError) as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(

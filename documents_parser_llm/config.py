@@ -13,7 +13,7 @@ class AppConfig():
     """
     Class for reading and configuring application settings from environment variables.
     """
-    
+
     @environ.config
     class Log:
         level = environ.var(
@@ -36,7 +36,7 @@ class AppConfig():
         """
         type = environ.var(
             default="Ollama", help="Type of llm system (ex Ollama)")
-        url = environ.var(default="http://10.8.0.2", help="URL of llm system")
+        url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(default="llama3.1:70b-instruct-q4_0",
                              help="Model of llm system, type all for test all ollama models")
@@ -90,11 +90,11 @@ class AppConfig():
     dbvec = environ.group(DatabasesVectorial)
     rcp = environ.group(RCP)
     logs = environ.group(Log)
-        
-         
-    def set_logger(self, name, default_context = {}, additional_context=None):
-        
-        logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
+
+    def set_logger(self, name, default_context={}, additional_context=None):
+
+        logging.getLogger(
+            "langchain.retrievers.multi_query").setLevel(logging.INFO)
         context = additional_context if additional_context is not None else []
 
         logger = logging.getLogger(name)
@@ -123,7 +123,7 @@ class AppConfig():
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)
         logger.addHandler(ch)
-        
-        langchain.debug = self.logs.langchaindebug    
-        
+
+        langchain.debug = self.logs.langchaindebug
+
         return logger

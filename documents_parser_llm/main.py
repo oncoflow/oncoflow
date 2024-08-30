@@ -2,7 +2,7 @@ from os import listdir
 from os.path import isfile, join
 from optparse import OptionParser
 
-# from pprint import pprint
+from pprint import pprint
 
 import environ
 
