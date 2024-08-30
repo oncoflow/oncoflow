@@ -2,9 +2,12 @@ from enum import Enum, IntEnum
 from typing import List, Optional, ClassVar
 from datetime import date
 from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
+from langchain_core.pydantic_v1 import BaseModel, Field, validator, PastDate
 import inspect
 import json
+import json
 
+class RadiologicExamType(str, Enum):
 class RadiologicExamType(str, Enum):
     CT = 'CT'
     MRI = 'MRI'
@@ -89,6 +92,7 @@ class CancerTypesEnum(str, Enum):
     liver_primary_cancer = 'hepatocellular carcinoma (primary liver cancer)'
     biliary_tract_cancer ='biliary tract cancer'
     pancreatic_cancer = 'pancreatic cancer' 
+    pancreatic_cancer = 'pancreatic cancer' 
     gastric_cancer = 'gastric cancer'
     oesophagus_junction_cancer = 'oesophagus and esophagogastric junction cancer'
     unknown = 'unknown cancer type'
@@ -96,9 +100,43 @@ class CancerTypesEnum(str, Enum):
 class TreatmentEnum(str, Enum):
     
     surgery = "Surgery"
+    surgery = "Surgery"
     chemotherapy = "Chemotherapy"
     radiotherapy = "Radiotherapy"
     immunotherapy = "Immunotherapy"
+    
+    
+class TreatmentStatusEnum(str, Enum):
+    
+    curative = "Curative"
+    palliative = "Palliative"
+    adjuvant = "Adjuvant"
+    neo_adjuvant = "Neo-adjuvant"
+    
+class TreatmentToleranceEnum(str, Enum):
+    
+    good = "Good"
+    medium = "Medium"
+    poor = "Poor"
+    
+class ChemotherapyData(BaseModel):
+    
+    chemotherapy_name: str= Field(description="Name of the chemotherapy") 
+    chemotherapy_start_date: Optional[date] = Field(description="Date of the beginning of the chemotherapy") 
+    chemotherapy_end_date: Optional[date] = Field(description="Date of the end of the chemotherapy")
+    chemotherapy_tolerance: TreatmentToleranceEnum = Field(description="Tolerance of the chemotherapy")
+    
+# class CurativeSurgery(BaseModel):
+    
+#     surgery_date: date = Field(description="Date of the surgery")
+#     surgeon_name: Optional[str] = Field(description="Name of the surgeon")
+#     surgery_name: Optional[str] = Field(description="Name of the surgery")
+    
+class PreviousTreatmentData(BaseModel):
+    
+    treatment_date: PastDate = Field(deacription="Date of the treatment")
+    treatment_name: TreatmentEnum = Field(description="Name of the treatment")
+    treatment_status: TreatmentStatusEnum = Field(description="Status of the treatment on the deasise")
     
     
 class TreatmentStatusEnum(str, Enum):
@@ -172,6 +210,7 @@ class ChildPugh(BaseModel):
             )
     """
     bilirubin: int = Field(description="Bilirubin level in blood")
+    bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
     ascite: bool = Field(description="Presence of ascites")
@@ -185,8 +224,10 @@ class RadiologicalExamination(BaseModel):
     '''
     exam_name: str = Field(description="The name of the radiological exam")
     exam_date: date = Field(description="The date when the radiological examination was performed.") 
+    exam_date: date = Field(description="The date when the radiological examination was performed.") 
     exam_type: RadiologicExamType = Field(description="The type of radiological examination performed (e.g., CT, MRI, X-ray).")
     exam_result: Optional[str] = Field(description='Result of the radiological exam')
+
 
 
 class HistologicAnalysis(BaseModel):
@@ -205,6 +246,7 @@ class HistologicAnalysis(BaseModel):
                 result="Result of a detailed histological analysis"
             )
     '''
+    histology_date: date = Field(description="Date of biopsy or resection")
     histology_date: date = Field(description="Date of biopsy or resection")
     contributive: bool = Field(description="Importance of results (conclusive or not)")
     result: str = Field(description='Complete result of the histological analysis')
@@ -232,13 +274,17 @@ class RadiologicalExaminations(BaseModel):
     mri_studies: list[RadiologicalExamination] = Field("The patient's magnetic resonance imaging (MRI) studies")
     pet_scans: list[RadiologicalExamination] = Field("The patient's positron emission tomography (PET) scans")
     
+
+    
 class PatientMDTOncologicForm():  
     '''
+    This class contains all patient and oncological disease information for the report.
     This class contains all patient and oncological disease information for the report.
     '''
 
     base_prompt = [
         ("system",
+         "You are a medical assistant, you have to answer questions based on this patient record: {context}."),
          "You are a medical assistant, you have to answer questions based on this patient record: {context}."),
     ]
 
@@ -270,7 +316,19 @@ class PatientMDTOncologicForm():
         ressources: ClassVar[list] = []
         
      #  // // // // // Tested and Working classes // // // // // 
+     #  // // // // // Tested and Working classes // // // // // 
 
+    class PatientAdministrative(default_model):
+        '''
+        Patient administrative informations
+        '''
+        first_name: str = Field(description="First name of the patient")
+        last_name: str = Field(description="Last name of the patient")
+        age: int = Field(description="Age of the patient")
+        date_birth: Optional[int] = Field(description="Date of birth of the patient")
+        gender: Gender = Field(description="Gender of the patient")
+        
+        question: ClassVar[str] = "Tell me the first name, Last name, age, date of birth and gender of the patient."
     class PatientAdministrative(default_model):
         '''
         Patient administrative informations
@@ -287,7 +345,14 @@ class PatientMDTOncologicForm():
         '''
         Patient WHO performance status
         '''
+    class PatientPerformanceStatus(default_model):
+        '''
+        Patient WHO performance status
+        '''
 
+        performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
+        
+        question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
         performance_status: WHOPerformanceStatus = Field(description="OMS performance status of the patient, from 0 to 4")
         
         question: ClassVar[str] = "Tell me the WHO performance status of the patient (0-4)."
@@ -297,7 +362,9 @@ class PatientMDTOncologicForm():
         Location of the tumor
         '''
         
+        
         tumor_location: PrimaryOrganEnum = Field(description="Organ where the primary tumor is present")
+        
         
         question: ClassVar[str] = "Tell me where is located the primary tumor ?"
         
@@ -382,7 +449,13 @@ class PatientMDTOncologicForm():
     # class MetastaticState(default_model):
     #     """
     #     Tumor metastatic state.
+    # class MetastaticState(default_model):
+    #     """
+    #     Tumor metastatic state.
 
+    #     Attributes:
+    #         metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
+    #         metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
     #     Attributes:
     #         metastatic_disease (bool): Tumor metastatic state (True if present, False otherwise).
     #         metastatic_location (Optional[list[MetastaticLocationsEnum]]): Organs affected by metastasis.
@@ -395,7 +468,24 @@ class PatientMDTOncologicForm():
     #     """
     #     metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
     #     metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
+    #     Examples:
+    #         >>> metastatic_state = MetastaticState(
+    #                 metastatic_disease=True,
+    #                 metastatic_location=[MetastaticLocationsEnum.BONE, MetastaticLocationsEnum.LIVER]
+    #             )
+    #     """
+    #     metastatic_disease: bool = Field(description="Tumor metastatic state (True if present, False otherwise)")
+    #     metastatic_location: Optional[list[MetastaticLocationsEnum]] = Field(description="Organs affected by metastasis")
 
+    #     question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
+        
+    # class RadiologicExams(default_model):
+        
+    #     exams_list: Optional[list[RadiologicalExamination]] = Field(description="List of radiological exams")
+        
+    #     question: ClassVar[str] = "Give me a list of the radiological exams with date, name and type "
+        
+    
     #     question: ClassVar[str] = "Tell me if the tumor is metastatic or not, and which organs are involved."
         
     # class RadiologicExams(default_model):
