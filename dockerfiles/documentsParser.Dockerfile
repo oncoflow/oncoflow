@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim 
 
 LABEL LABEL org.opencontainers.image.source https://github.com/oncoflow/oncoflow
 
@@ -16,7 +16,8 @@ COPY documents_parser_llm/ app/
 
 WORKDIR app
 
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 ENTRYPOINT [ "python" ]
 
