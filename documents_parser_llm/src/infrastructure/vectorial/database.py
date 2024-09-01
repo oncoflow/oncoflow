@@ -5,8 +5,8 @@ from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
 
-from config import AppConfig
-from llm import Llm
+from src.application.config import AppConfig
+from src.application.llm import Llm
 
 # Define a class for working with vectorial databases.
 
