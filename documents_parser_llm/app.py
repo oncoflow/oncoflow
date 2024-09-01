@@ -5,16 +5,13 @@ from optparse import OptionParser
 from pprint import pprint
 
 import environ
-
 import inquirer
 
-from config import AppConfig
-from reader import DocumentReader
-from rcp import PatientMDTOncologicForm
+from pymupdf import FileDataError
 
-
-from langchain_core.pydantic_v1 import BaseModel
-
+from src.application.config import AppConfig
+from src.application.reader import DocumentReader
+from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 
 
 def manual_prompt(dir, config):
@@ -51,23 +48,26 @@ def all_asked(dir, config):
     for f in listdir(dir):
         if isfile(join(dir, f)):
             logger.info(f"Start reading {f} ...")
-            rag = DocumentReader(config, document=f)
-            for cl in fiche_rcp.basemodel_list:
-                
-                cl_prompt = fiche_rcp.base_prompt.copy()
-                cl_prompt.extend(cl.base_prompt)
-                rag.set_prompt(prompt=cl_prompt)
-                rag.read_additionnal_document(docs_pdf=cl.ressources)
+            try:
+                rag = DocumentReader(config, document=f)
+                for cl in fiche_rcp.basemodel_list:
+                    cl_prompt = fiche_rcp.base_prompt.copy()
+                    cl_prompt.extend(cl.base_prompt)
+                    rag.set_prompt(prompt=cl_prompt)
+                    rag.read_additionnal_document(docs_pdf=cl.ressources)
 
-                logger.info(f"Process {cl.__name__}")
-                logger.info(f"Question : {cl.question}")
-                datas = rag.ask_in_document(query=cl.question,
-                                            class_type=cl, models=cl.models)
-                if datas:
-                    # Set first response
-                    fiche_rcp.set_datas(cl, datas)
-            del rag
-    pprint(fiche_rcp.__dict__["datas"], compact=True)
+                    logger.info(f"Process {cl.__name__}")
+                    logger.info(f"Question : {cl.question}")
+                    datas = rag.ask_in_document(query=cl.question,
+                                                class_type=cl, models=cl.models)
+                    if datas:
+                        # Set first response
+                        fiche_rcp.set_datas(cl, datas)
+                del rag
+            except FileDataError:
+                logger.debug("File %s is not a pdf, pass", f)
+            
+        pprint(fiche_rcp.get_datas(), compact=True)
 
 
 if __name__ == "__main__":

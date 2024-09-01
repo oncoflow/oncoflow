@@ -30,12 +30,10 @@ from langchain_community import document_loaders
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
-# import pymupdf4llm
-# from langchain.text_splitter import MarkdownTextSplitter
 
-from config import AppConfig
-from llm import Llm
-from databases import VectorialDataBase
+from src.application.config import AppConfig
+from src.application.llm import Llm
+from src.infrastructure.vectorial.database import VectorialDataBase
 
 class DocumentReader:
     document = str

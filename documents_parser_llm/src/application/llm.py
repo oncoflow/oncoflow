@@ -2,22 +2,19 @@
 from langchain_community.chat_models.ollama import ChatOllama
 from langchain_community.embeddings import OllamaEmbeddings
 
-from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
 from langchain.schema.runnable import RunnablePassthrough
-from langchain.retrievers.multi_query import MultiQueryRetriever
-from langchain.output_parsers import RetryOutputParser
-from langchain_core.runnables import RunnableLambda, RunnableParallel
 
 from pydantic.v1 import error_wrappers
 
 import ollama
 
-from config import AppConfig
+from src.application.config import AppConfig
 
-import os, time
+import time
 from functools import wraps
 
 
@@ -159,14 +156,14 @@ class Llm:
 
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                results[name] = self.invoke_chain(query, name, parser=parser)
+                results = self.invoke_chain(query, name, parser=parser)
+                return results
             except (OutputParserException, error_wrappers.ValidationError) as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
-
-        return results
+        return {}
 
     def invoke_chain(self, query, model_name, parser):
         max_retry = 5
@@ -186,4 +183,6 @@ class Llm:
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": model_name})
                 curr_retry += 1
+                if curr_retry >= max_retry:
+                    raise
         return {}
