@@ -159,14 +159,14 @@ class Llm:
 
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                results[name] = self.invoke_chain(query, name, parser=parser)
+                results = self.invoke_chain(query, name, parser=parser)
+                return results
             except (OutputParserException, error_wrappers.ValidationError) as e:
                 self.logger.exception(
                     "llm say : %s", e.llm_output, extra={"model": name})
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": name})
-
-        return results
+        return {}
 
     def invoke_chain(self, query, model_name, parser):
         max_retry = 5
@@ -186,4 +186,6 @@ class Llm:
                 self.logger.exception(
                     "Observation : %s", e.observation, extra={"model": model_name})
                 curr_retry += 1
+                if curr_retry >= max_retry:
+                    raise
         return {}

@@ -53,7 +53,6 @@ def all_asked(dir, config):
             logger.info(f"Start reading {f} ...")
             rag = DocumentReader(config, document=f)
             for cl in fiche_rcp.basemodel_list:
-                
                 cl_prompt = fiche_rcp.base_prompt.copy()
                 cl_prompt.extend(cl.base_prompt)
                 rag.set_prompt(prompt=cl_prompt)
