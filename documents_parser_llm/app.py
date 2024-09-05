@@ -1,6 +1,6 @@
 from os import listdir
 from os.path import isfile, join
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 from pprint import pprint
 
@@ -75,12 +75,12 @@ def all_asked(dir, config):
 
 if __name__ == "__main__":
 
-    parser = OptionParser()
-    parser.add_option("-e", "--env-list", dest="envlist",
+    parser = ArgumentParser()
+    parser.add_argument("-e", "--env-list", dest="envlist",
                       action="store_true", default=False)
-    (options, args) = parser.parse_args()
+    args = parser.parse_args()
 
-    if options.envlist:
+    if args.envlist:
         print("List of environment Variables :")
         print(environ.generate_help(AppConfig, display_defaults=True))
     else:
