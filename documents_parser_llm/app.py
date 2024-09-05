@@ -8,6 +8,9 @@ import environ
 import inquirer
 
 from pymupdf import FileDataError
+from pdf2image.exceptions import PDFPageCountError
+from pypdf.errors import PdfStreamError
+from pdfminer.pdfparser import PDFSyntaxError
 
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
@@ -64,7 +67,7 @@ def all_asked(dir, config):
                         # Set first response
                         fiche_rcp.set_datas(cl, datas)
                 del rag
-            except FileDataError:
+            except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
                 logger.debug("File %s is not a pdf, pass", f)
             
         pprint(fiche_rcp.get_datas(), compact=True)

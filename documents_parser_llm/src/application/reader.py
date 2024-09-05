@@ -28,6 +28,8 @@ print(answer)
 
 from langchain_community import document_loaders
 
+from langchain_experimental.text_splitter import SemanticChunker
+
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 
@@ -59,6 +61,8 @@ class DocumentReader:
         self.default_loader = config.rcp.doc_type
         
         self.logger.info("Class reader succesfully init, Start reading documents")
+        self.embeddings = Llm(config, embeddings=True).embeddings
+        #self.text_splitter = SemanticChunker(self.embeddings)
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap)
         self.read_document(self.vecdb, self.document_path)
