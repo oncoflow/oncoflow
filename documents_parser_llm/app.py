@@ -1,6 +1,6 @@
 from os import listdir
 from os.path import isfile, join
-from optparse import OptionParser
+from argparse import ArgumentParser
 
 from pprint import pprint
 
@@ -8,6 +8,9 @@ import environ
 import inquirer
 
 from pymupdf import FileDataError
+from pdf2image.exceptions import PDFPageCountError
+from pypdf.errors import PdfStreamError
+from pdfminer.pdfparser import PDFSyntaxError
 
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
@@ -64,7 +67,7 @@ def all_asked(dir, config):
                         # Set first response
                         fiche_rcp.set_datas(cl, datas)
                 del rag
-            except FileDataError:
+            except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
                 logger.debug("File %s is not a pdf, pass", f)
             
         pprint(fiche_rcp.get_datas(), compact=True)
@@ -72,12 +75,12 @@ def all_asked(dir, config):
 
 if __name__ == "__main__":
 
-    parser = OptionParser()
-    parser.add_option("-e", "--env-list", dest="envlist",
+    parser = ArgumentParser()
+    parser.add_argument("-e", "--env-list", dest="envlist",
                       action="store_true", default=False)
-    (options, args) = parser.parse_args()
+    args = parser.parse_args()
 
-    if options.envlist:
+    if args.envlist:
         print("List of environment Variables :")
         print(environ.generate_help(AppConfig, display_defaults=True))
     else:

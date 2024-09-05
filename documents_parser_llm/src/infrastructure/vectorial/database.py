@@ -5,6 +5,7 @@ from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
 
+
 from src.application.config import AppConfig
 from src.application.llm import Llm
 
@@ -64,19 +65,20 @@ class VectorialDataBase:
                 # Delete and recreate the collection based on the configuration.
                 try:
                     self.logger.debug("Flushing collection")
-                    self.client.get_collection(self.coll_name)
+                    self.client.get_collection(self.coll_name, embedding_function=self.embeddings)
                     self.client.delete_collection(self.coll_name)
                     self.client.clear_system_cache()
                 except ValueError:
                     pass
             self.collection = self.client.get_or_create_collection(
-                self.coll_name)
+                self.coll_name,embedding_function=self.embeddings)
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
             self.clientdb = Chroma(
                 client=self.client,
                 collection_name=self.coll_name,
                 embedding_function=self.embeddings,
             )
+            self.client.get_collection(self.coll_name, embedding_function=self.embeddings)
 
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """

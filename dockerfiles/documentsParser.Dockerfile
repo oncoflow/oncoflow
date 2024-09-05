@@ -6,7 +6,9 @@ RUN mkdir app/ && useradd -m python && \
     mkdir -p app/chroma && chown python: app/chroma && \
     apt-get update && \
     apt-get install -y \
-        build-essential &&\
+        build-essential \
+        libmagic-dev poppler-utils tesseract-ocr qpdf \
+        ffmpeg libsm6 libxext6 && \
     rm -rf /var/lib/apt/lists/*
 
 USER python

@@ -45,6 +45,14 @@ def timed(func):
     
     return wrapper
 
+
+class embedding(OllamaEmbeddings):
+    def _embed_documents(self, texts):
+        return super().embed_documents(texts)
+    def __call__(self, input):
+        return self._embed_documents(input)
+    
+
 class Llm:
     """
     A class to handle interacting with language models.
@@ -67,7 +75,7 @@ class Llm:
         if config.llm.type.lower() == "ollama":
             if embeddings:
                 
-                self.embeddings = OllamaEmbeddings(base_url=f"{config.llm.url}:{config.llm.port}",
+                self.embeddings = embedding(base_url=f"{config.llm.url}:{config.llm.port}",
                                                    model=config.llm.embeddings)
                 list_models = [config.llm.embeddings]
                 self.logger = config.set_logger("embeddings", default_context={
