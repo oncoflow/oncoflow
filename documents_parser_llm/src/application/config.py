@@ -1,3 +1,21 @@
+"""
+Module containing configuration classes and logger setup for application.
+
+This module provides configuration classes and a function to set up logging based on environment variables.
+It supports configuring logging levels, types, and context; LLM system settings such as type, URL, port,
+models, temperature, and embeddings; vectorial database settings like type, collection name, client type,
+host, and port; RCP pipeline configuration including document paths, types, chunk sizes, overlaps, and manual prompting;
+and sets up a logger for the given name with configurable levels, types, default context, and additional context.
+
+Classes:
+    AppConfig: A class to read and configure application settings from environment variables.
+        It contains nested classes Log, Configllm, DatabasesVectorial, and RCP for configuring respective settings.
+
+Functions:
+    set_logger(name, default_context={}, additional_context=None): Sets up a logger with the given name based on configuration
+        settings. It accepts optional `default_context` and `additional_context` parameters to customize logging context.
+"""
+
 import os
 import logging
 import json
@@ -16,6 +34,18 @@ class AppConfig:
 
     @environ.config
     class Log:
+        """
+        Configuration class for logging settings.
+
+        Attributes:
+            level (str): The log level of the application. Defaults to "INFO".
+                         Valid choices are any value in logging._levelToName.values().
+
+            langchaindebug (bool): Whether to enable langchain debugging mode or not. Defaults to False.
+                                   This setting controls langchain's Log level, independent of APP.Log.level.
+
+            type (str): The log type of the application. Defaults to "text". Accepted values are "text" and "json".
+        """
         level = environ.var(default="INFO", help="Log level of app")
         langchaindebug = environ.var(
             default=False, converter=bool, help="langchain Log level of app"

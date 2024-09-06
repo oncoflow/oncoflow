@@ -45,8 +45,13 @@ def timed(func):
 
     return wrapper
 
-
 class Embedding(OllamaEmbeddings):
+    """
+    A subclass of OllamaEmbeddings that defines methods for embedding documents.
+
+    This class is a thin wrapper around the Ollama embeddings functionality,
+    providing convenience methods and custom docstrings.
+    """
     def _embed_documents(self, texts):
         return super().embed_documents(texts)
 
@@ -145,6 +150,20 @@ class Llm:
     def create_chain(
         self, context, additionnal_context=None, parser=JsonOutputParser()
     ):
+        """
+        Creates a chain for the language model using the provided context and additional context.
+
+        This method initializes the base chain with the given context, format instructions,
+        and question. If additional context is provided, it adds retrievers to the chain.
+        The default prompt is then merged into the chain, followed by the language model
+        and output parser for each supported model.
+
+        Args:
+            context: The main context to use in the chain.
+            additionnal_context (optional): A list of dictionaries containing additional contexts
+                with their respective names and retrievers. Defaults to None.
+            parser (optional): The output parser to use. Defaults to JsonOutputParser().
+        """
         base_chain = {
             "context": context,
             "format_instructions": RunnablePassthrough(),
@@ -197,6 +216,21 @@ class Llm:
         return {}
 
     def invoke_chain(self, query, model_name, parser):
+        """
+        Invokes the chain for the given model with the provided question and returns the result.
+
+        This method attempts to invoke the chain for the specified model with the given question.
+        If an `OutputParserException` is raised, it retries up to `max_retry` times. If all
+        retries fail, it raises the exception.
+
+        Args:
+            query: The question to ask about the document.
+            model_name: The name of the model to use for the chain invocation.
+            parser (optional): The output parser to use during the invocation. Defaults to the provided parser in the create_chain method.
+
+        Returns:
+            The result of invoking the chain with the given question and model.
+        """
         max_retry = 5
         curr_retry = 0
         while curr_retry < max_retry:

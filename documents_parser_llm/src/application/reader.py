@@ -39,6 +39,17 @@ from src.infrastructure.vectorial.database import VectorialDataBase
 
 
 class DocumentReader:
+    """
+    A class that reads documents and enables querying them using an LLM.
+
+    Attributes:
+        document_path (str): The path to the document.
+        llm (Llm): An instance of the Llm class for performing language tasks.
+        vecdb (VectorialDataBase): An instance of VectorialDataBase for vector storage and retrieval.
+        default_loader (callable): The default loader type for documents.
+        logger (Logger): A logger for tracking progress and errors.
+    """
+
     document = str
     collectionName = "oncoflowDocs"
     retriever = None
@@ -46,9 +57,12 @@ class DocumentReader:
     docs_pdf = {}
 
     def __init__(
-        self, config=AppConfig, document=str, docs_pdf=None, prompt=[], models=None
+        self, config=AppConfig, document=str, docs_pdf=None, prompt=None, models=None
     ):
         self.config = config
+        if prompt is None:
+            prompt = []
+
         self.document_path = str(config.rcp.path) + "/" + document
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
@@ -76,37 +90,46 @@ class DocumentReader:
         self.read_document(self.vecdb, self.document_path)
         self.read_additionnal_document(docs_pdf)
 
-    def set_prompt(self, prompt=[]):
+    def set_prompt(self, prompt):
+        """
+        Set the default prompt for the DocumentReader instance.
+
+        Args:
+            prompt (str or list of str): The default prompt(s) to use when querying documents.
+                If a single string is provided, it will be used as-is. If a list of strings
+                is provided, each prompt will be appended to the list of default prompts.
+
+        Raises:
+            TypeError: If `prompt` is not a string or a list of strings.
+        """
+        if isinstance(prompt, str):
+            prompt = [prompt]
+        elif not isinstance(prompt, list):
+            raise TypeError("Prompt must be a string or a list of strings")
         self.default_prompt = prompt
         self.llm.make_default_prompt(self.default_prompt)
 
     def read_additionnal_document(self, docs_pdf=None):
-        self.docs_pdf = {}
+        """
+        Reads additional documents if provided and updates the default prompt accordingly.
+
+        Args:
+            docs_pdf (dict or None): A dictionary containing information about additional PDFs to read.
+                If None, no additional documents are read, and the default prompt is used.
+        """
         if docs_pdf is not None:
             additionnal_prompt = []
             for doc_pdf in docs_pdf:
                 pdf_dict = {
                     "vecdb": VectorialDataBase(self.config, coll_prefix="additional"),
-                    "path": str(self.config.rcp.additional_path) + "/" + doc_pdf,
+                    "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
                     "name": doc_pdf.replace(".", ""),
                 }
-                self.docs_pdf.update({doc_pdf: pdf_dict})
-                additionnal_prompt.extend(
-                    [
-                        (
-                            "system",
-                            "Apprend les éléments de ce document de référence : {"
-                            + pdf_dict["name"]
-                            + "}",
-                        )
-                    ]
-                )
-
-                self.logger.debug("Start reading ressource %s", doc_pdf)
+                self.docs_pdf[doc_pdf] = pdf_dict
+                additionnal_prompt.append(("system", f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}"))
+                self.logger.debug(f"Start reading ressource {doc_pdf}")
                 self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
-
-            additionnal_prompt.extend(self.default_prompt)
-            self.llm.make_default_prompt(additionnal_prompt)
+            self.llm.make_default_prompt(additionnal_prompt + self.default_prompt)
         else:
             self.logger.debug("No additionnal ressources, return to default prompt")
             self.llm.make_default_prompt(self.default_prompt)
