@@ -5,10 +5,11 @@ from typing import List, Optional, ClassVar
 
 from langchain_core.pydantic_v1 import BaseModel, Field, PastDate
 
+
 class RadiologicExamType(str, Enum):
-    CT = 'CT'
-    MRI = 'MRI'
-    PET = 'PET'
+    CT = "CT"
+    MRI = "MRI"
+    PET = "PET"
 
 
 class Gender(str, Enum):
@@ -19,26 +20,28 @@ class Gender(str, Enum):
 
 
 class RevealingMode(str, Enum):
-    '''
-    This class lists the ways in which the tumor can be revealed 
-    '''
-    symptoms = 'symptoms'
-    incidental_radiologic = 'incidental radiologic finding'
-    incidental_biologic = 'incidental biologic finding'
-    follow_up = 'follow up'
-    unknown = 'unknown'
+    """
+    This class lists the ways in which the tumor can be revealed
+    """
+
+    symptoms = "symptoms"
+    incidental_radiologic = "incidental radiologic finding"
+    incidental_biologic = "incidental biologic finding"
+    follow_up = "follow up"
+    unknown = "unknown"
 
 
 class MetastaticLocationsEnum(str, Enum):
-    '''
+    """
     This class lists possible metastatic sites
-    '''
-    liver = 'liver'
-    lung = 'lung'
-    peritoneal = 'peritoneal'
-    bone = 'bone'
-    brain = 'brain'
-    other = 'other'
+    """
+
+    liver = "liver"
+    lung = "lung"
+    peritoneal = "peritoneal"
+    bone = "bone"
+    brain = "brain"
+    other = "other"
 
 
 class WHOPerformanceStatus(int, Enum):
@@ -55,13 +58,13 @@ class WHOPerformanceStatus(int, Enum):
             cls._1: "Limitation in strenuous activities, but able to do light work or other activities",
             cls._2: "Considerable limitation in activities; some assistance occasionally needed",
             cls._3: "Severe limitation in activities; frequent assistance required",
-            cls._4: "Complete limitation of activities; unable to perform any activity"
+            cls._4: "Complete limitation of activities; unable to perform any activity",
         }
 
 
 class PrimaryOrganEnum(str, Enum):
 
-    pancreas = 'Pancreas'
+    pancreas = "Pancreas"
     colon = "Colon "
     liver = "Liver"
     stomach = "Stomach"
@@ -74,29 +77,29 @@ class PrimaryOrganEnum(str, Enum):
 
 class TNCDCancerTypesEnum(str, Enum):
 
-    ampulloma = 'tumor of the ampulla of Vater'
-    localized_colon_cancer = 'localized colon cancer, without distant metastasis'
-    metastatic_colorectal = 'metastatic colorectal cancer'
-    rectum = 'rectal cancer'
-    anal_canal = 'anal canal cancer'
-    liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
-    biliary_tract = 'biliary tract cancer'
-    pancreas = 'pancreatic cancer'
+    ampulloma = "tumor of the ampulla of Vater"
+    localized_colon_cancer = "localized colon cancer, without distant metastasis"
+    metastatic_colorectal = "metastatic colorectal cancer"
+    rectum = "rectal cancer"
+    anal_canal = "anal canal cancer"
+    liverhcc = "hepatocellular carcinoma (primary liver cancer)"
+    biliary_tract = "biliary tract cancer"
+    pancreas = "pancreatic cancer"
 
-    gastric = 'gastric cancer'
-    oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
-    unknown = 'unknown cancer type'
+    gastric = "gastric cancer"
+    oesophagus_junction = "oesophagus and esophagogastric junction cancer"
+    unknown = "unknown cancer type"
 
 
 class CancerTypesEnum(str, Enum):
 
-    colorectal_cancer = 'rectum and colon primitive cancer'
-    liver_primary_cancer = 'hepatocellular carcinoma (primary liver cancer)'
-    biliary_tract_cancer = 'biliary tract cancer'
-    pancreatic_cancer = 'pancreatic cancer'
-    gastric_cancer = 'gastric cancer'
-    oesophagus_junction_cancer = 'oesophagus and esophagogastric junction cancer'
-    unknown = 'unknown cancer type'
+    colorectal_cancer = "rectum and colon primitive cancer"
+    liver_primary_cancer = "hepatocellular carcinoma (primary liver cancer)"
+    biliary_tract_cancer = "biliary tract cancer"
+    pancreatic_cancer = "pancreatic cancer"
+    gastric_cancer = "gastric cancer"
+    oesophagus_junction_cancer = "oesophagus and esophagogastric junction cancer"
+    unknown = "unknown cancer type"
 
 
 class TreatmentEnum(str, Enum):
@@ -125,11 +128,15 @@ class ChemotherapyData(BaseModel):
 
     chemotherapy_name: str = Field(description="Name of the chemotherapy")
     chemotherapy_start_date: Optional[date] = Field(
-        description="Date of the beginning of the chemotherapy")
+        description="Date of the beginning of the chemotherapy"
+    )
     chemotherapy_end_date: Optional[date] = Field(
-        description="Date of the end of the chemotherapy")
+        description="Date of the end of the chemotherapy"
+    )
     chemotherapy_tolerance: TreatmentToleranceEnum = Field(
-        description="Tolerance of the chemotherapy")
+        description="Tolerance of the chemotherapy"
+    )
+
 
 # class CurativeSurgery(BaseModel):
 
@@ -143,7 +150,8 @@ class PreviousTreatmentData(BaseModel):
     treatment_date: PastDate = Field(deacription="Date of the treatment")
     treatment_name: TreatmentEnum = Field(description="Name of the treatment")
     treatment_status: TreatmentStatusEnum = Field(
-        description="Status of the treatment on the deasise")
+        description="Status of the treatment on the deasise"
+    )
 
 
 # class CurativeSurgery(BaseModel):
@@ -154,23 +162,23 @@ class PreviousTreatmentData(BaseModel):
 
 
 class PancreaticTumorEnum(str, Enum):
-    adenocarcinoma = 'adenocarcinoma'
-    neuroendocrin = 'neuroendocrine tumor'
-    unknown = 'unknow'
+    adenocarcinoma = "adenocarcinoma"
+    neuroendocrin = "neuroendocrine tumor"
+    unknown = "unknow"
 
 
 class PancreaticSymptomsEnum(str, Enum):
-    pain = 'pain'
-    jaundice = 'jaundice'
-    mass = 'mass'
-    weight_loss = 'weight loss'
+    pain = "pain"
+    jaundice = "jaundice"
+    mass = "mass"
+    weight_loss = "weight loss"
 
 
 class LiverSymptomsEnum(str, Enum):
-    ascite = 'ascite'
-    jaundice = 'jaundice'
-    digestive_bleeding = 'digestive bleeding'
-    encephalopathy = 'encephalopathy'
+    ascite = "ascite"
+    jaundice = "jaundice"
+    digestive_bleeding = "digestive bleeding"
+    encephalopathy = "encephalopathy"
 
 
 class ChildPugh(BaseModel):
@@ -193,6 +201,7 @@ class ChildPugh(BaseModel):
                 encephalopathie=False
             )
     """
+
     bilirubin: int = Field(description="Bilirubin level in blood")
     bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
@@ -204,22 +213,25 @@ class ChildPugh(BaseModel):
 
 
 class RadiologicalExamination(BaseModel):
-    '''
+    """
     This class contains all possible informations about one imagery exam
-    '''
+    """
+
     exam_name: str = Field(description="The name of the radiological exam")
     exam_date: date = Field(
-        description="The date when the radiological examination was performed.")
+        description="The date when the radiological examination was performed."
+    )
     exam_date: date = Field(
-        description="The date when the radiological examination was performed.")
+        description="The date when the radiological examination was performed."
+    )
     exam_type: RadiologicExamType = Field(
-        description="The type of radiological examination performed (e.g., CT, MRI, X-ray).")
-    exam_result: Optional[str] = Field(
-        description='Result of the radiological exam')
+        description="The type of radiological examination performed (e.g., CT, MRI, X-ray)."
+    )
+    exam_result: Optional[str] = Field(description="Result of the radiological exam")
 
 
 class HistologicAnalysis(BaseModel):
-    '''
+    """
     This class contains all informations related to a histological analysis.
 
     Attributes:
@@ -233,12 +245,11 @@ class HistologicAnalysis(BaseModel):
                 contributive=True,
                 result="Result of a detailed histological analysis"
             )
-    '''
+    """
+
     histology_date: date = Field(description="Date of biopsy or resection")
-    contributive: bool = Field(
-        description="Importance of results (conclusive or not)")
-    result: str = Field(
-        description='Complete result of the histological analysis')
+    contributive: bool = Field(description="Importance of results (conclusive or not)")
+    result: str = Field(description="Complete result of the histological analysis")
 
 
 class RadiologicalExaminations(BaseModel):
@@ -259,11 +270,16 @@ class RadiologicalExaminations(BaseModel):
                 pet_scans=[RadiologicalExamination(...)]
             )
     """
+
     exams_all: list[RadiologicalExamination] = Field(
-        "All of the patient's radiology studies")
+        "All of the patient's radiology studies"
+    )
     ct_scans: list[RadiologicalExamination] = Field(
-        "The patient's computed tomography (CT) scans")
+        "The patient's computed tomography (CT) scans"
+    )
     mri_studies: list[RadiologicalExamination] = Field(
-        "The patient's magnetic resonance imaging (MRI) studies")
+        "The patient's magnetic resonance imaging (MRI) studies"
+    )
     pet_scans: list[RadiologicalExamination] = Field(
-        "The patient's positron emission tomography (PET) scans")
+        "The patient's positron emission tomography (PET) scans"
+    )
