@@ -1,7 +1,10 @@
 venv
 venv*
+.venv
 __pycache__
+chroma
 chromadb
 */__pycache__*
 */chroma
 documents_parser_llm/rcp
+
