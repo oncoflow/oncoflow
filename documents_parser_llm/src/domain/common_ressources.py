@@ -17,6 +17,16 @@ class Gender(str, Enum):
     female = "female"
     other = "other"
     not_given = "not_given"
+    
+class LabTestEnum(str, Enum):
+    bilirubin = "bilirubin"
+    ca19_9 = "Ca19-9"
+    ace = "ACE"
+    
+class LabTest(BaseModel):
+    lab_type: LabTestEnum = Field(description="Type of laboratory test")
+    value: float
+    date: Optional[PastDate] = Field(description="Date of the lab test")
 
 
 class RevealingMode(str, Enum):
@@ -77,18 +87,17 @@ class PrimaryOrganEnum(str, Enum):
 
 class TNCDCancerTypesEnum(str, Enum):
 
-    ampulloma = "tumor of the ampulla of Vater"
-    localized_colon_cancer = "localized colon cancer, without distant metastasis"
-    metastatic_colorectal = "metastatic colorectal cancer"
-    rectum = "rectal cancer"
-    anal_canal = "anal canal cancer"
-    liverhcc = "hepatocellular carcinoma (primary liver cancer)"
-    biliary_tract = "biliary tract cancer"
-    pancreas = "pancreatic cancer"
-
-    gastric = "gastric cancer"
-    oesophagus_junction = "oesophagus and esophagogastric junction cancer"
-    unknown = "unknown cancer type"
+    ampulloma = 'tumor of the ampulla of Vater'
+    localized_colon_cancer = 'localized colon cancer, without distant metastasis'
+    metastatic_colorectal = 'metastatic colorectal cancer'
+    rectum = 'rectal cancer'
+    anal_canal = 'anal canal cancer'
+    liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
+    biliary_tract = 'biliary tract cancer'
+    pancreas = 'pancreatic cancer'
+    gastric = 'gastric cancer'
+    oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
+    unknown = 'unknown cancer type'
 
 
 class CancerTypesEnum(str, Enum):
@@ -122,6 +131,7 @@ class TreatmentToleranceEnum(str, Enum):
     good = "Good"
     medium = "Medium"
     poor = "Poor"
+    not_given = "Not given"
 
 
 class ChemotherapyData(BaseModel):
@@ -201,8 +211,7 @@ class ChildPugh(BaseModel):
                 encephalopathie=False
             )
     """
-
-    bilirubin: int = Field(description="Bilirubin level in blood")
+ 
     bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
@@ -221,15 +230,17 @@ class RadiologicalExamination(BaseModel):
     exam_date: date = Field(
         description="The date when the radiological examination was performed."
     )
-    exam_date: date = Field(
-        description="The date when the radiological examination was performed."
-    )
     exam_type: RadiologicExamType = Field(
         description="The type of radiological examination performed (e.g., CT, MRI, X-ray)."
     )
     exam_result: Optional[str] = Field(description="Result of the radiological exam")
 
-
+class HistologicStateEnum(str,Enum):
+    
+    suspected = 'Suspected'
+    histologicaly_proven = 'Histologicaly proven'
+    unknown = 'Unknown'
+    
 class HistologicAnalysis(BaseModel):
     """
     This class contains all informations related to a histological analysis.

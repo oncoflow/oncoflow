@@ -68,17 +68,15 @@ class AppConfig:
         type = environ.var(default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
-        models = environ.var(
-            default="llama3.1:70b-instruct-q4_0",
-            help="Model of llm system, type all for test all ollama models",
-        )
-        temp = environ.var(
-            default="0.1", converter=float, help="Temperature of llm system"
-        )
-        embeddings = environ.var(default="all-minilm", help="embeddings Model to use")
+        models = environ.var(default="llama3.1:8b-instruct-q8_0",
+                             help="Model of llm system, type all for test all ollama models")
+        temp = environ.var(default="0.1", converter=float,
+                           help="Temperature of llm system")
+        embeddings = environ.var(default="nomic-embed-text",
+                                 help="embeddings Model to use")
 
-    # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
-
+# llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0  mistral-nemo:12b-instruct-2407-q4_1
+#  nomic-embed-text all-minilm
     @environ.config
     class DatabasesVectorial:
         """
@@ -122,8 +120,13 @@ class AppConfig:
         )
 
         manual_query = environ.bool_var(
-            default=False, help="Manual prompting for debug"
-        )
+            default=False, help="Manual prompting for debug")
+        
+        batch_mode = environ.bool_var(
+            default=False, help="Run Batch Inference for consistency")
+        
+        batch_raw = environ.var(
+            default="20", help="Number of Inference to test consistency")
 
         @path.validator
         def _ensure_path_exists(self, var, path):
