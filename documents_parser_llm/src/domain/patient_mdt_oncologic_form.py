@@ -60,7 +60,7 @@ class PatientMDTOncologicForm:
         ressources: ClassVar[list] = []
         
     
-    #  // // // // // Tested and Working classes // // // // //
+     #  // // // // // Tested and Working classes // // // // //
 
     class PatientAdministrative(default_model):
         """
@@ -107,6 +107,16 @@ class PatientMDTOncologicForm:
         )
 
         question: ClassVar[str] = "Tell me where is located the primary tumor ?"
+    
+    class TumorHistologicType(default_model):
+        '''
+        Histologic type of the tumor
+        '''
+        
+        histologic_state: HistologicStateEnum = Field(description="Histological evidence of the tumor ")
+        histologic_analysis: Optional[List[HistologicAnalysis]] = Field(description="Histological analysis done")
+        
+        question: ClassVar[str] = "Tell me where if tumor is histologicaly proven or suspected and when the histological samples were taken, with the following contributivity ?"
     
     class TumorHistologicType(default_model):
         '''
@@ -185,6 +195,14 @@ class PatientMDTOncologicForm:
             "Tell me if one or several chemotherapies have already been done for this tumor?"
                 )
 
+    class LastBiologicalResults(default_model):
+        '''
+        Last biological laboratory results
+        '''
+        
+        labtests: Optional[List[LabTest]] = Field(description="List of last laboratory results")
+        
+                
     class LastBiologicalResults(default_model):
         '''
         Last biological laboratory results

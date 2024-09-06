@@ -27,6 +27,16 @@ class LabTest(BaseModel):
     lab_type: LabTestEnum = Field(description="Type of laboratory test")
     value: float
     date: Optional[PastDate] = Field(description="Date of the lab test")
+    
+class LabTestEnum(str, Enum):
+    bilirubin = "bilirubin"
+    ca19_9 = "Ca19-9"
+    ace = "ACE"
+    
+class LabTest(BaseModel):
+    lab_type: LabTestEnum = Field(description="Type of laboratory test")
+    value: float
+    date: Optional[PastDate] = Field(description="Date of the lab test")
 
 
 class RevealingMode(str, Enum):
@@ -132,6 +142,7 @@ class TreatmentToleranceEnum(str, Enum):
     medium = "Medium"
     poor = "Poor"
     not_given = "Not given"
+    not_given = "Not given"
 
 
 class ChemotherapyData(BaseModel):
@@ -235,6 +246,12 @@ class RadiologicalExamination(BaseModel):
     )
     exam_result: Optional[str] = Field(description="Result of the radiological exam")
 
+class HistologicStateEnum(str,Enum):
+    
+    suspected = 'Suspected'
+    histologicaly_proven = 'Histologicaly proven'
+    unknown = 'Unknown'
+    
 class HistologicStateEnum(str,Enum):
     
     suspected = 'Suspected'
