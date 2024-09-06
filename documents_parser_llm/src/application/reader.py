@@ -37,63 +37,102 @@ from src.application.config import AppConfig
 from src.application.llm import Llm
 from src.infrastructure.vectorial.database import VectorialDataBase
 
+
 class DocumentReader:
+    """
+    A class that reads documents and enables querying them using an LLM.
+
+    Attributes:
+        document_path (str): The path to the document.
+        llm (Llm): An instance of the Llm class for performing language tasks.
+        vecdb (VectorialDataBase): An instance of VectorialDataBase for vector storage and retrieval.
+        default_loader (callable): The default loader type for documents.
+        logger (Logger): A logger for tracking progress and errors.
+    """
+
     document = str
     collectionName = "oncoflowDocs"
     retriever = None
     additional_pdf = None
     docs_pdf = {}
 
-    def __init__(self, config=AppConfig,  document=str, docs_pdf=None, prompt = [], models = None):
+    def __init__(
+        self, config=AppConfig, document=str, docs_pdf=None, prompt=None, models=None
+    ):
         self.config = config
+        if prompt is None:
+            prompt = []
+
         self.document_path = str(config.rcp.path) + "/" + document
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
         self.vecdb = VectorialDataBase(config)
 
         self.set_prompt(prompt)
-        
-        self.logger = config.set_logger("reader", default_context={
-            "document": document,
-            "ressources": docs_pdf,
-            "list_models": models})
-        
+
+        self.logger = config.set_logger(
+            "reader",
+            default_context={
+                "document": document,
+                "ressources": docs_pdf,
+                "list_models": models,
+            },
+        )
+
         self.default_loader = config.rcp.doc_type
-        
+
         self.logger.info("Class reader succesfully init, Start reading documents")
         self.embeddings = Llm(config, embeddings=True).embeddings
-        #self.text_splitter = SemanticChunker(self.embeddings)
+        # self.text_splitter = SemanticChunker(self.embeddings)
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap)
+            chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
+        )
         self.read_document(self.vecdb, self.document_path)
         self.read_additionnal_document(docs_pdf)
-    
-    def set_prompt(self, prompt = []):
+
+    def set_prompt(self, prompt):
+        """
+        Set the default prompt for the DocumentReader instance.
+
+        Args:
+            prompt (str or list of str): The default prompt(s) to use when querying documents.
+                If a single string is provided, it will be used as-is. If a list of strings
+                is provided, each prompt will be appended to the list of default prompts.
+
+        Raises:
+            TypeError: If `prompt` is not a string or a list of strings.
+        """
+        if isinstance(prompt, str):
+            prompt = [prompt]
+        elif not isinstance(prompt, list):
+            raise TypeError("Prompt must be a string or a list of strings")
         self.default_prompt = prompt
         self.llm.make_default_prompt(self.default_prompt)
-    
+
     def read_additionnal_document(self, docs_pdf=None):
-        self.docs_pdf = {}
+        """
+        Reads additional documents if provided and updates the default prompt accordingly.
+
+        Args:
+            docs_pdf (dict or None): A dictionary containing information about additional PDFs to read.
+                If None, no additional documents are read, and the default prompt is used.
+        """
         if docs_pdf is not None:
-            additionnal_prompt=[]
+            additionnal_prompt = []
             for doc_pdf in docs_pdf:
                 pdf_dict = {
-                    "vecdb": VectorialDataBase(self.config , coll_prefix="additional"),
-                    "path": str(self.config.rcp.additional_path) + "/" + doc_pdf,
-                    "name": doc_pdf.replace(".", "")
+                    "vecdb": VectorialDataBase(self.config, coll_prefix="additional"),
+                    "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
+                    "name": doc_pdf.replace(".", ""),
                 }
-                self.docs_pdf.update({doc_pdf: pdf_dict})
-                additionnal_prompt.extend([("system", "Apprend les éléments de ce document de référence : {" + pdf_dict["name"] + "}")])
-            
-                self.logger.debug("Start reading ressource %s", doc_pdf )
+                self.docs_pdf[doc_pdf] = pdf_dict
+                additionnal_prompt.append(("system", f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}"))
+                self.logger.debug(f"Start reading ressource {doc_pdf}")
                 self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
-
-            additionnal_prompt.extend(self.default_prompt)
-            self.llm.make_default_prompt(additionnal_prompt)
+            self.llm.make_default_prompt(additionnal_prompt + self.default_prompt)
         else:
             self.logger.debug("No additionnal ressources, return to default prompt")
             self.llm.make_default_prompt(self.default_prompt)
-            
 
     def _load_document(self, document=str, loader_type=None):
         """Loads a document from the specified path using the given loader type."""
@@ -115,9 +154,7 @@ class DocumentReader:
 
         chunked_documents = self.text_splitter.split_documents(pages)
 
-        vecdb.add_chunked_to_collection(
-            chunked_documents, flush_before=True)
-        
+        vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
 
     def ask_in_document(self, query, class_type=None, models=None):
         """
@@ -135,7 +172,13 @@ class DocumentReader:
         else:
             parser = JsonOutputParser()
 
-        self.llm.create_chain(self.vecdb.get_retriever(), [
-                              {"name":  infos["name"], "retriever": infos["vecdb"].get_retriever()} for doc_pdf, infos in self.docs_pdf.items()], parser)
+        self.llm.create_chain(
+            self.vecdb.get_retriever(),
+            [
+                {"name": infos["name"], "retriever": infos["vecdb"].get_retriever()}
+                for doc_pdf, infos in self.docs_pdf.items()
+            ],
+            parser,
+        )
 
         return self.llm.invoke_multimodels_chain(query, parser)

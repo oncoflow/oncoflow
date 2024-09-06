@@ -30,18 +30,18 @@ def manual_prompt(dir, config):
     """
     while True:
         questions = [
-            inquirer.List('file',
-                          message="What RCP file do you want to use ?",
-                          choices=[f for f in listdir(dir) if isfile(join(dir, f))]),
-            inquirer.Text("question",
-                          message="Question for LLM (type quit to quit)?")
+            inquirer.List(
+                "file",
+                message="What RCP file do you want to use ?",
+                choices=[f for f in listdir(dir) if isfile(join(dir, f))],
+            ),
+            inquirer.Text("question", message="Question for LLM (type quit to quit)?"),
         ]
         answers = inquirer.prompt(questions)
 
         if answers["question"].lower() == "quit":
             break
-        rag = DocumentReader(
-            config,  answers["file"],  docs_pdf=["tncdchc.pdf"])
+        rag = DocumentReader(config, answers["file"], docs_pdf=["tncdchc.pdf"])
         # pprint(rag.ask_in_document(answers["question"]), compact=True)
 
 
@@ -61,23 +61,25 @@ def all_asked(dir, config):
 
                     logger.info(f"Process {cl.__name__}")
                     logger.info(f"Question : {cl.question}")
-                    datas = rag.ask_in_document(query=cl.question,
-                                                class_type=cl, models=cl.models)
+                    datas = rag.ask_in_document(
+                        query=cl.question, class_type=cl, models=cl.models
+                    )
                     if datas:
                         # Set first response
                         fiche_rcp.set_datas(cl, datas)
                 del rag
             except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
                 logger.debug("File %s is not a pdf, pass", f)
-            
+
         pprint(fiche_rcp.get_datas(), compact=True)
 
 
 if __name__ == "__main__":
 
     parser = ArgumentParser()
-    parser.add_argument("-e", "--env-list", dest="envlist",
-                      action="store_true", default=False)
+    parser.add_argument(
+        "-e", "--env-list", dest="envlist", action="store_true", default=False
+    )
     args = parser.parse_args()
 
     if args.envlist:

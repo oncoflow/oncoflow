@@ -23,7 +23,8 @@ class VectorialDataBase:
             # Use either HttpClient or PersistentClient depending on the configuration.
             if config.dbvec.client == "HttpClient":
                 self.client = chromadb.HttpClient(
-                    host=config.dbvec.host, port=config.dbvec.port)
+                    host=config.dbvec.host, port=config.dbvec.port
+                )
             elif config.dbvec.client == "PersistentClient":
                 self.client = chromadb.PersistentClient()
             # Clear system cache and get or create a collection based on the configuration.
@@ -37,14 +38,17 @@ class VectorialDataBase:
             self.embeddings = Llm(config, embeddings=True).embeddings
 
         else:
-            raise ValueError(
-                f"{str(config.dbvec.client)} not yet supported")
+            raise ValueError(f"{str(config.dbvec.client)} not yet supported")
 
-        self.logger = config.set_logger("vectorial_db", default_context={
+        self.logger = config.set_logger(
+            "vectorial_db",
+            default_context={
                 "collection": self.coll_name,
                 "embeddings": self.embeddings,
                 "db_version": str(self.client.get_version()),
-                "db_type": config.dbvec.type.lower()})
+                "db_type": config.dbvec.type.lower(),
+            },
+        )
         self.logger.info("Class vectorial_db succesfully init")
         self.set_clientdb(flush=True)
 
@@ -65,20 +69,25 @@ class VectorialDataBase:
                 # Delete and recreate the collection based on the configuration.
                 try:
                     self.logger.debug("Flushing collection")
-                    self.client.get_collection(self.coll_name, embedding_function=self.embeddings)
+                    self.client.get_collection(
+                        self.coll_name, embedding_function=self.embeddings
+                    )
                     self.client.delete_collection(self.coll_name)
                     self.client.clear_system_cache()
                 except ValueError:
                     pass
             self.collection = self.client.get_or_create_collection(
-                self.coll_name,embedding_function=self.embeddings)
+                self.coll_name, embedding_function=self.embeddings
+            )
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
             self.clientdb = Chroma(
                 client=self.client,
                 collection_name=self.coll_name,
                 embedding_function=self.embeddings,
             )
-            self.client.get_collection(self.coll_name, embedding_function=self.embeddings)
+            self.client.get_collection(
+                self.coll_name, embedding_function=self.embeddings
+            )
 
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """
@@ -110,7 +119,8 @@ class VectorialDataBase:
 
         # Add the document to the collection with metadata and page content.
         self.collection.add(
-            ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content)
+            ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content
+        )
 
     def add_chunked_to_collection(self, chunked_documents, flush_before=False):
         """

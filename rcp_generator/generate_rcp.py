@@ -1,6 +1,7 @@
 """
 Generate RCP files randomly
 """
+
 from random import randrange, randint, uniform
 from datetime import timedelta, datetime
 import io
@@ -14,7 +15,7 @@ import yaml
 PDF_SRC = "models/rcp_model.pdf"
 PDF_DEST = "files/test.pdf"
 DATA_YAML = "models/rcp_data.yaml"
-DAY_BETWEEN_1 = datetime.strptime('1/1/2020 1:30 PM', '%m/%d/%Y %I:%M %p')
+DAY_BETWEEN_1 = datetime.strptime("1/1/2020 1:30 PM", "%m/%d/%Y %I:%M %p")
 DAY_BETWEEN_2 = datetime.today()
 PACKET = io.BytesIO()
 MEMORY = {}
@@ -23,7 +24,7 @@ NB_FILES = 10
 
 def random_date(start, end):
     """
-    This function will return a random datetime between two datetime 
+    This function will return a random datetime between two datetime
     objects.
     """
     delta = end - start
@@ -52,21 +53,30 @@ def set_elem(element):
         else:
             cont = True
         if cont:
-            number = randint(0, len(draw_info["values"])-1)
+            number = randint(0, len(draw_info["values"]) - 1)
             draw_info = element["values"][number]
             draw_info["value"] = "x"
             draw_info["textSize"] = 10
 
     elif element["type"] == "list_many":
-        number = randint(0, len(draw_info["values"])-1)
+        number = randint(0, len(draw_info["values"]) - 1)
         draw_info = draw_info["values"][number]
         draw_info["value"] = "x"
         draw_info["textSize"] = 10
         if "number" not in MEMORY[element["name"]]:
             MEMORY[element["name"]].update({"number": 1})
         MEMORY.update(
-            {element["name"] + str(MEMORY[element["name"]]["number"] - 1): element["values"][number]["name"]})
-        if randint(0, 1) == 1 and MEMORY[element["name"]]["number"] < element["number_max"]:
+            {
+                element["name"]
+                + str(MEMORY[element["name"]]["number"] - 1): element["values"][number][
+                    "name"
+                ]
+            }
+        )
+        if (
+            randint(0, 1) == 1
+            and MEMORY[element["name"]]["number"] < element["number_max"]
+        ):
             if "elem" not in draw_info:
                 draw_info["elem"] = []
             element["values"].pop(number)
@@ -79,37 +89,48 @@ def set_elem(element):
             print(f"!!!! {MEMORY[element['value_ref']]}")
             draw_info["value"] = MEMORY[element["value_ref"]]
         else:
-            number = randint(0, len(element["values"])-1)
+            number = randint(0, len(element["values"]) - 1)
             draw_info["value"] = element["values"][number]
         draw_info["textSize"] = 7
 
     elif element["type"] == "date":
         if "after" in draw_info:
             date_begin = datetime.strptime(
-                MEMORY[draw_info["after"]]["value"], "%d-%m-%Y")
+                MEMORY[draw_info["after"]]["value"], "%d-%m-%Y"
+            )
         else:
             date_begin = DAY_BETWEEN_1
         draw_info["value"] = random_date(date_begin, DAY_BETWEEN_2)
         draw_info["textSize"] = 7
 
     elif element["type"] == "int":
-        draw_info["value"] = str(
-            randint(element["between"][0], element["between"][1])) + " " + draw_info["unit"]
+        draw_info["value"] = (
+            str(randint(element["between"][0], element["between"][1]))
+            + " "
+            + draw_info["unit"]
+        )
         draw_info["textSize"] = 7
 
     elif element["type"] == "float":
-        draw_info["value"] = str(
-            round(uniform(float(element["between"][0]), float(element["between"][1])), 2)) + " " + draw_info["unit"]
+        draw_info["value"] = (
+            str(
+                round(
+                    uniform(float(element["between"][0]), float(element["between"][1])),
+                    2,
+                )
+            )
+            + " "
+            + draw_info["unit"]
+        )
         draw_info["textSize"] = 7
 
     elif element["type"] == "lines":
         line_tpl = draw_info["values"]
-        draw_info['elem'] = []
+        draw_info["elem"] = []
         if "number_ref" in draw_info:
             rand = range(MEMORY[draw_info["number_ref"]]["number"])
         else:
-            rand = range(
-                randint(draw_info["between"][0], draw_info["between"][1]))
+            rand = range(randint(draw_info["between"][0], draw_info["between"][1]))
         for cpt in rand:
             elem = deepcopy(line_tpl)
             print(f" ---- {elem}")
@@ -119,10 +140,11 @@ def set_elem(element):
                     elem["elem"][k]["value_ref"] = l["value_ref"] + str(cpt)
                 print(f"--------- {l}")
             print(f" ---- {elem}")
-            draw_info['elem'].append(elem)
+            draw_info["elem"].append(elem)
             for k, l in enumerate(line_tpl["elem"]):
                 line_tpl["elem"][k]["position"]["y"] = float(
-                    l["position"]["y"]) - float(draw_info["height"])
+                    l["position"]["y"]
+                ) - float(draw_info["height"])
         print(f" --- {draw_info}")
 
     elif element["type"] == "line":
@@ -130,7 +152,8 @@ def set_elem(element):
 
     if "name" in element and "value" in draw_info:
         MEMORY[element["name"]].update(
-            {"value": draw_info["value"], "name": draw_info["name"]})
+            {"value": draw_info["value"], "name": draw_info["name"]}
+        )
 
     return draw_info
 
@@ -147,9 +170,11 @@ def deep_write_calq(can, draw):
             can.setFont(psfontname="Helvetica", size=draw["textSize"])
             # 210*mm,297*mm
             # print(f"draw ! {draw}")
-            can.drawString(float(draw["position"]
-                                 ["x"])*10.0*mm, float(draw
-                                                       ["position"]["y"])*10.0*mm, str(draw["value"]))
+            can.drawString(
+                float(draw["position"]["x"]) * 10.0 * mm,
+                float(draw["position"]["y"]) * 10.0 * mm,
+                str(draw["value"]),
+            )
         if "elem" in draw:
             deep_write_calq(can, draw)
 
@@ -191,7 +216,7 @@ def load_datas(yaml_file):
     Returns:
         _type_: dict
     """
-    with open(yaml_file, 'r', encoding="UTF-8") as file:
+    with open(yaml_file, "r", encoding="UTF-8") as file:
         dict_data = yaml.safe_load(file)
     return dict_data
 
@@ -201,12 +226,12 @@ if __name__ == "__main__":
 
     for nb in range(NB_FILES):
         existing_pdf = PdfReader(PDF_SRC)
-        
+
         output = PdfWriter()
         for page_nb, page_datas in datas["pages"].items():
             pdf = write_calq(page_datas)
 
-            page = existing_pdf.pages[page_nb-1]
+            page = existing_pdf.pages[page_nb - 1]
             page.merge_page(pdf.pages[0])
             print(pdf.pages[0])
             output.add_page(page)
