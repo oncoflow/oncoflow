@@ -16,6 +16,16 @@ class Gender(str, Enum):
     female = "female"
     other = "other"
     not_given = "not_given"
+    
+class LabTestEnum(str, Enum):
+    bilirubin = "bilirubin"
+    ca19_9 = "Ca19-9"
+    ace = "ACE"
+    
+class LabTest(BaseModel):
+    lab_type: LabTestEnum = Field(description="Type of laboratory test")
+    value: float
+    date: Optional[PastDate] = Field(description="Date of the lab test")
 
 
 class RevealingMode(str, Enum):
@@ -82,7 +92,6 @@ class TNCDCancerTypesEnum(str, Enum):
     liverhcc = 'hepatocellular carcinoma (primary liver cancer)'
     biliary_tract = 'biliary tract cancer'
     pancreas = 'pancreatic cancer'
-
     gastric = 'gastric cancer'
     oesophagus_junction = 'oesophagus and esophagogastric junction cancer'
     unknown = 'unknown cancer type'
@@ -119,6 +128,7 @@ class TreatmentToleranceEnum(str, Enum):
     good = "Good"
     medium = "Medium"
     poor = "Poor"
+    not_given = "Not given"
 
 
 class ChemotherapyData(BaseModel):
@@ -193,7 +203,7 @@ class ChildPugh(BaseModel):
                 encephalopathie=False
             )
     """
-    bilirubin: int = Field(description="Bilirubin level in blood")
+ 
     bilirubin: int = Field(description="Bilirubin level in blood")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
@@ -210,14 +220,17 @@ class RadiologicalExamination(BaseModel):
     exam_name: str = Field(description="The name of the radiological exam")
     exam_date: date = Field(
         description="The date when the radiological examination was performed.")
-    exam_date: date = Field(
-        description="The date when the radiological examination was performed.")
     exam_type: RadiologicExamType = Field(
         description="The type of radiological examination performed (e.g., CT, MRI, X-ray).")
     exam_result: Optional[str] = Field(
         description='Result of the radiological exam')
 
-
+class HistologicStateEnum(str,Enum):
+    
+    suspected = 'Suspected'
+    histologicaly_proven = 'Histologicaly proven'
+    unknown = 'Unknown'
+    
 class HistologicAnalysis(BaseModel):
     '''
     This class contains all informations related to a histological analysis.
