@@ -47,7 +47,7 @@ def manual_prompt(dir, config):
 
 def all_asked(dir, config):
     fiche_rcp = PatientMDTOncologicForm()
-
+    metadatas= {}
     for f in listdir(dir):
         if isfile(join(dir, f)):
             logger.info(f"Start reading {f} ...")
@@ -64,6 +64,7 @@ def all_asked(dir, config):
                     datas = rag.ask_in_document(
                         query=cl.question, class_type=cl, models=cl.models
                     )
+                    metadatas[cl.__name__] = rag.metadata
                     if datas:
                         # Set first response
                         fiche_rcp.set_datas(cl, datas)
@@ -71,7 +72,7 @@ def all_asked(dir, config):
             except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
                 logger.debug("File %s is not a pdf, pass", f)
 
-        pprint(fiche_rcp.get_datas(), compact=True)
+        pprint(fiche_rcp.get_datas() | {"metadatas": metadatas} , compact=True)
 
 
 if __name__ == "__main__":
