@@ -15,6 +15,7 @@ from pdfminer.pdfparser import PDFSyntaxError
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.infrastructure.documents.mongodb import Mongodb
 
 
 def manual_prompt(dir, config):
@@ -72,7 +73,18 @@ def all_asked(dir, config):
             except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
                 logger.debug("File %s is not a pdf, pass", f)
 
-        pprint(fiche_rcp.get_datas() | {"metadatas": metadatas} , compact=True)
+        data = fiche_rcp.get_datas()
+        data["file"] = f
+        metadatas["file"] = f
+        if config.rcp.display_type == "mongodb":
+            client = Mongodb(config)
+            client.prepare_insert_doc(collection="rcp_info", document=data)
+            client.prepare_insert_doc(collection="rcp_metadata", document=metadatas)
+        else:
+            logger.info("Type %s not known, fallback to stdout", config.rcp.display_type )
+            pprint(fiche_rcp.get_datas() | {"metadatas": metadatas} , compact=True)
+    if config.rcp.display_type == "mongodb":
+        client.insert_docs()
 
 
 if __name__ == "__main__":

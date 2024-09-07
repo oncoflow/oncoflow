@@ -94,6 +94,14 @@ class AppConfig:
         port = environ.var(default="8000", help="Port when HttpClient used")
 
     @environ.config
+    class MongoDB:
+        user = environ.var(default=None, help="Mongo Username")
+        password = environ.var(default=None, help="Mongo password")
+        host = environ.var(default="127.0.0.1", help="Address of DB")
+        port = environ.var(default="8081", help="Port of DB")
+        database = environ.var(default="Oncoflow", help="Mongo database name")
+
+    @environ.config
     class RCP:
         """
         Class for configuring the retrieval pipeline configuration.
@@ -124,6 +132,10 @@ class AppConfig:
         manual_query = environ.bool_var(
             default=False, help="Manual prompting for debug"
         )
+        
+        display_type = environ.var(
+            default="mongodb", help="Type opf display"
+        )
 
         @path.validator
         def _ensure_path_exists(self, var, path):
@@ -134,6 +146,7 @@ class AppConfig:
     dbvec = environ.group(DatabasesVectorial)
     rcp = environ.group(RCP)
     logs = environ.group(Log)
+    mongodb = environ.group(MongoDB)
 
     def set_logger(self, name, default_context={}, additional_context=None):
 
