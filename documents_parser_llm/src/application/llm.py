@@ -12,38 +12,7 @@ from pydantic.v1 import error_wrappers
 import ollama
 
 from src.application.config import AppConfig
-
-import time
-from functools import wraps
-
-
-def timed(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        start = time.time()
-        result = func(*args, **kwargs)
-        end = time.time()
-
-        seconds = round(end - start, 2)
-        minutes = int((seconds % 3600) // 60)
-        hours = int(seconds // 3600)
-        remaining_seconds = round(seconds % 60)
-
-        # Build the formatted time string
-        formatted_time = ""
-        if hours > 0:
-            formatted_time += f"{hours}h"
-        if minutes > 0:
-            formatted_time += f"{minutes}min"
-        if remaining_seconds > 0:
-            formatted_time += f"{remaining_seconds}sec"
-
-        print(
-            f"INFO - {func.__name__} ran in {formatted_time}"
-        )  # comment ajouter cela dans logger ?
-        return result
-
-    return wrapper
+from src.application.tools import timed
 
 class Embedding(OllamaEmbeddings):
     """
@@ -75,6 +44,7 @@ class Llm:
         self.model = {}
         self.chain = {}
         self.embeddings = None
+        self.current_model = None
 
         self.default_prompt = ChatPromptTemplate
 
@@ -127,6 +97,7 @@ class Llm:
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
 
+        self.logger_default_extra={"model": "Unknow"}
         self.logger.debug("Class llm succesfully init", extra={"model": ""})
 
     def make_default_prompt(self, prompt=None):
@@ -185,6 +156,7 @@ class Llm:
             # self.logger.debug(
             #     "Set chain : %s", self.chain[name].get_prompts(), extra={"model": name})
 
+    @timed
     def invoke_multimodels_chain(self, query, parser=JsonOutputParser()):
         """
         Asks a question about the document and returns the answer.
@@ -201,10 +173,10 @@ class Llm:
         )
         results = {}
         for name, model in self.model.items():
-
+            self.current_model = model
             self.logger.info("Asking LLM .... ", extra={"model": name})
             try:
-                results = self.invoke_chain(query, name, parser=parser)
+                results = self.invoke_chain(query=query, model_name=name, parser=parser)
                 return results
             except (OutputParserException, error_wrappers.ValidationError) as e:
                 self.logger.exception(
@@ -215,6 +187,7 @@ class Llm:
                 )
         return {}
 
+    @timed
     def invoke_chain(self, query, model_name, parser):
         """
         Invokes the chain for the given model with the provided question and returns the result.

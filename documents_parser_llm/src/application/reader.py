@@ -35,6 +35,8 @@ from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 
 from src.application.config import AppConfig
 from src.application.llm import Llm
+from src.application.tools import timed
+
 from src.infrastructure.vectorial.database import VectorialDataBase
 
 
@@ -62,7 +64,8 @@ class DocumentReader:
         self.config = config
         if prompt is None:
             prompt = []
-
+        self.current_model = None
+        
         self.document_path = str(config.rcp.path) + "/" + document
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
@@ -75,9 +78,12 @@ class DocumentReader:
             default_context={
                 "document": document,
                 "ressources": docs_pdf,
-                "list_models": models,
+                "list_models": list(self.llm.model.keys()),
             },
         )
+        
+        self.metadata = {}
+        self.metadata["list_models"] = list(self.llm.model.keys())
 
         self.default_loader = config.rcp.doc_type
 
@@ -109,6 +115,7 @@ class DocumentReader:
         self.default_prompt = prompt
         self.llm.make_default_prompt(self.default_prompt)
 
+    @timed
     def read_additionnal_document(self, docs_pdf=None):
         """
         Reads additional documents if provided and updates the default prompt accordingly.
@@ -142,6 +149,7 @@ class DocumentReader:
         cla = getattr(document_loaders, loader_type)
         return cla(document)
 
+    @timed
     def read_document(self, vecdb: VectorialDataBase, document_path: str):
         """
         Reads a document from the specified loader and splits it into chunks.
@@ -155,7 +163,9 @@ class DocumentReader:
         chunked_documents = self.text_splitter.split_documents(pages)
 
         vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
+        self.current_model = vecdb.embeddings.model
 
+    @timed
     def ask_in_document(self, query, class_type=None, models=None):
         """
         Asks a question about the document and returns the answer.
@@ -181,4 +191,7 @@ class DocumentReader:
             parser,
         )
 
-        return self.llm.invoke_multimodels_chain(query, parser)
+        response = self.llm.invoke_multimodels_chain(query, parser)
+        self.current_model = self.llm.current_model.model
+        
+        return response

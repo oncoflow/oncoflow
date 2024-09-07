@@ -47,8 +47,8 @@ class AppConfig:
             type (str): The log type of the application. Defaults to "text". Accepted values are "text" and "json".
         """
         level = environ.var(default="INFO", help="Log level of app")
-        langchaindebug = environ.var(
-            default=False, converter=bool, help="langchain Log level of app"
+        langchaindebug = environ.bool_var(
+            default=False, help="langchain Log level of app"
         )
         type = environ.var(default="text", help="Log type (text or json) of app")
 
