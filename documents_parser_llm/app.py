@@ -50,9 +50,9 @@ def all_asked(dir, config):
     fiche_rcp = PatientMDTOncologicForm()
     metadatas= {}
     for f in listdir(dir):
-        if isfile(join(dir, f)):
-            logger.info(f"Start reading {f} ...")
-            try:
+        try:
+            if isfile(join(dir, f)):
+                logger.info(f"Start reading {f} ...")
                 rag = DocumentReader(config, document=f)
                 for cl in fiche_rcp.basemodel_list:
                     cl_prompt = fiche_rcp.base_prompt.copy()
@@ -70,19 +70,19 @@ def all_asked(dir, config):
                         # Set first response
                         fiche_rcp.set_datas(cl, datas)
                 del rag
-            except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
-                logger.debug("File %s is not a pdf, pass", f)
 
-        data = fiche_rcp.get_datas()
-        data["file"] = f
-        metadatas["file"] = f
-        if config.rcp.display_type == "mongodb":
-            client = Mongodb(config)
-            client.prepare_insert_doc(collection="rcp_info", document=data)
-            client.prepare_insert_doc(collection="rcp_metadata", document=metadatas)
-        else:
-            logger.info("Type %s not known, fallback to stdout", config.rcp.display_type )
-            pprint(fiche_rcp.get_datas() | {"metadatas": metadatas} , compact=True)
+                data = fiche_rcp.get_datas()
+                data["file"] = f
+                metadatas["file"] = f
+                if config.rcp.display_type == "mongodb":
+                    client = Mongodb(config)
+                    client.prepare_insert_doc(collection="rcp_info", document=data)
+                    client.prepare_insert_doc(collection="rcp_metadata", document=metadatas)
+                else:
+                    logger.info("Type %s not known, fallback to stdout", config.rcp.display_type )
+                    pprint(fiche_rcp.get_datas() | {"metadatas": metadatas} , compact=True)
+        except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
+                logger.debug("File %s is not a pdf, pass", f)
     if config.rcp.display_type == "mongodb":
         client.insert_docs()
 

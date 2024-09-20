@@ -95,8 +95,8 @@ class AppConfig:
 
     @environ.config
     class MongoDB:
-        user = environ.var(default=None, help="Mongo Username")
-        password = environ.var(default=None, help="Mongo password")
+        user = environ.var(default="root", help="Mongo Username")
+        password = environ.var(default="root", help="Mongo password")
         host = environ.var(default="127.0.0.1", help="Address of DB")
         port = environ.var(default="8081", help="Port of DB")
         database = environ.var(default="Oncoflow", help="Mongo database name")
@@ -134,7 +134,7 @@ class AppConfig:
         )
         
         display_type = environ.var(
-            default="mongodb", help="Type opf display"
+            default="stdout", help="Type opf display"
         )
 
         @path.validator
