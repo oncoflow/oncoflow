@@ -134,7 +134,7 @@ class AppConfig:
         )
         
         display_type = environ.var(
-            default="stdout", help="Type opf display"
+            default="mongodb", help="Type opf display"
         )
 
         @path.validator

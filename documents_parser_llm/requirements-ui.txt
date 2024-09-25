@@ -1,0 +1,7 @@
+streamlit>=1.38
+panda>=0.3
+environ_config>=23
+langchain_community>=0.2
+streamlit-authenticator>=0.3
+pymongo>=4.8
+streamlit_pdf_viewer>=0.0.18
