@@ -35,6 +35,9 @@ class Mongodb:
 
         self.logger.info("Succefully init")
 
+    def close(self):
+        self.client.close()
+    
     def prepare_insert_doc(self, collection, document):
         if collection not in self.documents_to_insert:
             self.documents_to_insert[collection] = []
@@ -52,3 +55,10 @@ class Mongodb:
 
         # Close the database connection when done
         self.client.close()
+        
+    def delete_docs(self, collections: list, filter):
+        self.logger.info(f"Delete documents by filter : {filter}")
+        for collection in collections:
+            collection = self.database[collection]
+            collection.delete_many(filter)
+        self.logger.debug("Success deleted documents")

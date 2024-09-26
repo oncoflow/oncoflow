@@ -90,9 +90,9 @@ class DocumentReader:
         self.logger.info("Class reader succesfully init, Start reading documents")
         self.embeddings = Llm(config, embeddings=True).embeddings
         self.text_splitter = SemanticChunker(self.embeddings)
-        # self.text_splitter = RecursiveCharacterTextSplitter(
-        #     chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
-        # )
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
+        )
         self.read_document(self.vecdb, self.document_path)
         self.read_additionnal_document(docs_pdf)
 

@@ -1,7 +1,19 @@
-streamlit>=1.38
+streamlit~=1.38.0
 panda>=0.3
-environ_config>=23
-langchain_community>=0.2
 streamlit-authenticator>=0.3
-pymongo>=4.8
 streamlit_pdf_viewer>=0.0.18
+
+# full app
+langchain-chroma~=0.1.0
+langchain-core~=0.2.0
+langchain_experimental~=0.0.0
+uuid>=1.0
+chromadb~=0.5.0
+langchain_community~=0.2.0
+environ_config~=23.0
+inquirer~=3.3.0
+sentence_transformers~=3.0
+PyMuPDF~=1.24.0
+ollama~=0.2.0
+unstructured[pdf]~=0.15
+pymongo~=4.8.0
