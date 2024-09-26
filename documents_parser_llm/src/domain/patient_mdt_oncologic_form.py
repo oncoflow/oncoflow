@@ -3,7 +3,7 @@ import json
 
 from typing import List, Optional, ClassVar
 
-from langchain_core.pydantic_v1 import BaseModel, Field, PastDate
+from pydantic import BaseModel, Field, PastDate
 
 from src.domain.common_ressources import *
 
@@ -39,8 +39,8 @@ class PatientMDTOncologicForm:
                 self.__dict__["datas"], default=lambda o: getattr(o, "__dict__", str(o))
             )
         )
-        
-    
+
+
 
     @classmethod
     def parse_raw(cls, value):

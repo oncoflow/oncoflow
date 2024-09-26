@@ -2,7 +2,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
-from langchain.schema.runnable import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough
 
 from pydantic.v1 import error_wrappers
 
@@ -39,7 +39,7 @@ class Llm:
         if embeddings:
 
             self.embeddings = llm_client.embedding
-            
+
             list_models = [config.llm.embeddings]
             self.logger = config.set_logger(
                 "embeddings",

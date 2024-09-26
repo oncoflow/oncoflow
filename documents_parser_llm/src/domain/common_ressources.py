@@ -3,7 +3,7 @@ from datetime import date
 
 from typing import List, Optional, ClassVar
 
-from langchain_core.pydantic_v1 import BaseModel, Field, PastDate
+from pydantic import BaseModel, Field, PastDate
 
 
 class RadiologicExamType(str, Enum):

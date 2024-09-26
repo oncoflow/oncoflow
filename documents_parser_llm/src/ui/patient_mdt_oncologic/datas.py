@@ -62,12 +62,12 @@ def all_datas():
 
 def form():
     head1, head2, head3 = st.columns(3)
-    if head1.button("Go Back"):
+    if head1.button("◀️ Go Back"):
         st.query_params.clear()
         st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py")
     if "power" in st.session_state:
         if st.session_state["power"]:
-            po = head2.popover("Rerun AI")
+            po = head2.popover(":repeat: AI process")
             m = app_conf.llm.models
             nm = po.selectbox("Modèle", OllamaConnect(app_conf).get_models(),placeholder="Select modèle")
             
