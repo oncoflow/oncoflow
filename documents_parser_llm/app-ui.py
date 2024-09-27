@@ -28,7 +28,6 @@ def logout():
 st.logo(
     "static/logo.png",
     icon_image="static/icon.png",
-    
 )
 
 

@@ -14,8 +14,7 @@ from pdfminer.pdfparser import PDFSyntaxError
 
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
-from src.infrastructure.documents.mongodb import Mongodb
+from src.application.app_functions import full_read_file
 
 
 def manual_prompt(dir, config):
@@ -43,48 +42,16 @@ def manual_prompt(dir, config):
         if answers["question"].lower() == "quit":
             break
         rag = DocumentReader(config, answers["file"], docs_pdf=["tncdchc.pdf"])
-        # pprint(rag.ask_in_document(answers["question"]), compact=True)
+        pprint(rag.ask_in_document(answers["question"]), compact=True)
 
 
 def all_asked(dir, config):
-    fiche_rcp = PatientMDTOncologicForm()
-    metadatas= {}
     for f in listdir(dir):
         try:
             if isfile(join(dir, f)):
-                logger.info(f"Start reading {f} ...")
-                rag = DocumentReader(config, document=f)
-                for cl in fiche_rcp.basemodel_list:
-                    cl_prompt = fiche_rcp.base_prompt.copy()
-                    cl_prompt.extend(cl.base_prompt)
-                    rag.set_prompt(prompt=cl_prompt)
-                    rag.read_additionnal_document(docs_pdf=cl.ressources)
-
-                    logger.info(f"Process {cl.__name__}")
-                    logger.info(f"Question : {cl.question}")
-                    datas = rag.ask_in_document(
-                        query=cl.question, class_type=cl, models=cl.models
-                    )
-                    metadatas[cl.__name__] = rag.metadata
-                    if datas:
-                        # Set first response
-                        fiche_rcp.set_datas(cl, datas)
-                del rag
-
-                data = fiche_rcp.get_datas()
-                data["file"] = f
-                metadatas["file"] = f
-                if config.rcp.display_type == "mongodb":
-                    client = Mongodb(config)
-                    client.prepare_insert_doc(collection="rcp_info", document=data)
-                    client.prepare_insert_doc(collection="rcp_metadata", document=metadatas)
-                else:
-                    logger.info("Type %s not known, fallback to stdout", config.rcp.display_type )
-                    pprint(fiche_rcp.get_datas() | {"metadatas": metadatas} , compact=True)
+                full_read_file(app_conf=config, filename=f, logger=logger)
         except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
                 logger.debug("File %s is not a pdf, pass", f)
-    if config.rcp.display_type == "mongodb":
-        client.insert_docs()
 
 
 if __name__ == "__main__":

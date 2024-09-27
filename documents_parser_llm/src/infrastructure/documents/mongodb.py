@@ -45,6 +45,13 @@ class Mongodb:
         #     document["timestamp"]
         self.documents_to_insert[collection].append(document)
 
+    def update_docs(self, collection, filter, value ):
+        self.logger.info("Start update documents")
+        self.logger.debug("List of document to update : %s", filter)
+        collection = self.database[collection]
+        collection.update_many(filter=filter, update=value)
+        self.logger.info("Success updating documents")
+    
     def insert_docs(self):
         self.logger.info("Start inserting documents")
         self.logger.debug("List of document to insert : %s", self.documents_to_insert)

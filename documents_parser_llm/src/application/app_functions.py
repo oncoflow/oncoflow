@@ -3,7 +3,8 @@ from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.application.reader import DocumentReader
 
-def full_read_file(app_conf, filename: str, replace: bool = True):
+def full_read_file(app_conf, filename: str,logger, replace: bool = True):
+    logger.info(f"Start reading {filename} ...")
     rag = DocumentReader(app_conf, document=filename)
     fiche_rcp = PatientMDTOncologicForm()
     metadatas= {}
@@ -12,6 +13,9 @@ def full_read_file(app_conf, filename: str, replace: bool = True):
         cl_prompt.extend(cl.base_prompt)
         rag.set_prompt(prompt=cl_prompt)
         rag.read_additionnal_document(docs_pdf=cl.ressources)
+        
+        logger.debug(f"Process {cl.__name__}")
+        logger.debug(f"Question : {cl.question}")
 
         datas = rag.ask_in_document(
             query=cl.question, class_type=cl, models=cl.models
@@ -33,6 +37,8 @@ def full_read_file(app_conf, filename: str, replace: bool = True):
         client.prepare_insert_doc(collection="rcp_metadata", document=metadatas)
         client.insert_docs()
         client.close()
+    else:
+        logger.info("Type %s not known, fallback to stdout", app_conf.rcp.display_type )
         
 def delete_document(app_conf, filename, delete_file: bool = True):
     if app_conf.rcp.display_type == "mongodb":
