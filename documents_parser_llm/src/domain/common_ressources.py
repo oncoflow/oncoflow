@@ -10,6 +10,7 @@ class RadiologicExamType(str, Enum):
     CT = "CT"
     MRI = "MRI"
     PET = "PET"
+    EUS = "EUS"
 
 
 class Gender(str, Enum):
@@ -221,13 +222,10 @@ class RadiologicalExamination(BaseModel):
     exam_date: date = Field(
         description="The date when the radiological examination was performed."
     )
-    exam_date: date = Field(
-        description="The date when the radiological examination was performed."
-    )
     exam_type: RadiologicExamType = Field(
-        description="The type of radiological examination performed (e.g., CT, MRI, X-ray)."
+        description="The type of radiological examination performed (e.g., CT, MRI, X-ray, EUS)."
     )
-    exam_result: Optional[str] = Field(description="Result of the radiological exam")
+    exam_result: Optional[str] = Field(description="Result of the radiological exam", default="N/A")
 
 
 class HistologicAnalysis(BaseModel):

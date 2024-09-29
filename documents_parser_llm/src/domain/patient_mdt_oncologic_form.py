@@ -16,7 +16,7 @@ class PatientMDTOncologicForm:
     base_prompt = [
         (
             "system",
-            "You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context}.",
+            "You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context}.You can ignore footer on all pages.",
         )
     ]
 
@@ -52,9 +52,9 @@ class PatientMDTOncologicForm:
 
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
-            ("system", "You have to answer the user question."),
+            ("system", "You have to answer the user question.\n If you don't find response, retry to learn document and try again once"),
             (
-            "system",
+            "human",
             "{format_instructions}"
             ),
             ("human", "Question: {question}"),
@@ -131,7 +131,7 @@ class PatientMDTOncologicForm:
         )
 
         question: ClassVar[str] = (
-            "Give me a list of the radiological exams with date, name and type "
+            "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
         )
 
     class PreviousCurativeSurgery(default_model):
@@ -281,7 +281,7 @@ class PatientMDTOncologicForm:
     #         ("human", "{question}"),
     #     ]
     #     models: ClassVar[list] = ["phi3", "llama3-chatqa"]
-        ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
+    #    ressources: ClassVar[list] = ["TNCDPANCREAS.pdf"]
     #     question: ClassVar[str] = "Alors réponds moi, est-qu'une une évaluation du dossier par un chirurgien pancréatique est nécessaire  ?"
 
     # class ChirurgienHepatique(default_model):

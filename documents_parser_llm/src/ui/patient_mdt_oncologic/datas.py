@@ -44,7 +44,7 @@ def all_datas():
             "file": d["file"],
             "performance_status": d["PatientPerformanceStatus"]["performance_status"] if "PatientPerformanceStatus" in d else "N/A",
             "link": f"/?file={d['file']}",
-            "Cardiologue": d["Cardiologue"]["necessary"],
+            "Cardiologue": d["Cardiologue"]["necessary"] if "Cardiologue" in d else False,
             "date": datetime.now(pytz.timezone("Europe/Paris")).replace(hour=0, minute=0, second=0, microsecond=0)
                     if "ui_date" not in d else d["ui_date"]
         }
@@ -140,7 +140,8 @@ def form():
             f"""
                     - **Localisation de la tumeur** : {datas['TumorLocation']['tumor_location'] if 'tumor_location' in datas['TumorLocation'] else "N/A"} 
                     - **Biologie de la tumeur** : {datas['TumorBiology']['msi_state'] if 'msi_state' in datas['TumorLocation'] else "N/A"}
-                    - **Opération curative passée** :  {datas['PreviousCurativeSurgery']['previous_curative_surgery'] if 'previous_curative_surgery' in datas['TumorLocation'] else "N/A"}
+                    - **Chirurgie de résection** :  {datas['PreviousCurativeSurgery']['previous_curative_surgery'] if 'previous_curative_surgery' in datas['PreviousCurativeSurgery'] else "N/A"} {datas['PreviousCurativeSurgery']['previous_curative_surgery_date'] if 'previous_curative_surgery' in datas['PreviousCurativeSurgery'] else ""}
+                    - **Chirurgie envisagée** : {datas['PlannedCurativeSurgery']['planned_curative_surgery'] if 'PlannedCurativeSurgery' in datas else "N/A"}
                     """
         )
     col2.header("Examens Radiologique", divider=True)
@@ -165,6 +166,7 @@ def form():
             else:
                 col2.write("Aucun")
 
+    
 
 power = st.sidebar.toggle("Power mode", key="power")
 

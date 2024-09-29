@@ -29,8 +29,15 @@ class OpenParseDocumentLoader(BaseLoader):
                 "parsing_algorithm": "pymupdf",
                 "table_output_format": "markdown"
             },
+            # table_args={
+            #     "parsing_algorithm": "unitable",
+            #     "min_table_confidence": 0.8,
+            # }
         )
-        parsed_basic_doc = parser.parse(self.file_path, ocr=True)
+        parsed_basic_doc = parser.parse(
+            self.file_path, 
+            ocr=True
+        )
         pdf = openparse.Pdf(self.file_path)
         pdf.export_with_bboxes(
             parsed_basic_doc.nodes, output_pdf=f"{self.file_path}.bbox"
@@ -48,3 +55,4 @@ class OpenParseDocumentLoader(BaseLoader):
                     "source": self.file_path,
                 },
             )
+        return None
