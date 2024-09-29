@@ -5,7 +5,6 @@ from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
 
-
 from src.application.config import AppConfig
 from src.application.llm import Llm
 
@@ -69,9 +68,6 @@ class VectorialDataBase:
                 # Delete and recreate the collection based on the configuration.
                 try:
                     self.logger.debug("Flushing collection")
-                    self.client.get_collection(
-                        self.coll_name, embedding_function=self.embeddings
-                    )
                     self.client.delete_collection(self.coll_name)
                     self.client.clear_system_cache()
                 except ValueError:
@@ -118,9 +114,12 @@ class VectorialDataBase:
             self.set_clientdb(flush=True)
 
         # Add the document to the collection with metadata and page content.
+       
+
         self.collection.add(
             ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content
         )
+
 
     def add_chunked_to_collection(self, chunked_documents, flush_before=False):
         """
@@ -137,6 +136,7 @@ class VectorialDataBase:
         if flush_before:
             # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
+
         for doc in chunked_documents:
             # Add each document to the collection.
             self.add_to_collection(doc)

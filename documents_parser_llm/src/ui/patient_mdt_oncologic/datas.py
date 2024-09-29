@@ -1,5 +1,5 @@
 import environ
-import pytz
+import pytz, os
 from datetime import datetime
 import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
@@ -44,6 +44,7 @@ def all_datas():
             "file": d["file"],
             "performance_status": d["PatientPerformanceStatus"]["performance_status"] if "PatientPerformanceStatus" in d else "N/A",
             "link": f"/?file={d['file']}",
+            "Cardiologue": d["Cardiologue"]["necessary"] if "Cardiologue" in d else False,
             "date": datetime.now(pytz.timezone("Europe/Paris")).replace(hour=0, minute=0, second=0, microsecond=0)
                     if "ui_date" not in d else d["ui_date"]
         }
@@ -60,13 +61,14 @@ def all_datas():
             "performance_status": st.column_config.NumberColumn(
                 "Performance", help="Status de performance"
             ),
+            "Cardiologue": st.column_config.CheckboxColumn("Cardiologue", help="Un Cardiologue doit regarder cette fiche"),
             "Delete": "Sélectionner",
             "date": st.column_config.DatetimeColumn(
                 "Date de réunion", format="DD-MM-YYYY HH:mm:ss"),
             "link": st.column_config.LinkColumn(display_text="Details"),
         },
         hide_index=True,
-        disabled=["file", "performance_status", "link"],
+        disabled=["file", "performance_status", "link", "Cardiologue"],
         key='datas'
     )
 
@@ -97,25 +99,33 @@ def form():
             file_name=st.query_params['file'],
             mime="application/pdf",
         )
+    
     if "power" in st.session_state:
         if st.session_state["power"]:
             po = head2.popover(":repeat: AI process")
-            m = app_conf.llm.models
+            mm = app_conf.llm.models
+            mp = app_conf.rcp.doc_type
             nm = po.selectbox("Modèle", OllamaConnect(app_conf).get_models(),placeholder="Select modèle")
-            
+            parser = po.selectbox("Doc parser", ["UnstructuredPDFLoader", "openparse"], placeholder="Select parser")
             if po.button("Rerun"):
                 app_conf.llm.models = nm
+                app_conf.rcp.doc_type = parser
                 with st.status("Rerun AI ..."):
                     full_read_file(app_conf=app_conf, filename=st.query_params['file'], logger=logger)
-                    app_conf.llm.models = m
+                    app_conf.llm.models = mm
+                    app_conf.rcp.doc_type = mp
                     st.write("Succès")
                 st.rerun()
     
     col1, col2 = st.columns([1, 1], gap="medium")
     col2.title("Informations récupérées")
     with col1:
-        pdf_viewer(f"{app_conf.rcp.path}/{st.query_params['file']}")
+        if os.path.exists(f"{app_conf.rcp.path}/{st.query_params['file']}.bbox"):
+            pdf_viewer(f"{app_conf.rcp.path}/{st.query_params['file']}.bbox")
+        else:
+            pdf_viewer(f"{app_conf.rcp.path}/{st.query_params['file']}")
     datas = db_client.database["rcp_info"].find_one({"file": st.query_params["file"]})
+    
     col2.header("Informations patient", divider=True)
     col2.markdown(
         f"""
@@ -124,37 +134,48 @@ def form():
                   - **Genre**: {datas['PatientAdministrative']['gender']}
                   """
     )
-    col2.header("Informations sur la maladie", divider=True)
-    col2.markdown(
-        f"""
-                - **Localisation de la tumeur** : {datas['TumorLocation']['tumor_location']} 
-                - **Biologie de la tumeur** : {datas['TumorBiology']['msi_state']}
-                - **Opération curative passée** :  {datas['PreviousCurativeSurgery']['previous_curative_surgery']}
-                """
-    )
+    if 'TumorLocation' in datas:
+        col2.header("Informations sur la maladie", divider=True)
+        col2.markdown(
+            f"""
+                    - **Localisation de la tumeur** : {datas['TumorLocation']['tumor_location'] if 'tumor_location' in datas['TumorLocation'] else "N/A"} 
+                    - **Biologie de la tumeur** : {datas['TumorBiology']['msi_state'] if 'msi_state' in datas['TumorLocation'] else "N/A"}
+                    - **Chirurgie de résection** :  {datas['PreviousCurativeSurgery']['previous_curative_surgery'] if 'previous_curative_surgery' in datas['PreviousCurativeSurgery'] else "N/A"} {datas['PreviousCurativeSurgery']['previous_curative_surgery_date'] if 'previous_curative_surgery' in datas['PreviousCurativeSurgery'] else ""}
+                    - **Chirurgie envisagée** : {datas['PlannedCurativeSurgery']['planned_curative_surgery'] if 'PlannedCurativeSurgery' in datas else "N/A"}
+                    """
+        )
     col2.header("Examens Radiologique", divider=True)
-    r_str = ""
-    for r in datas["RadiologicExams"]["exams_list"]:
-        r_str = f"""{r_str}
-                - **{r["exam_name"]} ({r["exam_type"]})** *le {r["exam_date"]}*: {r["exam_result"]}
-               """
-    col2.markdown(r_str)
+    if 'RadiologicExams' in datas:
+        r_str = ""
+        for r in datas["RadiologicExams"]["exams_list"]:
+            r_str = f"""{r_str}
+                    - **{r["exam_name"]} ({r["exam_type"]})** *le {r["exam_date"]}*: {r["exam_result"]}
+                """
+        col2.markdown(r_str)
 
     col2.header("Traitements Chimiotherapie", divider=True)
-    c_str = ""
-    for c in datas["ChemotherapyTreament"]["chemotherapy_list"]:
-        c_str = f"""{c_str}
-            - **{c["chemotherapy_name"]}** (*{c["chemotherapy_start_date"]} - {c["chemotherapy_end_date"]}*) : tolérance {c["chemotherapy_tolerance"]}
-            """
-    col2.markdown(c_str)
+    if 'ChemotherapyTreament' in datas:
+        c_str = ""
+        if "chemotherapy_list" in datas["ChemotherapyTreament"]:
+            if datas["ChemotherapyTreament"]["chemotherapy"]:
+                for c in datas["ChemotherapyTreament"]["chemotherapy_list"]:
+                    c_str = f"""{c_str}
+                        - **{c["chemotherapy_name"]}** (*{c["chemotherapy_start_date"]} - {c["chemotherapy_end_date"]}*) : tolérance {c["chemotherapy_tolerance"]}
+                        """
+                col2.markdown(c_str)
+            else:
+                col2.write("Aucun")
 
+    
 
-power = st.sidebar.toggle("Power mode")
+power = st.sidebar.toggle("Power mode", key="power")
 
-if power:
-    st.session_state["power"] = True
-else:
-    st.session_state["power"] = False
+if st.session_state["power"] == True:
+    st.sidebar.markdown(f"""
+                        - **Modele:**: {app_conf.llm.models}
+                        - **Embed**: {app_conf.llm.embeddings}
+                        - **Parser**: {app_conf.rcp.doc_type}
+                        """)
 
 
 if "file" in st.query_params:
