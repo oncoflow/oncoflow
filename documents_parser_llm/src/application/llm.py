@@ -1,31 +1,14 @@
-from langchain_community.chat_models.ollama import ChatOllama
-from langchain_community.embeddings import OllamaEmbeddings
-
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
-from langchain.schema.runnable import RunnablePassthrough
+from langchain_core.runnables import RunnablePassthrough
 
 from pydantic.v1 import error_wrappers
 
-import ollama
-
 from src.application.config import AppConfig
 from src.application.tools import timed
-
-class Embedding(OllamaEmbeddings):
-    """
-    A subclass of OllamaEmbeddings that defines methods for embedding documents.
-
-    This class is a thin wrapper around the Ollama embeddings functionality,
-    providing convenience methods and custom docstrings.
-    """
-    def _embed_documents(self, texts):
-        return super().embed_documents(texts)
-
-    def __call__(self, input):
-        return self._embed_documents(input)
+from src.infrastructure.llm.ollama import OllamaConnect
 
 
 class Llm:
@@ -49,54 +32,42 @@ class Llm:
         self.default_prompt = ChatPromptTemplate
 
         if config.llm.type.lower() == "ollama":
-            if embeddings:
-
-                self.embeddings = Embedding(
-                    base_url=f"{config.llm.url}:{config.llm.port}",
-                    model=config.llm.embeddings,
-                )
-                list_models = [config.llm.embeddings]
-                self.logger = config.set_logger(
-                    "embeddings",
-                    default_context={
-                        "llm_type": config.llm.type.lower(),
-                        "list_models": list_models,
-                    },
-                    additional_context=["model"],
-                )
-            else:
-                if models is None or not models:
-                    list_models = config.llm.models.split(",")
-                else:
-                    list_models = models
-
-                if list_models == "all":
-                    ocl = ollama.Client(host=f"{config.llm.url}:{config.llm.port}")
-                    list_models = [
-                        m["name"]
-                        for m in ocl.list()["models"]
-                        if m["name"].split(":")[0] not in ["all-minilm"]
-                    ]
-
-                for model in list_models:
-                    self.model[model] = ChatOllama(
-                        base_url=f"{config.llm.url}:{config.llm.port}",
-                        format="json",
-                        model=model,
-                        temperature=config.llm.temp,
-                    )
-                self.logger = config.set_logger(
-                    "llm",
-                    default_context={
-                        "llm_type": config.llm.type.lower(),
-                        "list_models": list_models,
-                    },
-                    additional_context=["model"],
-                )
-
+            llm_client = OllamaConnect(config)
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
 
+        if embeddings:
+
+            self.embeddings = llm_client.embedding
+
+            list_models = [config.llm.embeddings]
+            self.logger = config.set_logger(
+                "embeddings",
+                default_context={
+                    "llm_type": config.llm.type.lower(),
+                    "list_models": list_models,
+                },
+                additional_context=["model"],
+            )
+        else:
+            if models is None or not models:
+                list_models = config.llm.models.split(",")
+            else:
+                list_models = models
+
+            if list_models == "all":
+                list_models = llm_client.get_models()
+
+            for model in list_models:
+                self.model[model] = llm_client.chat(model)
+            self.logger = config.set_logger(
+                "llm",
+                default_context={
+                    "llm_type": config.llm.type.lower(),
+                    "list_models": list_models,
+                },
+                additional_context=["model"],
+            )
         self.logger_default_extra={"model": "Unknow"}
         self.logger.debug("Class llm succesfully init", extra={"model": ""})
 

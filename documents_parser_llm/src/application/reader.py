@@ -37,6 +37,7 @@ from src.application.config import AppConfig
 from src.application.llm import Llm
 from src.application.tools import timed
 
+from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.vectorial.database import VectorialDataBase
 
 
@@ -79,9 +80,10 @@ class DocumentReader:
                 "document": document,
                 "ressources": docs_pdf,
                 "list_models": list(self.llm.model.keys()),
+                "parser": config.rcp.doc_type
             },
         )
-        
+
         self.metadata = {}
         self.metadata["list_models"] = list(self.llm.model.keys())
 
@@ -89,10 +91,10 @@ class DocumentReader:
 
         self.logger.info("Class reader succesfully init, Start reading documents")
         self.embeddings = Llm(config, embeddings=True).embeddings
-        # self.text_splitter = SemanticChunker(self.embeddings)
-        self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
-        )
+        self.text_splitter = SemanticChunker(self.embeddings)
+        # self.text_splitter = RecursiveCharacterTextSplitter(
+        #     chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
+        # )
         self.read_document(self.vecdb, self.document_path)
         self.read_additionnal_document(docs_pdf)
 
@@ -145,9 +147,18 @@ class DocumentReader:
         """Loads a document from the specified path using the given loader type."""
         if loader_type is None:
             loader_type = self.default_loader
-
-        cla = getattr(document_loaders, loader_type)
-        return cla(document)
+        if loader_type == "openparse":
+            cla = OpenParseDocumentLoader
+        else:
+            cla = getattr(document_loaders, loader_type)
+        if isinstance(cla, document_loaders.UnstructuredPDFLoader):
+            return cla(document,    
+                            chunking_strategy="by_title",
+                            max_characters=1000000,
+                            include_orig_elements=False,).load()
+        else:
+            return cla(document).load()
+            #return self.text_splitter.split_documents(docs)
 
     @timed
     def read_document(self, vecdb: VectorialDataBase, document_path: str):
@@ -156,11 +167,9 @@ class DocumentReader:
         Then, adds the chunks to a VectorStore.
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
-        self.logger.info("Start reading document")
-        loader = self._load_document(document_path)
-        pages = loader.load()
+        self.logger.info(f"Start reading document {document_path}")
 
-        chunked_documents = self.text_splitter.split_documents(pages)
+        chunked_documents = self._load_document(document_path)
 
         vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
         self.current_model = vecdb.embeddings.model
