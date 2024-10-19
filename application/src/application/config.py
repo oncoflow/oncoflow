@@ -88,7 +88,7 @@ class AppConfig:
         type = environ.var(default="ChromaDB", help="type of DB")
         collection = environ.var(default="oncoflowDocs", help="Collectionname to use")
         client = environ.var(
-            default="PersistentClient", help="PersistentClient or HttpClient"
+            default="HttpClient", help="PersistentClient or HttpClient"
         )
         host = environ.var(default="localhost", help="Hostname when HttpClient used")
         port = environ.var(default="8000", help="Port when HttpClient used")
