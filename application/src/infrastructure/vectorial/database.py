@@ -70,7 +70,7 @@ class VectorialDataBase:
                     self.logger.debug("Flushing collection")
                     self.client.delete_collection(self.coll_name)
                     self.client.clear_system_cache()
-                except ValueError:
+                except Exception:
                     pass
             self.collection = self.client.get_or_create_collection(
                 self.coll_name, embedding_function=self.embeddings
