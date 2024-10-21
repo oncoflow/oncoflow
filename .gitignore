@@ -5,3 +5,5 @@ chromadb
 */__pycache__*
 */chroma
 documents_parser_llm/rcp
+rcp_pseudo/native_pdf/RCP.pdf
+rcp_pseudo/peuso_pdf/RCP.pdf
