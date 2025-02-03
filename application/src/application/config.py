@@ -73,7 +73,7 @@ class AppConfig:
             help="Model of llm system, type all for test all ollama models",
         )
         temp = environ.var(
-            default="0.1", converter=float, help="Temperature of llm system"
+            default="0.7", converter=float, help="Temperature of llm system"
         )
         embeddings = environ.var(default="all-minilm", help="embeddings Model to use")
 

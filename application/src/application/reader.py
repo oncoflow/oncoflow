@@ -172,7 +172,7 @@ class DocumentReader:
         chunked_documents = self._load_document(document_path)
 
         vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
-        self.current_model = vecdb.embeddings.model
+        self.current_model = self.config.llm.embeddings
 
     @timed
     def ask_in_document(self, query, class_type=None, models=None):
