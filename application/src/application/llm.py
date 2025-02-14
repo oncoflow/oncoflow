@@ -1,4 +1,4 @@
-from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
@@ -39,6 +39,7 @@ class Llm:
         if embeddings:
 
             self.embeddings = llm_client.embedding
+            print(self.embeddings)
 
             list_models = [config.llm.embeddings]
             self.logger = config.set_logger(
@@ -80,7 +81,8 @@ class Llm:
         """
         if prompt is None:
             prompt = []
-        self.default_prompt = ChatPromptTemplate.from_messages(prompt)
+        self.default_prompt = prompt
+
         # print("MAKING DEFAUT PROMPT")
         # ic(self.default_prompt)
         self.logger.debug(
@@ -108,13 +110,24 @@ class Llm:
         """
         base_chain = {
             "context": context,
-            "format_instructions": RunnablePassthrough(),
             "question": RunnablePassthrough(),
+            #"format_instructions": lambda x : parser.get_format_instructions()
         }
+        
+        prompt = HumanMessagePromptTemplate(
+            prompt=PromptTemplate(
+                template='{format_instructions}',
+                input_variables=[],
+                partial_variables={"format_instructions":  parser.get_format_instructions()}    
+            )
+        )
+
+        parserChat = ChatPromptTemplate.from_messages(self.default_prompt + [prompt])
+
         if additionnal_context is not None:
             for context in additionnal_context:
                 base_chain |= {context["name"]: context["retriever"]}
-        chain = base_chain | self.default_prompt
+        chain = base_chain | parserChat
 
         for name, model in self.model.items():
             self.chain[name] = chain | model | parser
@@ -184,12 +197,13 @@ class Llm:
                     str(self.chain[model_name]),
                     extra={"model": model_name},
                 )
-                result = self.chain[model_name].invoke(
-                    {
-                        "format_instructions": parser.get_format_instructions(),
-                        "question": query,
-                    }
-                )
+                result = self.chain[model_name].invoke(query)
+                # result = self.chain[model_name].invoke(
+                #     {
+                #         "format_instructions": parser.get_format_instructions(),
+                #         "question": query,
+                #     }, 
+                # )
                 self.logger.debug(
                     "LLM say correct result : %s", result, extra={"model": model_name}
                 )

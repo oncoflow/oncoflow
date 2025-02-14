@@ -1,6 +1,10 @@
 import chromadb
 import uuid
 
+from typing import List, Union
+
+from chromadb.utils.embedding_functions import create_langchain_embedding
+
 from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -34,7 +38,9 @@ class VectorialDataBase:
                 self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
 
             # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
-            self.embeddings = Llm(config, embeddings=True).embeddings
+            self.embeddings = create_langchain_embedding(
+                Llm(config, embeddings=True).embeddings
+            )
 
         else:
             raise ValueError(f"{str(config.dbvec.client)} not yet supported")
@@ -73,7 +79,8 @@ class VectorialDataBase:
                 except Exception:
                     pass
             self.collection = self.client.get_or_create_collection(
-                self.coll_name, embedding_function=self.embeddings
+                self.coll_name,
+                embedding_function=self.embeddings,
             )
             # Create a Chroma clientdb using the initialized client, collection and embeddings.
             self.clientdb = Chroma(
@@ -82,7 +89,8 @@ class VectorialDataBase:
                 embedding_function=self.embeddings,
             )
             self.client.get_collection(
-                self.coll_name, embedding_function=self.embeddings
+                self.coll_name,
+                embedding_function=self.embeddings,
             )
 
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
@@ -95,7 +103,9 @@ class VectorialDataBase:
         :return: A VectorStoreRetriever instance
         """
         self.logger.debug("Return receiver with words_number=%s", str(words_number))
-        return self.clientdb.as_retriever(search_kwargs={"k": words_number})
+        return self.clientdb.as_retriever(
+            search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
+        )
 
     # Add a document to the collection.
 
@@ -114,12 +124,10 @@ class VectorialDataBase:
             self.set_clientdb(flush=True)
 
         # Add the document to the collection with metadata and page content.
-       
 
         self.collection.add(
             ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content
         )
-
 
     def add_chunked_to_collection(self, chunked_documents, flush_before=False):
         """

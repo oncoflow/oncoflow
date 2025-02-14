@@ -13,23 +13,24 @@ services:
 
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
-  ollama:
-    image: ollama/ollama
-    restart: always
-    ports:
-     - 11434:11434
-    volumes:
-      - $HOME/ollama:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+  # ollama:
+  #   image: ollama/ollama
+  #   restart: always
+  #   ports:
+  #    - 11434:11434
+  #   volumes:
+  #     - $HOME/ollama:/root/.ollama
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
 
   chromadb:
-    image: chromadb/chroma:0.5.15
+    #image: chromadb/chroma:0.5.15
+    image: chromadb/chroma:0.6.3
     restart: always
     ports:
      - 8000:8000

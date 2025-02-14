@@ -53,10 +53,10 @@ class PatientMDTOncologicForm:
     class default_model(BaseModel):
         base_prompt: ClassVar[list] = [
             ("system", "You have to answer the user question.\n If you don't find response, retry to learn document and try again once"),
-            (
-            "human",
-            "{format_instructions}"
-            ),
+            # (
+            # "human",
+            # "{format_instructions}"
+            # ),
             ("human", "Question: {question}"),
         ]
         prompt: ClassVar[list] = []

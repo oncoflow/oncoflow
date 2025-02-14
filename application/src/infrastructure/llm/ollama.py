@@ -1,5 +1,5 @@
-from langchain_community.chat_models.ollama import ChatOllama
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama import ChatOllama
+from langchain_ollama import OllamaEmbeddings
 
 import ollama
 
@@ -17,7 +17,7 @@ class OllamaConnect:
         )
         self.client = ollama.Client(host=f"{config.llm.url}:{config.llm.port}")
         self.test_connection()
-        self.embedding = self.Embedding(
+        self.embedding = OllamaEmbeddings(
             base_url=f"{config.llm.url}:{config.llm.port}",
             model=config.llm.embeddings,
         )
@@ -35,9 +35,9 @@ class OllamaConnect:
 
     def get_models(self):
         return [
-            m["name"]
+            m["model"]
             for m in self.client.list()["models"]
-            if m["name"].split(":")[0] not in ["all-minilm"]
+            if m["model"].split(":")[0] not in ["all-minilm"]
         ]
 
     def test_connection(self):
@@ -49,6 +49,7 @@ class OllamaConnect:
 
     class Embedding(OllamaEmbeddings):
         """
+        DEPRECATED
         A subclass of OllamaEmbeddings that defines methods for embedding documents.
 
         This class is a thin wrapper around the Ollama embeddings functionality,

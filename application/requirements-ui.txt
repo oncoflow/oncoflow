@@ -1,20 +1,21 @@
-streamlit~=1.38.0
+streamlit~=1.41.0
 panda>=0.3
-streamlit-authenticator>=0.3
-streamlit_pdf_viewer>=0.0.18
+streamlit-authenticator>=0.4
+streamlit_pdf_viewer>=0.0.21
 
 # full app
-langchain-chroma~=0.1.0
-langchain-core~=0.3.0
+langchain-chroma~=0.2.1
+langchain-core~=0.3.33
 langchain_experimental~=0.3.0
+langchain-ollama~=0.2.0
 uuid>=1.0
-chromadb==0.5.10
-langchain_community~=0.3.0
-environ_config~=23.0
-inquirer~=3.3.0
-sentence_transformers~=3.0
-PyMuPDF~=1.24
-ollama~=0.2.0
-unstructured[pdf]~=0.15
-pymongo~=4.8.0
-openparse~=0.6.0
+chromadb==0.6.3
+langchain_community~=0.3.16
+environ_config~=24.1
+inquirer~=3.4.0
+sentence_transformers~=3.4
+PyMuPDF~=1.25
+unstructured[pdf]~=0.16
+pymongo~=4.11.0
+openparse~=0.7.0
+pdfminer.six==20231228
