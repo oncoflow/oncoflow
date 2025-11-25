@@ -1,5 +1,3 @@
-version: '3.1'
-
 services:
 
   mongo:
@@ -13,20 +11,20 @@ services:
 
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
-  # ollama:
-  #   image: ollama/ollama
-  #   restart: always
-  #   ports:
-  #    - 11434:11434
-  #   volumes:
-  #     - $HOME/ollama:/root/.ollama
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
+  ollama:
+    image: ollama/ollama
+    restart: always
+    ports:
+     - 11434:11434
+    volumes:
+      - /data/ollama:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   chromadb:
     #image: chromadb/chroma:0.5.15
@@ -35,7 +33,13 @@ services:
     ports:
      - 8000:8000
     
- 
+  pgvector:
+    image: pgvector/pgvector:pg18-trixie
+    shm_size: 1g
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: root
 
   # grafana:
   #   image: grafana/grafana-enterprise

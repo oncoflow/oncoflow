@@ -27,6 +27,7 @@ print(answer)
 """
 
 from langchain_community import document_loaders
+from langchain_docling import DoclingLoader
 
 from langchain_experimental.text_splitter import SemanticChunker
 
@@ -38,7 +39,9 @@ from src.application.llm import Llm
 from src.application.tools import timed
 
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
+from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.vectorial.database import VectorialDataBase
+from langchain_core.documents import Document
 
 
 class DocumentReader:
@@ -66,7 +69,7 @@ class DocumentReader:
         if prompt is None:
             prompt = []
         self.current_model = None
-        
+
         self.document_path = str(config.rcp.path) + "/" + document
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
@@ -80,7 +83,7 @@ class DocumentReader:
                 "document": document,
                 "ressources": docs_pdf,
                 "list_models": list(self.llm.model.keys()),
-                "parser": config.rcp.doc_type
+                "parser": config.rcp.doc_type,
             },
         )
 
@@ -135,7 +138,12 @@ class DocumentReader:
                     "name": doc_pdf.replace(".", ""),
                 }
                 self.docs_pdf[doc_pdf] = pdf_dict
-                additionnal_prompt.append(("system", f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}"))
+                additionnal_prompt.append(
+                    (
+                        "system",
+                        f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}",
+                    )
+                )
                 self.logger.debug(f"Start reading ressource {doc_pdf}")
                 self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
             self.llm.make_default_prompt(additionnal_prompt + self.default_prompt)
@@ -143,22 +151,32 @@ class DocumentReader:
             self.logger.debug("No additionnal ressources, return to default prompt")
             self.llm.make_default_prompt(self.default_prompt)
 
-    def _load_document(self, document=str, loader_type=None):
+    def _load_document(self, document=str, loader_type=None) -> list[Document]:
         """Loads a document from the specified path using the given loader type."""
-        if loader_type is None:
-            loader_type = self.default_loader
-        if loader_type == "openparse":
-            cla = OpenParseDocumentLoader
-        else:
-            cla = getattr(document_loaders, loader_type)
-        if isinstance(cla, document_loaders.UnstructuredPDFLoader):
-            return cla(document,    
-                            chunking_strategy="by_title",
-                            max_characters=1000000,
-                            include_orig_elements=False,).load()
-        else:
-            return cla(document).load()
-            #return self.text_splitter.split_documents(docs)
+        try:
+            if loader_type is None:
+                loader_type = self.default_loader
+            if loader_type == "openparse":
+                cla = OpenParseDocumentLoader
+            elif loader_type == "docling":
+                cla = DoclingLoader
+            elif loader_type == "ollamaOcr":
+                return OllamaOcrDocumentLoader(document, self.config).load()
+            else:
+                cla = getattr(document_loaders, loader_type)
+            if isinstance(cla, document_loaders.UnstructuredPDFLoader):
+                return cla(
+                    document,
+                    chunking_strategy="by_title",
+                    max_characters=1000000,
+                    include_orig_elements=False,
+                ).load()
+            else:
+                return cla(document).load()
+                # return self.text_splitter.split_documents(docs)
+        except Exception:
+            self.logger.error("Error in llm read")
+            raise
 
     @timed
     def read_document(self, vecdb: VectorialDataBase, document_path: str):
@@ -172,6 +190,7 @@ class DocumentReader:
         chunked_documents = self._load_document(document_path)
 
         vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
+
         self.current_model = self.config.llm.embeddings
 
     @timed
@@ -202,5 +221,5 @@ class DocumentReader:
 
         response = self.llm.invoke_multimodels_chain(query, parser)
         self.current_model = self.llm.current_model.model
-        
+
         return response

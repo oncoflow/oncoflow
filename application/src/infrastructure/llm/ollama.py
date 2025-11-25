@@ -23,6 +23,7 @@ class OllamaConnect:
         )
         self.logger.info("Succesfully connected")
 
+
     def chat(self, model, temperature=None):
         return ChatOllama(
             base_url=f"{self.config.llm.url}:{self.config.llm.port}",

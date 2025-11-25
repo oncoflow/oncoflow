@@ -23,7 +23,7 @@ class OpenParseDocumentLoader(BaseLoader):
         When you're implementing lazy load methods, you should use a generator
         to yield documents one by one.
         """
-
+        
         parser = openparse.DocumentParser(
             table_args={
                 "parsing_algorithm": "pymupdf",

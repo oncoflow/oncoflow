@@ -69,8 +69,12 @@ class AppConfig:
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
-            default="llama3.1:70b-instruct-q4_0",
+            default="gpt-oss",
             help="Model of llm system, type all for test all ollama models",
+        )
+        ocrmodels = environ.var(
+            default="granite3.2-vision",
+            help="Model of ocr llm system",
         )
         temp = environ.var(
             default="0.7", converter=float, help="Temperature of llm system"
@@ -118,7 +122,7 @@ class AppConfig:
             help="Path to additionnal files",
         )
         doc_type = environ.var(
-            default="PyMuPDFLoader",
+            default="ollamaOcr",
             help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ",
         )
         chunk_size = environ.var(

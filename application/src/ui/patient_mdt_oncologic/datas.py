@@ -106,7 +106,7 @@ def form():
             mm = app_conf.llm.models
             mp = app_conf.rcp.doc_type
             nm = po.selectbox("Modèle", OllamaConnect(app_conf).get_models(),placeholder="Select modèle")
-            parser = po.selectbox("Doc parser", ["UnstructuredPDFLoader", "openparse"], placeholder="Select parser")
+            parser = po.selectbox("Doc parser", ["UnstructuredPDFLoader", "openparse", "docling", "ollamaOcr"], placeholder="Select parser")
             if po.button("Rerun"):
                 app_conf.llm.models = nm
                 app_conf.rcp.doc_type = parser
