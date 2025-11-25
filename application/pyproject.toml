@@ -1,0 +1,12 @@
+[project]
+name = "application"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "blinker>=1.9.0",
+    "langchain-docling>=2.0.0",
+    "ollama-ocr>=0.1.6",
+    "streamlit>=1.51.0",
+]
