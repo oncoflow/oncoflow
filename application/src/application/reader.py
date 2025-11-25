@@ -28,6 +28,7 @@ print(answer)
 
 from langchain_community import document_loaders
 from langchain_docling import DoclingLoader
+from langchain_docling.loader import ExportType
 
 from langchain_experimental.text_splitter import SemanticChunker
 
@@ -159,20 +160,29 @@ class DocumentReader:
             if loader_type == "openparse":
                 cla = OpenParseDocumentLoader
             elif loader_type == "docling":
-                cla = DoclingLoader
+                from docling.chunking import HybridChunker
+
+                return DoclingLoader (
+                    file_path=document,
+                    export_type=ExportType.DOC_CHUNKS,
+                    chunker=HybridChunker(tokenizer="sentence-transformers/all-MiniLM-L6-v2")
+                ).load()
             elif loader_type == "ollamaOcr":
+                
                 return OllamaOcrDocumentLoader(document, self.config).load()
             else:
                 cla = getattr(document_loaders, loader_type)
-            if isinstance(cla, document_loaders.UnstructuredPDFLoader):
-                return cla(
-                    document,
-                    chunking_strategy="by_title",
-                    max_characters=1000000,
-                    include_orig_elements=False,
-                ).load()
-            else:
-                return cla(document).load()
+
+                if isinstance(cla, document_loaders.UnstructuredPDFLoader):
+                    return cla(
+                        document,
+                        chunking_strategy="by_title",
+                        max_characters=1000000,
+                        include_orig_elements=False,
+                    ).load()
+
+
+            return cla(document).load()
                 # return self.text_splitter.split_documents(docs)
         except Exception:
             self.logger.error("Error in llm read")

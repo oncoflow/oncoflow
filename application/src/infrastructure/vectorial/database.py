@@ -3,11 +3,12 @@ import uuid
 
 from typing import List, Union
 
-from chromadb.utils.embedding_functions import create_langchain_embedding
+from chromadb.utils.embedding_functions.chroma_langchain_embedding_function import create_langchain_embedding
 
 from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
+from langchain.vectorstores import utils as chromautils
 
 from src.application.config import AppConfig
 from src.application.llm import Llm
@@ -124,7 +125,7 @@ class VectorialDataBase:
             self.set_clientdb(flush=True)
 
         # Add the document to the collection with metadata and page content.
-
+        
         self.collection.add(
             ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content
         )
@@ -144,7 +145,7 @@ class VectorialDataBase:
         if flush_before:
             # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
-
+        chunked_documents = chromautils.filter_complex_metadata(chunked_documents)
         for doc in chunked_documents:
             # Add each document to the collection.
             self.add_to_collection(doc)
