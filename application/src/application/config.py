@@ -74,12 +74,12 @@ class AppConfig:
         )
         ocrmodels = environ.var(
             default="granite3.2-vision",
-            help="Model of ocr llm system",
+            help="Model of ocr in ollama llm system",
         )
         temp = environ.var(
             default="0.7", converter=float, help="Temperature of llm system"
         )
-        embeddings = environ.var(default="all-minilm", help="embeddings Model to use")
+        embeddings = environ.var(default="embeddinggemma", help="embeddings Model to use")
 
     # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
 
@@ -122,7 +122,7 @@ class AppConfig:
             help="Path to additionnal files",
         )
         doc_type = environ.var(
-            default="ollamaOcr",
+            default="docling",
             help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ",
         )
         chunk_size = environ.var(

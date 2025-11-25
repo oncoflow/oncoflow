@@ -39,7 +39,6 @@ class Llm:
         if embeddings:
 
             self.embeddings = llm_client.embedding
-            print(self.embeddings)
 
             list_models = [config.llm.embeddings]
             self.logger = config.set_logger(

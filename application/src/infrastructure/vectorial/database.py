@@ -8,7 +8,7 @@ from chromadb.utils.embedding_functions.chroma_langchain_embedding_function impo
 from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain.vectorstores import utils as chromautils
+from langchain_community.vectorstores.utils import filter_complex_metadata
 
 from src.application.config import AppConfig
 from src.application.llm import Llm
@@ -145,7 +145,7 @@ class VectorialDataBase:
         if flush_before:
             # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
-        chunked_documents = chromautils.filter_complex_metadata(chunked_documents)
+        chunked_documents = filter_complex_metadata(chunked_documents)
         for doc in chunked_documents:
             # Add each document to the collection.
             self.add_to_collection(doc)

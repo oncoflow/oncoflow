@@ -126,7 +126,7 @@ class PatientMDTOncologicForm:
         List of radiological exams
         """
 
-        exams_list: Optional[list[RadiologicalExamination]] = Field(
+        exams_list: list[RadiologicalExamination] = Field(
             description="List of radiological exams"
         )
 

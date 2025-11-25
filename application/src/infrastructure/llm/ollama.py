@@ -21,6 +21,7 @@ class OllamaConnect:
             base_url=f"{config.llm.url}:{config.llm.port}",
             model=config.llm.embeddings,
         )
+        
         self.logger.info("Succesfully connected")
 
 
