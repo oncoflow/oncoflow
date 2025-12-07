@@ -14,19 +14,19 @@ class PatientMDTOncologicForm:
     This class contains all patient and oncological disease information for the report.
     """
 
-    base_prompt = [
-        (
-            "system",
-            """
-            You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context} 
-            You MUST respect each rules :
-            - Ignore footer on all pages.
-            - Respect the format instruction given before each question
-            - Respect case sensitive format instruction
-            - Respect types in format instruction
-            """,
-        )
-    ]
+    # base_prompt = [
+    #     (
+    #         "system",
+    #         """
+    #         You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context} 
+    #         You MUST respect each rules :
+    #         - Ignore footer on all pages.
+    #         - Respect the format instruction given before each question
+    #         - Respect case sensitive format instruction
+    #         - Respect types in format instruction
+    #         """,
+    #     )
+    # ]
 
     def __init__(self) -> None:
         self.datas = {}
@@ -60,14 +60,14 @@ class PatientMDTOncologicForm:
             raise ValueError("Invalid input")
 
     class default_model(BaseModel):
-        base_prompt: ClassVar[list] = [
-            ("system", "You have to answer the user question.\n If you don't find response, retry to learn document and try again once"),
-            # (
-            # "human",
-            # "{format_instructions}"
-            # ),
-            ("human", "Question: {question}"),
-        ]
+        # base_prompt: ClassVar[list] = [
+        #     ("system", "You have to answer the user question.\n If you don't find response, retry to learn document and try again once"),
+        #     # (
+        #     # "human",
+        #     # "{format_instructions}"
+        #     # ),
+        #     ("human", "Question: {question}"),
+        # ]
         system_prompt: ClassVar[str] = ""
         prompt: ClassVar[list] = []
         models: ClassVar[list] = []

@@ -3,15 +3,10 @@ import uuid
 
 from typing import List, Union
 
-from chromadb.utils.embedding_functions.chroma_langchain_embedding_function import create_langchain_embedding
-
-from langchain_chroma import Chroma
-
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_community.vectorstores.utils import filter_complex_metadata
 
 from src.application.config import AppConfig
-from src.application.llm import Llm
 
 
 class VectorialDataBase:
@@ -27,10 +22,9 @@ class VectorialDataBase:
         else:
             self.coll_name = f"{self.coll_prefix}_{config.dbvec.collection}"
 
-        self.embeddings = create_langchain_embedding(
-                Llm(config, embeddings=True).embeddings
-            )
-
+        self.config = config
+        self.embeddings = self.get_embedding() 
+        
         self.coll_prefix = coll_prefix
         self.init_client(config)
         self.set_clientdb(flush=True)

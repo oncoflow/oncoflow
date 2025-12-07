@@ -5,6 +5,7 @@ from chromadb.utils.embedding_functions.chroma_langchain_embedding_function impo
 )
 
 from langchain_chroma import Chroma
+from src.application.llm import Llm
 
 from langchain_community.vectorstores.utils import filter_complex_metadata
 
@@ -23,6 +24,10 @@ class Chromadb(VectorialDataBase):
         # Clear system cache and get or create a collection based on the configuration.
         self.client.clear_system_cache()
         
+    def get_embedding(self):
+        return create_langchain_embedding(
+                Llm(self.config, embeddings=True).embeddings
+            )
 
     def set_clientdb(
         self,

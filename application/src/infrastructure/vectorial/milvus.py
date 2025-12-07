@@ -3,6 +3,8 @@ from langchain_milvus import Milvus
 from langchain_core.documents import Document
 from src.infrastructure.vectorial.database import VectorialDataBase
 from src.application.config import AppConfig
+from src.application.llm import Llm
+
 from pymilvus import Collection, MilvusException, connections, db, utility
 
 
@@ -21,6 +23,9 @@ class MilvusDB(VectorialDataBase):
         except MilvusException as e:
             self.logger.error(f"An error occurred: {e}")
     
+    def get_embedding(self):
+        return Llm(self.config, embeddings=True).embeddings
+
     def set_clientdb(
         self,
         flush=False,

@@ -56,7 +56,7 @@ def full_read_file_agents(app_conf, filename: str, logger, replace: bool = True)
             system_prompt=cl.system_prompt
         )
         datas = agent.ask(cl.question)
-        logger.info(f"DATAS : {datas} ...")
+        logger.debug(f"DATAS : {datas} ...")
         if datas:
             fiche_rcp.set_datas(cl, datas)
         del agent
