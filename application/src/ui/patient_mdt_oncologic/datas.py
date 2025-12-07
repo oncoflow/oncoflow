@@ -9,7 +9,7 @@ from pandas import DataFrame
 from src.infrastructure.llm.ollama import OllamaConnect
 
 from src.application.config import AppConfig
-from src.application.app_functions import delete_document, full_read_file
+from src.application.app_functions import delete_document, full_read_file_agents
 from src.infrastructure.documents.mongodb import Mongodb
 
 app_conf = environ.to_config(AppConfig)
@@ -111,7 +111,7 @@ def form():
                 app_conf.llm.models = nm
                 app_conf.rcp.doc_type = parser
                 with st.status("Rerun AI ..."):
-                    full_read_file(app_conf=app_conf, filename=st.query_params['file'], logger=logger)
+                    full_read_file_agents(app_conf=app_conf, filename=st.query_params['file'], logger=logger)
                     app_conf.llm.models = mm
                     app_conf.rcp.doc_type = mp
                     st.write("Succès")

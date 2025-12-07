@@ -25,10 +25,10 @@ class OllamaConnect:
         self.logger.info("Succesfully connected")
 
 
-    def chat(self, model, temperature=None):
+    def chat(self, model, output=None, temperature=None):
         return ChatOllama(
             base_url=f"{self.config.llm.url}:{self.config.llm.port}",
-            format="json",
+            format= output.model_json_schema() if output is not None else "json",
             model=model,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp

@@ -14,10 +14,10 @@ class RadiologicExamType(str, Enum):
 
 
 class Gender(str, Enum):
-    male = "male"
-    female = "female"
-    other = "other"
-    not_given = "not_given"
+    male = "Male"
+    female = "Female"
+    other = "Other"
+    not_given = "Not_given"
 
 
 class RevealingMode(str, Enum):

@@ -26,7 +26,7 @@ class Mongodb:
         connection_string = "mongodb://"
         if config.mongodb.user is not None:
             connection_string += f"{config.mongodb.user}:{config.mongodb.password}@"
-        connection_string += config.mongodb.host
+        connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
 
         self.client = MongoClient(connection_string)
         self.database = self.client[config.mongodb.database]

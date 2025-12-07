@@ -13,8 +13,6 @@ from langchain_community.vectorstores.utils import filter_complex_metadata
 from src.application.config import AppConfig
 from src.application.llm import Llm
 
-# Define a class for working with vectorial databases.
-
 
 class VectorialDataBase:
     client = None
@@ -23,40 +21,41 @@ class VectorialDataBase:
     """Initialize the client, collection and embeddings based on configuration."""
 
     def __init__(self, config=AppConfig, coll_prefix=None):
-        if config.dbvec.type.lower() == "chromadb":
-            # Use either HttpClient or PersistentClient depending on the configuration.
-            if config.dbvec.client == "HttpClient":
-                self.client = chromadb.HttpClient(
-                    host=config.dbvec.host, port=config.dbvec.port
-                )
-            elif config.dbvec.client == "PersistentClient":
-                self.client = chromadb.PersistentClient()
-            # Clear system cache and get or create a collection based on the configuration.
-            self.client.clear_system_cache()
-            if coll_prefix is None:
-                self.coll_name = config.dbvec.collection
-            else:
-                self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
 
-            # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
-            self.embeddings = create_langchain_embedding(
+        if coll_prefix is None:
+            self.coll_name = config.dbvec.collection
+        else:
+            self.coll_name = f"{self.coll_prefix}_{config.dbvec.collection}"
+
+        self.embeddings = create_langchain_embedding(
                 Llm(config, embeddings=True).embeddings
             )
 
-        else:
-            raise ValueError(f"{str(config.dbvec.client)} not yet supported")
+        self.coll_prefix = coll_prefix
+        self.init_client(config)
+        self.set_clientdb(flush=True)
 
         self.logger = config.set_logger(
             "vectorial_db",
             default_context={
                 "collection": self.coll_name,
                 "embeddings": self.embeddings,
-                "db_version": str(self.client.get_version()),
+                "db_version": str(self.get_version()),
                 "db_type": config.dbvec.type.lower(),
             },
         )
+
         self.logger.info("Class vectorial_db succesfully init")
-        self.set_clientdb(flush=True)
+        
+
+    def init_client(self,config=AppConfig):
+        """
+        Set init client
+        """
+        return None
+
+    def get_version(self) -> str:
+        return self.client.get_version()
 
     def set_clientdb(self, flush=False):
         """
@@ -70,29 +69,7 @@ class VectorialDataBase:
         Raises:
         ValueError: If the client type is not supported
         """
-        if isinstance(self.client, chromadb.ClientAPI):
-            if flush:
-                # Delete and recreate the collection based on the configuration.
-                try:
-                    self.logger.debug("Flushing collection")
-                    self.client.delete_collection(self.coll_name)
-                    self.client.clear_system_cache()
-                except Exception:
-                    pass
-            self.collection = self.client.get_or_create_collection(
-                self.coll_name,
-                embedding_function=self.embeddings,
-            )
-            # Create a Chroma clientdb using the initialized client, collection and embeddings.
-            self.clientdb = Chroma(
-                client=self.client,
-                collection_name=self.coll_name,
-                embedding_function=self.embeddings,
-            )
-            self.client.get_collection(
-                self.coll_name,
-                embedding_function=self.embeddings,
-            )
+        return None
 
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """
@@ -145,7 +122,7 @@ class VectorialDataBase:
         if flush_before:
             # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
-        chunked_documents = filter_complex_metadata(chunked_documents)
+        #chunked_documents = filter_complex_metadata(chunked_documents)
         for doc in chunked_documents:
             # Add each document to the collection.
             self.add_to_collection(doc)

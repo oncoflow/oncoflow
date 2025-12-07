@@ -42,6 +42,8 @@ from src.application.tools import timed
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.vectorial.database import VectorialDataBase
+from src.infrastructure.vectorial.client import VectorialDataBaseClient
+from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
 
 
@@ -74,7 +76,7 @@ class DocumentReader:
         self.document_path = str(config.rcp.path) + "/" + document
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
-        self.vecdb = VectorialDataBase(config)
+        self.vecdb = VectorialDataBaseClient(config).vectordb
 
         self.set_prompt(prompt)
 
@@ -134,7 +136,7 @@ class DocumentReader:
             additionnal_prompt = []
             for doc_pdf in docs_pdf:
                 pdf_dict = {
-                    "vecdb": VectorialDataBase(self.config, coll_prefix="additional"),
+                    "vecdb": VectorialDataBaseClient(self.config, coll_prefix="additional"),
                     "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
                     "name": doc_pdf.replace(".", ""),
                 }
@@ -187,6 +189,12 @@ class DocumentReader:
         except Exception:
             self.logger.error("Error in llm read")
             raise
+    
+    def get_retriever(self) -> VectorStoreRetriever:
+        return self.vecdb.get_retriever()
+
+    def get_additionnals_retrievers(self) -> list[VectorStoreRetriever]:
+        return [pdf.vectdb for pdf in self.docs_pdf]
 
     @timed
     def read_document(self, vecdb: VectorialDataBase, document_path: str):

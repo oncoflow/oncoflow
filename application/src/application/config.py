@@ -79,7 +79,7 @@ class AppConfig:
         temp = environ.var(
             default="0.7", converter=float, help="Temperature of llm system"
         )
-        embeddings = environ.var(default="embeddinggemma", help="embeddings Model to use")
+        embeddings = environ.var(default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use")
 
     # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
 
@@ -89,8 +89,22 @@ class AppConfig:
         Class for configuring the vectorial database settings.
         """
 
-        type = environ.var(default="ChromaDB", help="type of DB")
+        type = environ.var(default="milvus", help="type of DB")
         collection = environ.var(default="oncoflowDocs", help="Collectionname to use")
+
+    @environ.config
+    class MilvusDB:
+        token = environ.var(default="root:Milvus", help="Token of the db")
+        database = environ.var(default="oncowflow", help="Database name")
+        port = environ.var(default="19530", help="Port used")
+        host = environ.var(default="localhost", help="Hostname used")
+
+    @environ.config
+    class ChomaDB:
+        """
+        Class for configuring the vectorial database settings.
+        """
+
         client = environ.var(
             default="HttpClient", help="PersistentClient or HttpClient"
         )
@@ -102,8 +116,9 @@ class AppConfig:
         user = environ.var(default="root", help="Mongo Username")
         password = environ.var(default="root", help="Mongo password")
         host = environ.var(default="127.0.0.1", help="Address of DB")
-        port = environ.var(default="8081", help="Port of DB")
+        port = environ.var(default="27017", help="Port of DB")
         database = environ.var(default="Oncoflow", help="Mongo database name")
+        vectordatabase = environ.var(default="OncoflowVector", help="Mongo database name")
 
     @environ.config
     class RCP:
@@ -151,6 +166,8 @@ class AppConfig:
     rcp = environ.group(RCP)
     logs = environ.group(Log)
     mongodb = environ.group(MongoDB)
+    chromadb = environ.group(ChomaDB)
+    milvus = environ.group(MilvusDB)
 
     def set_logger(self, name, default_context={}, additional_context=None):
 

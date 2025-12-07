@@ -2,6 +2,7 @@ import inspect
 import json
 
 from typing import List, Optional, ClassVar
+from datetime import datetime
 
 from pydantic import BaseModel, Field, PastDate
 
@@ -16,7 +17,14 @@ class PatientMDTOncologicForm:
     base_prompt = [
         (
             "system",
-            "You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context}.You can ignore footer on all pages.",
+            """
+            You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context} 
+            You MUST respect each rules :
+            - Ignore footer on all pages.
+            - Respect the format instruction given before each question
+            - Respect case sensitive format instruction
+            - Respect types in format instruction
+            """,
         )
     ]
 
@@ -28,6 +36,7 @@ class PatientMDTOncologicForm:
             if inspect.isclass(cls_attribute)
             and issubclass(cls_attribute, self.default_model)
             and cls_attribute.__name__ != "default_model"
+            and "_agent" not in cls_attribute.__name__
         ]
 
     def set_datas(self, basemodel, datas) -> None:
@@ -59,14 +68,25 @@ class PatientMDTOncologicForm:
             # ),
             ("human", "Question: {question}"),
         ]
+        system_prompt: ClassVar[str] = ""
         prompt: ClassVar[list] = []
         models: ClassVar[list] = []
         question: ClassVar[str] = ""
         ressources: ClassVar[list] = []
 
+    class administratives_agent(default_model):
+        system_prompt = """
+        You are a medical administrative assistant, read document and extract exact information without reflexion
+        You have to answer the user question.
+        If you don't find response, retry to learn document and try again once
+        You MUST respect each rules :
+        - Ignore footer on all pages.
+        - Respect stricly the format instruction given before each question
+        """
+
     #  // // // // // Tested and Working classes // // // // //
 
-    class PatientAdministrative(default_model):
+    class PatientAdministrative(administratives_agent):
         """
         Patient administrative informations
         """
@@ -74,14 +94,14 @@ class PatientMDTOncologicForm:
         first_name: str = Field(description="First name of the patient")
         last_name: str = Field(description="Last name of the patient")
         age: int = Field(description="Age of the patient")
-        date_birth: Optional[int] = Field(description="Date of birth of the patient")
+        date_birth: Optional[datetime] = Field(description="Date of birth of the patient")
         gender: Gender = Field(description="Gender of the patient")
 
         question: ClassVar[str] = (
             "Tell me the first name, Last name, age, date of birth and gender of the patient."
         )
 
-    class PatientPerformanceStatus(default_model):
+    class PatientPerformanceStatus(administratives_agent):
         """
         Patient WHO performance status
         """
@@ -101,7 +121,7 @@ class PatientMDTOncologicForm:
             "Tell me the WHO performance status of the patient (0-4)."
         )
 
-    class TumorLocation(default_model):
+    class TumorLocation(administratives_agent):
         """
         Location of the tumor
         """
@@ -112,7 +132,7 @@ class PatientMDTOncologicForm:
 
         question: ClassVar[str] = "Tell me where is located the primary tumor ?"
 
-    class TumorBiology(default_model):
+    class TumorBiology(administratives_agent):
         """
         Biology of the tumor
         """
@@ -121,7 +141,7 @@ class PatientMDTOncologicForm:
 
         question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
 
-    class RadiologicExams(default_model):
+    class RadiologicExams(administratives_agent):
         """
         List of radiological exams
         """
@@ -134,7 +154,7 @@ class PatientMDTOncologicForm:
             "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
         )
 
-    class PreviousCurativeSurgery(default_model):
+    class PreviousCurativeSurgery(administratives_agent):
         """
         Previous curative surgery
         """
@@ -150,7 +170,7 @@ class PatientMDTOncologicForm:
             "Tell me if a curative surgery has already been done for this tumor ?"
         )
 
-    class PlannedCurativeSurgery(default_model):
+    class PlannedCurativeSurgery(administratives_agent):
         """
         Planned curative surgery
         """
@@ -163,7 +183,7 @@ class PatientMDTOncologicForm:
             "Tell me if a curative surgery has been planned for this tumor ?"
         )
 
-    class ChemotherapyTreament(default_model):
+    class ChemotherapyTreament(administratives_agent):
         """
         Chemotherapy treatments
         """
@@ -265,9 +285,9 @@ class PatientMDTOncologicForm:
     #     onset_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains initials symptoms")
     #     actual_symptoms: Optional[List[LiverSymptomsEnum]] = Field(description="Contains actual symptoms")
 
-    class Cardiologue(default_model):
-        necessary: bool = Field(description="Est-ce que l'évaluation par un cardiologue est nécessaire pour traiter ce patient ?")
-        reason: str = Field(description="Pourquoi ?")
+    # class Cardiologue(default_model):
+    #     necessary: bool = Field(description="Est-ce que l'évaluation par un cardiologue est nécessaire pour traiter ce patient ?")
+    #     reason: str = Field(description="Pourquoi ?")
     #     base_prompt: ClassVar[list] = [
     #         ("human", "Que vas-tu répondre si tu n'as pas tous les éléments?"),
     #         ("ai", "inconnu"),

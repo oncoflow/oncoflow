@@ -1,13 +1,30 @@
 services:
 
-  mongo:
-    image: mongo
+  mongod:
+    image: mongodb/mongodb-community-server:latest
     restart: always
+    entrypoint:
+      - sh 
+      - -c
+      - |
+        openssl rand -base64 756 > /tmp/keyfile  && chown 101:101 /tmp/keyfile ;
+        python3 /usr/local/bin/docker-entrypoint.py
+    command: >-
+         mongod
+         --config /etc/mongod.conf
+         --replSet rs0
     ports:
      - 27017:27017
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
+    volumes:
+      - ./mongod.conf:/etc/mongod.conf:ro
+    extra_hosts:
+         - "host.docker.internal:host-gateway"
+    networks:
+         - search-community
+
 
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
@@ -61,3 +78,7 @@ services:
   #     ME_CONFIG_MONGODB_ADMINPASSWORD: example
   #     ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
   #     ME_CONFIG_BASICAUTH: false
+
+networks:
+   search-community:
+      name: search-community
