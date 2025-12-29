@@ -14,7 +14,7 @@ class MilvusDB(VectorialDataBase):
         self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
         self.token = config.milvus.token
         self.database = config.milvus.database
-        self.collection = config.dbvec.collection
+        
         try:
             existing_databases = db.list_database()
             if config.milvus.database not in existing_databases:
@@ -33,7 +33,7 @@ class MilvusDB(VectorialDataBase):
               
         self.clientdb = Milvus(
             embedding_function=self.embeddings,
-            collection_name=self.collection,
+            collection_name=self.coll_name,
             connection_args={"uri": self.uri, "token": self.token, "db_name": self.database},
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",

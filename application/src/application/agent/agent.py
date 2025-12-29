@@ -57,16 +57,17 @@ class OncowflowAgent:
         )
         self.logger.info("Agent succefully created")
 
-    def ask(self, question, structuredResponse: bool = True) -> dict:
+    def ask(self, question, additionnal_readers:list[DocumentReader] = [], structuredResponse: bool = True) -> dict:
         self.logger.info('Ask "%s" to agent ...', question)
 
         result = self.agent.invoke(
             {"messages": [{"role": "user", "content": question}]},
-            context=Context(reader=self.reader),
+            context=Context(reader=self.reader, additionnal_readers=additionnal_readers),
         )
         for msg in result["messages"]:
             try:
                 if type(msg).__name__ == "AIMessage":
+                    self.logger.info(f"AI response : {result['messages']}")
                     self.output_format.model_validate_json(msg.content)
                     return json.loads(msg.content)
             except ValidationError:

@@ -20,14 +20,12 @@ class VectorialDataBase:
         if coll_prefix is None:
             self.coll_name = config.dbvec.collection
         else:
-            self.coll_name = f"{self.coll_prefix}_{config.dbvec.collection}"
+            self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
 
         self.config = config
         self.embeddings = self.get_embedding() 
-        
-        self.coll_prefix = coll_prefix
         self.init_client(config)
-        self.set_clientdb(flush=True)
+        self.set_clientdb()
 
         self.logger = config.set_logger(
             "vectorial_db",

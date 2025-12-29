@@ -46,11 +46,11 @@ pages["Patient mdt Oncologic"] = [
         title="Charger le/les fichier(s)",
         icon="🚀"
     ),
-    # st.Page(
-    #     f"{PAGES_DIR_SRC}/patient_mdt_oncologic/metadatas.py",
-    #     title="Metadatas",
-    #     icon=":material/dashboard:",
-    # ),
+    st.Page(
+        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/agents.py",
+        title="Agents and ressources",
+        icon=":material/robot:",
+    ),
 ]
 pages["Reports"] = [
     st.Page(

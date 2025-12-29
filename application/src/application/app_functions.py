@@ -6,9 +6,9 @@ from src.application.agent.agent import OncowflowAgent
 from langchain_core.output_parsers import PydanticOutputParser
 
 
-def full_read_file(app_conf, filename: str, logger, replace: bool = True):
+def full_read_mtd(app_conf, filename: str, logger, replace: bool = True):
     logger.info(f"Start reading {filename} ...")
-    rag = DocumentReader(app_conf, document=filename)
+    rag = DocumentReader(app_conf, document=str(app_conf.rcp.path) + "/" + filename)
     fiche_rcp = PatientMDTOncologicForm()
     metadatas = {}
     for cl in fiche_rcp.basemodel_list:
@@ -42,12 +42,14 @@ def full_read_file(app_conf, filename: str, logger, replace: bool = True):
         logger.info("Type %s not known, fallback to stdout", app_conf.rcp.display_type)
 
 
-def full_read_file_agents(app_conf, filename: str, logger, replace: bool = True):
+def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
     logger.info(f"Start reading {filename} ...")
     reader = DocumentReader(app_conf, document=filename)
+    reader.read_document()
     fiche_rcp = PatientMDTOncologicForm()
     metadatas = {}
     for cl in fiche_rcp.basemodel_list:
+        additionnal_readers = [ DocumentReader(app_conf, ressource, document_type="ressource") for ressource in cl.ressources]
         agent = OncowflowAgent(
             models=cl.models,
             reader=reader,
@@ -55,7 +57,7 @@ def full_read_file_agents(app_conf, filename: str, logger, replace: bool = True)
             output_format=cl,
             system_prompt=cl.system_prompt
         )
-        datas = agent.ask(cl.question)
+        datas = agent.ask(cl.question, additionnal_readers)
         logger.debug(f"DATAS : {datas} ...")
         if datas:
             fiche_rcp.set_datas(cl, datas)

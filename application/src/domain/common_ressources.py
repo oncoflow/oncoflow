@@ -281,3 +281,9 @@ class RadiologicalExaminations(BaseModel):
     pet_scans: list[RadiologicalExamination] = Field(
         "The patient's positron emission tomography (PET) scans"
     )
+
+class PatientPriority(str, Enum):
+    urgent = "Patient must be threat urgently"
+    medium = "Patient must be threat as it possible"
+    low = "Patient is not urgent"
+    not_given = "no answer"

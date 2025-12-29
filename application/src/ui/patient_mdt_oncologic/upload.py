@@ -24,7 +24,7 @@ if uploaded_files:
                 pdf.write(bytes_data)
 
             st.write("Passage de l'IA...")
-            full_read_file_agents(app_conf=app_conf, filename=f, logger=logger)
+            full_read_mtd_agents(app_conf=app_conf, filename=f, logger=logger)
             st.write("Succès")
             time.sleep(1)
         st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py")

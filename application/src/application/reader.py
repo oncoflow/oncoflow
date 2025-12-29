@@ -46,6 +46,8 @@ from src.infrastructure.vectorial.client import VectorialDataBaseClient
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
 
+from slugify import slugify
+
 
 class DocumentReader:
     """
@@ -66,17 +68,23 @@ class DocumentReader:
     docs_pdf = {}
 
     def __init__(
-        self, config=AppConfig, document=str, docs_pdf=None, prompt=None, models=None
+        self, config=AppConfig, document=str, document_type="mtd", prompt=None, models=None
     ):
         self.config = config
         if prompt is None:
             prompt = []
         self.current_model = None
 
-        self.document_path = str(config.rcp.path) + "/" + document
+        if document_type == "mtd":
+            self.document_path = f"{config.rcp.path}/{document}"
+        elif document_type == "ressource":
+            self.document_path = f"{config.rcp.additional_path}/{document}"
+        else:
+            raise ValueError(f"{document_type} not yet supported")
+
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
-        self.vecdb = VectorialDataBaseClient(config).vectordb
+        self.vecdb = VectorialDataBaseClient(config, coll_prefix = slugify(document, separator="_")).vectordb
 
         self.set_prompt(prompt)
 
@@ -101,8 +109,8 @@ class DocumentReader:
         # self.text_splitter = RecursiveCharacterTextSplitter(
         #     chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
         # )
-        self.read_document(self.vecdb, self.document_path)
-        self.read_additionnal_document(docs_pdf)
+        # self.read_document(self.document_path)
+        # self.read_additionnal_document(docs_pdf)
 
     def set_prompt(self, prompt):
         """
@@ -124,7 +132,7 @@ class DocumentReader:
         self.llm.make_default_prompt(self.default_prompt)
 
     @timed
-    def read_additionnal_document(self, docs_pdf=None):
+    def old_read_additionnal_document(self, docs_pdf=None):
         """
         Reads additional documents if provided and updates the default prompt accordingly.
 
@@ -135,20 +143,21 @@ class DocumentReader:
         if docs_pdf is not None:
             additionnal_prompt = []
             for doc_pdf in docs_pdf:
-                pdf_dict = {
-                    "vecdb": VectorialDataBaseClient(self.config, coll_prefix="additional"),
-                    "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
-                    "name": doc_pdf.replace(".", ""),
-                }
-                self.docs_pdf[doc_pdf] = pdf_dict
-                additionnal_prompt.append(
-                    (
-                        "system",
-                        f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}",
+                if doc_pdf not in self.docs_pdf:
+                    pdf_dict = {
+                        "vecdb": VectorialDataBaseClient(self.config, coll_prefix=slugify(doc_pdf)).vectordb,
+                        "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
+                        "name": doc_pdf,
+                    }
+                    self.docs_pdf[doc_pdf] = pdf_dict
+                    additionnal_prompt.append(
+                        (
+                            "system",
+                            f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}",
+                        )
                     )
-                )
-                self.logger.debug(f"Start reading ressource {doc_pdf}")
-                self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
+                    self.logger.debug(f"Start reading ressource {doc_pdf}")
+                    self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
             self.llm.make_default_prompt(additionnal_prompt + self.default_prompt)
         else:
             self.logger.debug("No additionnal ressources, return to default prompt")
@@ -193,21 +202,21 @@ class DocumentReader:
     def get_retriever(self) -> VectorStoreRetriever:
         return self.vecdb.get_retriever()
 
-    def get_additionnals_retrievers(self) -> list[VectorStoreRetriever]:
-        return [pdf.vectdb for pdf in self.docs_pdf]
+    def get_additionnals_retrievers(self, pdf_list: list) -> list[VectorStoreRetriever]:
+        return [info["vecdb"].get_retriever() for pdf, info in self.docs_pdf.items() if info["name"] in pdf_list]
 
     @timed
-    def read_document(self, vecdb: VectorialDataBase, document_path: str):
+    def read_document(self):
         """
         Reads a document from the specified loader and splits it into chunks.
         Then, adds the chunks to a VectorStore.
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
-        self.logger.info(f"Start reading document {document_path}")
+        self.logger.info(f"Start reading document {self.document_path}")
 
-        chunked_documents = self._load_document(document_path)
+        chunked_documents = self._load_document(self.document_path)
 
-        vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
+        self.vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
 
         self.current_model = self.config.llm.embeddings
 
