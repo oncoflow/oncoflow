@@ -18,6 +18,7 @@ class PatientMDTOncologicForm(DocumentReader):
     """
     This class contains all patient and oncological disease information for the report.
     """
+
     mtd_datas: dict = {}
 
     def __init__(self, config=AppConfig, document=str) -> None:
@@ -40,8 +41,7 @@ class PatientMDTOncologicForm(DocumentReader):
             self.read_model(model)
         return self.mtd_datas
 
-
-    def read_model(self, model) :
+    def read_model(self, model):
         if len(model.agents) == 1:
             agent = model.agents[0](config=self.config, mtd=self, output_format=model)
             datas = agent.ask(model.question)
@@ -55,7 +55,7 @@ class PatientMDTOncologicForm(DocumentReader):
                 self.logger.debug(f"DATAS : {datas} ...")
                 if datas:
                     if model.__name__ not in self.mtd_datas:
-                        self.mtd_datas[model.__name__] = {} 
+                        self.mtd_datas[model.__name__] = {}
                     self.mtd_datas[model.__name__][magent.agent_name] = datas
         del agent
 
@@ -69,9 +69,9 @@ class PatientMDTOncologicForm(DocumentReader):
             raise ValueError("Invalid input")
 
     class default_model(BaseModel):
-        
+
         question: ClassVar[str] = ""
-        agents: ClassVar[list[OncowflowAgent]] = [ Agents.Administratives_agent ]
+        agents: ClassVar[list[OncowflowAgent]] = [Agents.Administratives_agent]
 
     #  // // // // // Tested and Working classes // // // // //
 
@@ -132,7 +132,6 @@ class PatientMDTOncologicForm(DocumentReader):
 
     #     question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
 
-
     # class RadiologicExams(default_model):
     #     """
     #     List of radiological exams
@@ -192,17 +191,21 @@ class PatientMDTOncologicForm(DocumentReader):
     #     )
     class ExpertAnswer(default_model):
 
-        agents = [ 
-            Agents.Pancreas_expert_agent, 
-            Agents.Oesophagus_expert_agent, 
-            Agents.Hepatocellular_expert_agent
-            ]
-        
+        agents = [
+            Agents.Pancreas_expert_agent,
+            Agents.Oesophagus_expert_agent,
+            Agents.Hepatocellular_expert_agent,
+        ]
+
         expert_relevant: bool = Field(description="Is your expertise is relevant")
 
-        why_relevant: str =  Field( description="Explain why your expertise is relevant or not and why this priority is given" )
+        why_relevant: str = Field(
+            description="Explain why your expertise is relevant or not and why this priority is given"
+        )
 
-        sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
+        sources_relevant: list[Reference] = Field(
+            description="Give the sources of your relevant answer"
+        )
 
         patient_priority: PatientPriority = Field(
             description="patient treatment emergency"
@@ -219,11 +222,11 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
     class MTDCompleted(default_model):
-        agents = [ 
-            Agents.Pancreas_expert_agent, 
-            Agents.Oesophagus_expert_agent, 
-            Agents.Hepatocellular_expert_agent
-            ]
+        agents = [
+            Agents.Pancreas_expert_agent,
+            Agents.Oesophagus_expert_agent,
+            Agents.Hepatocellular_expert_agent,
+        ]
         mtd_complete: MTDComplete = Field("Is MTD is complete")
 
         question: ClassVar[str] = (
@@ -232,9 +235,8 @@ class PatientMDTOncologicForm(DocumentReader):
             """
         )
 
-
     # class ExpertPancreasAnswer(default_model):
-        
+
     #     expert_relevant: bool = Field(description="Is Pancreas Expert is relevant")
 
     #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
@@ -257,7 +259,7 @@ class PatientMDTOncologicForm(DocumentReader):
     # class ExpertOesophagusAnswer(default_model):
 
     #     expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
-        
+
     #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
 
     #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )

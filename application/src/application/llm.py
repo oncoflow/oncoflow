@@ -1,4 +1,8 @@
-from langchain_core.prompts import ChatPromptTemplate, HumanMessagePromptTemplate, PromptTemplate
+from langchain_core.prompts import (
+    ChatPromptTemplate,
+    HumanMessagePromptTemplate,
+    PromptTemplate,
+)
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.exceptions import OutputParserException
 
@@ -68,7 +72,7 @@ class Llm:
                 },
                 additional_context=["model"],
             )
-        self.logger_default_extra={"model": "Unknow"}
+        self.logger_default_extra = {"model": "Unknow"}
         self.logger.debug("Class llm succesfully init", extra={"model": ""})
 
     def make_default_prompt(self, prompt=None):
@@ -110,14 +114,16 @@ class Llm:
         base_chain = {
             "context": context,
             "question": RunnablePassthrough(),
-            #"format_instructions": lambda x : parser.get_format_instructions()
+            # "format_instructions": lambda x : parser.get_format_instructions()
         }
-        
+
         prompt = HumanMessagePromptTemplate(
             prompt=PromptTemplate(
-                template='{format_instructions}',
+                template="{format_instructions}",
                 input_variables=[],
-                partial_variables={"format_instructions":  parser.get_format_instructions()}    
+                partial_variables={
+                    "format_instructions": parser.get_format_instructions()
+                },
             )
         )
 
@@ -201,7 +207,7 @@ class Llm:
                 #     {
                 #         "format_instructions": parser.get_format_instructions(),
                 #         "question": query,
-                #     }, 
+                #     },
                 # )
                 self.logger.debug(
                     "LLM say correct result : %s", result, extra={"model": model_name}

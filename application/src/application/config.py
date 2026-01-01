@@ -46,6 +46,7 @@ class AppConfig:
 
             type (str): The log type of the application. Defaults to "text". Accepted values are "text" and "json".
         """
+
         level = environ.var(default="INFO", help="Log level of app")
         langchaindebug = environ.bool_var(
             default=False, help="langchain Log level of app"
@@ -79,7 +80,9 @@ class AppConfig:
         temp = environ.var(
             default="0.7", converter=float, help="Temperature of llm system"
         )
-        embeddings = environ.var(default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use")
+        embeddings = environ.var(
+            default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"
+        )
 
     # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
 
@@ -118,7 +121,9 @@ class AppConfig:
         host = environ.var(default="127.0.0.1", help="Address of DB")
         port = environ.var(default="27017", help="Port of DB")
         database = environ.var(default="Oncoflow", help="Mongo database name")
-        vectordatabase = environ.var(default="OncoflowVector", help="Mongo database name")
+        vectordatabase = environ.var(
+            default="OncoflowVector", help="Mongo database name"
+        )
 
     @environ.config
     class RCP:
@@ -151,10 +156,8 @@ class AppConfig:
         manual_query = environ.bool_var(
             default=False, help="Manual prompting for debug"
         )
-        
-        display_type = environ.var(
-            default="mongodb", help="Type opf display"
-        )
+
+        display_type = environ.var(default="mongodb", help="Type opf display")
 
         @path.validator
         def _ensure_path_exists(self, var, path):

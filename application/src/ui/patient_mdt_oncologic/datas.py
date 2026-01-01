@@ -213,26 +213,35 @@ def form():
 {d["sources_relevant"]}
             """
         )
-        col2.markdown("""
+        (
+            col2.markdown(
+                """
         **Suggetions :**
 
-        """) if len(d["suggetions"]) > 0 else col2.markdown("")
+        """
+            )
+            if len(d["suggetions"]) > 0
+            else col2.markdown("")
+        )
         for s in d["suggetions"]:
-            col2.markdown(f"""
+            col2.markdown(
+                f"""
             * {s["suggestion"]}\\
                **Why :** {s["why"]}\\
                *Sources*: \\
                 {s["references"]}
             """
             )
-    
+
         col2.markdown(
             f"""
 ** MTD Complete** : 
 
 {datas["MTDCompleted"][e]["mtd_complete"]}
 
-            """)
+            """
+        )
+
 
 power = st.sidebar.toggle("Power mode", key="power")
 

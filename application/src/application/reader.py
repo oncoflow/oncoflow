@@ -68,7 +68,12 @@ class DocumentReader:
     docs_pdf = {}
 
     def __init__(
-        self, config=AppConfig, document=str, document_type="mtd", prompt=None, models=None
+        self,
+        config=AppConfig,
+        document=str,
+        document_type="mtd",
+        prompt=None,
+        models=None,
     ):
         self.config = config
         if prompt is None:
@@ -84,7 +89,9 @@ class DocumentReader:
 
         # ic(self.document_path)
         self.llm = Llm(config, embeddings=False, models=models)
-        self.vecdb = VectorialDataBaseClient(config, coll_prefix = slugify(document, separator="_")).vectordb
+        self.vecdb = VectorialDataBaseClient(
+            config, coll_prefix=slugify(document, separator="_")
+        ).vectordb
 
         self.set_prompt(prompt)
 
@@ -144,7 +151,9 @@ class DocumentReader:
             for doc_pdf in docs_pdf:
                 if doc_pdf not in self.docs_pdf:
                     pdf_dict = {
-                        "vecdb": VectorialDataBaseClient(self.config, coll_prefix=slugify(doc_pdf)).vectordb,
+                        "vecdb": VectorialDataBaseClient(
+                            self.config, coll_prefix=slugify(doc_pdf)
+                        ).vectordb,
                         "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
                         "name": doc_pdf,
                     }
@@ -172,13 +181,15 @@ class DocumentReader:
             elif loader_type == "docling":
                 from docling.chunking import HybridChunker
 
-                return DoclingLoader (
+                return DoclingLoader(
                     file_path=document,
                     export_type=ExportType.DOC_CHUNKS,
-                    chunker=HybridChunker(tokenizer="sentence-transformers/all-MiniLM-L6-v2")
+                    chunker=HybridChunker(
+                        tokenizer="sentence-transformers/all-MiniLM-L6-v2"
+                    ),
                 ).load()
             elif loader_type == "ollamaOcr":
-                
+
                 return OllamaOcrDocumentLoader(document, self.config).load()
             else:
                 cla = getattr(document_loaders, loader_type)
@@ -191,18 +202,21 @@ class DocumentReader:
                         include_orig_elements=False,
                     ).load()
 
-
             return cla(document).load()
-                # return self.text_splitter.split_documents(docs)
+            # return self.text_splitter.split_documents(docs)
         except Exception:
             self.logger.error("Error in llm read")
             raise
-    
+
     def get_retriever(self) -> VectorStoreRetriever:
         return self.vecdb.get_retriever()
 
     def get_additionnals_retrievers(self, pdf_list: list) -> list[VectorStoreRetriever]:
-        return [info["vecdb"].get_retriever() for pdf, info in self.docs_pdf.items() if info["name"] in pdf_list]
+        return [
+            info["vecdb"].get_retriever()
+            for pdf, info in self.docs_pdf.items()
+            if info["name"] in pdf_list
+        ]
 
     @timed
     def read_document(self):

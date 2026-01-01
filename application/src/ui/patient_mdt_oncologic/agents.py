@@ -7,7 +7,6 @@ from src.application.config import AppConfig
 from pydantic import BaseModel
 
 
-
 def read(ressource: str):
     app_conf = environ.to_config(AppConfig)
     rag = DocumentReader(app_conf, document=ressource, document_type="ressource")
@@ -26,6 +25,7 @@ def agent(agent: BaseModel):
         c.write("- {r}".format(r=r))
         if c.button("Read ressource"):
             read(r)
+
 
 pmtd = Agents()
 st.title("List of agents")

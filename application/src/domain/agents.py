@@ -7,19 +7,21 @@ from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 from src.application.agent.agent import OncowflowAgent
 
+
 class Agents:
 
     def __init__(self) -> None:
         self.list = [
             cls_attribute
             for cls_attribute in self.__class__.__dict__.values()
-            if inspect.isclass(cls_attribute)
-            and "_model" not in cls_attribute.__name__
+            if inspect.isclass(cls_attribute) and "_model" not in cls_attribute.__name__
         ]
-    
+
     class Administratives_agent(OncowflowAgent):
         agent_name: str = "Administrative"
-        system_prompt: ClassVar[str] = """
+        system_prompt: ClassVar[
+            str
+        ] = """
         You are a medical administrative assistant, read patient record and extract exact information without reflexion
         You have to answer the user question.
         use search_on_mtd to search information about patient record.
@@ -29,7 +31,7 @@ class Agents:
 
         expert_type: ClassVar[str] = ""
         system_prompt: ClassVar[str] = ""
-        
+
         def __init__(
             self,
             config: AppConfig,
@@ -43,7 +45,9 @@ class Agents:
                 - you must search on ressources all scientific information to complete the response
                 - Do not ask any questions to user.
                 """
-            super(Agents.Expert_model, self).__init__(config=config, mtd=mtd, output_format=output_format)
+            super(Agents.Expert_model, self).__init__(
+                config=config, mtd=mtd, output_format=output_format
+            )
 
     class Pancreas_expert_agent(Expert_model):
         agent_name: str = "pancreas expert"

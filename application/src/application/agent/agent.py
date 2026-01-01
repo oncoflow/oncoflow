@@ -50,8 +50,10 @@ class OncowflowAgent:
         )
 
         self.reader = mtd
-        self.additionnal_readers = [ DocumentReader(config, ressource, document_type="ressource") 
-                                    for ressource in self.ressources ]
+        self.additionnal_readers = [
+            DocumentReader(config, ressource, document_type="ressource")
+            for ressource in self.ressources
+        ]
 
         self.logger = config.set_logger(
             "OncowAgent",
@@ -71,7 +73,9 @@ class OncowflowAgent:
 
         result = self.agent.invoke(
             {"messages": [{"role": "user", "content": question}]},
-            context=Context(reader=self.reader, additionnal_readers=self.additionnal_readers),
+            context=Context(
+                reader=self.reader, additionnal_readers=self.additionnal_readers
+            ),
         )
         for msg in result["messages"]:
             try:
