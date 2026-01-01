@@ -1,5 +1,6 @@
 import json
 
+from typing import ClassVar
 from pydantic import ValidationError
 
 from langchain.agents import create_agent
@@ -13,17 +14,18 @@ from langchain.agents.structured_output import ToolStrategy
 
 
 class OncowflowAgent:
-    model: str
+    model: ClassVar[str] = None
+    system_prompt: ClassVar[str] = ""
+    question: ClassVar[str] = "Nothing"
+    models: ClassVar[list[str]] = None
+    ressources: ClassVar[str] = []
 
     def __init__(
         self,
-        models: list[str],
-        reader: DocumentReader,
         config: AppConfig,
+        mtd: DocumentReader,
         output_format: any = None,
-        system_prompt: str = None,
     ):
-        self.reader = reader
         self.output_format = output_format
 
         if config.llm.type.lower() == "ollama":
@@ -31,10 +33,10 @@ class OncowflowAgent:
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
 
-        if models is None or not models:
+        if self.models is None:
             list_models = config.llm.models.split(",")
         else:
-            list_models = models
+            list_models = self.models
 
         self.agent = create_agent(
             model=llm_client.chat(list_models[0], output=output_format),
@@ -44,25 +46,32 @@ class OncowflowAgent:
             #     schema=output_format, handle_errors=True
             # ),
             context_schema=Context,
-            system_prompt=system_prompt,
+            system_prompt=self.system_prompt,
         )
+
+        self.reader = mtd
+        self.additionnal_readers = [ DocumentReader(config, ressource, document_type="ressource") 
+                                    for ressource in self.ressources ]
 
         self.logger = config.set_logger(
             "OncowAgent",
             default_context={
                 "model": list_models[0],
-                "system_prompt": system_prompt,
-                "output_format": output_format,
+                "system_prompt": self.system_prompt,
+                "output_format": self.output_format,
             },
         )
         self.logger.info("Agent succefully created")
 
-    def ask(self, question, additionnal_readers:list[DocumentReader] = [], structuredResponse: bool = True) -> dict:
+    def ask(self, question: str = None, structuredResponse: bool = True) -> dict:
         self.logger.info('Ask "%s" to agent ...', question)
+
+        if question is None:
+            question = self.question
 
         result = self.agent.invoke(
             {"messages": [{"role": "user", "content": question}]},
-            context=Context(reader=self.reader, additionnal_readers=additionnal_readers),
+            context=Context(reader=self.reader, additionnal_readers=self.additionnal_readers),
         )
         for msg in result["messages"]:
             try:

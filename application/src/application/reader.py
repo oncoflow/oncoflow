@@ -92,7 +92,6 @@ class DocumentReader:
             "reader",
             default_context={
                 "document": document,
-                "ressources": docs_pdf,
                 "list_models": list(self.llm.model.keys()),
                 "parser": config.rcp.doc_type,
             },

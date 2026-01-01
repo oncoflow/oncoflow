@@ -1,12 +1,12 @@
 import streamlit as st
 import environ
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.domain.agents import Agents
 from src.application.reader import DocumentReader
 from src.application.config import AppConfig
 
 from pydantic import BaseModel
 
-pmtd = PatientMDTOncologicForm()
+
 
 def read(ressource: str):
     app_conf = environ.to_config(AppConfig)
@@ -27,11 +27,10 @@ def agent(agent: BaseModel):
         if c.button("Read ressource"):
             read(r)
 
-
-
+pmtd = Agents()
 st.title("List of agents")
 c = st.container(horizontal=True, horizontal_alignment="distribute")
 
-for a in pmtd.agent_list:
+for a in pmtd.list:
     if c.button(a.__name__):
         agent(a)

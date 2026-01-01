@@ -196,25 +196,43 @@ def form():
             else:
                 col2.write("Aucun")
 
-    for e in ["Pancreas", "Oesophagus", "Hepatocellular"]:
+    for e, d in datas["ExpertAnswer"].items():
         col2.header(f"Expert en {e}", divider=True)
-        d = datas[f"Expert{e}Answer"]
+
         col2.markdown(
             f""" 
-Pancreas expert relevant : {d["expert_relevant"]}
+**Expert relevant** : {d["expert_relevant"]}
 
-Priority : {d["patient_priority"]}
+**Priority** : {d["patient_priority"]}
 
-*Why* : {d["explain_why"]}
+**Why** : {d["why_relevant"]}
+
+
+**Sources** :
+
+{d["sources_relevant"]}
             """
         )
         col2.markdown("""
-        **Suggetions :**"
+        **Suggetions :**
 
         """) if len(d["suggetions"]) > 0 else col2.markdown("")
         for s in d["suggetions"]:
-            col2.markdown(f"- {s}")
+            col2.markdown(f"""
+            * {s["suggestion"]}\\
+               **Why :** {s["why"]}\\
+               *Sources*: \\
+                {s["references"]}
+            """
+            )
+    
+        col2.markdown(
+            f"""
+** MTD Complete** : 
 
+{datas["MTDCompleted"][e]["mtd_complete"]}
+
+            """)
 
 power = st.sidebar.toggle("Power mode", key="power")
 

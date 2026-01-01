@@ -44,35 +44,14 @@ def full_read_mtd(app_conf, filename: str, logger, replace: bool = True):
 
 def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
     logger.info(f"Start reading {filename} ...")
-    reader = DocumentReader(app_conf, document=filename)
-    reader.read_document()
-    fiche_rcp = PatientMDTOncologicForm()
-    metadatas = {}
-    for cl in fiche_rcp.basemodel_list:
-        additionnal_readers = [ DocumentReader(app_conf, ressource, document_type="ressource") for ressource in cl.ressources]
-        agent = OncowflowAgent(
-            models=cl.models,
-            reader=reader,
-            config=app_conf,
-            output_format=cl,
-            system_prompt=cl.system_prompt
-        )
-        datas = agent.ask(cl.question, additionnal_readers)
-        logger.debug(f"DATAS : {datas} ...")
-        if datas:
-            fiche_rcp.set_datas(cl, datas)
-        del agent
-    del reader
-    data = fiche_rcp.get_datas()
-    data["file"] = filename
-    metadatas["file"] = filename
+    fiche_rcp = PatientMDTOncologicForm(config=app_conf, document=filename)
+    data = fiche_rcp.read()
 
     if app_conf.rcp.display_type == "mongodb":
         client = Mongodb(app_conf)
         if replace:
             delete_document(app_conf, filename, delete_file=False)
         client.prepare_insert_doc(collection="rcp_info", document=data)
-        client.prepare_insert_doc(collection="rcp_metadata", document=metadatas)
         client.insert_docs()
         client.close()
     else:

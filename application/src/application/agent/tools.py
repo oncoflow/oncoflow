@@ -36,7 +36,7 @@ def search_on_ressources(runtime: ToolRuntime[Context], query: str):
             serialized = serialized.join(
                 (f"Source: {doc.metadata}\nContent: {doc.page_content}")
                 for doc in retrieved_docs
-                if metadata in doc and page_content in doc
+                if "metadata" in doc and "page_content" in doc
             )
         return serialized, retrieved_docs
     else:

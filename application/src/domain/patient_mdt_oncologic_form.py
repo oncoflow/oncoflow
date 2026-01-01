@@ -8,54 +8,56 @@ from pydantic import BaseModel, Field, PastDate
 
 from src.domain.common_ressources import *
 
+from src.application.config import AppConfig
+from src.domain.agents import Agents
+from src.application.agent.agent import OncowflowAgent
+from src.application.reader import DocumentReader
 
-class PatientMDTOncologicForm:
+
+class PatientMDTOncologicForm(DocumentReader):
     """
     This class contains all patient and oncological disease information for the report.
     """
+    mtd_datas: dict = {}
 
-    # base_prompt = [
-    #     (
-    #         "system",
-    #         """
-    #         You are a medical assistant expert on oncology, you have to answer questions based on this patient record: {context}
-    #         You MUST respect each rules :
-    #         - Ignore footer on all pages.
-    #         - Respect the format instruction given before each question
-    #         - Respect case sensitive format instruction
-    #         - Respect types in format instruction
-    #         """,
-    #     )
-    # ]
+    def __init__(self, config=AppConfig, document=str) -> None:
+        super(PatientMDTOncologicForm, self).__init__(config=config, document=document)
 
-    def __init__(self) -> None:
-        self.datas = {}
+        self.read_document()
+
+        self.mtd_datas["file"] = document
+
         self.basemodel_list = [
             cls_attribute
             for cls_attribute in self.__class__.__dict__.values()
             if inspect.isclass(cls_attribute)
             and issubclass(cls_attribute, self.default_model)
             and cls_attribute.__name__ != "default_model"
-            and "_agent" not in cls_attribute.__name__
-        ]
-        self.agent_list = [
-            cls_attribute
-            for cls_attribute in self.__class__.__dict__.values()
-            if inspect.isclass(cls_attribute)
-            and issubclass(cls_attribute, self.default_model)
-            and cls_attribute.__name__ != "default_model"
-            and "_agent" in cls_attribute.__name__
         ]
 
-    def set_datas(self, basemodel, datas) -> None:
-        self.datas[basemodel.__name__] = datas
+    def read(self) -> dict:
+        for model in self.basemodel_list:
+            self.read_model(model)
+        return self.mtd_datas
 
-    def get_datas(self) -> dict:
-        return json.loads(
-            json.dumps(
-                self.__dict__["datas"], default=lambda o: getattr(o, "__dict__", str(o))
-            )
-        )
+
+    def read_model(self, model) :
+        if len(model.agents) == 1:
+            agent = model.agents[0](config=self.config, mtd=self, output_format=model)
+            datas = agent.ask(model.question)
+            self.logger.debug(f"DATAS : {datas} ...")
+            if datas:
+                self.mtd_datas[model.__name__] = datas
+        else:
+            for magent in model.agents:
+                agent = magent(config=self.config, mtd=self, output_format=model)
+                datas = agent.ask(model.question)
+                self.logger.debug(f"DATAS : {datas} ...")
+                if datas:
+                    if model.__name__ not in self.mtd_datas:
+                        self.mtd_datas[model.__name__] = {} 
+                    self.mtd_datas[model.__name__][magent.agent_name] = datas
+        del agent
 
     @classmethod
     def parse_raw(cls, value):
@@ -67,63 +69,13 @@ class PatientMDTOncologicForm:
             raise ValueError("Invalid input")
 
     class default_model(BaseModel):
-        # base_prompt: ClassVar[list] = [
-        #     ("system", "You have to answer the user question.\n If you don't find response, retry to learn document and try again once"),
-        #     # (
-        #     # "human",
-        #     # "{format_instructions}"
-        #     # ),
-        #     ("human", "Question: {question}"),
-        # ]
-        system_prompt: ClassVar[str] = ""
-        prompt: ClassVar[list] = []
-        models: ClassVar[list] = []
+        
         question: ClassVar[str] = ""
-        ressources: ClassVar[list] = []
-
-    class administratives_agent(default_model):
-        system_prompt = """
-        You are a medical administrative assistant, read patient record and extract exact information without reflexion
-        You have to answer the user question.
-        use search_on_mtd to search information about patient record.
-        """
-
-    class pancreas_expert_agent(default_model):
-        system_prompt = """
-        You are a medical expert in pancreas diseases, answer user question based with this rules :
-        - All current information about the patient is in the patient record
-        - you can found all the current diagnostics made in the patient record
-        - search on additionnal ressources all scientific information to complete the ressources
-        - Do not ask any questions to user.
-        """
-
-        ressources = ["TNCDPANCREAS.pdf"]
-
-    class oesophagus_expert_agent(default_model):
-        system_prompt = """
-        You are a medical expert in oesophagus diseases, answer user question based with this rules :
-        - All current information about the patient is in the patient record
-        - you can found all the current diagnostics made in the patient record
-        - search on additionnal ressources all scientific information to complete the ressources
-        - Do not ask any questions to user.
-        """
-
-        ressources = ["TNCDOESOPHAGE.pdf"]
-
-    class hepatocellular_expert_agent(default_model):
-        system_prompt = """
-        You are a medical expert in hepatocellular diseases, answer user question based with this rules :
-        - All current information about the patient is in the patient record
-        - you can found all the current diagnostics made in the patient record
-        - search on additionnal ressources all scientific information to complete the ressources
-        - Do not ask any questions to user.
-        """
-
-        ressources = ["TNCDCHC.pdf"]
+        agents: ClassVar[list[OncowflowAgent]] = [ Agents.Administratives_agent ]
 
     #  // // // // // Tested and Working classes // // // // //
 
-    class PatientAdministrative(administratives_agent):
+    class PatientAdministrative(default_model):
         """
         Patient administrative informations
         """
@@ -140,164 +92,207 @@ class PatientMDTOncologicForm:
             "Tell me the first name, Last name, age, date of birth and gender of the patient."
         )
 
-    class PatientPerformanceStatus(administratives_agent):
-        """
-        Patient WHO performance status
-        """
+    # class PatientPerformanceStatus(default_model):
+    #     """
+    #     Patient WHO performance status
+    #     """
 
-        performance_status: WHOPerformanceStatus = Field(
-            description="OMS performance status of the patient, from 0 to 4"
-        )
+    #     performance_status: WHOPerformanceStatus = Field(
+    #         description="OMS performance status of the patient, from 0 to 4"
+    #     )
 
-        question: ClassVar[str] = (
-            "Tell me the WHO performance status of the patient (0-4)."
-        )
-        performance_status: WHOPerformanceStatus = Field(
-            description="OMS performance status of the patient, from 0 to 4"
-        )
+    #     question: ClassVar[str] = (
+    #         "Tell me the WHO performance status of the patient (0-4)."
+    #     )
+    #     performance_status: WHOPerformanceStatus = Field(
+    #         description="OMS performance status of the patient, from 0 to 4"
+    #     )
 
-        question: ClassVar[str] = (
-            "Tell me the WHO performance status of the patient (0-4)."
-        )
+    #     question: ClassVar[str] = (
+    #         "Tell me the WHO performance status of the patient (0-4)."
+    #     )
 
-    class TumorLocation(administratives_agent):
-        """
-        Location of the tumor
-        """
+    # class TumorLocation(default_model):
+    #     """
+    #     Location of the tumor
+    #     """
 
-        tumor_location: PrimaryOrganEnum = Field(
-            description="Organ where the primary tumor is present"
-        )
+    #     tumor_location: PrimaryOrganEnum = Field(
+    #         description="Organ where the primary tumor is present"
+    #     )
 
-        question: ClassVar[str] = "Tell me where is located the primary tumor ?"
+    #     question: ClassVar[str] = "Tell me where is located the primary tumor ?"
 
-    class TumorBiology(administratives_agent):
-        """
-        Biology of the tumor
-        """
+    # class TumorBiology(default_model):
+    #     """
+    #     Biology of the tumor
+    #     """
 
-        msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
+    #     msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
 
-        question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
+    #     question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
 
 
-    class RadiologicExams(administratives_agent):
-        """
-        List of radiological exams
-        """
+    # class RadiologicExams(default_model):
+    #     """
+    #     List of radiological exams
+    #     """
 
-        exams_list: list[RadiologicalExamination] = Field(
-            description="List of radiological exams"
-        )
+    #     exams_list: list[RadiologicalExamination] = Field(
+    #         description="List of radiological exams"
+    #     )
 
-        question: ClassVar[str] = (
-            "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
-        )
+    #     question: ClassVar[str] = (
+    #         "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
+    #     )
 
-    class PreviousCurativeSurgery(administratives_agent):
-        """
-        Previous curative surgery
-        """
+    # class PreviousCurativeSurgery(default_model):
+    #     """
+    #     Previous curative surgery
+    #     """
 
-        previous_curative_surgery: bool = Field(
-            description="If a curative surgery has already been done"
-        )
-        previous_curative_surgery_date: Optional[PastDate] = Field(
-            description="Date of the surgery"
-        )
+    #     previous_curative_surgery: bool = Field(
+    #         description="If a curative surgery has already been done"
+    #     )
+    #     previous_curative_surgery_date: Optional[PastDate] = Field(
+    #         description="Date of the surgery"
+    #     )
 
-        question: ClassVar[str] = (
-            "Tell me if a curative surgery has already been done for this tumor ?"
-        )
+    #     question: ClassVar[str] = (
+    #         "Tell me if a curative surgery has already been done for this tumor ?"
+    #     )
 
-    class PlannedCurativeSurgery(administratives_agent):
-        """
-        Planned curative surgery
-        """
+    # class PlannedCurativeSurgery(default_model):
+    #     """
+    #     Planned curative surgery
+    #     """
 
-        planned_curative_surgery: bool = Field(
-            description="If a curative surgery has been planned"
-        )
+    #     planned_curative_surgery: bool = Field(
+    #         description="If a curative surgery has been planned"
+    #     )
 
-        question: ClassVar[str] = (
-            "Tell me if a curative surgery has been planned for this tumor ?"
-        )
+    #     question: ClassVar[str] = (
+    #         "Tell me if a curative surgery has been planned for this tumor ?"
+    #     )
 
-    class ChemotherapyTreament(administratives_agent):
-        """
-        Chemotherapy treatments
-        """
+    # class ChemotherapyTreament(default_model):
+    #     """
+    #     Chemotherapy treatments
+    #     """
 
-        chemotherapy: bool = Field(
-            description="If a chemotherapy has already been done"
-        )
-        chemotherapy_list: Optional[List[ChemotherapyData]] = Field(
-            description="List of chemotherapies that have been done"
-        )
+    #     chemotherapy: bool = Field(
+    #         description="If a chemotherapy has already been done"
+    #     )
+    #     chemotherapy_list: Optional[List[ChemotherapyData]] = Field(
+    #         description="List of chemotherapies that have been done"
+    #     )
 
-        question: ClassVar[str] = (
-            "Tell me if one or several chemotherapies have already been done for this tumor?"
-        )
+    #     question: ClassVar[str] = (
+    #         "Tell me if one or several chemotherapies have already been done for this tumor?"
+    #     )
+    class ExpertAnswer(default_model):
 
-    class ExpertPancreasAnswer(pancreas_expert_agent):
+        agents = [ 
+            Agents.Pancreas_expert_agent, 
+            Agents.Oesophagus_expert_agent, 
+            Agents.Hepatocellular_expert_agent
+            ]
+        
+        expert_relevant: bool = Field(description="Is your expertise is relevant")
 
-        expert_relevant: bool = Field(description="Is Pancreas Expert is relevant")
+        why_relevant: str =  Field( description="Explain why your expertise is relevant or not and why this priority is given" )
+
+        sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
 
         patient_priority: PatientPriority = Field(
             description="patient treatment emergency"
         )
 
-        explain_why: str = Field(
-            description="Explain here why you have answer the question"
-        )
-
-        suggetions: list[str] = Field(
-            description="One suggetion by item, this list can be empty"
+        suggetions: list[ExpertSuggestion] = Field(
+            description="One suggetion by item, this list can be empty if expert is not relevant"
         )
 
         question: ClassVar[str] = (
             """
             As expert, tell me if the patient must be threat urgently for the pancreas, if your expertise is relevant and why do you have answer that.
-            If you have any suggetions to improve your response, give it into the right field.
             """
         )
-    class ExpertOesophagusAnswer(oesophagus_expert_agent):
 
-        expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
-
-        patient_priority: PatientPriority = Field(
-            description="patient treatment emergency"
-        )
-
-        explain_why: str = Field(
-            description="Explain here why you have answer the question"
-        )
-        suggetions: list[str] = Field(
-            description="One suggetion by item, this list can be empty"
-        )
+    class MTDCompleted(default_model):
+        agents = [ 
+            Agents.Pancreas_expert_agent, 
+            Agents.Oesophagus_expert_agent, 
+            Agents.Hepatocellular_expert_agent
+            ]
+        mtd_complete: MTDComplete = Field("Is MTD is complete")
 
         question: ClassVar[str] = (
-            "As expert, tell me if the patient must be threat urgently for the oesophagus, if your expertise is relevant and why do you have answer that."
+            """
+            As expert, Tell me if MTD is complete or not.
+            """
         )
 
-    class ExpertHepatocellularAnswer(hepatocellular_expert_agent):
 
-        expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
+    # class ExpertPancreasAnswer(default_model):
+        
+    #     expert_relevant: bool = Field(description="Is Pancreas Expert is relevant")
 
-        patient_priority: PatientPriority = Field(
-            description="patient treatment emergency"
-        )
+    #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
 
-        explain_why: str = Field(
-            description="Explain here why you have answer the question"
-        )
-        suggetions: list[str] = Field(
-            description="One suggetion by item, this list can be empty"
-        )
+    #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
 
-        question: ClassVar[str] = (
-            "As expert, tell me if the patient must be threat urgently for the hepatocellular, if your expertise is relevant and why do you have answer that."
-        )
+    #     patient_priority: PatientPriority = Field(
+    #         description="patient treatment emergency"
+    #     )
+
+    #     suggetions: list[ExpertSuggestion] = Field(
+    #         description="One suggetion by item, this list can be empty if expert is not relevant"
+    #     )
+
+    #     question: ClassVar[str] = (
+    #         """
+    #         As expert, tell me if the patient must be threat urgently for the pancreas, if your expertise is relevant and why do you have answer that.
+    #         """
+    #     )
+    # class ExpertOesophagusAnswer(default_model):
+
+    #     expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
+        
+    #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
+
+    #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
+
+    #     patient_priority: PatientPriority = Field(
+    #         description="patient treatment emergency"
+    #     )
+
+    #     suggetions: list[ExpertSuggestion] = Field(
+    #         description="One suggetion by item, this list can be empty if expert is not relevant"
+    #     )
+
+    #     question: ClassVar[str] = (
+    #         "As expert, tell me if the patient must be threat urgently for the oesophagus, if your expertise is relevant and why do you have answer that."
+    #     )
+
+    # class ExpertHepatocellularAnswer(default_model):
+
+    #     expert_relevant: bool = Field(description="Is Oesophagus Expert is relevant")
+
+    #     why_relevant: str =  Field( description="Explain why expert is relevant or not and why this priority is given" )
+
+    #     sources_relevant: list[Reference] =  Field( description="Give the sources of your relevant answer" )
+
+    #     patient_priority: PatientPriority = Field(
+    #         description="patient treatment emergency"
+    #     )
+
+    #     suggetions: list[ExpertSuggestion] = Field(
+    #         description="One suggetion by item"
+    #     )
+
+    #     question: ClassVar[str] = (
+    #         "As expert, tell me if the patient must be threat urgently for the hepatocellular, if your expertise is relevant and why do you have answer that."
+    #     )
 
     #  // // // // // //  WORK IN PROGRESS
 

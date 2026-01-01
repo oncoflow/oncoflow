@@ -287,3 +287,24 @@ class PatientPriority(str, Enum):
     medium = "Patient must be threat as it possible"
     low = "Patient is not urgent"
     not_given = "no answer"
+
+class Reference(BaseModel):
+    name: str =  Field(description="Name of the reference")
+    page: int =  Field(description="Page of the document")
+    position: str =  Field(description="Position of the reference")
+    excerpt: str =  Field(description="Excerpt of the document")
+
+
+class ExpertSuggestion(BaseModel):
+    suggestion: str =  Field( description="Expert suggestion for the patient" )
+
+    why: str =  Field( description="Explain here why you have answer the question, no suggestion here" )
+
+    references: list[Reference] =  Field(description="list of suggestion references, including TNCD references") 
+
+class MTDComplete(BaseModel):
+    is_mtd_complete: bool = Field(default=True, description="According your speciality and additionnal documents given, is this MTD is complete?")
+
+    what_missing: list[str] = Field(default=[], description="What elements missing ?")
+
+    references: list[Reference] =  Field(description="list of references for missing items, including TNCD references") 

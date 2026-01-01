@@ -3,7 +3,7 @@ import streamlit as st
 import time
 
 from src.application.config import AppConfig
-from src.application.app_functions import full_read_file_agents
+from src.application.app_functions import full_read_mtd_agents
 
 
 app_conf = environ.to_config(AppConfig)
