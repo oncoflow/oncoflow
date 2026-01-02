@@ -15,7 +15,8 @@ def read(ressource: str):
 
 @st.dialog("Description")
 def agent(agent: BaseModel):
-    ag = agent()
+    app_conf = environ.to_config(AppConfig)
+    ag = agent(app_conf)
     st.write(f"Agent : {a.__name__}")
     st.write(f"Prompt : {ag.system_prompt}")
     st.write(f"Custom Model : {ag.models}")
@@ -31,6 +32,6 @@ pmtd = Agents()
 st.title("List of agents")
 c = st.container(horizontal=True, horizontal_alignment="distribute")
 
-for a in pmtd.list:
-    if c.button(a.__name__):
+for n, a in pmtd.list.items():
+    if c.button(n):
         agent(a)

@@ -9,7 +9,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
     logger.info(f"Start reading {filename} ...")
     fiche_rcp = PatientMDTOncologicForm(config=app_conf, document=filename)
-    data = fiche_rcp.read()
+    data = fiche_rcp.read_all_models()
 
     if app_conf.rcp.display_type == "mongodb":
         client = Mongodb(app_conf)

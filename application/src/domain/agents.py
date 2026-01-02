@@ -11,11 +11,11 @@ from src.application.agent.agent import OncowflowAgent
 class Agents:
 
     def __init__(self) -> None:
-        self.list = [
-            cls_attribute
+        self.list = {
+            cls_attribute.agent_name: cls_attribute
             for cls_attribute in self.__class__.__dict__.values()
             if inspect.isclass(cls_attribute) and "_model" not in cls_attribute.__name__
-        ]
+        }
 
     class Administratives_agent(OncowflowAgent):
         agent_name: str = "Administrative"
@@ -35,7 +35,7 @@ class Agents:
         def __init__(
             self,
             config: AppConfig,
-            mtd: DocumentReader,
+            mtd: DocumentReader = None,
             output_format: any = None,
         ) -> None:
             self.system_prompt = f"""

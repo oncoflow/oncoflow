@@ -36,7 +36,7 @@ class PatientMDTOncologicForm(DocumentReader):
             and cls_attribute.__name__ != "default_model"
         ]
 
-    def read(self) -> dict:
+    def read_all_models(self) -> dict:
         for model in self.basemodel_list:
             self.read_model(model)
         return self.mtd_datas
@@ -72,6 +72,7 @@ class PatientMDTOncologicForm(DocumentReader):
 
         question: ClassVar[str] = ""
         agents: ClassVar[list[OncowflowAgent]] = [Agents.Administratives_agent]
+
 
     #  // // // // // Tested and Working classes // // // // //
 
@@ -199,16 +200,16 @@ class PatientMDTOncologicForm(DocumentReader):
 
         expert_relevant: bool = Field(description="Is your expertise is relevant")
 
+        patient_priority: PatientPriority = Field(
+            description="patient treatment emergency"
+        )
+
         why_relevant: str = Field(
             description="Explain why your expertise is relevant or not and why this priority is given"
         )
 
         sources_relevant: list[Reference] = Field(
             description="Give the sources of your relevant answer"
-        )
-
-        patient_priority: PatientPriority = Field(
-            description="patient treatment emergency"
         )
 
         suggetions: list[ExpertSuggestion] = Field(

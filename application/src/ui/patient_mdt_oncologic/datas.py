@@ -1,16 +1,23 @@
 import environ
-import pytz, os
+import pytz
+import os
+import inspect
 from datetime import datetime
 import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
 
 from pandas import DataFrame
+from pydantic import BaseModel, Field
 
 from src.infrastructure.llm.ollama import OllamaConnect
 
 from src.application.config import AppConfig
 from src.application.app_functions import delete_document, full_read_mtd_agents
 from src.infrastructure.documents.mongodb import Mongodb
+from src.domain.agents import Agents
+from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.domain.common_ressources import PatientPriority
+
 
 app_conf = environ.to_config(AppConfig)
 
@@ -19,6 +26,10 @@ if app_conf.rcp.display_type == "mongodb":
 
 PAGES_DIR_SRC = "src/ui"
 logger = app_conf.set_logger("ui", default_context={"page": "datas"})
+
+
+class ChatResponse(BaseModel):
+    response: str = Field(description="The answer to the user question")
 
 
 @st.dialog("Êtes-vous sûr ?")
@@ -31,96 +42,144 @@ def delete(items: DataFrame):
 
 
 def update_date(filename, date):
-    print(type(date))
     db_client.update_docs("rcp_info", {"file": filename}, {"$set": {"ui_date": date}})
+
+
+def get_form_models():
+    """Récupère dynamiquement les classes de modèles définies dans PatientMDTOncologicForm"""
+    models = []
+    for name, obj in inspect.getmembers(PatientMDTOncologicForm):
+        if (
+            inspect.isclass(obj)
+            and issubclass(obj, BaseModel)
+            and name != "default_model"
+        ):
+            models.append(obj)
+    return models
+
+
+def render_field(label, value):
+    """Affiche un champ de manière formatée"""
+    if isinstance(value, bool):
+        if value:
+            st.success(label, icon="✔️")
+        else:
+            st.error(label, icon="✖️")
+    elif isinstance(value, list):
+        with st.expander(f"{label}", expanded=False):
+            for item in value:
+                if isinstance(item, dict):
+                    with st.container(border=True):
+                        for k, v in item.items():
+                            st.markdown(f"**{k}:** {v}")
+                else:
+                    st.markdown(f"- {item}")
+    elif isinstance(value, dict):
+         for field_name, field_info in value.items():
+            render_field(field_name, field_info)
+    else:
+        st.markdown(
+            f"""
+        **{label}:**\\
+        {value}"""
+        )
+
+
+def render_fields(model_cls, data):
+    """Affiche les champs d'un modèle"""
+    model_cls: BaseModel
+    for field_name, field_info in model_cls.model_fields.items():
+        if field_name in data:
+            label = field_info.description if field_info.description else field_name
+            render_field(label, data[field_name])
+
+
+def render_model_data(model_cls, data):
+    """Affiche les données d'un modèle Pydantic dynamiquement"""
+    title = model_cls.__doc__.strip() if model_cls.__doc__ else model_cls.__name__
+
+    with st.expander(f"📌 {title}", expanded=True):
+        for field_name, field_info in model_cls.model_fields.items():
+            if field_name in data:
+                label = field_info.description if field_info.description else field_name
+                render_field(label, data[field_name])
 
 
 def all_datas():
     st.query_params.clear()
-    db_datas = db_client.database["rcp_info"].find()
-    memory_date = {}
-    st.title("Liste des fiches RCP par priorité")
-    datas = [
-        {
-            "file": d["file"],
-            "performance_status": (
-                d["PatientPerformanceStatus"]["performance_status"]
-                if "PatientPerformanceStatus" in d
-                else "N/A"
-            ),
-            "link": f"/?file={d['file']}",
-            "Cardiologue": (
-                d["Cardiologue"]["necessary"] if "Cardiologue" in d else False
-            ),
-            "date": (
-                datetime.now(pytz.timezone("Europe/Paris")).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
-                if "ui_date" not in d
-                else d["ui_date"]
-            ),
-        }
-        for d in list(db_datas)
-    ]
+    st.title("📇 Liste des fiches RCP (v2)")
 
-    df = DataFrame(list(datas))
+    db_datas = list(db_client.database["rcp_info"].find())
+
+    if not db_datas:
+        st.info("Aucune fiche RCP disponible.")
+        return
+
+    datas = []
+    for d in db_datas:
+        patient_name = "N/A"
+        if "PatientAdministrative" in d:
+            p = d["PatientAdministrative"]
+            patient_name = f"{p.get('first_name', '')} {p.get('last_name', '')}"
+
+        datas.append(
+            {
+                "file": d["file"],
+                "patient": patient_name,
+                "date": d.get(
+                    "ui_date",
+                    datetime.now(pytz.timezone("Europe/Paris")).replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    ),
+                ),
+                "link": f"/?file={d['file']}",
+            }
+        )
+
+    df = DataFrame(datas)
     df.insert(0, "Delete", False)
 
     edited_df = st.data_editor(
         df,
         column_config={
-            "file": "Nom de la fiche",
-            "performance_status": st.column_config.NumberColumn(
-                "Performance", help="Status de performance"
-            ),
-            "Cardiologue": st.column_config.CheckboxColumn(
-                "Cardiologue", help="Un Cardiologue doit regarder cette fiche"
-            ),
-            "Delete": "Sélectionner",
+            "file": "Fichier",
+            "patient": "Patient",
             "date": st.column_config.DatetimeColumn(
-                "Date de réunion", format="DD-MM-YYYY HH:mm:ss"
+                "Date RCP", format="DD-MM-YYYY HH:mm"
             ),
-            "link": st.column_config.LinkColumn(display_text="Details"),
+            "link": st.column_config.LinkColumn("Détails", display_text="Ouvrir"),
+            "Delete": st.column_config.CheckboxColumn("Supprimer", default=False),
         },
         hide_index=True,
-        disabled=["file", "performance_status", "link", "Cardiologue"],
-        key="datas",
+        use_container_width=True,
+        key="datas_v2_editor",
     )
 
-    if len(st.session_state["datas"]["edited_rows"].items()) > 0:
-        for row, col in st.session_state["datas"]["edited_rows"].items():
-            if "date" in col:
-                if row in memory_date:
-                    if (
-                        st.session_state["datas"]["edited_rows"][row]["date"]
-                        == memory_date[row]
-                    ):
-                        pass
-                memory_date[row] = st.session_state["datas"]["edited_rows"][row]["date"]
-                update_date(edited_df.loc[row]["file"], edited_df.loc[row]["date"])
+    if "edited_rows" in st.session_state["datas_v2_editor"]:
+        for idx, changes in st.session_state["datas_v2_editor"]["edited_rows"].items():
+            if "date" in changes:
+                update_date(df.iloc[idx]["file"], changes["date"])
 
-    if st.button("Supprimer toute les selection"):
-        if len(edited_df[edited_df.Delete].index) > 0:
-            delete(edited_df[edited_df.Delete])
+    if st.button("Supprimer la sélection", type="primary"):
+        to_delete = edited_df[edited_df["Delete"]]
+        if not to_delete.empty:
+            delete(to_delete)
 
 
-def form():
-    head1, head2 = st.columns([1, 2.5], vertical_alignment="bottom")
-    hh1, hh2 = head1.columns([1, 1.5], gap="small", vertical_alignment="bottom")
-    if hh1.button("◀️ Go Back"):
+def form_navigate(filename):
+    # Navigation et Titre
+    c1, c2, c3 = st.columns([1, 5, 1], vertical_alignment="center")
+    if c1.button("◀️ Retour", use_container_width=True):
         st.query_params.clear()
-        st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py")
-    with open(f"{app_conf.rcp.path}/{st.query_params['file']}", "rb") as file:
-        hh2.download_button(
-            label="⏬ Télécharger le PDF",
-            data=file,
-            file_name=st.query_params["file"],
-            mime="application/pdf",
-        )
+        st.rerun()
+    c2.subheader(f"Dossier: {filename}")
+    power_mode(c3)
 
+
+def power_mode(element):
     if "power" in st.session_state:
         if st.session_state["power"]:
-            po = head2.popover(":repeat: AI process")
+            po = element.popover(":repeat: AI process")
             mm = app_conf.llm.models
             mp = app_conf.rcp.doc_type
             nm = po.selectbox(
@@ -147,100 +206,145 @@ def form():
                     st.write("Succès")
                 st.rerun()
 
-    col1, col2 = st.columns([1, 1], gap="medium")
-    col2.title("Informations récupérées")
-    with col1:
-        if os.path.exists(f"{app_conf.rcp.path}/{st.query_params['file']}.bbox"):
-            pdf_viewer(f"{app_conf.rcp.path}/{st.query_params['file']}.bbox")
-        else:
-            pdf_viewer(f"{app_conf.rcp.path}/{st.query_params['file']}")
-    datas = db_client.database["rcp_info"].find_one({"file": st.query_params["file"]})
 
-    col2.header("Informations patient", divider=True)
-    col2.markdown(
-        f"""
-                  - **Prénom nom**: {datas['PatientAdministrative']['first_name']} {datas['PatientAdministrative']['last_name']}
-                  - **Age**: {datas['PatientAdministrative']['age']}
-                  - **Genre**: {datas['PatientAdministrative']['gender']}
-                  """
+def form_chat():
+    reader: PatientMDTOncologicForm = None
+    st.header("Poser une question")
+
+    if (
+        "chat_file" not in st.session_state
+        or st.session_state["chat_file"] != st.query_params["file"]
+    ):
+        st.session_state["chat_file"] = st.query_params["file"]
+        st.session_state["messages"] = []
+        st.session_state["chat_active"] = False
+
+    if "chat_active" not in st.session_state:
+        st.session_state["chat_active"] = False
+
+    agents = Agents()
+    available_agents = agents.list
+    if 'run_button' in st.session_state and st.session_state.run_button == True:
+        st.session_state.running = True
+    else:
+        st.session_state.running = False
+    agent_choice = st.selectbox(
+        "Choisir l'agent",
+        list(available_agents.keys()),
+        key="agent_chat_select",
+        disabled=st.session_state["chat_active"],
     )
-    if "TumorLocation" in datas:
-        col2.header("Informations sur la maladie", divider=True)
-        col2.markdown(
-            f"""
-                    - **Localisation de la tumeur** : {datas['TumorLocation']['tumor_location'] if 'tumor_location' in datas['TumorLocation'] else "N/A"} 
-                    - **Biologie de la tumeur** : {datas['TumorBiology']['msi_state'] if 'msi_state' in datas['TumorLocation'] else "N/A"}
-                    - **Chirurgie de résection** :  {datas['PreviousCurativeSurgery']['previous_curative_surgery'] if 'previous_curative_surgery' in datas['PreviousCurativeSurgery'] else "N/A"} {datas['PreviousCurativeSurgery']['previous_curative_surgery_date'] if 'previous_curative_surgery' in datas['PreviousCurativeSurgery'] else ""}
-                    - **Chirurgie envisagée** : {datas['PlannedCurativeSurgery']['planned_curative_surgery'] if 'PlannedCurativeSurgery' in datas else "N/A"}
-                    """
-        )
-    col2.header("Examens Radiologique", divider=True)
-    if "RadiologicExams" in datas:
-        r_str = ""
-        for r in datas["RadiologicExams"]["exams_list"]:
-            r_str = f"""{r_str}
-                    - **{r["exam_name"]} ({r["exam_type"]})** *le {r["exam_date"]}*: {r["exam_result"]}
-                """
-        col2.markdown(r_str)
+    if not st.session_state["chat_active"]:
+        if st.button("Démarrer le chat avec l'agent", disabled=st.session_state.running, key='run_button'):
+            st.session_state["chat_active"] = True
+            with st.spinner("Démarrage du chat ..."):
+                reader = PatientMDTOncologicForm(app_conf, st.query_params["file"])
+                agent_cls = available_agents[agent_choice]
+                st.session_state["agent"] = agent_cls(
+                    config=app_conf,
+                    mtd=reader,
+                    output_format=ChatResponse,
+                )
+            st.rerun()
+    else:
+        if st.button("Arrêter le chat"):
+            st.session_state["chat_active"] = False
+            if st.session_state["agent"] is not None:
+                del st.session_state["agent"]
+            del st.session_state["messages"]
+            st.rerun()
 
-    col2.header("Traitements Chimiotherapie", divider=True)
-    if "ChemotherapyTreament" in datas:
-        c_str = ""
-        if "chemotherapy_list" in datas["ChemotherapyTreament"]:
-            if datas["ChemotherapyTreament"]["chemotherapy"]:
-                for c in datas["ChemotherapyTreament"]["chemotherapy_list"]:
-                    c_str = f"""{c_str}
-                        - **{c["chemotherapy_name"]}** (*{c["chemotherapy_start_date"]} - {c["chemotherapy_end_date"]}*) : tolérance {c["chemotherapy_tolerance"]}
-                        """
-                col2.markdown(c_str)
+        messages = st.container(height=300)
+
+        for message in st.session_state["messages"]:
+            with messages.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if prompt := st.chat_input("Votre question"):
+            st.session_state["messages"].append({"role": "user", "content": prompt})
+            with messages.chat_message("user"):
+                st.markdown(prompt)
+
+            with messages.chat_message("assistant"):
+                with st.spinner("Analyse en cours..."):
+                    try:
+                        resp = st.session_state["agent"].ask(prompt)
+                        st.markdown(resp["response"])
+                        st.session_state["messages"].append(
+                            {"role": "assistant", "content": resp["response"]}
+                        )
+                    except Exception as e:
+                        st.error(f"Erreur lors de la génération de la réponse: {e}")
+
+
+def form():
+    filename = st.query_params["file"]
+    form_navigate(filename)
+    col_left, col_right = st.columns([1, 1], gap="medium")
+
+    with col_left:
+        file_path = f"{app_conf.rcp.path}/{filename}"
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                st.download_button(
+                    "⏬ Télécharger PDF",
+                    f,
+                    file_name=filename,
+                    mime="application/pdf",
+                    use_container_width=True,
+                )
+
+            bbox_path = f"{file_path}.bbox"
+            viewer_path = bbox_path if os.path.exists(bbox_path) else file_path
+            pdf_viewer(viewer_path, height=800)
+        else:
+            st.error(f"Fichier introuvable: {file_path}")
+
+    with col_right:
+
+        tab_data, tab_chat = st.tabs(["📋 Données Cliniques", "💬 Assistant IA"])
+
+        with tab_data:
+            data = db_client.database["rcp_info"].find_one({"file": filename})
+            if data:
+                models = get_form_models()
+                # On met PatientAdministrative en premier si présent
+                models.sort(
+                    key=lambda x: 0 if x.__name__ == "PatientAdministrative" else 1
+                )
+
+                for model_cls in models:
+                    model_name = model_cls.__name__
+                    if model_name in data:
+                        model_data = data[model_name]
+
+                        # Gestion des agents multiples (dictionnaire de résultats)
+                        is_multi = (
+                            hasattr(model_cls, "agents") and len(model_cls.agents) > 1
+                        )
+
+                        if is_multi and isinstance(model_data, dict):
+                            title = (
+                                model_cls.__doc__.strip()
+                                if model_cls.__doc__
+                                else model_name
+                            )
+                            with st.expander(f"📌 {title}", expanded=True):
+                                agent_names = list(model_data.keys())
+                                if agent_names:
+                                    tabs = st.tabs(agent_names)
+                                    for tab, agent_name in zip(tabs, agent_names):
+                                        with tab:
+                                            render_fields(
+                                                model_cls, model_data[agent_name]
+                                            )
+                        else:
+                            render_model_data(model_cls, model_data)
             else:
-                col2.write("Aucun")
+                st.warning("Données non trouvées.")
 
-    for e, d in datas["ExpertAnswer"].items():
-        col2.header(f"Expert en {e}", divider=True)
-
-        col2.markdown(
-            f""" 
-**Expert relevant** : {d["expert_relevant"]}
-
-**Priority** : {d["patient_priority"]}
-
-**Why** : {d["why_relevant"]}
-
-
-**Sources** :
-
-{d["sources_relevant"]}
-            """
-        )
-        (
-            col2.markdown(
-                """
-        **Suggetions :**
-
-        """
-            )
-            if len(d["suggetions"]) > 0
-            else col2.markdown("")
-        )
-        for s in d["suggetions"]:
-            col2.markdown(
-                f"""
-            * {s["suggestion"]}\\
-               **Why :** {s["why"]}\\
-               *Sources*: \\
-                {s["references"]}
-            """
-            )
-
-        col2.markdown(
-            f"""
-** MTD Complete** : 
-
-{datas["MTDCompleted"][e]["mtd_complete"]}
-
-            """
-        )
+    with tab_chat:
+        form_chat()
 
 
 power = st.sidebar.toggle("Power mode", key="power")
