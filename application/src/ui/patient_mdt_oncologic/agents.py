@@ -7,31 +7,33 @@ from src.application.config import AppConfig
 from pydantic import BaseModel
 
 
-def read(ressource: str):
-    app_conf = environ.to_config(AppConfig)
-    rag = DocumentReader(app_conf, document=ressource, document_type="ressource")
-    rag.read_document()
+def read(ressource: str, config: AppConfig):
+    with st.spinner(f"Indexation de {ressource}..."):
+        rag = DocumentReader(config, document=ressource, document_type="ressource")
+        rag.read_document()
+    st.toast(f"Ressource '{ressource}' indexée avec succès !", icon="✅")
 
-
-@st.dialog("Description")
-def agent(agent: BaseModel):
-    app_conf = environ.to_config(AppConfig)
-    ag = agent(app_conf)
-    st.write(f"Agent : {a.__name__}")
-    st.write(f"Prompt : {ag.system_prompt}")
-    st.write(f"Custom Model : {ag.models}")
-    st.write("Ressources :")
-    for r in ag.ressources:
-        c = st.container(horizontal=True, horizontal_alignment="distribute")
-        c.write("- {r}".format(r=r))
-        if c.button("Read ressource"):
-            read(r)
 
 
 pmtd = Agents()
-st.title("List of agents")
-c = st.container(horizontal=True, horizontal_alignment="distribute")
+st.title("🕵️ Liste des agents")
 
-for n, a in pmtd.list.items():
-    if c.button(n):
-        agent(a)
+cols = st.columns(3)
+app_conf = environ.to_config(AppConfig)
+for i, (n, a) in enumerate(pmtd.list.items()):
+    with cols[i % 3]:
+        with st.container(border=True):
+            ag = a(app_conf)
+            st.subheader(n)
+            with st.expander("Configuration"):
+                st.markdown("**Prompt :**")
+                st.caption(ag.system_prompt)
+                st.markdown("**Modèles :**")
+                st.write(ag.models)
+            st.divider()
+            st.markdown("**Ressources :**")
+            for r in ag.ressources:
+                c1, c2 = st.columns([3, 1], vertical_alignment="center")
+                c1.caption(f"📄 {r}")
+                if c2.button("Index", key=f"{n}_{r}", use_container_width=True):
+                    read(r, app_conf)

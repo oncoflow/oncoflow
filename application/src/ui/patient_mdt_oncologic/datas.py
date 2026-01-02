@@ -3,6 +3,7 @@ import pytz
 import os
 import inspect
 from datetime import datetime
+from enum import Enum
 import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
 
@@ -60,7 +61,15 @@ def get_form_models():
 
 def render_field(label, value):
     """Affiche un champ de manière formatée"""
-    if isinstance(value, bool):
+
+    if isinstance(value, PatientPriority):
+        if value.name == "urgent":
+            st.error(value.value, icon="🚨")
+        elif value.name == "medium":
+            st.warning(value.value, icon="⚠️")  
+        elif value.name == "low":
+            st.success(value.value)
+    elif isinstance(value, bool):
         if value:
             st.success(label, icon="✔️")
         else:
@@ -77,6 +86,10 @@ def render_field(label, value):
     elif isinstance(value, dict):
          for field_name, field_info in value.items():
             render_field(field_name, field_info)
+    elif isinstance(value, Enum):
+        render_field(label, value.name)
+    elif isinstance(value, BaseModel):
+        render_field(value, value.__dict__)
     else:
         st.markdown(
             f"""
@@ -85,29 +98,26 @@ def render_field(label, value):
         )
 
 
-def render_fields(model_cls, data):
+def render_fields(data: BaseModel):
     """Affiche les champs d'un modèle"""
     model_cls: BaseModel
-    for field_name, field_info in model_cls.model_fields.items():
-        if field_name in data:
-            label = field_info.description if field_info.description else field_name
-            render_field(label, data[field_name])
+    for field_name, field_info in data.__class__.model_fields.items():
+        label = field_info.description if field_info.description else field_name
+        render_field(label, getattr(data, field_name))
 
 
-def render_model_data(model_cls, data):
+def render_model_data(data: BaseModel):
     """Affiche les données d'un modèle Pydantic dynamiquement"""
-    title = model_cls.__doc__.strip() if model_cls.__doc__ else model_cls.__name__
+    title = data.__doc__.strip() if data.__doc__ else data.__name__
 
     with st.expander(f"📌 {title}", expanded=True):
-        for field_name, field_info in model_cls.model_fields.items():
-            if field_name in data:
-                label = field_info.description if field_info.description else field_name
-                render_field(label, data[field_name])
-
+        for field_name, field_info in data.__class__.model_fields.items():
+            label = field_info.description if field_info.description else field_name
+            render_field(label, getattr(data, field_name))
 
 def all_datas():
     st.query_params.clear()
-    st.title("📇 Liste des fiches RCP (v2)")
+    st.title("📇 Liste des fiches RCP")
 
     db_datas = list(db_client.database["rcp_info"].find())
 
@@ -334,12 +344,14 @@ def form():
                                 if agent_names:
                                     tabs = st.tabs(agent_names)
                                     for tab, agent_name in zip(tabs, agent_names):
+                                        pydantic_model = model_cls.model_validate(data[model_name][agent_name])
                                         with tab:
                                             render_fields(
-                                                model_cls, model_data[agent_name]
+                                                pydantic_model
                                             )
                         else:
-                            render_model_data(model_cls, model_data)
+                            pydantic_model = model_cls.model_validate(data[model_name])
+                            render_model_data(pydantic_model)
             else:
                 st.warning("Données non trouvées.")
 

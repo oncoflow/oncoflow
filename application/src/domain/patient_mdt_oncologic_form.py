@@ -93,103 +93,103 @@ class PatientMDTOncologicForm(DocumentReader):
             "Tell me the first name, Last name, age, date of birth and gender of the patient."
         )
 
-    # class PatientPerformanceStatus(default_model):
-    #     """
-    #     Patient WHO performance status
-    #     """
+    class PatientPerformanceStatus(default_model):
+        """
+        Patient WHO performance status
+        """
 
-    #     performance_status: WHOPerformanceStatus = Field(
-    #         description="OMS performance status of the patient, from 0 to 4"
-    #     )
+        performance_status: WHOPerformanceStatus = Field(
+            description="OMS performance status of the patient, from 0 to 4"
+        )
 
-    #     question: ClassVar[str] = (
-    #         "Tell me the WHO performance status of the patient (0-4)."
-    #     )
-    #     performance_status: WHOPerformanceStatus = Field(
-    #         description="OMS performance status of the patient, from 0 to 4"
-    #     )
+        question: ClassVar[str] = (
+            "Tell me the WHO performance status of the patient (0-4)."
+        )
+        performance_status: WHOPerformanceStatus = Field(
+            description="OMS performance status of the patient, from 0 to 4"
+        )
 
-    #     question: ClassVar[str] = (
-    #         "Tell me the WHO performance status of the patient (0-4)."
-    #     )
+        question: ClassVar[str] = (
+            "Tell me the WHO performance status of the patient (0-4)."
+        )
 
-    # class TumorLocation(default_model):
-    #     """
-    #     Location of the tumor
-    #     """
+    class TumorLocation(default_model):
+        """
+        Location of the tumor
+        """
 
-    #     tumor_location: PrimaryOrganEnum = Field(
-    #         description="Organ where the primary tumor is present"
-    #     )
+        tumor_location: PrimaryOrganEnum = Field(
+            description="Organ where the primary tumor is present"
+        )
 
-    #     question: ClassVar[str] = "Tell me where is located the primary tumor ?"
+        question: ClassVar[str] = "Tell me where is located the primary tumor ?"
 
-    # class TumorBiology(default_model):
-    #     """
-    #     Biology of the tumor
-    #     """
+    class TumorBiology(default_model):
+        """
+        Biology of the tumor
+        """
 
-    #     msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
+        msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
 
-    #     question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
+        question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
 
-    # class RadiologicExams(default_model):
-    #     """
-    #     List of radiological exams
-    #     """
+    class RadiologicExams(default_model):
+        """
+        List of radiological exams
+        """
 
-    #     exams_list: list[RadiologicalExamination] = Field(
-    #         description="List of radiological exams"
-    #     )
+        exams_list: list[RadiologicalExamination] = Field(
+            description="List of radiological exams"
+        )
 
-    #     question: ClassVar[str] = (
-    #         "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
-    #     )
+        question: ClassVar[str] = (
+            "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
+        )
 
-    # class PreviousCurativeSurgery(default_model):
-    #     """
-    #     Previous curative surgery
-    #     """
+    class PreviousCurativeSurgery(default_model):
+        """
+        Previous curative surgery
+        """
 
-    #     previous_curative_surgery: bool = Field(
-    #         description="If a curative surgery has already been done"
-    #     )
-    #     previous_curative_surgery_date: Optional[PastDate] = Field(
-    #         description="Date of the surgery"
-    #     )
+        previous_curative_surgery: bool = Field(
+            description="If a curative surgery has already been done"
+        )
+        previous_curative_surgery_date: Optional[PastDate] = Field(
+            description="Date of the surgery"
+        )
 
-    #     question: ClassVar[str] = (
-    #         "Tell me if a curative surgery has already been done for this tumor ?"
-    #     )
+        question: ClassVar[str] = (
+            "Tell me if a curative surgery has already been done for this tumor ?"
+        )
 
-    # class PlannedCurativeSurgery(default_model):
-    #     """
-    #     Planned curative surgery
-    #     """
+    class PlannedCurativeSurgery(default_model):
+        """
+        Planned curative surgery
+        """
 
-    #     planned_curative_surgery: bool = Field(
-    #         description="If a curative surgery has been planned"
-    #     )
+        planned_curative_surgery: bool = Field(
+            description="If a curative surgery has been planned"
+        )
 
-    #     question: ClassVar[str] = (
-    #         "Tell me if a curative surgery has been planned for this tumor ?"
-    #     )
+        question: ClassVar[str] = (
+            "Tell me if a curative surgery has been planned for this tumor ?"
+        )
 
-    # class ChemotherapyTreament(default_model):
-    #     """
-    #     Chemotherapy treatments
-    #     """
+    class ChemotherapyTreament(default_model):
+        """
+        Chemotherapy treatments
+        """
 
-    #     chemotherapy: bool = Field(
-    #         description="If a chemotherapy has already been done"
-    #     )
-    #     chemotherapy_list: Optional[List[ChemotherapyData]] = Field(
-    #         description="List of chemotherapies that have been done"
-    #     )
+        chemotherapy: bool = Field(
+            description="If a chemotherapy has already been done"
+        )
+        chemotherapy_list: Optional[List[ChemotherapyData]] = Field(
+            description="List of chemotherapies that have been done"
+        )
 
-    #     question: ClassVar[str] = (
-    #         "Tell me if one or several chemotherapies have already been done for this tumor?"
-    #     )
+        question: ClassVar[str] = (
+            "Tell me if one or several chemotherapies have already been done for this tumor?"
+        )
     class ExpertAnswer(default_model):
 
         agents = [
