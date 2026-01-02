@@ -12,7 +12,7 @@ from src.application.config import AppConfig
 from src.domain.agents import Agents
 from src.application.agent.agent import OncowflowAgent
 from src.application.reader import DocumentReader
-
+from src.infrastructure.documents.mongodb import Mongodb
 
 class PatientMDTOncologicForm(DocumentReader):
     """
@@ -20,11 +20,17 @@ class PatientMDTOncologicForm(DocumentReader):
     """
 
     mtd_datas: dict = {}
+    db_client = None
 
     def __init__(self, config=AppConfig, document=str) -> None:
         super(PatientMDTOncologicForm, self).__init__(config=config, document=document)
 
         self.read_document()
+
+        if config.rcp.display_type == "mongodb":
+            self.db_client = Mongodb(config)
+        else:
+            logger.info("DB Type %s not known, fallback to stdout", config.rcp.display_type)
 
         self.mtd_datas["file"] = document
 
@@ -58,6 +64,17 @@ class PatientMDTOncologicForm(DocumentReader):
                         self.mtd_datas[model.__name__] = {}
                     self.mtd_datas[model.__name__][magent.agent_name] = datas
         del agent
+
+    def insert_datas_in_db(self, replace: bool = True):
+        if self.db_client is not None:
+            if replace:
+                self.client.delete_docs(
+                    collections=["rcp_info", "rcp_metadata"], filter={"file": filename}
+                )
+            self.db_client.prepare_insert_doc(collection="rcp_info", document=self.mtd_datas)
+            self.db_client.insert_docs()
+            self.db_client.close()
+
 
     @classmethod
     def parse_raw(cls, value):

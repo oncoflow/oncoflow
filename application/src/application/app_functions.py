@@ -9,17 +9,8 @@ from langchain_core.output_parsers import PydanticOutputParser
 def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
     logger.info(f"Start reading {filename} ...")
     fiche_rcp = PatientMDTOncologicForm(config=app_conf, document=filename)
-    data = fiche_rcp.read_all_models()
-
-    if app_conf.rcp.display_type == "mongodb":
-        client = Mongodb(app_conf)
-        if replace:
-            delete_document(app_conf, filename, delete_file=False)
-        client.prepare_insert_doc(collection="rcp_info", document=data)
-        client.insert_docs()
-        client.close()
-    else:
-        logger.info("Type %s not known, fallback to stdout", app_conf.rcp.display_type)
+    fiche_rcp.read_all_models()
+    fiche_rcp.insert_datas_in_db()
 
 
 def delete_document(app_conf, filename, delete_file: bool = True):

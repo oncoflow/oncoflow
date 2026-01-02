@@ -76,6 +76,7 @@ class DocumentReader:
         models=None,
     ):
         self.config = config
+        self.document = document
         if prompt is None:
             prompt = []
         self.current_model = None
