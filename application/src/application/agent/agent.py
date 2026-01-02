@@ -48,13 +48,11 @@ class OncowflowAgent:
 
         # Determine the list of models to use
         if self.models is None:
-            list_models = config.llm.models.split(",")
-        else:
-            list_models = self.models
+            self.models = config.llm.models.split(",")
 
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
-            model=llm_client.chat(list_models[0], output=output_format),
+            model=llm_client.chat(self.models[0], output=output_format),
             tools=[search_on_mtd, search_on_ressources],
             # middleware=[self.dynamic_model_selection],
             # response_format=ToolStrategy(
@@ -76,7 +74,7 @@ class OncowflowAgent:
         self.logger = config.set_logger(
             "OncowAgent",
             default_context={
-                "model": list_models[0],
+                "model": self.models[0],
                 "system_prompt": self.system_prompt,
                 "output_format": self.output_format,
             },

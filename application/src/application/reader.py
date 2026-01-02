@@ -36,13 +36,13 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 
 from src.application.config import AppConfig
-from src.application.llm import Llm
 from src.application.tools import timed
 
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.vectorial.database import VectorialDataBase
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
+from src.infrastructure.llm.ollama import OllamaConnect
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
 
@@ -87,31 +87,33 @@ class DocumentReader:
         else:
             raise ValueError(f"{document_type} not yet supported")
 
-        # ic(self.document_path)
-        self.llm = Llm(config, embeddings=False, models=models)
         self.vecdb = VectorialDataBaseClient(
             config, coll_prefix=slugify(document, separator="_")
         ).vectordb
 
         self.set_prompt(prompt)
+        if config.llm.type.lower() == "ollama":
+            llm_client = OllamaConnect(config)
+        else:
+            raise ValueError(f"{config.llm.type} not yet supported")
+        self.embeddings = llm_client.embedding
 
         self.logger = config.set_logger(
             "reader",
             default_context={
                 "document": document,
-                "list_models": list(self.llm.model.keys()),
+                "embeddings": self.embeddings,
                 "parser": config.rcp.doc_type,
             },
         )
 
         self.metadata = {}
-        self.metadata["list_models"] = list(self.llm.model.keys())
 
         self.default_loader = config.rcp.doc_type
 
         self.logger.info("Class reader succesfully init, Start reading documents")
-        self.embeddings = Llm(config, embeddings=True).embeddings
-        self.text_splitter = SemanticChunker(self.embeddings)
+
+        #self.text_splitter = SemanticChunker(self.embeddings)
         # self.text_splitter = RecursiveCharacterTextSplitter(
         #     chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
         # )
@@ -135,7 +137,6 @@ class DocumentReader:
         elif not isinstance(prompt, list):
             raise TypeError("Prompt must be a string or a list of strings")
         self.default_prompt = prompt
-        self.llm.make_default_prompt(self.default_prompt)
 
     @timed
     def old_read_additionnal_document(self, docs_pdf=None):
@@ -166,10 +167,8 @@ class DocumentReader:
                     )
                     self.logger.debug(f"Start reading ressource {doc_pdf}")
                     self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
-            self.llm.make_default_prompt(additionnal_prompt + self.default_prompt)
         else:
             self.logger.debug("No additionnal ressources, return to default prompt")
-            self.llm.make_default_prompt(self.default_prompt)
 
     def _load_document(self, document=str, loader_type=None) -> list[Document]:
         """Loads a document from the specified path using the given loader type."""
@@ -233,33 +232,3 @@ class DocumentReader:
 
         self.current_model = self.config.llm.embeddings
 
-    @timed
-    def ask_in_document(self, query, class_type=None, models=None):
-        """
-        Asks a question about the document and returns the answer.
-
-        Args:
-            query: The question to ask about the document.
-
-        Returns:
-            The answer to the question.
-        """
-        if class_type is not None:
-            parser = PydanticOutputParser(pydantic_object=class_type)
-
-        else:
-            parser = JsonOutputParser()
-
-        self.llm.create_chain(
-            self.vecdb.get_retriever(),
-            [
-                {"name": infos["name"], "retriever": infos["vecdb"].get_retriever()}
-                for doc_pdf, infos in self.docs_pdf.items()
-            ],
-            parser,
-        )
-
-        response = self.llm.invoke_multimodels_chain(query, parser)
-        self.current_model = self.llm.current_model.model
-
-        return response

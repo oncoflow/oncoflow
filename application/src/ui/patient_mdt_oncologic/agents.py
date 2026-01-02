@@ -29,7 +29,8 @@ for i, (n, a) in enumerate(pmtd.list.items()):
                 st.markdown("**Prompt :**")
                 st.caption(ag.system_prompt)
                 st.markdown("**Modèles :**")
-                st.write(ag.models)
+                for m in ag.models:
+                    st.markdown(f"- {m}")
             st.divider()
             st.markdown("**Ressources :**")
             for r in ag.ressources:

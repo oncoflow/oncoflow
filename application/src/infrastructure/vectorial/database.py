@@ -7,6 +7,7 @@ from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_community.vectorstores.utils import filter_complex_metadata
 
 from src.application.config import AppConfig
+from src.infrastructure.llm.ollama import OllamaConnect
 
 
 class VectorialDataBase:
@@ -22,10 +23,18 @@ class VectorialDataBase:
         else:
             self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
 
+        if config.llm.type.lower() == "ollama":
+            llm_client = OllamaConnect(config)
+        else:
+            raise ValueError(f"{config.llm.type} not yet supported")
+        self.llm_embeddings = llm_client.embedding
+
         self.config = config
         self.embeddings = self.get_embedding() 
         self.init_client(config)
         self.set_clientdb()
+
+        
 
         self.logger = config.set_logger(
             "vectorial_db",
