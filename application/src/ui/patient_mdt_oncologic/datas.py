@@ -115,71 +115,11 @@ def render_model_data(data: BaseModel):
             label = field_info.description if field_info.description else field_name
             render_field(label, getattr(data, field_name))
 
-def all_datas():
-    st.query_params.clear()
-    st.title("📇 Liste des fiches RCP")
-
-    db_datas = list(db_client.database["rcp_info"].find())
-
-    if not db_datas:
-        st.info("Aucune fiche RCP disponible.")
-        return
-
-    datas = []
-    for d in db_datas:
-        patient_name = "N/A"
-        if "PatientAdministrative" in d:
-            p = d["PatientAdministrative"]
-            patient_name = f"{p.get('first_name', '')} {p.get('last_name', '')}"
-
-        datas.append(
-            {
-                "file": d["file"],
-                "patient": patient_name,
-                "date": d.get(
-                    "ui_date",
-                    datetime.now(pytz.timezone("Europe/Paris")).replace(
-                        hour=0, minute=0, second=0, microsecond=0
-                    ),
-                ),
-                "link": f"/?file={d['file']}",
-            }
-        )
-
-    df = DataFrame(datas)
-    df.insert(0, "Delete", False)
-
-    edited_df = st.data_editor(
-        df,
-        column_config={
-            "file": "Fichier",
-            "patient": "Patient",
-            "date": st.column_config.DatetimeColumn(
-                "Date RCP", format="DD-MM-YYYY HH:mm"
-            ),
-            "link": st.column_config.LinkColumn("Détails", display_text="Ouvrir"),
-            "Delete": st.column_config.CheckboxColumn("Supprimer", default=False),
-        },
-        hide_index=True,
-        use_container_width=True,
-        key="datas_v2_editor",
-    )
-
-    if "edited_rows" in st.session_state["datas_v2_editor"]:
-        for idx, changes in st.session_state["datas_v2_editor"]["edited_rows"].items():
-            if "date" in changes:
-                update_date(df.iloc[idx]["file"], changes["date"])
-
-    if st.button("Supprimer la sélection", type="primary"):
-        to_delete = edited_df[edited_df["Delete"]]
-        if not to_delete.empty:
-            delete(to_delete)
-
 
 def form_navigate(filename):
     # Navigation et Titre
     c1, c2, c3 = st.columns([1, 5, 1], vertical_alignment="center")
-    if c1.button("◀️ Retour", use_container_width=True):
+    if c1.button("◀️ Retour", width="stretch"):
         st.query_params.clear()
         st.rerun()
     c2.subheader(f"Dossier: {filename}")
@@ -301,7 +241,7 @@ def form():
                     f,
                     file_name=filename,
                     mime="application/pdf",
-                    use_container_width=True,
+                    width="stretch",
                 )
 
             bbox_path = f"{file_path}.bbox"
@@ -374,6 +314,6 @@ if st.session_state["power"] == True:
 if "file" in st.query_params:
     form()
 else:
-    all_datas()
+    st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py")
 
 db_client.close()

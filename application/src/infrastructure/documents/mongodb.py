@@ -52,6 +52,13 @@ class Mongodb:
         collection.update_many(filter=filter, update=value)
         self.logger.info("Success updating documents")
     
+    def update_doc(self, collection,field_data_to_match:str = "file", upsertable_data: dict = {} ):
+        self.logger.info("Start update document")
+        self.logger.debug("List of document to update : %s", filter)
+        collection = self.database[collection]
+        collection.update_one({'matchable_field': field_data_to_match}, {"$set": upsertable_data}, upsert=True)
+        self.logger.info("Success updating documents")
+
     def insert_docs(self):
         self.logger.info("Start inserting documents")
         self.logger.debug("List of document to insert : %s", self.documents_to_insert)

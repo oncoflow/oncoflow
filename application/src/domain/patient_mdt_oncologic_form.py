@@ -68,8 +68,8 @@ class PatientMDTOncologicForm(DocumentReader):
     def insert_datas_in_db(self, replace: bool = True):
         if self.db_client is not None:
             if replace:
-                self.client.delete_docs(
-                    collections=["rcp_info", "rcp_metadata"], filter={"file": filename}
+                self.db_client.delete_docs(
+                    collections=["rcp_info", "rcp_metadata"], filter={"file": self.mtd_datas["file"]}
                 )
             self.db_client.prepare_insert_doc(collection="rcp_info", document=self.mtd_datas)
             self.db_client.insert_docs()
@@ -107,7 +107,7 @@ class PatientMDTOncologicForm(DocumentReader):
         gender: Gender = Field(description="Gender of the patient")
 
         question: ClassVar[str] = (
-            "Tell me the first name, Last name, age, date of birth and gender of the patient."
+            "Extract the patient's administrative details: First Name, Last Name, Age, Date of Birth, and Gender."
         )
 
     class PatientPerformanceStatus(default_model):
@@ -116,18 +116,11 @@ class PatientMDTOncologicForm(DocumentReader):
         """
 
         performance_status: WHOPerformanceStatus = Field(
-            description="OMS performance status of the patient, from 0 to 4"
+            description="WHO/OMS performance status of the patient, score from 0 to 4"
         )
 
         question: ClassVar[str] = (
-            "Tell me the WHO performance status of the patient (0-4)."
-        )
-        performance_status: WHOPerformanceStatus = Field(
-            description="OMS performance status of the patient, from 0 to 4"
-        )
-
-        question: ClassVar[str] = (
-            "Tell me the WHO performance status of the patient (0-4)."
+            "Determine the WHO performance status of the patient (0-4)."
         )
 
     class TumorLocation(default_model):
@@ -139,7 +132,7 @@ class PatientMDTOncologicForm(DocumentReader):
             description="Organ where the primary tumor is present"
         )
 
-        question: ClassVar[str] = "Tell me where is located the primary tumor ?"
+        question: ClassVar[str] = "Identify the primary organ where the tumor is located."
 
     class TumorBiology(default_model):
         """
@@ -148,7 +141,7 @@ class PatientMDTOncologicForm(DocumentReader):
 
         msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
 
-        question: ClassVar[str] = "Tell me if the tumor is stated MSI or MSS ?"
+        question: ClassVar[str] = "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)?"
 
     class RadiologicExams(default_model):
         """
@@ -160,7 +153,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Give me a list of the radiological exams with date, name, type and describe the results if there are, look into each part of document, you can find exams in all documents"
+            "List all radiological exams found in the documents. Include date, name, type, and a summary of results for each."
         )
 
     class PreviousCurativeSurgery(default_model):
@@ -176,7 +169,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Tell me if a curative surgery has already been done for this tumor ?"
+            "Has a curative surgery already been performed for this tumor? If yes, provide the date."
         )
 
     class PlannedCurativeSurgery(default_model):
@@ -189,7 +182,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Tell me if a curative surgery has been planned for this tumor ?"
+            "Is a curative surgery planned for this tumor?"
         )
 
     class ChemotherapyTreament(default_model):
@@ -205,7 +198,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Tell me if one or several chemotherapies have already been done for this tumor?"
+            "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments."
         )
     class ExpertAnswer(default_model):
 
@@ -215,27 +208,27 @@ class PatientMDTOncologicForm(DocumentReader):
             Agents.Hepatocellular_expert_agent,
         ]
 
-        expert_relevant: bool = Field(description="Is your expertise is relevant")
+        expert_relevant: bool = Field(description="Is your expertise relevant for this patient's case?")
 
         patient_priority: PatientPriority = Field(
-            description="patient treatment emergency"
+            description="Urgency of the patient's treatment"
         )
 
         why_relevant: str = Field(
-            description="Explain why your expertise is relevant or not and why this priority is given"
+            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
         )
 
         sources_relevant: list[Reference] = Field(
             description="Give the sources of your relevant answer"
         )
 
-        suggetions: list[ExpertSuggestion] = Field(
-            description="One suggetion by item, this list can be empty if expert is not relevant"
+        suggestions: list[ExpertSuggestion] = Field(
+            description="List of suggestions. Empty if expert is not relevant."
         )
 
         question: ClassVar[str] = (
             """
-            As expert, tell me if the patient must be threat urgently for the pancreas, if your expertise is relevant and why do you have answer that.
+            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
             """
         )
 
@@ -245,11 +238,11 @@ class PatientMDTOncologicForm(DocumentReader):
             Agents.Oesophagus_expert_agent,
             Agents.Hepatocellular_expert_agent,
         ]
-        mtd_complete: MTDComplete = Field("Is MTD is complete")
+        mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")
 
         question: ClassVar[str] = (
             """
-            As expert, Tell me if MTD is complete or not.
+            As an expert, determine if the MDT (Multidisciplinary Team) file is complete. Are there missing elements required for a decision?
             """
         )
 

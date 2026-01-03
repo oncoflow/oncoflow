@@ -36,10 +36,15 @@ pages = {}
 
 pages["Patient mdt Oncologic"] = [
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py",
-        title="RCP",
+        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py",
+        title="Liste RCP",
         icon="📇",
         default=True,
+    ),
+    st.Page(
+        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py",
+        title="RCP",
+        icon="📇"
     ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt_oncologic/upload.py",

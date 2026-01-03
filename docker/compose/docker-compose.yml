@@ -43,20 +43,20 @@ services:
               count: 1
               capabilities: [gpu]
 
-  chromadb:
-    #image: chromadb/chroma:0.5.15
-    image: chromadb/chroma:1.3.5
-    restart: always
-    ports:
-     - 8000:8000
+  # chromadb:
+  #   #image: chromadb/chroma:0.5.15
+  #   image: chromadb/chroma:1.3.5
+  #   restart: always
+  #   ports:
+  #    - 8000:8000
     
-  pgvector:
-    image: pgvector/pgvector:pg18-trixie
-    shm_size: 1g
-    ports:
-      - 5432:5432
-    environment:
-      POSTGRES_PASSWORD: root
+  # pgvector:
+  #   image: pgvector/pgvector:pg18-trixie
+  #   shm_size: 1g
+  #   ports:
+  #     - 5432:5432
+  #   environment:
+  #     POSTGRES_PASSWORD: root
 
   # grafana:
   #   image: grafana/grafana-enterprise

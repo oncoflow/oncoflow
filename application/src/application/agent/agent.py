@@ -81,13 +81,12 @@ class OncowflowAgent:
         )
         self.logger.info("Agent succefully created")
 
-    def ask(self, question: str = None, structuredResponse: bool = True) -> dict:
+    def ask(self, question: str = None) -> dict:
         """
         Ask a question to the agent.
 
         Args:
             question (str, optional): The question to ask. Defaults to self.question.
-            structuredResponse (bool, optional): Whether to expect a structured response. Defaults to True.
 
         Returns:
             dict: The parsed JSON response from the agent matching the output_format.
@@ -111,7 +110,7 @@ class OncowflowAgent:
         for msg in result["messages"]:
             try:
                 if type(msg).__name__ == "AIMessage":
-                    self.logger.info(f"AI response : {result['messages']}")
+                    self.logger.debug(f"AI response : {result['messages']}")
                     # Validate the content against the Pydantic model
                     self.output_format.model_validate_json(msg.content)
                     return json.loads(msg.content)
