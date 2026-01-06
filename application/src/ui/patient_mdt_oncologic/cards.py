@@ -100,7 +100,7 @@ def get_rcp_data():
                 "file": d["file"],
                 "patient": patient_name,
                 "date_refresh": date_refresh,
-                "date": date_mcp,
+                "date": date_mcp if isinstance(date_mcp, datetime) else datetime.fromisoformat(date_mcp),
                 "experts": relevant_experts,
                 "missing": list(set(missing_data)),
                 "urgency": urgency_level,
