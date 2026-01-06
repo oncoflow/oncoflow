@@ -78,7 +78,7 @@ class AppConfig:
             help="Model of ocr in ollama llm system",
         )
         temp = environ.var(
-            default="0.7", converter=float, help="Temperature of llm system"
+            default="1", converter=float, help="Temperature of llm system"
         )
         embeddings = environ.var(
             default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"

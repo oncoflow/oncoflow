@@ -38,7 +38,6 @@ class MilvusDB(VectorialDataBase):
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
             drop_old=flush,  # set to True if seeking to drop the collection with that name if it exists
-            
         )
 
     def get_version(self):

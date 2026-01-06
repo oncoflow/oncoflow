@@ -35,6 +35,8 @@ services:
      - 11434:11434
     volumes:
       - /data/ollama:/root/.ollama
+    devices:
+        - nvidia.com/gpu=all
     deploy:
       resources:
         reservations:
@@ -42,6 +44,32 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+  # vllm:
+  #     image: docker.io/vllm/vllm-openai:latest
+  #     command: >
+  #       --model=openai/gpt-oss-20b
+  #       --port=8000
+  #       --gpu_memory_utilization=0.89
+  #       --max-model-len 5600 
+  #     devices:
+  #       - nvidia.com/gpu=all
+  #     ports:
+  #       - 8000:8000
+  #     volumes:
+  #       - /data/huggingface:/root/.cache/huggingface
+  #     environment:
+  #       - HF_TOKEN=test
+  #       - PYTORCH_ALLOC_CONF=expandable_segments:True
+  #     ipc: host
+  #     deploy:
+  #       resources:
+  #         reservations:
+  #           devices:
+  #             - driver: nvidia
+  #               count: 1
+  #               capabilities: [gpu]
+
 
   # chromadb:
   #   #image: chromadb/chroma:0.5.15

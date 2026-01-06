@@ -2,6 +2,7 @@ import environ
 import pytz
 import os
 import inspect
+from types import NoneType
 from datetime import datetime
 from enum import Enum
 import streamlit as st
@@ -28,9 +29,6 @@ if app_conf.rcp.display_type == "mongodb":
 PAGES_DIR_SRC = "src/ui"
 logger = app_conf.set_logger("ui", default_context={"page": "datas"})
 
-
-class ChatResponse(BaseModel):
-    response: str = Field(description="The answer to the user question")
 
 
 @st.dialog("Êtes-vous sûr ?")
@@ -69,6 +67,8 @@ def render_field(label, value):
             st.warning(value.value, icon="⚠️")  
         elif value.name == "low":
             st.success(value.value)
+    elif isinstance(value, datetime):
+        st.markdown(f""" **{label}:** {value.strftime('%d-%m-%Y')}""" ) 
     elif isinstance(value, bool):
         if value:
             st.success(label, icon="✔️")
@@ -89,13 +89,18 @@ def render_field(label, value):
     elif isinstance(value, Enum):
         render_field(label, value.name)
     elif isinstance(value, BaseModel):
-        render_field(value, value.__dict__)
-    else:
-        st.markdown(
-            f"""
-        **{label}:**\\
-        {value}"""
-        )
+        render_field(label, value.__dict__)
+    elif isinstance(value, int):
+        st.markdown(f"**{label}:**  {value}")
+    elif not isinstance(value, NoneType):
+        if len(value) > 30:
+            st.markdown(
+                f"""
+            **{label}:**\\
+            {value}"""
+            )
+        else:
+            st.markdown(f"**{label}:**  {value}")
 
 
 def render_fields(data: BaseModel):
@@ -192,8 +197,7 @@ def form_chat():
                 agent_cls = available_agents[agent_choice]
                 st.session_state["agent"] = agent_cls(
                     config=app_conf,
-                    mtd=reader,
-                    output_format=ChatResponse,
+                    mtd=reader
                 )
             st.rerun()
     else:
@@ -218,10 +222,10 @@ def form_chat():
             with messages.chat_message("assistant"):
                 with st.spinner("Analyse en cours..."):
                     try:
-                        resp = st.session_state["agent"].ask(prompt)
-                        st.markdown(resp["response"])
+                        resp: ChatResponse = st.session_state["agent"].ask(prompt)
+                        st.markdown(resp.response)
                         st.session_state["messages"].append(
-                            {"role": "assistant", "content": resp["response"]}
+                            {"role": "assistant", "content": resp.response}
                         )
                     except Exception as e:
                         st.error(f"Erreur lors de la génération de la réponse: {e}")

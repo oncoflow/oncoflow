@@ -20,6 +20,7 @@ class PatientMDTOncologicForm(DocumentReader):
     """
 
     mtd_datas: dict = {}
+    mtd_datas_json: dict = {}
     db_client = None
 
     def __init__(self, config=AppConfig, document=str) -> None:
@@ -30,7 +31,7 @@ class PatientMDTOncologicForm(DocumentReader):
         if config.rcp.display_type == "mongodb":
             self.db_client = Mongodb(config)
         else:
-            logger.info("DB Type %s not known, fallback to stdout", config.rcp.display_type)
+            self.logger.info("DB Type %s not known, fallback to stdout", config.rcp.display_type)
 
         self.mtd_datas["file"] = document
 
@@ -48,22 +49,26 @@ class PatientMDTOncologicForm(DocumentReader):
         return self.mtd_datas
 
     def read_model(self, model):
-        if len(model.agents) == 1:
-            agent = model.agents[0](config=self.config, mtd=self, output_format=model)
-            datas = agent.ask(model.question)
+        agents = [ magent(config=self.config, mtd=self, output_format=model) for magent in model.agents ]
+        memory = {}
+        for a in agents:
+            if memory and model.agents_memory:
+                model.question = f"""
+                Agents memory datas :
+                {memory}
+                {model.question}
+                """
+            datas = json.loads(a.ask(model.question).json())
             self.logger.debug(f"DATAS : {datas} ...")
             if datas:
-                self.mtd_datas[model.__name__] = datas
-        else:
-            for magent in model.agents:
-                agent = magent(config=self.config, mtd=self, output_format=model)
-                datas = agent.ask(model.question)
-                self.logger.debug(f"DATAS : {datas} ...")
-                if datas:
-                    if model.__name__ not in self.mtd_datas:
-                        self.mtd_datas[model.__name__] = {}
-                    self.mtd_datas[model.__name__][magent.agent_name] = datas
-        del agent
+                if model.agents_memory:
+                    memory = memory | datas
+                if model.__name__ not in self.mtd_datas:
+                    self.mtd_datas[model.__name__] = {}
+                if len(agents) > 1:
+                    self.mtd_datas[model.__name__][a.agent_name] = datas
+                else:
+                    self.mtd_datas[model.__name__] = datas
 
     def insert_datas_in_db(self, replace: bool = True):
         if self.db_client is not None:
@@ -89,6 +94,7 @@ class PatientMDTOncologicForm(DocumentReader):
 
         question: ClassVar[str] = ""
         agents: ClassVar[list[OncowflowAgent]] = [Agents.Administratives_agent]
+        agents_memory: ClassVar[bool] = False
 
 
     #  // // // // // Tested and Working classes // // // // //
@@ -104,10 +110,13 @@ class PatientMDTOncologicForm(DocumentReader):
         date_birth: Optional[datetime] = Field(
             description="Date of birth of the patient"
         )
+        date_rcp: Optional[datetime] = Field(
+            description="Date of the MTD"
+        )
         gender: Gender = Field(description="Gender of the patient")
 
         question: ClassVar[str] = (
-            "Extract the patient's administrative details: First Name, Last Name, Age, Date of Birth, and Gender."
+            "Search and Extract the patient's each administrative details from MTD. You can use tools multiple time for each element"
         )
 
     class PatientPerformanceStatus(default_model):
@@ -164,7 +173,7 @@ class PatientMDTOncologicForm(DocumentReader):
         previous_curative_surgery: bool = Field(
             description="If a curative surgery has already been done"
         )
-        previous_curative_surgery_date: Optional[PastDate] = Field(
+        previous_curative_surgery_date: Optional[datetime] = Field(
             description="Date of the surgery"
         )
 
@@ -229,6 +238,7 @@ class PatientMDTOncologicForm(DocumentReader):
         question: ClassVar[str] = (
             """
             As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
+            You can use tools multiple times for each element and have more scientific elements.
             """
         )
 
@@ -240,9 +250,14 @@ class PatientMDTOncologicForm(DocumentReader):
         ]
         mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")
 
+        agents_memory = True
+
         question: ClassVar[str] = (
             """
-            As an expert, determine if the MDT (Multidisciplinary Team) file is complete. Are there missing elements required for a decision?
+            As an expert, determine if the MDT (Multidisciplinary Team) file is complete.
+            Are there missing elements required for a decision that doesn't present in agent memory ?
+            You can use search_on_ressources tool what type of document is needed.
+            You can use tools multiple times for each element
             """
         )
 

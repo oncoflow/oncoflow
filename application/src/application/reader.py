@@ -25,6 +25,8 @@ answer = reader.askInDocument("What is the patient's age?")
 # Print the answer
 print(answer)
 """
+import os
+from modelscope import snapshot_download
 
 from langchain_community import document_loaders
 from langchain_docling import DoclingLoader
@@ -72,13 +74,10 @@ class DocumentReader:
         config=AppConfig,
         document=str,
         document_type="mtd",
-        prompt=None,
         models=None,
     ):
         self.config = config
         self.document = document
-        if prompt is None:
-            prompt = []
         self.current_model = None
 
         if document_type == "mtd":
@@ -92,7 +91,6 @@ class DocumentReader:
             config, coll_prefix=slugify(document, separator="_")
         ).vectordb
 
-        self.set_prompt(prompt)
         if config.llm.type.lower() == "ollama":
             llm_client = OllamaConnect(config)
         else:
@@ -112,7 +110,7 @@ class DocumentReader:
 
         self.default_loader = config.rcp.doc_type
 
-        self.logger.info("Class reader succesfully init, Start reading documents")
+        self.logger.info(f"Class reader succesfully init, Start reading document {self.document_path}")
 
         #self.text_splitter = SemanticChunker(self.embeddings)
         # self.text_splitter = RecursiveCharacterTextSplitter(
@@ -120,56 +118,6 @@ class DocumentReader:
         # )
         # self.read_document(self.document_path)
         # self.read_additionnal_document(docs_pdf)
-
-    def set_prompt(self, prompt):
-        """
-        Set the default prompt for the DocumentReader instance.
-
-        Args:
-            prompt (str or list of str): The default prompt(s) to use when querying documents.
-                If a single string is provided, it will be used as-is. If a list of strings
-                is provided, each prompt will be appended to the list of default prompts.
-
-        Raises:
-            TypeError: If `prompt` is not a string or a list of strings.
-        """
-        if isinstance(prompt, str):
-            prompt = [prompt]
-        elif not isinstance(prompt, list):
-            raise TypeError("Prompt must be a string or a list of strings")
-        self.default_prompt = prompt
-
-    @timed
-    def old_read_additionnal_document(self, docs_pdf=None):
-        """
-        Reads additional documents if provided and updates the default prompt accordingly.
-
-        Args:
-            docs_pdf (dict or None): A dictionary containing information about additional PDFs to read.
-                If None, no additional documents are read, and the default prompt is used.
-        """
-        if docs_pdf is not None:
-            additionnal_prompt = []
-            for doc_pdf in docs_pdf:
-                if doc_pdf not in self.docs_pdf:
-                    pdf_dict = {
-                        "vecdb": VectorialDataBaseClient(
-                            self.config, coll_prefix=slugify(doc_pdf)
-                        ).vectordb,
-                        "path": f"{self.config.rcp.additional_path}/{doc_pdf}",
-                        "name": doc_pdf,
-                    }
-                    self.docs_pdf[doc_pdf] = pdf_dict
-                    additionnal_prompt.append(
-                        (
-                            "system",
-                            f"I'm going to give you a question about a specific topic. Your task is to find the relevant information in our vector database of reference documents using semantic analogy and provide me with the most accurate answer based on that information, the document : {pdf_dict['name']}",
-                        )
-                    )
-                    self.logger.debug(f"Start reading ressource {doc_pdf}")
-                    self.read_document(pdf_dict["vecdb"], pdf_dict["path"])
-        else:
-            self.logger.debug("No additionnal ressources, return to default prompt")
 
     def _load_document(self, document=str, loader_type=None) -> list[Document]:
         """Loads a document from the specified path using the given loader type."""
@@ -180,10 +128,35 @@ class DocumentReader:
                 cla = OpenParseDocumentLoader
             elif loader_type == "docling":
                 from docling.chunking import HybridChunker
+                from docling.datamodel.base_models import InputFormat
+                from docling.datamodel.pipeline_options import (
+                    PdfPipelineOptions,
+                    TableStructureOptions,
+                    TesseractCliOcrOptions,
+                    RapidOcrOptions
+                )
+                from docling.document_converter import DocumentConverter, PdfFormatOption
 
+                print("Downloading RapidOCR models")
+
+                ocr_options = RapidOcrOptions()
+
+                pipeline_options = PdfPipelineOptions(
+                    ocr_options=ocr_options,
+                )
+
+                # Convert the document
+                converter = DocumentConverter(
+                    format_options={
+                        InputFormat.PDF: PdfFormatOption(
+                            pipeline_options=pipeline_options,
+                        ),
+                    },
+                )
                 return DoclingLoader(
                     file_path=document,
                     export_type=ExportType.DOC_CHUNKS,
+                    converter=converter,
                     chunker=HybridChunker(
                         tokenizer="sentence-transformers/all-MiniLM-L6-v2"
                     ),
@@ -210,13 +183,6 @@ class DocumentReader:
 
     def get_retriever(self) -> VectorStoreRetriever:
         return self.vecdb.get_retriever()
-
-    def get_additionnals_retrievers(self, pdf_list: list) -> list[VectorStoreRetriever]:
-        return [
-            info["vecdb"].get_retriever()
-            for pdf, info in self.docs_pdf.items()
-            if info["name"] in pdf_list
-        ]
 
     @timed
     def read_document(self):

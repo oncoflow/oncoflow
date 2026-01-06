@@ -18,6 +18,7 @@ dependencies = [
     "langchain-milvus>=0.3.1",
     "langchain-mongodb>=0.8.0",
     "langchain-ollama>=1.0.1",
+    "modelscope>=1.33.0",
     "ollama-ocr>=0.1.6",
     "openparse>=0.7.0",
     "panda>=0.3.1",

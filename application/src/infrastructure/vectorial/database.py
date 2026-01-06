@@ -34,8 +34,6 @@ class VectorialDataBase:
         self.init_client(config)
         self.set_clientdb()
 
-        
-
         self.logger = config.set_logger(
             "vectorial_db",
             default_context={
@@ -72,6 +70,7 @@ class VectorialDataBase:
         """
         return None
 
+
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """
         Returns a VectorStoreRetriever instance for this vectorial database.
@@ -83,7 +82,9 @@ class VectorialDataBase:
         """
         self.logger.debug("Return receiver with words_number=%s", str(words_number))
         return self.clientdb.as_retriever(
-            search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
+            #search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
+            search_type="similarity_score_threshold",
+            search_kwargs={'score_threshold': 0.8}
         )
 
     # Add a document to the collection.
