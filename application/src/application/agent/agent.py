@@ -60,6 +60,14 @@ class OncowflowAgent:
         system_prompt = f"""Answer in {self.response_language} language, not mention it in the answer.
         {self.system_prompt}
         """
+        # Configure logging for the agent
+        self.logger = config.set_logger(
+            "OncowAgent",
+            default_context={
+                "model": self.models[0],
+                "output_format": self.output_format,
+            },
+        )
 
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
@@ -81,7 +89,7 @@ class OncowflowAgent:
                 schema=self.output_format, handle_errors=True
             ),
             context_schema=Context,
-            system_prompt=system_prompt,
+            system_prompt=system_prompt
         )
 
         # Set up readers for the main document and additional resources
@@ -92,14 +100,7 @@ class OncowflowAgent:
             for ressource in self.ressources
         ]
 
-        # Configure logging for the agent
-        self.logger = config.set_logger(
-            "OncowAgent",
-            default_context={
-                "model": self.models[0],
-                "output_format": self.output_format,
-            },
-        )
+        
         self.logger.info(
             f"""Agent succefully created with prompt :
         {system_prompt}

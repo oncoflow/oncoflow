@@ -30,7 +30,6 @@ PAGES_DIR_SRC = "src/ui"
 logger = app_conf.set_logger("ui", default_context={"page": "datas"})
 
 
-
 @st.dialog("Êtes-vous sûr ?")
 def delete(items: DataFrame):
     st.write(f"Vous êtes sur le point de supprimer {items['file'].to_string()}")
@@ -64,11 +63,11 @@ def render_field(label, value):
         if value.name == "urgent":
             st.error(value.value, icon="🚨")
         elif value.name == "medium":
-            st.warning(value.value, icon="⚠️")  
+            st.warning(value.value, icon="⚠️")
         elif value.name == "low":
             st.success(value.value)
     elif isinstance(value, datetime):
-        st.markdown(f""" **{label}:** {value.strftime('%d-%m-%Y')}""" ) 
+        st.markdown(f""" **{label}:** {value.strftime('%d-%m-%Y')}""")
     elif isinstance(value, bool):
         if value:
             st.success(label, icon="✔️")
@@ -84,7 +83,7 @@ def render_field(label, value):
                 else:
                     st.markdown(f"- {item}")
     elif isinstance(value, dict):
-         for field_name, field_info in value.items():
+        for field_name, field_info in value.items():
             render_field(field_name, field_info)
     elif isinstance(value, Enum):
         render_field(label, value.name)
@@ -115,20 +114,40 @@ def render_model_data(data: BaseModel):
     """Affiche les données d'un modèle Pydantic dynamiquement"""
     title = data.__doc__.strip() if data.__doc__ else data.__name__
 
-    with st.expander(f"📌 {title}", expanded=True):
-        for field_name, field_info in data.__class__.model_fields.items():
-            label = field_info.description if field_info.description else field_name
-            render_field(label, getattr(data, field_name))
+    for field_name, field_info in data.__class__.model_fields.items():
+        label = field_info.description if field_info.description else field_name
+        render_field(label, getattr(data, field_name))
 
+
+def rerun_all_models(filename):
+    models = get_form_models()
+    models.sort(
+        key=lambda x: 0 if x.__name__ == "PatientAdministrative" else 1
+    )
+    st.session_state["run_full"] = True
+    
+    for model_cls in models:
+        model_name = model_cls.__name__
+        title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
+        st.session_state[f"pills_{title}"] = ":material/robot: AI exec"
+    st.session_state["run_full"] = None
+    st.rerun()
+
+def get_mtd_reader():
+    if "reader" not in st.session_state or st.session_state["reader"] is None:
+        st.session_state["reader"] = PatientMDTOncologicForm(app_conf, st.query_params["file"])
+    return st.session_state["reader"]
 
 def form_navigate(filename):
     # Navigation et Titre
-    c1, c2, c3 = st.columns([1, 5, 1], vertical_alignment="center")
+    c1, c2, c3, c4 = st.columns([1, 4, 1, 1], vertical_alignment="center")
     if c1.button("◀️ Retour", width="stretch"):
         st.query_params.clear()
         st.rerun()
     c2.subheader(f"Dossier: {filename}")
-    power_mode(c3)
+    if c3.button("🔄 Rerun All", help="Relancer l'analyse complète", use_container_width=True):
+        rerun_all_models(filename)
+    power_mode(c4)
 
 
 def power_mode(element):
@@ -179,7 +198,7 @@ def form_chat():
 
     agents = Agents()
     available_agents = agents.list
-    if 'run_button' in st.session_state and st.session_state.run_button == True:
+    if "run_button" in st.session_state and st.session_state.run_button == True:
         st.session_state.running = True
     else:
         st.session_state.running = False
@@ -190,15 +209,16 @@ def form_chat():
         disabled=st.session_state["chat_active"],
     )
     if not st.session_state["chat_active"]:
-        if st.button("Démarrer le chat avec l'agent", disabled=st.session_state.running, key='run_button'):
+        if st.button(
+            "Démarrer le chat avec l'agent",
+            disabled=st.session_state.running,
+            key="run_button",
+        ):
             st.session_state["chat_active"] = True
             with st.spinner("Démarrage du chat ..."):
-                reader = PatientMDTOncologicForm(app_conf, st.query_params["file"])
+                reader = get_mtd_reader()
                 agent_cls = available_agents[agent_choice]
-                st.session_state["agent"] = agent_cls(
-                    config=app_conf,
-                    mtd=reader
-                )
+                st.session_state["agent"] = agent_cls(config=app_conf, mtd=reader)
             st.rerun()
     else:
         if st.button("Arrêter le chat"):
@@ -269,33 +289,58 @@ def form():
 
                 for model_cls in models:
                     model_name = model_cls.__name__
-                    if model_name in data:
-                        model_data = data[model_name]
-
-                        # Gestion des agents multiples (dictionnaire de résultats)
-                        is_multi = (
-                            hasattr(model_cls, "agents") and len(model_cls.agents) > 1
+                    title = (
+                        model_cls.__doc__.strip() if model_cls.__doc__ else model_name
+                    )
+                    with st.expander(f"📌 {title}", expanded=True):
+                        if (
+                            f"pills_{title}_ai" in st.session_state
+                            and st.session_state[f"pills_{title}_ai"]
+                        ):
+                            st.session_state[f"pills_{title}"] = None
+                            st.session_state[f"pills_{title}_ai"] = None
+                        selection = st.pills(
+                            "Retry ai",
+                            label_visibility="collapsed",
+                            options=[":material/robot: AI exec"],
+                            selection_mode="single",
+                            key=f"pills_{title}",
                         )
+                        if selection == ":material/robot: AI exec":
+                            with st.status(f"Relance de l'IA pour {model_name} ..."):
+                                reader = get_mtd_reader()
+                                reader.read_model(model_cls, upsert=True)
+                                st.session_state[f"pills_{title}_ai"] = True
+                            st.rerun()
+                        
+                        if model_name in data:
+                            model_data = data[model_name]
 
-                        if is_multi and isinstance(model_data, dict):
-                            title = (
-                                model_cls.__doc__.strip()
-                                if model_cls.__doc__
-                                else model_name
+                            # Gestion des agents multiples (dictionnaire de résultats)
+                            is_multi = (
+                                hasattr(model_cls, "agents")
+                                and len(model_cls.agents) > 1
                             )
-                            with st.expander(f"📌 {title}", expanded=True):
+
+                            if is_multi and isinstance(model_data, dict):
+
                                 agent_names = list(model_data.keys())
                                 if agent_names:
                                     tabs = st.tabs(agent_names)
                                     for tab, agent_name in zip(tabs, agent_names):
-                                        pydantic_model = model_cls.model_validate(data[model_name][agent_name])
+                                        pydantic_model = model_cls.model_validate(
+                                            data[model_name][agent_name]
+                                        )
                                         with tab:
-                                            render_fields(
-                                                pydantic_model
-                                            )
+                                            render_fields(pydantic_model)
+                            else:
+                                pydantic_model = model_cls.model_validate(
+                                    data[model_name]
+                                )
+                                render_model_data(pydantic_model)
                         else:
-                            pydantic_model = model_cls.model_validate(data[model_name])
-                            render_model_data(pydantic_model)
+                            st.warning("Données non trouvées.")
+
             else:
                 st.warning("Données non trouvées.")
 
@@ -319,5 +364,9 @@ if "file" in st.query_params:
     form()
 else:
     st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py")
+
+if "reader" in st.session_state:
+    del(st.session_state["reader"])
+    st.session_state["reader"] = None
 
 db_client.close()

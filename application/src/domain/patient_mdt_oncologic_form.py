@@ -4,7 +4,7 @@ import json
 from typing import List, Optional, ClassVar
 from datetime import datetime
 
-from pydantic import BaseModel, Field, PastDate
+from pydantic import BaseModel, Field, PastDate, PastDatetime, model_validator
 
 from src.domain.common_ressources import *
 
@@ -13,6 +13,7 @@ from src.domain.agents import Agents
 from src.application.agent.agent import OncowflowAgent
 from src.application.reader import DocumentReader
 from src.infrastructure.documents.mongodb import Mongodb
+
 
 class PatientMDTOncologicForm(DocumentReader):
     """
@@ -23,16 +24,9 @@ class PatientMDTOncologicForm(DocumentReader):
     mtd_datas_json: dict = {}
     db_client = None
 
-    def __init__(self, config=AppConfig, document=str) -> None:
+    def __init__(self, config: AppConfig, document: str) -> None:
         super(PatientMDTOncologicForm, self).__init__(config=config, document=document)
-
-        self.read_document()
-
-        if config.rcp.display_type == "mongodb":
-            self.db_client = Mongodb(config)
-        else:
-            self.logger.info("DB Type %s not known, fallback to stdout", config.rcp.display_type)
-
+        
         self.mtd_datas["file"] = document
 
         self.basemodel_list = [
@@ -43,13 +37,46 @@ class PatientMDTOncologicForm(DocumentReader):
             and cls_attribute.__name__ != "default_model"
         ]
 
+        self.read_document()
+
+        if config.rcp.display_type == "mongodb":
+            self.db_client = Mongodb(config)
+        else:
+            self.logger.info(
+                "DB Type %s not known, fallback to stdout", config.rcp.display_type
+            )
+
+        self.db_client.set_uniq_index(collection="rcp_info", field="file")
+        db_document = self.db_client.get_or_create_document(
+            collection="rcp_info", document={"file": document}
+        )
+        self.mtd_datas["id"] = db_document["_id"]
+        self.dict_to_models(db_document)
+
+    def dict_to_models(self, dic: dict, subkey=None):
+        for key, value in dic.items():
+            for m in self.basemodel_list:
+                if m.__name__ == key:
+                    if len(m.agents) > 1:
+                        for a in m.agents:
+                            self.mtd_datas[key] = {
+                                a.agent_name: m.model_validate(value[a.agent_name])
+                            }
+                    else:
+                        self.mtd_datas[key] = m.model_validate(value)
+
     def read_all_models(self) -> dict:
         for model in self.basemodel_list:
             self.read_model(model)
         return self.mtd_datas
 
-    def read_model(self, model):
-        agents = [ magent(config=self.config, mtd=self, output_format=model) for magent in model.agents ]
+    def read_model(self, model: BaseModel, upsert: bool=False):
+        if upsert:
+            self.db_client = Mongodb(self.config)
+        agents = [
+            magent(config=self.config, mtd=self, output_format=model)
+            for magent in model.agents
+        ]
         memory = {}
         for a in agents:
             if memory and model.agents_memory:
@@ -69,17 +96,38 @@ class PatientMDTOncologicForm(DocumentReader):
                     self.mtd_datas[model.__name__][a.agent_name] = datas
                 else:
                     self.mtd_datas[model.__name__] = datas
+            del(a)
+        del(agents)
+        if upsert:
+            self.logger.info(self.mtd_datas)
+            self.db_client.update_doc(
+                collection="rcp_info",
+                filter={ "file": self.mtd_datas["file"] },
+                upsertable_data={model.__name__: self.mtd_datas[model.__name__]},
+            )
+            self.db_client.close()
+
+    def delete(self):
+        self.db_clientclient.delete_docs(
+            collections=["rcp_info", "rcp_metadata"],
+            filter={"file": self.mtd_datas["file"]},
+        )
+        if os.path.exists(self.document_path):
+            os.remove(self.document_path)
+        self.db_client.close()
 
     def insert_datas_in_db(self, replace: bool = True):
         if self.db_client is not None:
             if replace:
                 self.db_client.delete_docs(
-                    collections=["rcp_info", "rcp_metadata"], filter={"file": self.mtd_datas["file"]}
+                    collections=["rcp_info", "rcp_metadata"],
+                    filter={"file": self.mtd_datas["file"]},
                 )
-            self.db_client.prepare_insert_doc(collection="rcp_info", document=self.mtd_datas)
+            self.db_client.prepare_insert_doc(
+                collection="rcp_info", document=self.mtd_datas
+            )
             self.db_client.insert_docs()
             self.db_client.close()
-
 
     @classmethod
     def parse_raw(cls, value):
@@ -96,7 +144,6 @@ class PatientMDTOncologicForm(DocumentReader):
         agents: ClassVar[list[OncowflowAgent]] = [Agents.Administratives_agent]
         agents_memory: ClassVar[bool] = False
 
-
     #  // // // // // Tested and Working classes // // // // //
 
     class PatientAdministrative(default_model):
@@ -107,16 +154,33 @@ class PatientMDTOncologicForm(DocumentReader):
         first_name: str = Field(description="First name of the patient")
         last_name: str = Field(description="Last name of the patient")
         age: int = Field(description="Age of the patient")
-        date_birth: Optional[datetime] = Field(
+        date_birth: Optional[PastDatetime] = Field(
             description="Date of birth of the patient"
         )
-        date_rcp: Optional[datetime] = Field(
-            description="Date of the MTD"
-        )
+        date_rcp: Optional[datetime] = Field(description="Date of the MTD")
         gender: Gender = Field(description="Gender of the patient")
 
+        @model_validator(mode="after")
+        def check_dates_coherence(self):
+            now = datetime.now()
+            if self.date_birth and self.date_birth.year < (now.year - 150):
+               self.date_birth = None
+
+            if self.date_rcp and self.date_rcp.year < (now.year - 5):
+               self.date_rcp = None
+
+            if self.date_birth and self.date_rcp:
+                if self.date_birth.replace(tzinfo=None) > self.date_rcp.replace(tzinfo=None):
+                    raise ValueError("Date of birth must be before Date of RCP")
+            return self
+
         question: ClassVar[str] = (
-            "Search and Extract the patient's each administrative details from MTD. You can use tools multiple time for each element"
+            """Search and Extract the patient's each administrative details from MTD. You can use tools multiple time for each element.
+            Ensure dates are coherent:
+            1. Date of birth must be less than 150 years ago.
+            2. Date of RCP must be less than 5 years ago.
+            3. Date of birth must be strictly before Date of RCP.
+            """
         )
 
     class PatientPerformanceStatus(default_model):
@@ -141,7 +205,9 @@ class PatientMDTOncologicForm(DocumentReader):
             description="Organ where the primary tumor is present"
         )
 
-        question: ClassVar[str] = "Identify the primary organ where the tumor is located."
+        question: ClassVar[str] = (
+            "Identify the primary organ where the tumor is located."
+        )
 
     class TumorBiology(default_model):
         """
@@ -150,7 +216,9 @@ class PatientMDTOncologicForm(DocumentReader):
 
         msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
 
-        question: ClassVar[str] = "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)?"
+        question: ClassVar[str] = (
+            "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)?"
+        )
 
     class RadiologicExams(default_model):
         """
@@ -190,9 +258,7 @@ class PatientMDTOncologicForm(DocumentReader):
             description="If a curative surgery has been planned"
         )
 
-        question: ClassVar[str] = (
-            "Is a curative surgery planned for this tumor?"
-        )
+        question: ClassVar[str] = "Is a curative surgery planned for this tumor?"
 
     class ChemotherapyTreament(default_model):
         """
@@ -209,6 +275,7 @@ class PatientMDTOncologicForm(DocumentReader):
         question: ClassVar[str] = (
             "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments."
         )
+
     class ExpertAnswer(default_model):
 
         agents = [
@@ -217,7 +284,9 @@ class PatientMDTOncologicForm(DocumentReader):
             Agents.Hepatocellular_expert_agent,
         ]
 
-        expert_relevant: bool = Field(description="Is your expertise relevant for this patient's case?")
+        expert_relevant: bool = Field(
+            description="Is your expertise relevant for this patient's case?"
+        )
 
         patient_priority: PatientPriority = Field(
             description="Urgency of the patient's treatment"

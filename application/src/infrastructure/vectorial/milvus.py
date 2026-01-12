@@ -10,18 +10,26 @@ from pymilvus import Collection, MilvusException, connections, db, utility
 
 class MilvusDB(VectorialDataBase):
     def init_client(self, config=AppConfig):
-        conn = connections.connect(host=config.milvus.host, port=config.milvus.port)
-        self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
-        self.token = config.milvus.token
-        self.database = config.milvus.database
-        
-        try:
-            existing_databases = db.list_database()
-            if config.milvus.database not in existing_databases:
-                database = db.create_database(self.database)
+        retry = 3
+        for r in range(retry):
+            try:
+                conn = connections.connect(host=config.milvus.host, port=config.milvus.port)
+                self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
+                self.token = config.milvus.token
+                self.database = config.milvus.database
+
+                try:
+                    existing_databases = db.list_database()
+                    if config.milvus.database not in existing_databases:
+                        database = db.create_database(self.database)
+                    break
+                    
+                except MilvusException as e:
+                    self.logger.error(f"An error occurred: {e}")
+            except MilvusException as e:
+                self.logger.info(f"Milvus still start, wait")
+                sleep(5)
             
-        except MilvusException as e:
-            self.logger.error(f"An error occurred: {e}")
     
     def get_embedding(self):
         return self.llm_embeddings

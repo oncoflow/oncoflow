@@ -3,6 +3,7 @@ import streamlit as st
 import time
 
 from src.application.config import AppConfig
+from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.application.app_functions import full_read_mtd_agents
 
 
@@ -22,9 +23,9 @@ if uploaded_files:
             st.write(f"Chargement du fichier pdf {f}...")
             with open(f"{app_conf.rcp.path}/{f}", "wb") as pdf:
                 pdf.write(bytes_data)
-
-            st.write("Passage de l'IA...")
-            full_read_mtd_agents(app_conf=app_conf, filename=f, logger=logger)
+            fiche_rcp = PatientMDTOncologicForm(config=app_conf, document=f)
+            #st.write("Passage de l'IA...")
+            #full_read_mtd_agents(app_conf=app_conf, filename=f, logger=logger)
             st.write("Succès")
             time.sleep(1)
         st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py")

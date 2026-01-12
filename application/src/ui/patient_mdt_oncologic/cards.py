@@ -53,10 +53,10 @@ def get_rcp_data():
         date_mcp = (
             d["PatientAdministrative"]["date_rcp"]
             if "PatientAdministrative" in d and "date_rcp" in d["PatientAdministrative"]
-            else datetime.now(pytz.timezone("Europe/Paris")).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            )
+            else None
         )
+        if isinstance(date_mcp, str):
+            date_mcp = datetime.fromisoformat(date_mcp)
 
         # Experts Pertinents & Urgence
         relevant_experts = []
@@ -94,13 +94,15 @@ def get_rcp_data():
                         m = mtd_comp.get("what_missing", [])
                         if isinstance(m, list):
                             missing_data.extend(m)
+        else:
+             missing_data.extend(["no data"])
 
         cards_data.append(
             {
                 "file": d["file"],
                 "patient": patient_name,
                 "date_refresh": date_refresh,
-                "date": date_mcp if isinstance(date_mcp, datetime) else datetime.fromisoformat(date_mcp),
+                "date": date_mcp ,
                 "experts": relevant_experts,
                 "missing": list(set(missing_data)),
                 "urgency": urgency_level,
@@ -191,13 +193,9 @@ def cards_view():
         # Filtre Date
         if date_range and len(date_range) == 2:
             start, end = date_range
-            d_date = (
-                item["date"].date()
-                if isinstance(item["date"], datetime)
-                else item["date"]
-            )
-            if not (start <= d_date <= end):
-                continue
+            if item["date"]: 
+                if not (start <= item["date"].date() <= end):
+                    continue
 
         filtered_data.append(item)
 
@@ -242,6 +240,8 @@ def cards_view():
                     
                     if item['date'] is not None:
                         st.caption(f"📅 {item['date'].strftime('%d-%m-%Y')}")
+                    else:
+                        st.caption("📅 Inconnu")
 
                     # Experts
                     if item["experts"]:
@@ -249,6 +249,9 @@ def cards_view():
                             "**Experts:** "
                             + ", ".join([f"`{e}`" for e in item["experts"]])
                         )
+                    else:
+                        st.markdown("**Experts:** Inconnu")
+
 
                     # Manquants
                     if item["missing"]:
@@ -258,8 +261,7 @@ def cards_view():
                             for m in item["missing"]:
                                 st.markdown(f"- {m}")
                     else:
-                        st.success("✅ Dossier complet")
-
+                        st.expander("")
                     st.divider()
 
                     # Boutons

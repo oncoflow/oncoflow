@@ -41,12 +41,14 @@ def search_on_mtd(
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
-    runtime.context["logger"].info(f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs}")
+    runtime.context["logger"].debug(
+        f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs}"
+    )
     reader: DocumentReader = runtime.context["reader"]
-    
+
     retrieved_docs = reader.vecdb.clientdb.similarity_search(
-            query, k=k, param=param, expr=expr, timeout=timeout, **kwargs
-        )
+        query, k=k, param=param, expr=expr, timeout=timeout, **kwargs
+    )
     # Serialize documents for the LLM context
     serialized = "\n\n".join(
         (f"Source: {doc.metadata}\nContent: {doc.page_content}")
@@ -87,7 +89,7 @@ def search_on_ressources(
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts.
     """
-    runtime.context["logger"].info(
+    runtime.context["logger"].debug(
         f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs} in {runtime.context["additionnal_readers"]}"
     )
     # Retrieve retrievers from all additional readers in the context
@@ -99,8 +101,8 @@ def search_on_ressources(
         for doc in docs:
             retrieved_docs.append(doc)
     runtime.context["logger"].info(
-            f"search_on_ressources - retrieved_docs : {retrieved_docs}"
-        )
+        f"search_on_ressources - retrieved_docs : {retrieved_docs}"
+    )
     if retrieved_docs:
         serialized = "\n\n".join(
             (f"Source: {doc.metadata}\nContent: {doc.page_content}")
