@@ -1,0 +1,58 @@
+name: CI/CD Oncoflow
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  quality-security-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          # uv installe la version de python requise et les dépendances (dev incluses pour la CI)
+          uv sync --frozen
+
+      - name: Lint with Black
+        run: uv run black --check application
+
+      - name: Run Tests
+        run: uv run pytest
+
+      - name: Detect CVEs (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          exit-code: '1' # Fait échouer le job si des vulnérabilités CRITICAL/HIGH sont trouvées
+          severity: 'CRITICAL,HIGH'
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Docker image
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository }}
+          # Conversion en minuscules pour respecter le format docker
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          VERSION=${{ github.sha }}
+          docker build -f docker/Dockerfile -t $IMAGE_ID:$VERSION .
+          docker push $IMAGE_ID:$VERSION
