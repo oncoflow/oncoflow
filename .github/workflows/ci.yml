@@ -24,6 +24,8 @@ jobs:
       - name: Install dependencies
         run: |
           # uv installe la version de python requise et les dépendances (dev incluses pour la CI)
+          cd application
+          uv python install
           uv sync --frozen
 
       - name: Lint with Black
