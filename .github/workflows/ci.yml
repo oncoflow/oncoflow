@@ -34,7 +34,9 @@ jobs:
           uv run black --check application
 
       - name: Run Tests
-        run: uv run pytest
+        run: |
+          uv pip install pytest
+          uv run pytest
 
       - name: Detect CVEs (Trivy)
         uses: aquasecurity/trivy-action@0.24.0
