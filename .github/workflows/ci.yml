@@ -29,7 +29,9 @@ jobs:
           uv sync --frozen
 
       - name: Lint with Black
-        run: uv run black --check application
+        run: |
+          uv pip install black
+          uv run black --check application
 
       - name: Run Tests
         run: uv run pytest
