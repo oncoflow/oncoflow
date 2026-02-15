@@ -276,7 +276,7 @@ def form():
 
     with col_right:
 
-        tab_data, tab_chat = st.tabs(["📋 Données Cliniques", "💬 Assistant IA"])
+        tab_data, tab_chat, tab_preview = st.tabs(["📋 Données Cliniques", "💬 Assistant IA", "📄 Aperçu du document"])
 
         with tab_data:
             data = db_client.database["rcp_info"].find_one({"file": filename})
@@ -344,8 +344,33 @@ def form():
             else:
                 st.warning("Données non trouvées.")
 
-    with tab_chat:
-        form_chat()
+        with tab_chat:
+            form_chat()
+
+        with tab_preview:
+            st.header("Aperçu des documents découpés")
+            with st.spinner("Chargement de l'aperçu..."):
+                reader = get_mtd_reader()
+                chunked_docs = (
+                    reader.chunked_documents
+                    if hasattr(reader, "chunked_documents")
+                    else None
+                )
+
+                if chunked_docs:
+                    st.success(f"{len(chunked_docs)} chunks de document trouvés.")
+                    for i, doc in enumerate(chunked_docs):
+                        st.subheader(f"Chunk #{i+1}")
+                        st.write(doc.page_content)
+                        if doc.metadata:
+                            with st.expander("Afficher les métadonnées", expanded=False):
+                                st.json(doc.metadata)
+                        st.divider()
+                else:
+                    st.warning(
+                        "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA (via le chat ou l'analyse de données)."
+                    )
+
 
 
 power = st.sidebar.toggle("Power mode", key="power")

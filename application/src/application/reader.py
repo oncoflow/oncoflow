@@ -193,9 +193,9 @@ class DocumentReader:
         """
         self.logger.info(f"Start reading document {self.document_path}")
 
-        chunked_documents = self._load_document(self.document_path)
-
-        self.vecdb.add_chunked_to_collection(chunked_documents, flush_before=True)
+        self.chunked_documents = self._load_document(self.document_path)
+        
+        self.vecdb.add_chunked_to_collection(self.chunked_documents, flush_before=True)
 
         self.current_model = self.config.llm.embeddings
 
