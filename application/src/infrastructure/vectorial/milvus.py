@@ -1,11 +1,12 @@
 import uuid
+import time
 from langchain_milvus import Milvus
 from langchain_core.documents import Document
 from src.infrastructure.vectorial.database import VectorialDataBase
 from src.application.config import AppConfig
 
 
-from pymilvus import Collection, MilvusException, connections, db, utility
+from pymilvus import MilvusException, connections, db, utility
 
 
 class MilvusDB(VectorialDataBase):
@@ -13,7 +14,9 @@ class MilvusDB(VectorialDataBase):
         retry = 3
         for r in range(retry):
             try:
-                conn = connections.connect(host=config.milvus.host, port=config.milvus.port)
+                connections.connect(
+                    host=config.milvus.host, port=config.milvus.port
+                )
                 self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
                 self.token = config.milvus.token
                 self.database = config.milvus.database
@@ -21,16 +24,15 @@ class MilvusDB(VectorialDataBase):
                 try:
                     existing_databases = db.list_database()
                     if config.milvus.database not in existing_databases:
-                        database = db.create_database(self.database)
+                        db.create_database(self.database)
                     break
-                    
+
                 except MilvusException as e:
                     self.logger.error(f"An error occurred: {e}")
-            except MilvusException as e:
-                self.logger.info(f"Milvus still start, wait")
-                sleep(5)
-            
-    
+            except MilvusException:
+                self.logger.info("Milvus still start, wait")
+                time.sleep(5)
+
     def get_embedding(self):
         return self.llm_embeddings
 
@@ -38,11 +40,15 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
-              
+
         self.clientdb = Milvus(
             embedding_function=self.embeddings,
             collection_name=self.coll_name,
-            connection_args={"uri": self.uri, "token": self.token, "db_name": self.database},
+            connection_args={
+                "uri": self.uri,
+                "token": self.token,
+                "db_name": self.database,
+            },
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
             drop_old=flush,  # set to True if seeking to drop the collection with that name if it exists
@@ -50,7 +56,6 @@ class MilvusDB(VectorialDataBase):
 
     def get_version(self):
         return utility.get_server_version()
-
 
     def add_to_collection(self, doc, flush_before=False):
         """
@@ -68,7 +73,5 @@ class MilvusDB(VectorialDataBase):
 
         # Add the document to the collection with metadata and page content.
         doc = Document(metadatas=doc.metadata, page_content=doc.page_content)
-        
-        self.clientdb.add_documents(
-            ids=[str(uuid.uuid1())], documents=[ doc ]
-        )
+
+        self.clientdb.add_documents(ids=[str(uuid.uuid1())], documents=[doc])

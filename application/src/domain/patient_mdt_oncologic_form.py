@@ -1,12 +1,13 @@
 import inspect
 import json
+import os
 
 from typing import List, Optional, ClassVar
 from datetime import datetime
 
-from pydantic import BaseModel, Field, PastDate, PastDatetime, model_validator
+from pydantic import BaseModel, Field, PastDatetime, model_validator
 
-from src.domain.common_ressources import *
+from src.domain.common_ressources import *  # noqa: F403
 
 from src.application.config import AppConfig
 from src.domain.agents import Agents
@@ -26,7 +27,7 @@ class PatientMDTOncologicForm(DocumentReader):
 
     def __init__(self, config: AppConfig, document: str) -> None:
         super(PatientMDTOncologicForm, self).__init__(config=config, document=document)
-        
+
         self.mtd_datas["file"] = document
 
         self.basemodel_list = [
@@ -70,7 +71,7 @@ class PatientMDTOncologicForm(DocumentReader):
             self.read_model(model)
         return self.mtd_datas
 
-    def read_model(self, model: BaseModel, upsert: bool=False):
+    def read_model(self, model: BaseModel, upsert: bool = False):
         if upsert:
             self.db_client = Mongodb(self.config)
         agents = [
@@ -96,13 +97,13 @@ class PatientMDTOncologicForm(DocumentReader):
                     self.mtd_datas[model.__name__][a.agent_name] = datas
                 else:
                     self.mtd_datas[model.__name__] = datas
-            del(a)
-        del(agents)
+            del a
+        del agents
         if upsert:
             self.logger.info(self.mtd_datas)
             self.db_client.update_doc(
                 collection="rcp_info",
-                filter={ "file": self.mtd_datas["file"] },
+                filter={"file": self.mtd_datas["file"]},
                 upsertable_data={model.__name__: self.mtd_datas[model.__name__]},
             )
             self.db_client.close()
@@ -139,7 +140,6 @@ class PatientMDTOncologicForm(DocumentReader):
             raise ValueError("Invalid input")
 
     class default_model(BaseModel):
-
         question: ClassVar[str] = ""
         agents: ClassVar[list[OncowflowAgent]] = [Agents.Administratives_agent]
         agents_memory: ClassVar[bool] = False
@@ -158,37 +158,39 @@ class PatientMDTOncologicForm(DocumentReader):
             description="Date of birth of the patient"
         )
         date_rcp: Optional[datetime] = Field(description="Date of the MTD")
-        gender: Gender = Field(description="Gender of the patient")
+        gender: Gender = Field(description="Gender of the patient")  # noqa: F405
 
         @model_validator(mode="after")
         def check_dates_coherence(self):
             now = datetime.now()
             if self.date_birth and self.date_birth.year < (now.year - 150):
-               self.date_birth = None
+                self.date_birth = None
 
             if self.date_rcp and self.date_rcp.year < (now.year - 5):
-               self.date_rcp = None
+                self.date_rcp = None
 
             if self.date_birth and self.date_rcp:
-                if self.date_birth.replace(tzinfo=None) > self.date_rcp.replace(tzinfo=None):
+                if self.date_birth.replace(tzinfo=None) > self.date_rcp.replace(
+                    tzinfo=None
+                ):
                     raise ValueError("Date of birth must be before Date of RCP")
             return self
 
-        question: ClassVar[str] = (
-            """Search and Extract the patient's each administrative details from MTD. You can use tools multiple time for each element.
+        question: ClassVar[
+            str
+        ] = """Search and Extract the patient's each administrative details from MTD. You can use tools multiple time for each element.
             Ensure dates are coherent:
             1. Date of birth must be less than 150 years ago.
             2. Date of RCP must be less than 5 years ago.
             3. Date of birth must be strictly before Date of RCP.
             """
-        )
 
     class PatientPerformanceStatus(default_model):
         """
         Patient WHO performance status
         """
 
-        performance_status: WHOPerformanceStatus = Field(
+        performance_status: WHOPerformanceStatus = Field(  # noqa: F405
             description="WHO/OMS performance status of the patient, score from 0 to 4"
         )
 
@@ -201,7 +203,7 @@ class PatientMDTOncologicForm(DocumentReader):
         Location of the tumor
         """
 
-        tumor_location: PrimaryOrganEnum = Field(
+        tumor_location: PrimaryOrganEnum = Field(  # noqa: F405
             description="Organ where the primary tumor is present"
         )
 
@@ -225,7 +227,7 @@ class PatientMDTOncologicForm(DocumentReader):
         List of radiological exams
         """
 
-        exams_list: list[RadiologicalExamination] = Field(
+        exams_list: list[RadiologicalExamination] = Field(  # noqa: F405
             description="List of radiological exams"
         )
 
@@ -268,7 +270,7 @@ class PatientMDTOncologicForm(DocumentReader):
         chemotherapy: bool = Field(
             description="If a chemotherapy has already been done"
         )
-        chemotherapy_list: Optional[List[ChemotherapyData]] = Field(
+        chemotherapy_list: Optional[List[ChemotherapyData]] = Field(  # noqa: F405
             description="List of chemotherapies that have been done"
         )
 
@@ -277,7 +279,6 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
     class ExpertAnswer(default_model):
-
         agents = [
             Agents.Pancreas_expert_agent,
             Agents.Oesophagus_expert_agent,
@@ -288,7 +289,7 @@ class PatientMDTOncologicForm(DocumentReader):
             description="Is your expertise relevant for this patient's case?"
         )
 
-        patient_priority: PatientPriority = Field(
+        patient_priority: PatientPriority = Field(  # noqa: F405
             description="Urgency of the patient's treatment"
         )
 
@@ -296,20 +297,18 @@ class PatientMDTOncologicForm(DocumentReader):
             description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
         )
 
-        sources_relevant: list[Reference] = Field(
+        sources_relevant: list[Reference] = Field(  # noqa: F405
             description="Give the sources of your relevant answer"
         )
 
-        suggestions: list[ExpertSuggestion] = Field(
+        suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
             description="List of suggestions. Empty if expert is not relevant."
         )
 
-        question: ClassVar[str] = (
-            """
+        question: ClassVar[str] = """
             As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
             You can use tools multiple times for each element and have more scientific elements.
             """
-        )
 
     class MTDCompleted(default_model):
         agents = [
@@ -317,18 +316,16 @@ class PatientMDTOncologicForm(DocumentReader):
             Agents.Oesophagus_expert_agent,
             Agents.Hepatocellular_expert_agent,
         ]
-        mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")
+        mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405
 
         agents_memory = True
 
-        question: ClassVar[str] = (
-            """
+        question: ClassVar[str] = """
             As an expert, determine if the MDT (Multidisciplinary Team) file is complete.
             Are there missing elements required for a decision that doesn't present in agent memory ?
             You can use search_on_ressources tool what type of document is needed.
             You can use tools multiple times for each element
             """
-        )
 
     # class ExpertPancreasAnswer(default_model):
 

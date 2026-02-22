@@ -34,3 +34,11 @@ dependencies = [
     "unstructured[pdf]>=0.18.21",
     "uuid>=1.30",
 ]
+
+[dependency-groups]
+dev = [
+  "pytest >=8.1.1,<9",
+]
+lint = [
+  "ruff",
+]

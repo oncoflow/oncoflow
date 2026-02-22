@@ -1,7 +1,6 @@
 import inspect
-from typing import List, Optional, ClassVar
+from typing import ClassVar
 
-from pydantic import BaseModel
 
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
@@ -9,7 +8,6 @@ from src.application.agent.agent import OncowflowAgent
 
 
 class Agents:
-
     def __init__(self) -> None:
         self.list = {
             cls_attribute.agent_name: cls_attribute
@@ -19,9 +17,7 @@ class Agents:
 
     class Administratives_agent(OncowflowAgent):
         agent_name: str = "Administrative"
-        system_prompt: ClassVar[
-            str
-        ] = """
+        system_prompt: ClassVar[str] = """
         You are a medical administrative assistant. Your goal is to extract precise information from the patient record without interpretation.
 
         Instructions:
@@ -34,7 +30,6 @@ class Agents:
         """
 
     class Expert_model(OncowflowAgent):
-
         expert_type: ClassVar[str] = ""
         system_prompt: ClassVar[str] = ""
 

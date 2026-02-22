@@ -66,7 +66,7 @@ def render_field(label, value):
         elif value.name == "low":
             st.success(value.value)
     elif isinstance(value, datetime):
-        st.markdown(f""" **{label}:** {value.strftime('%d-%m-%Y')}""")
+        st.markdown(f""" **{label}:** {value.strftime("%d-%m-%Y")}""")
     elif isinstance(value, bool):
         if value:
             st.success(label, icon="✔️")
@@ -103,7 +103,6 @@ def render_field(label, value):
 
 def render_fields(data: BaseModel):
     """Affiche les champs d'un modèle"""
-    model_cls: BaseModel
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
         render_field(label, getattr(data, field_name))
@@ -111,7 +110,7 @@ def render_fields(data: BaseModel):
 
 def render_model_data(data: BaseModel):
     """Affiche les données d'un modèle Pydantic dynamiquement"""
-    title = data.__doc__.strip() if data.__doc__ else data.__name__
+    data.__doc__.strip() if data.__doc__ else data.__name__
 
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
@@ -120,11 +119,9 @@ def render_model_data(data: BaseModel):
 
 def rerun_all_models(filename):
     models = get_form_models()
-    models.sort(
-        key=lambda x: 0 if x.__name__ == "PatientAdministrative" else 1
-    )
+    models.sort(key=lambda x: 0 if x.__name__ == "PatientAdministrative" else 1)
     st.session_state["run_full"] = True
-    
+
     for model_cls in models:
         model_name = model_cls.__name__
         title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
@@ -132,10 +129,14 @@ def rerun_all_models(filename):
     st.session_state["run_full"] = None
     st.rerun()
 
+
 def get_mtd_reader():
     if "reader" not in st.session_state or st.session_state["reader"] is None:
-        st.session_state["reader"] = PatientMDTOncologicForm(app_conf, st.query_params["file"])
+        st.session_state["reader"] = PatientMDTOncologicForm(
+            app_conf, st.query_params["file"]
+        )
     return st.session_state["reader"]
+
 
 def form_navigate(filename):
     # Navigation et Titre
@@ -144,7 +145,9 @@ def form_navigate(filename):
         st.query_params.clear()
         st.rerun()
     c2.subheader(f"Dossier: {filename}")
-    if c3.button("🔄 Rerun All", help="Relancer l'analyse complète", use_container_width=True):
+    if c3.button(
+        "🔄 Rerun All", help="Relancer l'analyse complète", use_container_width=True
+    ):
         rerun_all_models(filename)
     power_mode(c4)
 
@@ -197,7 +200,7 @@ def form_chat():
 
     agents = Agents()
     available_agents = agents.list
-    if "run_button" in st.session_state and st.session_state.run_button == True:
+    if "run_button" in st.session_state and st.session_state.run_button:
         st.session_state.running = True
     else:
         st.session_state.running = False
@@ -241,7 +244,7 @@ def form_chat():
             with messages.chat_message("assistant"):
                 with st.spinner("Analyse en cours..."):
                     try:
-                        resp: ChatResponse = st.session_state["agent"].ask(prompt)
+                        resp = st.session_state["agent"].ask(prompt)
                         st.markdown(resp.response)
                         st.session_state["messages"].append(
                             {"role": "assistant", "content": resp.response}
@@ -274,8 +277,9 @@ def form():
             st.error(f"Fichier introuvable: {file_path}")
 
     with col_right:
-
-        tab_data, tab_chat, tab_preview = st.tabs(["📋 Données Cliniques", "💬 Assistant IA", "📄 Aperçu du document"])
+        tab_data, tab_chat, tab_preview = st.tabs(
+            ["📋 Données Cliniques", "💬 Assistant IA", "📄 Aperçu du document"]
+        )
 
         with tab_data:
             data = db_client.database["rcp_info"].find_one({"file": filename})
@@ -311,7 +315,7 @@ def form():
                                 reader.read_model(model_cls, upsert=True)
                                 st.session_state[f"pills_{title}_ai"] = True
                             st.rerun()
-                        
+
                         if model_name in data:
                             model_data = data[model_name]
 
@@ -322,7 +326,6 @@ def form():
                             )
 
                             if is_multi and isinstance(model_data, dict):
-
                                 agent_names = list(model_data.keys())
                                 if agent_names:
                                     tabs = st.tabs(agent_names)
@@ -347,7 +350,9 @@ def form():
             form_chat()
 
         with tab_preview:
-            tab_chunk, tab_markdown = st.tabs(["📄 Format Chunks", "📄 Format Markdown"])
+            tab_chunk, tab_markdown = st.tabs(
+                ["📄 Format Chunks", "📄 Format Markdown"]
+            )
             with tab_chunk:
                 st.header("Aperçu des documents découpés")
                 with st.spinner("Chargement de l'aperçu..."):
@@ -361,10 +366,12 @@ def form():
                     if chunked_docs:
                         st.success(f"{len(chunked_docs)} chunks de document trouvés.")
                         for i, doc in enumerate(chunked_docs):
-                            st.subheader(f"Chunk #{i+1}")
+                            st.subheader(f"Chunk #{i + 1}")
                             st.write(doc.page_content)
                             if doc.metadata:
-                                with st.expander("Afficher les métadonnées", expanded=False):
+                                with st.expander(
+                                    "Afficher les métadonnées", expanded=False
+                                ):
                                     st.json(doc.metadata)
                             st.divider()
                     else:
@@ -384,14 +391,12 @@ def form():
                         if markdown:
                             st.markdown(markdown)
                         else:
-                            st.warning(
-                                "Aucun document au format markdown."
-                            )
+                            st.warning("Aucun document au format markdown.")
 
 
 power = st.sidebar.toggle("Power mode", key="power")
 
-if st.session_state["power"] == True:
+if st.session_state["power"]:
     st.sidebar.markdown(
         f"""
                         - **Modele:**: {app_conf.llm.models}
@@ -407,7 +412,7 @@ else:
     st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py")
 
 if "reader" in st.session_state:
-    del(st.session_state["reader"])
+    del st.session_state["reader"]
     st.session_state["reader"] = None
 
 db_client.close()

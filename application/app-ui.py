@@ -41,15 +41,11 @@ pages["Patient mdt Oncologic"] = [
         icon="📇",
         default=True,
     ),
-    st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py",
-        title="RCP",
-        icon="📇"
-    ),
+    st.Page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py", title="RCP", icon="📇"),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt_oncologic/upload.py",
         title="Charger le/les fichier(s)",
-        icon="🚀"
+        icon="🚀",
     ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt_oncologic/agents.py",

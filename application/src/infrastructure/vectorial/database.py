@@ -1,10 +1,7 @@
-import chromadb
 import uuid
 
-from typing import List, Union
 
 from langchain_core.vectorstores import VectorStoreRetriever
-from langchain_community.vectorstores.utils import filter_complex_metadata
 
 from src.application.config import AppConfig
 from src.infrastructure.llm.ollama import OllamaConnect
@@ -30,7 +27,7 @@ class VectorialDataBase:
         self.llm_embeddings = llm_client.embedding
 
         self.config = config
-        self.embeddings = self.get_embedding() 
+        self.embeddings = self.get_embedding()
         self.init_client(config)
         self.set_clientdb()
 
@@ -45,9 +42,8 @@ class VectorialDataBase:
         )
 
         self.logger.info("Class vectorial_db succesfully init")
-        
 
-    def init_client(self,config=AppConfig):
+    def init_client(self, config=AppConfig):
         """
         Set init client
         """
@@ -70,7 +66,6 @@ class VectorialDataBase:
         """
         return None
 
-
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """
         Returns a VectorStoreRetriever instance for this vectorial database.
@@ -82,9 +77,9 @@ class VectorialDataBase:
         """
         self.logger.debug("Return receiver with words_number=%s", str(words_number))
         return self.clientdb.as_retriever(
-            #search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
+            # search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
             search_type="similarity_score_threshold",
-            search_kwargs={'score_threshold': 0.8}
+            search_kwargs={"score_threshold": 0.8},
         )
 
     # Add a document to the collection.
@@ -104,7 +99,7 @@ class VectorialDataBase:
             self.set_clientdb(flush=True)
 
         # Add the document to the collection with metadata and page content.
-        
+
         self.collection.add(
             ids=[str(uuid.uuid1())], metadatas=doc.metadata, documents=doc.page_content
         )
@@ -124,7 +119,7 @@ class VectorialDataBase:
         if flush_before:
             # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
-        #chunked_documents = filter_complex_metadata(chunked_documents)
+        # chunked_documents = filter_complex_metadata(chunked_documents)
         for doc in chunked_documents:
             # Add each document to the collection.
             self.add_to_collection(doc)

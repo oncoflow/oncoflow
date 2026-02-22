@@ -15,12 +15,12 @@ class Context(TypedDict):
 
 
 @tool(response_format="content")
-def get_mtd_markdown( runtime: ToolRuntime[Context] ):
-    """Get the Medical Technical Documents (MTD) / Patient Records in Markdown format. 
-    """
+def get_mtd_markdown(runtime: ToolRuntime[Context]):
+    """Get the Medical Technical Documents (MTD) / Patient Records in Markdown format."""
     runtime.context["logger"].info("tool get_mtd_markdown called")
 
     return runtime.context["reader"].markdown_exporter[0].page_content
+
 
 @tool(response_format="content_and_artifact")
 def search_on_mtd(

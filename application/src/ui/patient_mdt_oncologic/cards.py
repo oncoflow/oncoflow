@@ -144,13 +144,12 @@ def display_as_list(data):
         "patient": "",
         "urgency_score": -1,
     }
-    
+
     sorted_data = sorted(
         data,
         key=lambda x: x.get(sort_by) or default_value_map.get(sort_by),
         reverse=not ascending,
     )
-
 
     # --- Affichage du Tableau ---
     def get_sort_indicator(column_key: str):
@@ -277,8 +276,7 @@ def display_as_cards(data):
                 # Experts
                 if item["experts"]:
                     st.markdown(
-                        "**Experts:** "
-                        + ", ".join([f"`{e}`" for e in item["experts"]])
+                        "**Experts:** " + ", ".join([f"`{e}`" for e in item["experts"]])
                     )
                 else:
                     st.markdown("**Experts:** Inconnu")
@@ -376,10 +374,7 @@ def cards_view():
         # Recherche textuelle
         if search_term:
             term = search_term.lower()
-            if (
-                term not in item["patient"].lower()
-                and term not in item["file"].lower()
-            ):
+            if term not in item["patient"].lower() and term not in item["file"].lower():
                 continue
 
         # Filtre Urgence
@@ -418,12 +413,16 @@ def cards_view():
             elif sort_option == "Urgence (Basse > Haute)":
                 filtered_data.sort(key=lambda x: x["urgency_score"], reverse=False)
             elif sort_option == "Date (Récent > Ancien)":
-                filtered_data.sort(key=lambda x: x.get("date") or datetime.min, reverse=True)
+                filtered_data.sort(
+                    key=lambda x: x.get("date") or datetime.min, reverse=True
+                )
             elif sort_option == "Date (Ancien > Récent)":
-                filtered_data.sort(key=lambda x: x.get("date") or datetime.min, reverse=False)
-            
+                filtered_data.sort(
+                    key=lambda x: x.get("date") or datetime.min, reverse=False
+                )
+
             display_as_cards(filtered_data)
-            
+
         elif view_mode == "Liste":
             # Le tri est géré à l'intérieur de la fonction display_as_list
             display_as_list(filtered_data)

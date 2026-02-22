@@ -4,8 +4,8 @@ from langchain_mongodb import MongoDBAtlasVectorSearch
 from src.application.config import AppConfig
 from src.infrastructure.vectorial.database import VectorialDataBase
 
-class Mongodb(VectorialDataBase):
 
+class Mongodb(VectorialDataBase):
     """
     A class for interacting with a MongoDB database using PyMongo.
 
@@ -24,7 +24,6 @@ class Mongodb(VectorialDataBase):
         self.client = MongoClient(connection_string)
         self.mongo_database = self.client[config.mongodb.vectordatabase]
         self.mongo_collection = self.mongo_database[self.coll_name]
-        
 
     def set_clientdb(
         self,

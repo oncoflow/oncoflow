@@ -6,7 +6,6 @@ from pydantic import ValidationError, BaseModel, Field
 from langchain.agents import create_agent
 
 from src.application.config import AppConfig
-from src.application.tools import timed
 from src.infrastructure.llm.ollama import OllamaConnect
 from src.application.reader import DocumentReader
 from src.application.agent.tools import (
@@ -81,10 +80,7 @@ class OncowflowAgent:
 
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
-            model=llm_client.chat(
-                self.models[0],
-                output=self.output_format
-            ),
+            model=llm_client.chat(self.models[0], output=self.output_format),
             tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             middleware=[
                 ToolRetryMiddleware(

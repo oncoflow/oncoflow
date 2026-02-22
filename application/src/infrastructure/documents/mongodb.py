@@ -66,9 +66,7 @@ class Mongodb:
         collection.update_many(filter=filter, update=value)
         self.logger.info("Success updating documents")
 
-    def update_doc(
-        self, collection, filter: dict, upsertable_data: dict = {}
-    ):
+    def update_doc(self, collection, filter: dict, upsertable_data: dict = {}):
         self.logger.info("Start update document : %s", upsertable_data)
         self.logger.debug("List of document to update : %s", filter)
         collection = self.database[collection]

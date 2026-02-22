@@ -1,9 +1,6 @@
 import os
 from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
-from src.application.reader import DocumentReader
-from src.application.agent.agent import OncowflowAgent
-from langchain_core.output_parsers import PydanticOutputParser
 
 
 def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):

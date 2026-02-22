@@ -51,11 +51,10 @@ def all_asked(dir, config):
             if isfile(join(dir, f)):
                 full_read_file(app_conf=config, filename=f, logger=logger)
         except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
-                logger.debug("File %s is not a pdf, pass", f)
+            logger.debug("File %s is not a pdf, pass", f)
 
 
 if __name__ == "__main__":
-
     parser = ArgumentParser()
     parser.add_argument(
         "-e", "--env-list", dest="envlist", action="store_true", default=False

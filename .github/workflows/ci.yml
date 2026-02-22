@@ -28,11 +28,14 @@ jobs:
           uv python install
           uv sync --frozen
 
-      - name: Lint with Black
+      - name: Lint with ruff
         run: |
-          uv pip install black
-          uv run black --check application
+          uvx ruff format . --check
 
+      - name: Ruff check
+        run: |
+          uvx ruff check .
+      
       - name: Run Tests
         run: |
           uv pip install pytest

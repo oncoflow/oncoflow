@@ -4,15 +4,12 @@ from src.domain.agents import Agents
 from src.application.reader import DocumentReader
 from src.application.config import AppConfig
 
-from pydantic import BaseModel
-
 
 def read(ressource: str, config: AppConfig):
     with st.spinner(f"Indexation de {ressource}..."):
         rag = DocumentReader(config, document=ressource, document_type="ressource")
         rag.read_document()
     st.toast(f"Ressource '{ressource}' indexée avec succès !", icon="✅")
-
 
 
 pmtd = Agents()

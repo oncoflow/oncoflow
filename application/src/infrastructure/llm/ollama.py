@@ -9,7 +9,6 @@ from src.application.config import AppConfig
 
 
 class OllamaConnect:
-
     def __init__(self, config=AppConfig) -> None:
         self.config = config
         self.logger = config.set_logger(
