@@ -103,14 +103,15 @@ def render_field(label, value):
 
 def render_fields(data: BaseModel):
     """Affiche les champs d'un modèle"""
+    
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
+
         render_field(label, getattr(data, field_name))
 
 
 def render_model_data(data: BaseModel):
     """Affiche les données d'un modèle Pydantic dynamiquement"""
-    data.__doc__.strip() if data.__doc__ else data.__name__
 
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
