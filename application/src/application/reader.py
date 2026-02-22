@@ -25,24 +25,16 @@ answer = reader.askInDocument("What is the patient's age?")
 # Print the answer
 print(answer)
 """
-import os
-from modelscope import snapshot_download
 
 from langchain_community import document_loaders
 from langchain_docling import DoclingLoader
 from langchain_docling.loader import ExportType
-
-from langchain_experimental.text_splitter import SemanticChunker
-
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.output_parsers import PydanticOutputParser, JsonOutputParser
 
 from src.application.config import AppConfig
 from src.application.tools import timed
 
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
-from src.infrastructure.vectorial.database import VectorialDataBase
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
 from src.infrastructure.llm.ollama import OllamaConnect
 from langchain_core.vectorstores import VectorStoreRetriever
@@ -110,14 +102,9 @@ class DocumentReader:
 
         self.default_loader = config.rcp.doc_type
 
-        self.logger.info(f"Class reader succesfully init, Start reading document {self.document_path}")
-
-        #self.text_splitter = SemanticChunker(self.embeddings)
-        # self.text_splitter = RecursiveCharacterTextSplitter(
-        #     chunk_size=config.rcp.chunk_size, chunk_overlap=config.rcp.chunk_overlap
-        # )
-        # self.read_document(self.document_path)
-        # self.read_additionnal_document(docs_pdf)
+        self.logger.info(
+            f"Class reader succesfully init, Start reading document {self.document_path}"
+        )
 
     def _load_document(self, document=str, loader_type=None) -> list[Document]:
         """Loads a document from the specified path using the given loader type."""
@@ -131,11 +118,12 @@ class DocumentReader:
                 from docling.datamodel.base_models import InputFormat
                 from docling.datamodel.pipeline_options import (
                     PdfPipelineOptions,
-                    TableStructureOptions,
-                    TesseractCliOcrOptions,
-                    RapidOcrOptions
+                    RapidOcrOptions,
                 )
-                from docling.document_converter import DocumentConverter, PdfFormatOption
+                from docling.document_converter import (
+                    DocumentConverter,
+                    PdfFormatOption,
+                )
 
                 print("Downloading RapidOCR models")
 
@@ -153,16 +141,19 @@ class DocumentReader:
                         ),
                     },
                 )
+                self.markdown_exporter = DoclingLoader(
+                    file_path=document,
+                    export_type=ExportType.MARKDOWN,
+                    converter=converter,
+                    chunker=HybridChunker(tokenizer="intfloat/multilingual-e5-base"),
+                ).load()
                 return DoclingLoader(
                     file_path=document,
                     export_type=ExportType.DOC_CHUNKS,
                     converter=converter,
-                    chunker=HybridChunker(
-                        tokenizer="sentence-transformers/all-MiniLM-L6-v2"
-                    ),
+                    chunker=HybridChunker(tokenizer="intfloat/multilingual-e5-base"),
                 ).load()
             elif loader_type == "ollamaOcr":
-
                 return OllamaOcrDocumentLoader(document, self.config).load()
             else:
                 cla = getattr(document_loaders, loader_type)
@@ -194,8 +185,7 @@ class DocumentReader:
         self.logger.info(f"Start reading document {self.document_path}")
 
         self.chunked_documents = self._load_document(self.document_path)
-        
+
         self.vecdb.add_chunked_to_collection(self.chunked_documents, flush_before=True)
 
         self.current_model = self.config.llm.embeddings
-

@@ -14,6 +14,14 @@ class Context(TypedDict):
     additionnal_readers: List[DocumentReader]
 
 
+@tool(response_format="content")
+def get_mtd_markdown( runtime: ToolRuntime[Context] ):
+    """Get the Medical Technical Documents (MTD) / Patient Records in Markdown format. 
+    """
+    runtime.context["logger"].info("tool get_mtd_markdown called")
+
+    return runtime.context["reader"].markdown_exporter[0].page_content
+
 @tool(response_format="content_and_artifact")
 def search_on_mtd(
     runtime: ToolRuntime[Context],
@@ -41,7 +49,7 @@ def search_on_mtd(
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
-    runtime.context["logger"].debug(
+    runtime.context["logger"].info(
         f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs}"
     )
     reader: DocumentReader = runtime.context["reader"]
@@ -54,7 +62,7 @@ def search_on_mtd(
         (f"Source: {doc.metadata}\nContent: {doc.page_content}")
         for doc in retrieved_docs
     )
-    runtime.context["logger"].debug(
+    runtime.context["logger"].info(
         f"search_on_mtd - serialized : {serialized}, retrieved_docs : {retrieved_docs}"
     )
     return serialized, retrieved_docs
@@ -90,7 +98,7 @@ def search_on_ressources(
         tuple: A tuple containing the serialized string of results and the raw artifacts.
     """
     runtime.context["logger"].debug(
-        f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs} in {runtime.context["additionnal_readers"]}"
+        f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs} in {runtime.context['additionnal_readers']}"
     )
     # Retrieve retrievers from all additional readers in the context
     retrieved_docs = []

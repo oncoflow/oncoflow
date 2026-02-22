@@ -1,5 +1,4 @@
 import environ
-import pytz
 import os
 import inspect
 from types import NoneType
@@ -9,7 +8,7 @@ import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
 
 from pandas import DataFrame
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from src.infrastructure.llm.ollama import OllamaConnect
 
@@ -348,29 +347,46 @@ def form():
             form_chat()
 
         with tab_preview:
-            st.header("Aperçu des documents découpés")
-            with st.spinner("Chargement de l'aperçu..."):
-                reader = get_mtd_reader()
-                chunked_docs = (
-                    reader.chunked_documents
-                    if hasattr(reader, "chunked_documents")
-                    else None
-                )
-
-                if chunked_docs:
-                    st.success(f"{len(chunked_docs)} chunks de document trouvés.")
-                    for i, doc in enumerate(chunked_docs):
-                        st.subheader(f"Chunk #{i+1}")
-                        st.write(doc.page_content)
-                        if doc.metadata:
-                            with st.expander("Afficher les métadonnées", expanded=False):
-                                st.json(doc.metadata)
-                        st.divider()
-                else:
-                    st.warning(
-                        "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA (via le chat ou l'analyse de données)."
+            tab_chunk, tab_markdown = st.tabs(["📄 Format Chunks", "📄 Format Markdown"])
+            with tab_chunk:
+                st.header("Aperçu des documents découpés")
+                with st.spinner("Chargement de l'aperçu..."):
+                    reader = get_mtd_reader()
+                    chunked_docs = (
+                        reader.chunked_documents
+                        if hasattr(reader, "chunked_documents")
+                        else None
                     )
 
+                    if chunked_docs:
+                        st.success(f"{len(chunked_docs)} chunks de document trouvés.")
+                        for i, doc in enumerate(chunked_docs):
+                            st.subheader(f"Chunk #{i+1}")
+                            st.write(doc.page_content)
+                            if doc.metadata:
+                                with st.expander("Afficher les métadonnées", expanded=False):
+                                    st.json(doc.metadata)
+                            st.divider()
+                    else:
+                        st.warning(
+                            "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA (via le chat ou l'analyse de données)."
+                        )
+                with tab_markdown:
+                    st.header("Aperçu des documents découpés")
+                    with st.spinner("Chargement de l'aperçu..."):
+                        reader = get_mtd_reader()
+                        markdown = (
+                            reader.markdown_exporter[0].page_content
+                            if hasattr(reader, "markdown_exporter")
+                            else None
+                        )
+
+                        if markdown:
+                            st.markdown(markdown)
+                        else:
+                            st.warning(
+                                "Aucun document au format markdown."
+                            )
 
 
 power = st.sidebar.toggle("Power mode", key="power")

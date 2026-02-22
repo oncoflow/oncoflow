@@ -9,12 +9,20 @@ from src.application.config import AppConfig
 from src.application.tools import timed
 from src.infrastructure.llm.ollama import OllamaConnect
 from src.application.reader import DocumentReader
-from src.application.agent.tools import search_on_mtd, search_on_ressources, Context
+from src.application.agent.tools import (
+    search_on_mtd,
+    search_on_ressources,
+    get_mtd_markdown,
+    Context,
+)
 from langchain.agents.structured_output import ToolStrategy
 from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
 
+
 class ChatResponse(BaseModel):
     response: str = Field(description="The answer to the user question")
+
+
 class OncowflowAgent:
     """
     Agent responsible for handling interactions with the LLM to answer questions
@@ -49,7 +57,9 @@ class OncowflowAgent:
 
         # Initialize the LLM client based on configuration
         if config.llm.type.lower() == "ollama":
-            llm_client = OllamaConnect(config)
+            llm_client = OllamaConnect(
+                config,
+            )
         else:
             raise ValueError(f"{config.llm.type} not yet supported")
 
@@ -71,8 +81,11 @@ class OncowflowAgent:
 
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
-            model=llm_client.chat(self.models[0], output=self.output_format),
-            tools=[search_on_mtd, search_on_ressources],
+            model=llm_client.chat(
+                self.models[0],
+                output=self.output_format
+            ),
+            tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             middleware=[
                 ToolRetryMiddleware(
                     max_retries=3,
@@ -85,11 +98,9 @@ class OncowflowAgent:
                     initial_delay=1.0,
                 ),
             ],
-            response_format=ToolStrategy(
-                schema=self.output_format, handle_errors=True
-            ),
+            response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
             context_schema=Context,
-            system_prompt=system_prompt
+            system_prompt=system_prompt,
         )
 
         # Set up readers for the main document and additional resources
@@ -100,7 +111,6 @@ class OncowflowAgent:
             for ressource in self.ressources
         ]
 
-        
         self.logger.info(
             f"""Agent succefully created with prompt :
         {system_prompt}
@@ -125,7 +135,7 @@ class OncowflowAgent:
         if question is None:
             question = self.question
 
-        retry=3
+        retry = 3
 
         for r in range(retry):
             # Invoke the agent with the user question and context (readers)
@@ -155,9 +165,11 @@ class OncowflowAgent:
 
                         return json.loads(msg.content)
                 except ValidationError as e:
-                    validation_error=e
+                    validation_error = e
                     continue
-            self.logger.info(f'Retry {r+1}/{retry} ...')
+            self.logger.info(f"Retry {r + 1}/{retry} ...")
 
         # Raise error if no valid structured response was found
-        raise ValueError(f"Unable to find message, latest error : {validation_error} - AI response {result}")
+        raise ValueError(
+            f"Unable to find message, latest error : {validation_error} - AI response {result}"
+        )
