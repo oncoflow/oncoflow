@@ -54,8 +54,8 @@ def search_on_mtd(
     )
     reader: DocumentReader = runtime.context["reader"]
 
-    retrieved_docs = reader.vecdb.clientdb.similarity_search(
-        query, k=k, param=param, expr=expr, timeout=timeout, **kwargs
+    retrieved_docs = reader.vecdb.clientdb.max_marginal_relevance_search(
+        query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout, **kwargs
     )
     # Serialize documents for the LLM context
     serialized = "\n\n".join(
@@ -103,8 +103,8 @@ def search_on_ressources(
     # Retrieve retrievers from all additional readers in the context
     retrieved_docs = []
     for r in runtime.context["additionnal_readers"]:
-        docs = r.vecdb.clientdb.similarity_search(
-            query, k=k, param=param, expr=expr, timeout=timeout, **kwargs
+        docs = r.vecdb.clientdb.max_marginal_relevance_search(
+            query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout, **kwargs
         )
         for doc in docs:
             retrieved_docs.append(doc)

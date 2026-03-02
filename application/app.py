@@ -2,7 +2,7 @@ from os import listdir
 from os.path import isfile, join
 from argparse import ArgumentParser
 
-from pprint import pprint
+from pprint import pprint  # noqa: F401
 
 import environ
 import inquirer
@@ -41,7 +41,7 @@ def manual_prompt(dir, config):
 
         if answers["question"].lower() == "quit":
             break
-        rag = DocumentReader(config, document=answers["file"])
+        rag = DocumentReader(config, document=answers["file"])  # noqa: F841
         logger.warning(
             "Prompting DocumentReader directly is deprecated. Please use Agents explicitly."
         )

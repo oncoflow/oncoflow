@@ -178,7 +178,13 @@ class PatientMDTOncologicForm(DocumentReader):
 
         question: ClassVar[
             str
-        ] = """Search and Extract the patient's each administrative details from MTD. You can use tools multiple time for each element.
+        ] = """Search and Extract the patient's administrative details from MTD.
+            Think step-by-step:
+            1. Find the patient's First Name, Last Name, and Age or Date of birth.
+            2. Find the date of the MTD (RCP).
+            3. Find the gender of the patient.
+            If a value is not found, state it clearly.
+            You can use tools multiple time for each element.
             Ensure dates are coherent:
             1. Date of birth must be less than 150 years ago.
             2. Date of RCP must be less than 5 years ago.
@@ -195,7 +201,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Determine the WHO performance status of the patient (0-4)."
+            "Determine the WHO performance status of the patient (0-4). Think step-by-step. Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, indicate it."
         )
 
     class TumorLocation(default_model):
@@ -208,7 +214,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Identify the primary organ where the tumor is located."
+            "Identify the primary organ where the tumor is located. Think step-by-step. Search for the principal diagnosis or the primary tumor site."
         )
 
     class TumorBiology(default_model):
@@ -219,7 +225,7 @@ class PatientMDTOncologicForm(DocumentReader):
         msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
 
         question: ClassVar[str] = (
-            "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)?"
+            "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)? Think step-by-step. Search for 'MSI', 'MSS', 'instabilité microsatellitaire', or 'statut MMR'. If not mentioned, state it."
         )
 
     class RadiologicExams(default_model):

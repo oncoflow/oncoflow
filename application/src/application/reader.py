@@ -40,6 +40,8 @@ from src.infrastructure.llm.ollama import OllamaConnect
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
 
+from src.domain.interfaces import IVectorDatabaseClient, ILlmClient
+
 from slugify import slugify
 
 
@@ -67,8 +69,8 @@ class DocumentReader:
         document: str,
         document_type: str = "mtd",
         models=None,
-        vecdb_client=None,
-        llm_client=None,
+        vecdb_client: IVectorDatabaseClient | None = None,
+        llm_client: ILlmClient | None = None,
     ):
         self.config = config
         self.document = document

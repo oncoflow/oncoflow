@@ -25,8 +25,9 @@ class Agents:
         2. Answer the user's question strictly using the extracted information.
         3. Do not infer missing details or provide medical opinions.
         4. If the information is not found, state clearly that it is missing from the record.
-        5. You can use tools multiple time for each element
+        5. You can use tools multiple time for each element. Use multiple keywords or synonyms in your search query to improve retrieval.
         6. Respect stricly the response output format.
+        7. Think step-by-step before calling tools or returning a final answer.
         """
 
     class Expert_model(OncowflowAgent):
@@ -48,8 +49,8 @@ class Agents:
                 2. Use the `search_on_ressources` tool to retrieve scientific informations to support your clinical reasoning.
                 3. Answer the user's question by combining patient data and scientific evidence.
                 4. Respect stricly the response output format.
-                5. You can use tools multiple time for each element
-                6. Respect stricly the response output format.
+                5. You can use tools multiple time for each element. Use multiple keywords or synonyms in your search query.
+                6. Think step-by-step before making clinical correlations.
 
                 Rules:
                 - **Patient Record**: Use the patient record as the sole source of truth for the patient's status.
