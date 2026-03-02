@@ -62,7 +62,7 @@ def search_on_mtd(
         (f"Source: {doc.metadata}\nContent: {doc.page_content}")
         for doc in retrieved_docs
     )
-    runtime.context["logger"].info(
+    runtime.context["logger"].debug(
         f"search_on_mtd - serialized : {serialized}, retrieved_docs : {retrieved_docs}"
     )
     return serialized, retrieved_docs

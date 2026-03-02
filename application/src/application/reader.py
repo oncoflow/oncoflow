@@ -63,6 +63,39 @@ class DocumentReader:
     additional_pdf = None
     docs_pdf: list[str] = []
 
+    _docling_converter = None
+    _docling_chunker = None
+
+    @classmethod
+    def get_docling_components(cls):
+        if cls._docling_converter is None:
+            from docling.chunking import HybridChunker
+            from docling.datamodel.base_models import InputFormat
+            from docling.datamodel.pipeline_options import (
+                PdfPipelineOptions,
+                RapidOcrOptions,
+            )
+            from docling.document_converter import (
+                DocumentConverter,
+                PdfFormatOption,
+            )
+
+            print("Preloading RapidOCR models and Docling Converter...")
+            ocr_options = RapidOcrOptions()
+            pipeline_options = PdfPipelineOptions(ocr_options=ocr_options)
+
+            cls._docling_converter = DocumentConverter(
+                format_options={
+                    InputFormat.PDF: PdfFormatOption(
+                        pipeline_options=pipeline_options,
+                    ),
+                },
+            )
+            cls._docling_chunker = HybridChunker(
+                tokenizer="intfloat/multilingual-e5-base"
+            )
+        return cls._docling_converter, cls._docling_chunker
+
     def __init__(
         self,
         config: AppConfig,
@@ -124,44 +157,19 @@ class DocumentReader:
             if loader_type == "openparse":
                 cla = OpenParseDocumentLoader
             elif loader_type == "docling":
-                from docling.chunking import HybridChunker
-                from docling.datamodel.base_models import InputFormat
-                from docling.datamodel.pipeline_options import (
-                    PdfPipelineOptions,
-                    RapidOcrOptions,
-                )
-                from docling.document_converter import (
-                    DocumentConverter,
-                    PdfFormatOption,
-                )
+                converter, chunker = self.get_docling_components()
 
-                print("Downloading RapidOCR models")
-
-                ocr_options = RapidOcrOptions()
-
-                pipeline_options = PdfPipelineOptions(
-                    ocr_options=ocr_options,
-                )
-
-                # Convert the document
-                converter = DocumentConverter(
-                    format_options={
-                        InputFormat.PDF: PdfFormatOption(
-                            pipeline_options=pipeline_options,
-                        ),
-                    },
-                )
                 self.markdown_exporter = DoclingLoader(
                     file_path=document,
                     export_type=ExportType.MARKDOWN,
                     converter=converter,
-                    chunker=HybridChunker(tokenizer="intfloat/multilingual-e5-base"),
+                    chunker=chunker,
                 ).load()
                 return DoclingLoader(
                     file_path=document,
                     export_type=ExportType.DOC_CHUNKS,
                     converter=converter,
-                    chunker=HybridChunker(tokenizer="intfloat/multilingual-e5-base"),
+                    chunker=chunker,
                 ).load()
             elif loader_type == "ollamaOcr":
                 return OllamaOcrDocumentLoader(document, self.config).load()
