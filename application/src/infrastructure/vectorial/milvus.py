@@ -14,9 +14,7 @@ class MilvusDB(VectorialDataBase):
         retry = 3
         for r in range(retry):
             try:
-                connections.connect(
-                    host=config.milvus.host, port=config.milvus.port
-                )
+                connections.connect(host=config.milvus.host, port=config.milvus.port)
                 self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
                 self.token = config.milvus.token
                 self.database = config.milvus.database

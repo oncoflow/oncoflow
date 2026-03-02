@@ -103,7 +103,7 @@ def render_field(label, value):
 
 def render_fields(data: BaseModel):
     """Affiche les champs d'un modèle"""
-    
+
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
 

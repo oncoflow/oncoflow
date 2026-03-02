@@ -55,18 +55,20 @@ class DocumentReader:
         logger (Logger): A logger for tracking progress and errors.
     """
 
-    document = str
-    collectionName = "oncoflowDocs"
+    document: str = ""
+    collectionName: str = "oncoflowDocs"
     retriever = None
     additional_pdf = None
-    docs_pdf = {}
+    docs_pdf: list[str] = []
 
     def __init__(
         self,
-        config=AppConfig,
-        document=str,
-        document_type="mtd",
+        config: AppConfig,
+        document: str,
+        document_type: str = "mtd",
         models=None,
+        vecdb_client=None,
+        llm_client=None,
     ):
         self.config = config
         self.document = document
@@ -79,15 +81,21 @@ class DocumentReader:
         else:
             raise ValueError(f"{document_type} not yet supported")
 
-        self.vecdb = VectorialDataBaseClient(
-            config, coll_prefix=slugify(document, separator="_")
-        ).vectordb
-
-        if config.llm.type.lower() == "ollama":
-            llm_client = OllamaConnect(config)
+        if vecdb_client is None:
+            self.vecdb = VectorialDataBaseClient(
+                config, coll_prefix=slugify(document, separator="_")
+            ).vectordb
         else:
-            raise ValueError(f"{config.llm.type} not yet supported")
-        self.embeddings = llm_client.embedding
+            self.vecdb = vecdb_client
+
+        if llm_client is None:
+            if config.llm.type.lower() == "ollama":
+                llm_client_instance = OllamaConnect(config)
+            else:
+                raise ValueError(f"{config.llm.type} not yet supported")
+            self.embeddings = llm_client_instance.embedding
+        else:
+            self.embeddings = llm_client.embedding
 
         self.logger = config.set_logger(
             "reader",
@@ -168,8 +176,8 @@ class DocumentReader:
 
             return cla(document).load()
             # return self.text_splitter.split_documents(docs)
-        except Exception:
-            self.logger.error("Error in llm read")
+        except Exception as e:
+            self.logger.exception("Error in document load: %s", e)
             raise
 
     def get_retriever(self) -> VectorStoreRetriever:
