@@ -30,16 +30,15 @@ jobs:
 
       - name: Lint with ruff
         run: |
-          uvx ruff format . --check
+          uvx ruff format application/ --check
 
       - name: Ruff check
         run: |
-          uvx ruff check .
+          uvx ruff check application/
       
       - name: Run Tests
         run: |
-          uv pip install pytest
-          uv run pytest
+          uv run pytest application/tests/
 
       - name: Detect CVEs (Trivy)
         uses: aquasecurity/trivy-action@0.24.0
