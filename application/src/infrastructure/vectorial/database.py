@@ -1,18 +1,10 @@
-import chromadb
 import uuid
 
-from typing import List, Union
-
-from chromadb.utils.embedding_functions import create_langchain_embedding
-
-from langchain_chroma import Chroma
 
 from langchain_core.vectorstores import VectorStoreRetriever
 
 from src.application.config import AppConfig
-from src.application.llm import Llm
-
-# Define a class for working with vectorial databases.
+from src.infrastructure.llm.ollama import OllamaConnect
 
 
 class VectorialDataBase:
@@ -22,40 +14,43 @@ class VectorialDataBase:
     """Initialize the client, collection and embeddings based on configuration."""
 
     def __init__(self, config=AppConfig, coll_prefix=None):
-        if config.dbvec.type.lower() == "chromadb":
-            # Use either HttpClient or PersistentClient depending on the configuration.
-            if config.dbvec.client == "HttpClient":
-                self.client = chromadb.HttpClient(
-                    host=config.dbvec.host, port=config.dbvec.port
-                )
-            elif config.dbvec.client == "PersistentClient":
-                self.client = chromadb.PersistentClient()
-            # Clear system cache and get or create a collection based on the configuration.
-            self.client.clear_system_cache()
-            if coll_prefix is None:
-                self.coll_name = config.dbvec.collection
-            else:
-                self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
 
-            # self.embeddings = HuggingFaceEmbeddings(model_name=config.dbvec.model)
-            self.embeddings = create_langchain_embedding(
-                Llm(config, embeddings=True).embeddings
-            )
-
+        if coll_prefix is None:
+            self.coll_name = config.dbvec.collection
         else:
-            raise ValueError(f"{str(config.dbvec.client)} not yet supported")
+            self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
+
+        if config.llm.type.lower() == "ollama":
+            llm_client = OllamaConnect(config)
+        else:
+            raise ValueError(f"{config.llm.type} not yet supported")
+        self.llm_embeddings = llm_client.embedding
+
+        self.config = config
+        self.embeddings = self.get_embedding()
+        self.init_client(config)
+        self.set_clientdb()
 
         self.logger = config.set_logger(
             "vectorial_db",
             default_context={
                 "collection": self.coll_name,
                 "embeddings": self.embeddings,
-                "db_version": str(self.client.get_version()),
+                "db_version": str(self.get_version()),
                 "db_type": config.dbvec.type.lower(),
             },
         )
+
         self.logger.info("Class vectorial_db succesfully init")
-        self.set_clientdb(flush=True)
+
+    def init_client(self, config=AppConfig):
+        """
+        Set init client
+        """
+        return None
+
+    def get_version(self) -> str:
+        return self.client.get_version()
 
     def set_clientdb(self, flush=False):
         """
@@ -69,29 +64,7 @@ class VectorialDataBase:
         Raises:
         ValueError: If the client type is not supported
         """
-        if isinstance(self.client, chromadb.ClientAPI):
-            if flush:
-                # Delete and recreate the collection based on the configuration.
-                try:
-                    self.logger.debug("Flushing collection")
-                    self.client.delete_collection(self.coll_name)
-                    self.client.clear_system_cache()
-                except Exception:
-                    pass
-            self.collection = self.client.get_or_create_collection(
-                self.coll_name,
-                embedding_function=self.embeddings,
-            )
-            # Create a Chroma clientdb using the initialized client, collection and embeddings.
-            self.clientdb = Chroma(
-                client=self.client,
-                collection_name=self.coll_name,
-                embedding_function=self.embeddings,
-            )
-            self.client.get_collection(
-                self.coll_name,
-                embedding_function=self.embeddings,
-            )
+        return None
 
     def get_retriever(self, words_number=2) -> VectorStoreRetriever:
         """
@@ -104,7 +77,9 @@ class VectorialDataBase:
         """
         self.logger.debug("Return receiver with words_number=%s", str(words_number))
         return self.clientdb.as_retriever(
-            search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
+            # search_kwargs={"k": words_number, "fetch_k": 5}, search_type="mmr"
+            search_type="similarity_score_threshold",
+            search_kwargs={"score_threshold": 0.8},
         )
 
     # Add a document to the collection.
@@ -144,7 +119,7 @@ class VectorialDataBase:
         if flush_before:
             # Flush and recreate the clientdb before adding the chunked documents.
             self.set_clientdb(flush=True)
-
+        # chunked_documents = filter_complex_metadata(chunked_documents)
         for doc in chunked_documents:
             # Add each document to the collection.
             self.add_to_collection(doc)

@@ -1,7 +1,7 @@
 from enum import Enum
 from datetime import date
 
-from typing import List, Optional, ClassVar
+from typing import Optional, ClassVar
 
 from pydantic import BaseModel, Field, PastDate
 
@@ -14,10 +14,10 @@ class RadiologicExamType(str, Enum):
 
 
 class Gender(str, Enum):
-    male = "male"
-    female = "female"
-    other = "other"
-    not_given = "not_given"
+    male = "Male"
+    female = "Female"
+    other = "Other"
+    not_given = "Not_given"
 
 
 class RevealingMode(str, Enum):
@@ -64,9 +64,8 @@ class WHOPerformanceStatus(int, Enum):
 
 
 class PrimaryOrganEnum(str, Enum):
-
     pancreas = "Pancreas"
-    colon = "Colon "
+    colon = "Colon"
     liver = "Liver"
     stomach = "Stomach"
     oesophagus = "Oesophagus"
@@ -77,7 +76,6 @@ class PrimaryOrganEnum(str, Enum):
 
 
 class TNCDCancerTypesEnum(str, Enum):
-
     ampulloma = "tumor of the ampulla of Vater"
     localized_colon_cancer = "localized colon cancer, without distant metastasis"
     metastatic_colorectal = "metastatic colorectal cancer"
@@ -93,7 +91,6 @@ class TNCDCancerTypesEnum(str, Enum):
 
 
 class CancerTypesEnum(str, Enum):
-
     colorectal_cancer = "rectum and colon primitive cancer"
     liver_primary_cancer = "hepatocellular carcinoma (primary liver cancer)"
     biliary_tract_cancer = "biliary tract cancer"
@@ -104,7 +101,6 @@ class CancerTypesEnum(str, Enum):
 
 
 class TreatmentEnum(str, Enum):
-
     surgery = "Surgery"
     chemotherapy = "Chemotherapy"
     radiotherapy = "Radiotherapy"
@@ -112,7 +108,6 @@ class TreatmentEnum(str, Enum):
 
 
 class TreatmentStatusEnum(str, Enum):
-
     curative = "Curative"
     palliative = "Palliative"
     adjuvant = "Adjuvant"
@@ -126,16 +121,17 @@ class TreatmentToleranceEnum(str, Enum):
 
 
 class ChemotherapyData(BaseModel):
-
-    chemotherapy_name: str = Field(description="Name of the chemotherapy")
+    chemotherapy_name: str = Field(
+        description="Name of the chemotherapy drug or regimen (e.g., FOLFIRINOX)"
+    )
     chemotherapy_start_date: Optional[date] = Field(
-        description="Date of the beginning of the chemotherapy"
+        description="Start date of this specific chemotherapy line"
     )
     chemotherapy_end_date: Optional[date] = Field(
-        description="Date of the end of the chemotherapy"
+        description="End date of this specific chemotherapy line"
     )
     chemotherapy_tolerance: TreatmentToleranceEnum = Field(
-        description="Tolerance of the chemotherapy"
+        description="Patient's tolerance to the treatment"
     )
 
 
@@ -147,11 +143,10 @@ class ChemotherapyData(BaseModel):
 
 
 class PreviousTreatmentData(BaseModel):
-
-    treatment_date: PastDate = Field(deacription="Date of the treatment")
+    treatment_date: PastDate = Field(description="Date of the treatment")
     treatment_name: TreatmentEnum = Field(description="Name of the treatment")
     treatment_status: TreatmentStatusEnum = Field(
-        description="Status of the treatment on the deasise"
+        description="Status of the treatment regarding the disease (e.g., Curative, Palliative)"
     )
 
 
@@ -165,7 +160,7 @@ class PreviousTreatmentData(BaseModel):
 class PancreaticTumorEnum(str, Enum):
     adenocarcinoma = "adenocarcinoma"
     neuroendocrin = "neuroendocrine tumor"
-    unknown = "unknow"
+    unknown = "unknown"
 
 
 class PancreaticSymptomsEnum(str, Enum):
@@ -203,8 +198,7 @@ class ChildPugh(BaseModel):
             )
     """
 
-    bilirubin: int = Field(description="Bilirubin level in blood")
-    bilirubin: int = Field(description="Bilirubin level in blood")
+    bilirubin: int = Field(description="Bilirubin level in blood (µmol/L or mg/dL)")
     albumine: int = Field(description="Albumin level in blood")
     prothrombine: int = Field(description="Prothrombin time")
     ascite: bool = Field(description="Presence of ascites")
@@ -225,7 +219,10 @@ class RadiologicalExamination(BaseModel):
     exam_type: RadiologicExamType = Field(
         description="The type of radiological examination performed (e.g., CT, MRI, X-ray, EUS)."
     )
-    exam_result: Optional[str] = Field(description="Result of the radiological exam", default="N/A")
+    exam_result: Optional[str] = Field(
+        description="Summary of key findings from the radiological report",
+        default="N/A",
+    )
 
 
 class HistologicAnalysis(BaseModel):
@@ -270,14 +267,55 @@ class RadiologicalExaminations(BaseModel):
     """
 
     exams_all: list[RadiologicalExamination] = Field(
-        "All of the patient's radiology studies"
+        description="All of the patient's radiology studies"
     )
     ct_scans: list[RadiologicalExamination] = Field(
-        "The patient's computed tomography (CT) scans"
+        description="The patient's computed tomography (CT) scans"
     )
     mri_studies: list[RadiologicalExamination] = Field(
-        "The patient's magnetic resonance imaging (MRI) studies"
+        description="The patient's magnetic resonance imaging (MRI) studies"
     )
     pet_scans: list[RadiologicalExamination] = Field(
-        "The patient's positron emission tomography (PET) scans"
+        description="The patient's positron emission tomography (PET) scans"
+    )
+
+
+class PatientPriority(str, Enum):
+    urgent = "Patient must be treated urgently"
+    medium = "Patient must be treated as soon as possible"
+    low = "Patient is not urgent"
+    not_given = "no answer"
+
+
+class Reference(BaseModel):
+    name: str = Field(description="Name of the reference")
+    page: int = Field(description="Page of the document")
+    position: str = Field(description="Position of the reference")
+    excerpt: str = Field(
+        description="Summarize relevant excerpt from the document, no more than 3 lines"
+    )
+
+
+class ExpertSuggestion(BaseModel):
+    suggestion: str = Field(description="Expert suggestion for the patient")
+
+    why: str = Field(description="Explanation of the reasoning behind the suggestion")
+
+    references: list[Reference] = Field(
+        description="list of suggestion references, including TNCD references"
+    )
+
+
+class MTDComplete(BaseModel):
+    is_mtd_complete: bool = Field(
+        default=True,
+        description="Based on your specialty and provided documents, is the MDT file complete?",
+    )
+
+    what_missing: list[str] = Field(
+        default=[], description="List of missing elements required for a decision"
+    )
+
+    references: list[Reference] = Field(
+        description="list of references for missing items, including TNCD references"
     )

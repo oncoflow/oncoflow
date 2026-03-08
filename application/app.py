@@ -2,7 +2,7 @@ from os import listdir
 from os.path import isfile, join
 from argparse import ArgumentParser
 
-from pprint import pprint
+from pprint import pprint  # noqa: F401
 
 import environ
 import inquirer
@@ -41,8 +41,11 @@ def manual_prompt(dir, config):
 
         if answers["question"].lower() == "quit":
             break
-        rag = DocumentReader(config, answers["file"], docs_pdf=["tncdchc.pdf"])
-        pprint(rag.ask_in_document(answers["question"]), compact=True)
+        rag = DocumentReader(config, document=answers["file"])  # noqa: F841
+        logger.warning(
+            "Prompting DocumentReader directly is deprecated. Please use Agents explicitly."
+        )
+        # pprint(rag.ask_in_document(answers["question"]), compact=True)
 
 
 def all_asked(dir, config):
@@ -50,12 +53,13 @@ def all_asked(dir, config):
         try:
             if isfile(join(dir, f)):
                 full_read_file(app_conf=config, filename=f, logger=logger)
-        except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError):
-                logger.debug("File %s is not a pdf, pass", f)
+        except (FileDataError, PDFPageCountError, PdfStreamError, PDFSyntaxError) as e:
+            logger.debug("File %s is not a pdf, pass. Error: %s", f, e)
+        except Exception as e:
+            logger.exception("Unexpected error when processing file %s: %s", f, e)
 
 
 if __name__ == "__main__":
-
     parser = ArgumentParser()
     parser.add_argument(
         "-e", "--env-list", dest="envlist", action="store_true", default=False

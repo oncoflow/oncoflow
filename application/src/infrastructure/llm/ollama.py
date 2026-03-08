@@ -9,7 +9,6 @@ from src.application.config import AppConfig
 
 
 class OllamaConnect:
-
     def __init__(self, config=AppConfig) -> None:
         self.config = config
         self.logger = config.set_logger(
@@ -21,17 +20,21 @@ class OllamaConnect:
             base_url=f"{config.llm.url}:{config.llm.port}",
             model=config.llm.embeddings,
         )
+
         self.logger.info("Succesfully connected")
 
-    def chat(self, model, temperature=None):
-        return ChatOllama(
+    def chat(self, model, output=None, temperature=None, tools=[]):
+        model = ChatOllama(
             base_url=f"{self.config.llm.url}:{self.config.llm.port}",
-            format="json",
+            format=output.model_json_schema() if output is not None else "json",
             model=model,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp
             ),
+            validate_model_on_init=True,
         )
+
+        return model
 
     def get_models(self):
         return [

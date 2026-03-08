@@ -46,6 +46,7 @@ class AppConfig:
 
             type (str): The log type of the application. Defaults to "text". Accepted values are "text" and "json".
         """
+
         level = environ.var(default="INFO", help="Log level of app")
         langchaindebug = environ.bool_var(
             default=False, help="langchain Log level of app"
@@ -69,13 +70,19 @@ class AppConfig:
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
-            default="llama3.1:70b-instruct-q4_0",
+            default="gpt-oss",
             help="Model of llm system, type all for test all ollama models",
         )
-        temp = environ.var(
-            default="0.7", converter=float, help="Temperature of llm system"
+        ocrmodels = environ.var(
+            default="granite3.2-vision",
+            help="Model of ocr in ollama llm system",
         )
-        embeddings = environ.var(default="all-minilm", help="embeddings Model to use")
+        temp = environ.var(
+            default="1", converter=float, help="Temperature of llm system"
+        )
+        embeddings = environ.var(
+            default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"
+        )
 
     # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
 
@@ -85,8 +92,22 @@ class AppConfig:
         Class for configuring the vectorial database settings.
         """
 
-        type = environ.var(default="ChromaDB", help="type of DB")
+        type = environ.var(default="milvus", help="type of DB")
         collection = environ.var(default="oncoflowDocs", help="Collectionname to use")
+
+    @environ.config
+    class MilvusDB:
+        token = environ.var(default="root:Milvus", help="Token of the db")
+        database = environ.var(default="oncowflow", help="Database name")
+        port = environ.var(default="19530", help="Port used")
+        host = environ.var(default="localhost", help="Hostname used")
+
+    @environ.config
+    class ChomaDB:
+        """
+        Class for configuring the vectorial database settings.
+        """
+
         client = environ.var(
             default="HttpClient", help="PersistentClient or HttpClient"
         )
@@ -98,8 +119,11 @@ class AppConfig:
         user = environ.var(default="root", help="Mongo Username")
         password = environ.var(default="root", help="Mongo password")
         host = environ.var(default="127.0.0.1", help="Address of DB")
-        port = environ.var(default="8081", help="Port of DB")
+        port = environ.var(default="27017", help="Port of DB")
         database = environ.var(default="Oncoflow", help="Mongo database name")
+        vectordatabase = environ.var(
+            default="OncoflowVector", help="Mongo database name"
+        )
 
     @environ.config
     class RCP:
@@ -118,24 +142,22 @@ class AppConfig:
             help="Path to additionnal files",
         )
         doc_type = environ.var(
-            default="PyMuPDFLoader",
+            default="docling",
             help="Document type, see https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/ ",
         )
         chunk_size = environ.var(
-            default="2000", converter=int, help="chunk_size of document"
+            default="1000", converter=int, help="chunk_size of document"
         )
 
         chunk_overlap = environ.var(
-            default="200", converter=int, help="chunk_overlap of document"
+            default="150", converter=int, help="chunk_overlap of document"
         )
 
         manual_query = environ.bool_var(
             default=False, help="Manual prompting for debug"
         )
-        
-        display_type = environ.var(
-            default="mongodb", help="Type opf display"
-        )
+
+        display_type = environ.var(default="mongodb", help="Type opf display")
 
         @path.validator
         def _ensure_path_exists(self, var, path):
@@ -147,6 +169,8 @@ class AppConfig:
     rcp = environ.group(RCP)
     logs = environ.group(Log)
     mongodb = environ.group(MongoDB)
+    chromadb = environ.group(ChomaDB)
+    milvus = environ.group(MilvusDB)
 
     def set_logger(self, name, default_context={}, additional_context=None):
 

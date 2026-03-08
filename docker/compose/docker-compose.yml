@@ -1,41 +1,90 @@
-version: '3.1'
-
 services:
 
-  mongo:
-    image: mongo
+  mongod:
+    image: mongodb/mongodb-community-server:latest
     restart: always
+    entrypoint:
+      - sh 
+      - -c
+      - |
+        openssl rand -base64 756 > /tmp/keyfile  && chown 101:101 /tmp/keyfile ;
+        python3 /usr/local/bin/docker-entrypoint.py
+    command: >-
+         mongod
+         --config /etc/mongod.conf
+         --replSet rs0
     ports:
      - 27017:27017
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
+    volumes:
+      - ./mongod.conf:/etc/mongod.conf:ro
+    extra_hosts:
+         - "host.docker.internal:host-gateway"
+    networks:
+         - search-community
+
 
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
-  # ollama:
-  #   image: ollama/ollama
-  #   restart: always
-  #   ports:
-  #    - 11434:11434
-  #   volumes:
-  #     - $HOME/ollama:/root/.ollama
-  #   deploy:
-  #     resources:
-  #       reservations:
-  #         devices:
-  #           - driver: nvidia
-  #             count: 1
-  #             capabilities: [gpu]
-
-  chromadb:
-    #image: chromadb/chroma:0.5.15
-    image: chromadb/chroma:0.6.3
+  ollama:
+    image: ollama/ollama
     restart: always
     ports:
-     - 8000:8000
+     - 11434:11434
+    volumes:
+      - /data/ollama:/root/.ollama
+    devices:
+        - nvidia.com/gpu=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # vllm:
+  #     image: docker.io/vllm/vllm-openai:latest
+  #     command: >
+  #       --model=openai/gpt-oss-20b
+  #       --port=8000
+  #       --gpu_memory_utilization=0.89
+  #       --max-model-len 5600 
+  #     devices:
+  #       - nvidia.com/gpu=all
+  #     ports:
+  #       - 8000:8000
+  #     volumes:
+  #       - /data/huggingface:/root/.cache/huggingface
+  #     environment:
+  #       - HF_TOKEN=test
+  #       - PYTORCH_ALLOC_CONF=expandable_segments:True
+  #     ipc: host
+  #     deploy:
+  #       resources:
+  #         reservations:
+  #           devices:
+  #             - driver: nvidia
+  #               count: 1
+  #               capabilities: [gpu]
+
+
+  # chromadb:
+  #   #image: chromadb/chroma:0.5.15
+  #   image: chromadb/chroma:1.3.5
+  #   restart: always
+  #   ports:
+  #    - 8000:8000
     
- 
+  # pgvector:
+  #   image: pgvector/pgvector:pg18-trixie
+  #   shm_size: 1g
+  #   ports:
+  #     - 5432:5432
+  #   environment:
+  #     POSTGRES_PASSWORD: root
 
   # grafana:
   #   image: grafana/grafana-enterprise
@@ -57,3 +106,7 @@ services:
   #     ME_CONFIG_MONGODB_ADMINPASSWORD: example
   #     ME_CONFIG_MONGODB_URL: mongodb://root:example@mongo:27017/
   #     ME_CONFIG_BASICAUTH: false
+
+networks:
+   search-community:
+      name: search-community

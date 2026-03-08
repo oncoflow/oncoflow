@@ -36,21 +36,22 @@ pages = {}
 
 pages["Patient mdt Oncologic"] = [
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py",
-        title="RCP",
+        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py",
+        title="Liste RCP",
         icon="📇",
         default=True,
     ),
+    st.Page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py", title="RCP", icon="📇"),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt_oncologic/upload.py",
         title="Charger le/les fichier(s)",
-        icon="🚀"
+        icon="🚀",
     ),
-    # st.Page(
-    #     f"{PAGES_DIR_SRC}/patient_mdt_oncologic/metadatas.py",
-    #     title="Metadatas",
-    #     icon=":material/dashboard:",
-    # ),
+    st.Page(
+        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/agents.py",
+        title="Agents and ressources",
+        icon=":material/robot:",
+    ),
 ]
 pages["Reports"] = [
     st.Page(
