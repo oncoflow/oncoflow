@@ -70,7 +70,7 @@ class AppConfig:
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
-            default="gpt-oss",
+            default="gemma4:e4b",
             help="Model of llm system, type all for test all ollama models",
         )
         ocrmodels = environ.var(
@@ -81,7 +81,9 @@ class AppConfig:
             default="1", converter=float, help="Temperature of llm system"
         )
         embeddings = environ.var(
-            default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"
+            default="embeddinggemma",
+            help="embeddings Model to use",
+            # default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"
         )
 
     # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0

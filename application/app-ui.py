@@ -1,4 +1,25 @@
+import logging
+import warnings
 import streamlit as st
+
+# Suppress Hugging Face transformers warning logs and user warnings
+try:
+    from transformers import logging as transformers_logging
+    transformers_logging.set_verbosity_error()
+except ImportError:
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+
+warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
+warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
+
+# Suppress PyMilvus deprecation warnings
+try:
+    from pymilvus.exceptions import PyMilvusDeprecationWarning
+    warnings.filterwarnings("ignore", category=PyMilvusDeprecationWarning)
+except ImportError:
+    pass
+warnings.filterwarnings("ignore", message=".*ORM-style.*")
+
 
 
 PAGES_DIR_SRC = "src/ui"

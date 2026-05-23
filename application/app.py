@@ -1,6 +1,14 @@
+import logging
+import warnings
 from os import listdir
 from os.path import isfile, join
 from argparse import ArgumentParser
+
+# Suppress Hugging Face transformers warning logs and user warnings
+logging.getLogger("transformers").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
+# Suppress PyMilvus deprecation warnings about ORM-style Index.to_dict
+warnings.filterwarnings("ignore", message=".*Index.to_dict is an ORM-style PyMilvus API.*")
 
 from pprint import pprint  # noqa: F401
 

@@ -1,3 +1,4 @@
+from transformers.models.efficientloftr import image_processing_efficientloftr
 import uuid
 
 
@@ -15,10 +16,13 @@ class VectorialDataBase:
 
     def __init__(self, config=AppConfig, coll_prefix=None):
 
+        embedding_suffix = config.llm.embeddings.replace("/", "_").replace(":", "_")
         if coll_prefix is None:
-            self.coll_name = config.dbvec.collection
+            self.coll_name = f"{config.dbvec.collection}_{embedding_suffix}"
         else:
-            self.coll_name = f"{coll_prefix}_{config.dbvec.collection}"
+            self.coll_name = (
+                f"{coll_prefix}_{config.dbvec.collection}_{embedding_suffix}"
+            )
 
         if config.llm.type.lower() == "ollama":
             llm_client = OllamaConnect(config)

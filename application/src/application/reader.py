@@ -83,6 +83,7 @@ class DocumentReader:
             print("Preloading RapidOCR models and Docling Converter...")
             ocr_options = RapidOcrOptions()
             pipeline_options = PdfPipelineOptions(ocr_options=ocr_options)
+            pipeline_options.allow_external_plugins = True
 
             cls._docling_converter = DocumentConverter(
                 format_options={
