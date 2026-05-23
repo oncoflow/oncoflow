@@ -39,7 +39,6 @@ class TestMongodbDocumentStore(unittest.TestCase):
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_set_uniq_index(self, mock_mongo_client_cls):
-        mock_client = mock_mongo_client_cls.return_value
         db = Mongodb(self.mock_config)
 
         mock_collection = MagicMock()
@@ -51,7 +50,6 @@ class TestMongodbDocumentStore(unittest.TestCase):
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_get_document(self, mock_mongo_client_cls):
-        mock_client = mock_mongo_client_cls.return_value
         db = Mongodb(self.mock_config)
 
         mock_collection = MagicMock()
@@ -64,7 +62,6 @@ class TestMongodbDocumentStore(unittest.TestCase):
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_update_doc(self, mock_mongo_client_cls):
-        mock_client = mock_mongo_client_cls.return_value
         db = Mongodb(self.mock_config)
 
         mock_collection = MagicMock()
@@ -92,7 +89,6 @@ class TestMongodbDocumentStore(unittest.TestCase):
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_delete_docs(self, mock_mongo_client_cls):
-        mock_client = mock_mongo_client_cls.return_value
         db = Mongodb(self.mock_config)
 
         mock_collection1 = MagicMock()

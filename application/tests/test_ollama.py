@@ -23,7 +23,7 @@ class TestOllamaConnection(unittest.TestCase):
         mock_client = mock_ollama_client_cls.return_value
         mock_client.list.return_value = {"models": []}
 
-        conn = OllamaConnect(self.mock_config)
+        OllamaConnect(self.mock_config)
 
         # Assert client host name
         mock_ollama_client_cls.assert_called_once_with(host="http://127.0.0.1:11434")

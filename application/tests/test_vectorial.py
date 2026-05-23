@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 from langchain_core.embeddings import Embeddings
 from src.application.config import AppConfig
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
-from src.infrastructure.vectorial.database import VectorialDataBase
 from src.infrastructure.vectorial.chromadb import Chromadb
 from src.infrastructure.vectorial.milvus import MilvusDB
 from src.infrastructure.vectorial.mongodb import Mongodb as MongoDBVectorDB
@@ -71,7 +70,6 @@ class TestVectorialDatabases(unittest.TestCase):
         self, mock_chroma_client_cls, mock_chroma_cls, mock_ollama_cls
     ):
         mock_ollama_cls.return_value = self.mock_llm_client
-        mock_client = mock_chroma_client_cls.return_value
 
         self.mock_config.dbvec.type = "chromadb"
         db_wrapper = Chromadb(self.mock_config, coll_prefix="test")
