@@ -35,15 +35,16 @@ dependencies = [
     "streamlit-pdf-viewer>=0.0.29",
     "unstructured[pdf]>=0.22.30",
     "uuid>=1.30",
+    "pytz>=2026.2",
 ]
 
 [dependency-groups]
 dev = [
   "pytest >=8.1.1,<9",
   "ruff",
+  "pre-commit"
 ]
 
 [tool.pyright]
 autoSearchPaths = false
 extraPaths = ["."]
-

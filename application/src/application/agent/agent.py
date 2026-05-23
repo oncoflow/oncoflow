@@ -7,8 +7,8 @@ from langchain.agents import create_agent
 
 from src.application.config import AppConfig
 from src.infrastructure.llm.factory import get_llm_client
+
 # Legacy import to support existing patch-based unit tests
-from src.infrastructure.llm.ollama import OllamaConnect
 from src.application.reader import DocumentReader
 from src.application.agent.tools import (
     search_on_mtd,

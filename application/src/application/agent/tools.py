@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Optional, Any
+from typing import TypedDict, List, Optional
 
 from langchain.tools import tool, ToolRuntime
 
@@ -30,7 +30,6 @@ def search_on_mtd(
     param: Optional[dict | list[dict]] = None,
     expr: Optional[str] = None,
     timeout: Optional[float] = None,
-    **kwargs: Any,
 ):
     """Search within the Medical Technical Documents (MTD) / Patient Records.
     This tools use VectoreStore similarity_search options, you can set them as you need
@@ -44,18 +43,17 @@ def search_on_mtd(
         expr (str, optional): Filtering expression. Defaults to None.
         timeout (int, optional): How long to wait before timeout error.
             Defaults to None.
-        kwargs: Collection.search() keyword arguments.
 
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
     runtime.context["logger"].info(
-        f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs}"
+        f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
     )
     reader: DocumentReader = runtime.context["reader"]
 
     retrieved_docs = reader.vecdb.clientdb.max_marginal_relevance_search(
-        query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout, **kwargs
+        query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
     )
     # Serialize documents for the LLM context
     serialized = "\n\n".join(
@@ -76,7 +74,6 @@ def search_on_ressources(
     param: Optional[dict | list[dict]] = None,
     expr: Optional[str] = None,
     timeout: Optional[float] = None,
-    **kwargs: Any,
 ):
     """Search within additional resources (e.g., TNCD).
     This tools use VectoreStore similarity_search options, you can set them as you need
@@ -92,19 +89,18 @@ def search_on_ressources(
         expr (str, optional): Filtering expression. Defaults to None.
         timeout (int, optional): How long to wait before timeout error.
             Defaults to None.
-        kwargs: Collection.search() keyword arguments.
 
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts.
     """
     runtime.context["logger"].debug(
-        f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs} in {runtime.context['additionnal_readers']}"
+        f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout} in {runtime.context['additionnal_readers']}"
     )
     # Retrieve retrievers from all additional readers in the context
     retrieved_docs = []
     for r in runtime.context["additionnal_readers"]:
         docs = r.vecdb.clientdb.max_marginal_relevance_search(
-            query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout, **kwargs
+            query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
         )
         for doc in docs:
             retrieved_docs.append(doc)

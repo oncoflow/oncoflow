@@ -4,12 +4,6 @@ from os import listdir
 from os.path import isfile, join
 from argparse import ArgumentParser
 
-# Suppress Hugging Face transformers warning logs and user warnings
-logging.getLogger("transformers").setLevel(logging.ERROR)
-warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
-# Suppress PyMilvus deprecation warnings about ORM-style Index.to_dict
-warnings.filterwarnings("ignore", message=".*Index.to_dict is an ORM-style PyMilvus API.*")
-
 from pprint import pprint  # noqa: F401
 
 import environ
@@ -23,6 +17,15 @@ from pdfminer.pdfparser import PDFSyntaxError
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 from src.application.app_functions import full_read_file
+
+
+# Suppress Hugging Face transformers warning logs and user warnings
+logging.getLogger("transformers").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
+# Suppress PyMilvus deprecation warnings about ORM-style Index.to_dict
+warnings.filterwarnings(
+    "ignore", message=".*Index.to_dict is an ORM-style PyMilvus API.*"
+)
 
 
 def manual_prompt(dir, config):

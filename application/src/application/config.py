@@ -68,6 +68,7 @@ class AppConfig:
 
         type = environ.var(default="Ollama", help="Type of llm system (ex Ollama)")
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
+        uri = environ.var(default="/v1", help="URI of llm system")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
             default="qwen3.5:9b",
@@ -86,7 +87,7 @@ class AppConfig:
             # default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"
         )
         api_key = environ.var(
-            default="",
+            default="ollama",
             help="API Key for OpenAI system (if OpenAI is used)",
         )
 

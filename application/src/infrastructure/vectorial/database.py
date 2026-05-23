@@ -1,4 +1,3 @@
-from transformers.models.efficientloftr import image_processing_efficientloftr
 import uuid
 
 
@@ -7,7 +6,6 @@ from langchain_core.vectorstores import VectorStoreRetriever
 from src.application.config import AppConfig
 from src.infrastructure.llm.factory import get_llm_client
 # Legacy import to support existing patch-based unit tests
-from src.infrastructure.llm.ollama import OllamaConnect
 
 
 class VectorialDataBase:
