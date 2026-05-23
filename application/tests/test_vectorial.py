@@ -42,15 +42,15 @@ class TestVectorialDatabases(unittest.TestCase):
         self.mock_llm_client = MagicMock()
         self.mock_llm_client.embedding = self.mock_embeddings
 
-    @patch("src.infrastructure.vectorial.database.OllamaConnect")
+    @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.milvus.Milvus")
     @patch("src.infrastructure.vectorial.milvus.db")
     @patch("src.infrastructure.vectorial.milvus.connections")
     @patch("src.infrastructure.vectorial.milvus.utility")
     def test_milvus_db_initialization(
-        self, mock_utility, mock_connections, mock_db, mock_milvus_cls, mock_ollama_cls
+        self, mock_utility, mock_connections, mock_db, mock_milvus_cls, mock_get_llm_client
     ):
-        mock_ollama_cls.return_value = self.mock_llm_client
+        mock_get_llm_client.return_value = self.mock_llm_client
         mock_db.list_database.return_value = ["oncowflow"]
         mock_utility.get_server_version.return_value = "2.5.0"
 
@@ -58,47 +58,47 @@ class TestVectorialDatabases(unittest.TestCase):
         db_wrapper = MilvusDB(self.mock_config)
 
         # Assert correct collection name and client parameters
-        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs")
+        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
         mock_connections.connect.assert_called_once_with(host="localhost", port="19530")
         mock_milvus_cls.assert_called_once()
         self.assertEqual(db_wrapper.embeddings, self.mock_embeddings)
 
-    @patch("src.infrastructure.vectorial.database.OllamaConnect")
+    @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.chromadb.Chroma")
     @patch("src.infrastructure.vectorial.chromadb.chromadb.PersistentClient")
     def test_chroma_db_initialization(
-        self, mock_chroma_client_cls, mock_chroma_cls, mock_ollama_cls
+        self, mock_chroma_client_cls, mock_chroma_cls, mock_get_llm_client
     ):
-        mock_ollama_cls.return_value = self.mock_llm_client
+        mock_get_llm_client.return_value = self.mock_llm_client
 
         self.mock_config.dbvec.type = "chromadb"
         db_wrapper = Chromadb(self.mock_config, coll_prefix="test")
 
-        self.assertEqual(db_wrapper.coll_name, "test_oncoflowDocs")
+        self.assertEqual(db_wrapper.coll_name, "test_oncoflowDocs_all_MiniLM_L6_v2")
         mock_chroma_client_cls.assert_called_once()
         mock_chroma_cls.assert_called_once()
 
-    @patch("src.infrastructure.vectorial.database.OllamaConnect")
+    @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.mongodb.MongoDBAtlasVectorSearch")
     @patch("src.infrastructure.vectorial.mongodb.MongoClient")
     def test_mongodb_vector_db_initialization(
-        self, mock_mongo_client_cls, mock_vector_search_cls, mock_ollama_cls
+        self, mock_mongo_client_cls, mock_vector_search_cls, mock_get_llm_client
     ):
-        mock_ollama_cls.return_value = self.mock_llm_client
+        mock_get_llm_client.return_value = self.mock_llm_client
 
         self.mock_config.dbvec.type = "mongodb"
         db_wrapper = MongoDBVectorDB(self.mock_config)
 
-        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs")
+        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
         mock_mongo_client_cls.assert_called_once_with(
             "mongodb://root:password@127.0.0.1:27017"
         )
         mock_vector_search_cls.assert_called_once()
 
-    @patch("src.infrastructure.vectorial.database.OllamaConnect")
+    @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.client.MilvusDB")
     def test_vectorial_database_client_factory(
-        self, mock_milvus_db_cls, mock_ollama_cls
+        self, mock_milvus_db_cls, mock_get_llm_client
     ):
         self.mock_config.dbvec.type = "milvus"
 

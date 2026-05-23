@@ -6,6 +6,8 @@ from pydantic import ValidationError, BaseModel, Field
 from langchain.agents import create_agent
 
 from src.application.config import AppConfig
+from src.infrastructure.llm.factory import get_llm_client
+# Legacy import to support existing patch-based unit tests
 from src.infrastructure.llm.ollama import OllamaConnect
 from src.application.reader import DocumentReader
 from src.application.agent.tools import (
@@ -55,12 +57,7 @@ class OncowflowAgent:
             self.output_format = output_format
 
         # Initialize the LLM client based on configuration
-        if config.llm.type.lower() == "ollama":
-            llm_client = OllamaConnect(
-                config,
-            )
-        else:
-            raise ValueError(f"{config.llm.type} not yet supported")
+        llm_client = get_llm_client(config)
 
         # Determine the list of models to use
         if self.models is None:

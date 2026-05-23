@@ -10,7 +10,7 @@ from streamlit_pdf_viewer import pdf_viewer
 from pandas import DataFrame
 from pydantic import BaseModel
 
-from src.infrastructure.llm.ollama import OllamaConnect
+from src.infrastructure.llm.factory import get_llm_client
 
 from src.application.config import AppConfig
 from src.application.app_functions import delete_document, full_read_mtd_agents
@@ -161,7 +161,7 @@ def power_mode(element):
             mp = app_conf.rcp.doc_type
             nm = po.selectbox(
                 "Modèle",
-                OllamaConnect(app_conf).get_models(),
+                get_llm_client(app_conf).get_models(),
                 placeholder="Select modèle",
             )
             parser = po.selectbox(

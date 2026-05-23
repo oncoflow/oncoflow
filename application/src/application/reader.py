@@ -36,7 +36,7 @@ from src.application.tools import timed
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
-from src.infrastructure.llm.ollama import OllamaConnect
+from src.infrastructure.llm.factory import get_llm_client
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
 
@@ -125,10 +125,7 @@ class DocumentReader:
             self.vecdb = vecdb_client
 
         if llm_client is None:
-            if config.llm.type.lower() == "ollama":
-                llm_client_instance = OllamaConnect(config)
-            else:
-                raise ValueError(f"{config.llm.type} not yet supported")
+            llm_client_instance = get_llm_client(config)
             self.embeddings = llm_client_instance.embedding
         else:
             self.embeddings = llm_client.embedding

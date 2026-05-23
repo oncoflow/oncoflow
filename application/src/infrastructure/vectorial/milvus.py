@@ -131,9 +131,32 @@ class MilvusDB(VectorialDataBase):
         try:
             self.set_clientdb()
             if hasattr(self.clientdb, "client") and self.clientdb.client is not None:
-                if self.clientdb.client.has_collection(self.coll_name):
-                    stats = self.clientdb.client.get_collection_stats(collection_name=self.coll_name)
-                    return stats.get("row_count", 0) > 0
+                client = self.clientdb.client
+                if client.has_collection(self.coll_name):
+                    try:
+                        res = client.query(
+                            collection_name=self.coll_name,
+                            filter="",
+                            limit=1
+                        )
+                        return len(res) > 0
+                    except MilvusException as e:
+                        if "not loaded" in str(e).lower() or "load" in str(e).lower():
+                            try:
+                                client.load_collection(collection_name=self.coll_name)
+                                res = client.query(
+                                    collection_name=self.coll_name,
+                                    filter="",
+                                    limit=1
+                                )
+                                return len(res) > 0
+                            except Exception:
+                                pass
+                        try:
+                            stats = client.get_collection_stats(collection_name=self.coll_name)
+                            return stats.get("row_count", 0) > 0
+                        except Exception:
+                            pass
             if utility.has_collection(self.coll_name):
                 return True
             return False

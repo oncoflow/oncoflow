@@ -5,6 +5,8 @@ import uuid
 from langchain_core.vectorstores import VectorStoreRetriever
 
 from src.application.config import AppConfig
+from src.infrastructure.llm.factory import get_llm_client
+# Legacy import to support existing patch-based unit tests
 from src.infrastructure.llm.ollama import OllamaConnect
 
 
@@ -16,7 +18,9 @@ class VectorialDataBase:
 
     def __init__(self, config=AppConfig, coll_prefix=None):
 
-        embedding_suffix = config.llm.embeddings.replace("/", "_").replace(":", "_")
+        embedding_suffix = (
+            config.llm.embeddings.replace("/", "_").replace(":", "_").replace("-", "_")
+        )
         if coll_prefix is None:
             self.coll_name = f"{config.dbvec.collection}_{embedding_suffix}"
         else:
@@ -24,10 +28,7 @@ class VectorialDataBase:
                 f"{coll_prefix}_{config.dbvec.collection}_{embedding_suffix}"
             )
 
-        if config.llm.type.lower() == "ollama":
-            llm_client = OllamaConnect(config)
-        else:
-            raise ValueError(f"{config.llm.type} not yet supported")
+        llm_client = get_llm_client(config)
         self.llm_embeddings = llm_client.embedding
 
         self.config = config
