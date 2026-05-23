@@ -92,15 +92,19 @@ class TestVectorialDatabases(unittest.TestCase):
         db_wrapper = MongoDBVectorDB(self.mock_config)
 
         self.assertEqual(db_wrapper.coll_name, "oncoflowDocs")
-        mock_mongo_client_cls.assert_called_once_with("mongodb://root:password@127.0.0.1:27017")
+        mock_mongo_client_cls.assert_called_once_with(
+            "mongodb://root:password@127.0.0.1:27017"
+        )
         mock_vector_search_cls.assert_called_once()
 
     @patch("src.infrastructure.vectorial.database.OllamaConnect")
     @patch("src.infrastructure.vectorial.client.MilvusDB")
-    def test_vectorial_database_client_factory(self, mock_milvus_db_cls, mock_ollama_cls):
+    def test_vectorial_database_client_factory(
+        self, mock_milvus_db_cls, mock_ollama_cls
+    ):
         self.mock_config.dbvec.type = "milvus"
-        
+
         client = VectorialDataBaseClient(self.mock_config)
-        
+
         mock_milvus_db_cls.assert_called_once_with(self.mock_config, None)
         self.assertEqual(client.vectordb, mock_milvus_db_cls.return_value)

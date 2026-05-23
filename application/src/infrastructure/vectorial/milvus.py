@@ -9,13 +9,14 @@ from src.application.config import AppConfig
 from pymilvus import MilvusException, connections, db, utility
 from pymilvus.exceptions import ConnectionNotExistException
 
-# Monkeypatch PyMilvus connection manager to seamlessly route generated MilvusClient connections 
+# Monkeypatch PyMilvus connection manager to seamlessly route generated MilvusClient connections
 # to the ORM 'default' connection. This is necessary because MilvusClient in Milvus v2.5+
 # generates unique connection aliases that are not registered in the legacy ORM connections manager,
 # causing ConnectionNotExistException and database context mismatches (SchemaNotReadyException)
 # when used alongside legacy ORM Collection objects.
 original_fetch_handler = connections._fetch_handler
 original_generate_call_context = connections._generate_call_context
+
 
 def patched_fetch_handler(alias=None):
     if alias is None:
@@ -27,10 +28,12 @@ def patched_fetch_handler(alias=None):
             return connections._alias_handlers["default"]
         raise
 
+
 def patched_generate_call_context(alias, **kwargs):
     if alias not in connections._alias_config:
         alias = "default"
     return original_generate_call_context(alias, **kwargs)
+
 
 connections._fetch_handler = patched_fetch_handler
 connections._generate_call_context = patched_generate_call_context

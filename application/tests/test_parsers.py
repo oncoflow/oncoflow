@@ -37,7 +37,7 @@ class TestParsers(unittest.TestCase):
     @patch("src.infrastructure.parsers.openparse.openparse.DocumentParser")
     def test_openparse_loader_lazy_load(self, mock_doc_parser_cls, mock_pdf_cls):
         mock_parser = mock_doc_parser_cls.return_value
-        
+
         # Mock parsed document nodes
         mock_node1 = MagicMock()
         mock_node1.text = "Node 1 text"
@@ -64,7 +64,7 @@ class TestParsers(unittest.TestCase):
         )
         mock_parser.parse.assert_called_once_with("/path/to/doc.pdf", ocr=True)
         mock_pdf_cls.assert_called_once_with("/path/to/doc.pdf")
-        
+
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0].page_content, "Node 1 text")
         self.assertEqual(docs[0].metadata["tokens"], 5)

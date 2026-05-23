@@ -221,8 +221,6 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
-]
-lint = [
     { name = "ruff" },
 ]
 
@@ -259,8 +257,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.1.1,<9" }]
-lint = [{ name = "ruff" }]
+dev = [
+    { name = "pytest", specifier = ">=8.1.1,<9" },
+    { name = "ruff" },
+]
 
 [[package]]
 name = "attrs"

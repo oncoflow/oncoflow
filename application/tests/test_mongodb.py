@@ -72,9 +72,7 @@ class TestMongodbDocumentStore(unittest.TestCase):
 
         db.update_doc("rcp_info", {"file": "PDF1.pdf"}, {"age": 67})
         mock_collection.update_one.assert_called_once_with(
-            {"file": "PDF1.pdf"},
-            {"$set": {"age": 67}},
-            upsert=True
+            {"file": "PDF1.pdf"}, {"$set": {"age": 67}}, upsert=True
         )
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")

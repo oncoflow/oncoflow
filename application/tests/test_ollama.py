@@ -53,7 +53,9 @@ class TestOllamaConnection(unittest.TestCase):
     @patch("src.infrastructure.llm.ollama.ChatOllama")
     @patch("src.infrastructure.llm.ollama.OllamaEmbeddings")
     @patch("src.infrastructure.llm.ollama.ollama.Client")
-    def test_chat_creation(self, mock_ollama_client_cls, mock_embeddings_cls, mock_chat_ollama_cls):
+    def test_chat_creation(
+        self, mock_ollama_client_cls, mock_embeddings_cls, mock_chat_ollama_cls
+    ):
         conn = OllamaConnect(self.mock_config)
 
         mock_output = MagicMock()

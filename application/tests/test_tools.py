@@ -2,7 +2,11 @@ import unittest
 from unittest.mock import MagicMock
 from langchain_core.documents import Document
 
-from src.application.agent.tools import get_mtd_markdown, search_on_mtd, search_on_ressources
+from src.application.agent.tools import (
+    get_mtd_markdown,
+    search_on_mtd,
+    search_on_ressources,
+)
 
 
 class TestAgentTools(unittest.TestCase):
@@ -70,7 +74,9 @@ class TestAgentTools(unittest.TestCase):
 
     def test_search_on_ressources_success(self):
         # Setup mock documents from additional reader
-        doc = Document(page_content="TNCD pancreas guidelines", metadata={"section": "TNCD"})
+        doc = Document(
+            page_content="TNCD pancreas guidelines", metadata={"section": "TNCD"}
+        )
         self.mock_add_clientdb.max_marginal_relevance_search.return_value = [doc]
 
         serialized, docs = search_on_ressources.func(
@@ -90,7 +96,9 @@ class TestAgentTools(unittest.TestCase):
         )
         self.assertEqual(len(docs), 1)
         self.assertEqual(docs[0], doc)
-        expected_serialized = "Source: {'section': 'TNCD'}\nContent: TNCD pancreas guidelines"
+        expected_serialized = (
+            "Source: {'section': 'TNCD'}\nContent: TNCD pancreas guidelines"
+        )
         self.assertEqual(serialized, expected_serialized)
 
     def test_search_on_ressources_empty(self):
