@@ -2,9 +2,9 @@ name: CI/CD Oncoflow
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   quality-security-build:
@@ -20,6 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+          cache-dependency-path: 'application/uv.lock'
 
       - name: Install dependencies
         run: |
@@ -35,7 +36,7 @@ jobs:
       - name: Ruff check
         run: |
           uvx ruff check application/
-      
+
       - name: Run Tests
         run: |
           cd application
@@ -44,11 +45,11 @@ jobs:
       - name: Detect CVEs (Trivy)
         uses: aquasecurity/trivy-action@v0.24.0
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'table'
-          exit-code: '1' # Fait échouer le job si des vulnérabilités CRITICAL/HIGH sont trouvées
-          severity: 'CRITICAL,HIGH'
+          scan-type: "fs"
+          scan-ref: "."
+          format: "table"
+          exit-code: "1" # Fait échouer le job si des vulnérabilités CRITICAL/HIGH sont trouvées
+          severity: "CRITICAL,HIGH"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
