@@ -48,7 +48,12 @@ class TestVectorialDatabases(unittest.TestCase):
     @patch("src.infrastructure.vectorial.milvus.connections")
     @patch("src.infrastructure.vectorial.milvus.utility")
     def test_milvus_db_initialization(
-        self, mock_utility, mock_connections, mock_db, mock_milvus_cls, mock_get_llm_client
+        self,
+        mock_utility,
+        mock_connections,
+        mock_db,
+        mock_milvus_cls,
+        mock_get_llm_client,
     ):
         mock_get_llm_client.return_value = self.mock_llm_client
         mock_db.list_database.return_value = ["oncowflow"]

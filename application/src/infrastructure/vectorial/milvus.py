@@ -14,6 +14,7 @@ from pymilvus.exceptions import ConnectionNotExistException
 
 try:
     from pymilvus.exceptions import PyMilvusDeprecationWarning
+
     warnings.filterwarnings("ignore", category=PyMilvusDeprecationWarning)
 except ImportError:
     pass
@@ -60,7 +61,10 @@ def patched_drop(self) -> None:
 
         try:
             conn = self.client._get_connection()
-            if hasattr(conn, "schema_cache") and self.collection_name in conn.schema_cache:
+            if (
+                hasattr(conn, "schema_cache")
+                and self.collection_name in conn.schema_cache
+            ):
                 conn.schema_cache.pop(self.collection_name, None)
         except Exception:
             pass
@@ -70,14 +74,16 @@ def patched_drop(self) -> None:
                 async_conn = self._async_milvus_client._get_connection()
                 if inspect.iscoroutine(async_conn):
                     async_conn.close()
-                elif hasattr(async_conn, "schema_cache") and self.collection_name in async_conn.schema_cache:
+                elif (
+                    hasattr(async_conn, "schema_cache")
+                    and self.collection_name in async_conn.schema_cache
+                ):
                     async_conn.schema_cache.pop(self.collection_name, None)
             except Exception:
                 pass
 
 
 Milvus.drop = patched_drop
-
 
 
 class MilvusDB(VectorialDataBase):
@@ -135,9 +141,7 @@ class MilvusDB(VectorialDataBase):
                 if client.has_collection(self.coll_name):
                     try:
                         res = client.query(
-                            collection_name=self.coll_name,
-                            filter="",
-                            limit=1
+                            collection_name=self.coll_name, filter="", limit=1
                         )
                         return len(res) > 0
                     except MilvusException as e:
@@ -145,15 +149,15 @@ class MilvusDB(VectorialDataBase):
                             try:
                                 client.load_collection(collection_name=self.coll_name)
                                 res = client.query(
-                                    collection_name=self.coll_name,
-                                    filter="",
-                                    limit=1
+                                    collection_name=self.coll_name, filter="", limit=1
                                 )
                                 return len(res) > 0
                             except Exception:
                                 pass
                         try:
-                            stats = client.get_collection_stats(collection_name=self.coll_name)
+                            stats = client.get_collection_stats(
+                                collection_name=self.coll_name
+                            )
                             return stats.get("row_count", 0) > 0
                         except Exception:
                             pass

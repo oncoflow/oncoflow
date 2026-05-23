@@ -7,13 +7,13 @@ def get_llm_client(config=AppConfig):
     """
     Factory function to return the appropriate LLM client instance
     based on the configured LLM type.
-    
+
     Args:
         config (AppConfig): Application configuration.
-        
+
     Returns:
         OllamaConnect | OpenAIConnect: The resolved LLM client instance.
-        
+
     Raises:
         ValueError: If config.llm.type is not supported.
     """

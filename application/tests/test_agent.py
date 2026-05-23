@@ -77,7 +77,9 @@ class TestOncowflowAgent(unittest.TestCase):
     @patch("src.application.agent.agent.get_llm_client")
     @patch("src.application.agent.agent.create_agent")
     @patch("src.application.agent.agent.Context")
-    def test_ask_success(self, mock_context_cls, mock_create_agent, mock_get_llm_client):
+    def test_ask_success(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
         # Setup agent
         mock_agent_executor = MagicMock()
         mock_create_agent.return_value = mock_agent_executor
