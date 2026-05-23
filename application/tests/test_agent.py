@@ -100,7 +100,7 @@ class TestOncowflowAgent(unittest.TestCase):
         result = agent.ask("My question")
 
         # Assert
-        self.assertEqual(result, expected_dict)
+        self.assertEqual(result, self.output_format(**expected_dict))
         mock_agent_executor.invoke.assert_called_once()
 
     @patch("src.application.agent.agent.OllamaConnect")
@@ -132,7 +132,7 @@ class TestOncowflowAgent(unittest.TestCase):
         result = agent.ask("My question")
 
         # Assert
-        self.assertEqual(result, expected_dict)
+        self.assertEqual(result, self.output_format(**expected_dict))
 
     @patch("src.application.agent.agent.OllamaConnect")
     @patch("src.application.agent.agent.create_agent")

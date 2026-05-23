@@ -18,6 +18,15 @@ if app_conf.rcp.display_type == "mongodb":
 logger = app_conf.set_logger("ui", default_context={"page": "cards"})
 
 
+def to_naive(dt: datetime | None) -> datetime | None:
+    """Convertit un datetime (aware ou naive) en datetime naive (Europe/Paris)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(pytz.timezone("Europe/Paris")).replace(tzinfo=None)
+    return dt
+
+
 @st.dialog("Confirmation de suppression")
 def delete_card(filename: str):
     st.warning(f"Voulez-vous vraiment supprimer le dossier : {filename} ?")
@@ -49,6 +58,7 @@ def get_rcp_data():
                 hour=0, minute=0, second=0, microsecond=0
             ),
         )
+        date_refresh = to_naive(date_refresh)
 
         date_mcp = (
             d["PatientAdministrative"]["date_rcp"]
@@ -57,6 +67,7 @@ def get_rcp_data():
         )
         if isinstance(date_mcp, str):
             date_mcp = datetime.fromisoformat(date_mcp)
+        date_mcp = to_naive(date_mcp)
 
         # Experts Pertinents & Urgence
         relevant_experts = []

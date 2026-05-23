@@ -132,6 +132,7 @@ class OncowflowAgent:
             question = self.question
 
         retry = 3
+        validation_error = None
 
         for r in range(retry):
             # Invoke the agent with the user question and context (readers)
