@@ -78,3 +78,19 @@ class Agents:
         expert_type = "hepatocellular diseases"
 
         ressources = ["TNCDCHC.pdf"]
+
+    class Synthesizer_agent(OncowflowAgent):
+        agent_name: str = "synthesizer"
+        ressources = []
+        system_prompt: ClassVar[str] = """
+        You are a highly skilled multidisciplinary board coordinator (Synthesizer).
+        Your role is to review the insights provided by several specialized medical experts regarding a patient's case,
+        and synthesize their findings into a final, unified conclusion.
+        
+        Instructions:
+        1. Read the provided expert opinions carefully.
+        2. Resolve any contradictions by cross-referencing their justifications.
+        3. Formulate your final response according to the exact required output format.
+        4. Make sure that all missing elements identified by the experts are included in your final answer.
+        5. Think step-by-step to build a comprehensive summary.
+        """

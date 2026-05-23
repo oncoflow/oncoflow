@@ -11,7 +11,6 @@ from src.application.reader import DocumentReader
 from src.application.agent.tools import (
     search_on_mtd,
     search_on_ressources,
-    get_mtd_markdown,
     Context,
 )
 from langchain.agents.structured_output import ToolStrategy
@@ -81,7 +80,7 @@ class OncowflowAgent:
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
             model=llm_client.chat(self.models[0], output=self.output_format),
-            tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
+            tools=[search_on_mtd, search_on_ressources],
             middleware=[
                 ToolRetryMiddleware(
                     max_retries=3,
@@ -107,7 +106,7 @@ class OncowflowAgent:
             for ressource in self.ressources
         ]
 
-        self.logger.info(
+        self.logger.debug(
             f"""Agent succefully created with prompt :
         {system_prompt}
         """

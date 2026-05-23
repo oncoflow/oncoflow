@@ -49,6 +49,8 @@ def get_rcp_data():
                 hour=0, minute=0, second=0, microsecond=0
             ),
         )
+        if isinstance(date_refresh, datetime):
+            date_refresh = date_refresh.replace(tzinfo=None)
 
         date_mcp = (
             d["PatientAdministrative"]["date_rcp"]
@@ -57,6 +59,8 @@ def get_rcp_data():
         )
         if isinstance(date_mcp, str):
             date_mcp = datetime.fromisoformat(date_mcp)
+        if isinstance(date_mcp, datetime):
+            date_mcp = date_mcp.replace(tzinfo=None)
 
         # Experts Pertinents & Urgence
         relevant_experts = []
@@ -87,13 +91,26 @@ def get_rcp_data():
         # Données Manquantes
         missing_data = []
         if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
-            for agent_name, agent_data in d["MTDCompleted"].items():
-                if isinstance(agent_data, dict):
-                    mtd_comp = agent_data.get("mtd_complete")
-                    if isinstance(mtd_comp, dict):
-                        m = mtd_comp.get("what_missing", [])
-                        if isinstance(m, list):
-                            missing_data.extend(m)
+            # En mode multi-agents classique, c'est un dict de nom d'agents vers données.
+            # En mode reflection (Synthesizer), c'est directement le modèle MTDComplete.
+            is_synthesizer = "mtd_complete" in d["MTDCompleted"]
+
+            if is_synthesizer:
+                # Structure directe issue de run_reflection_graph
+                mtd_comp = d["MTDCompleted"].get("mtd_complete")
+                if isinstance(mtd_comp, dict):
+                    m = mtd_comp.get("what_missing", [])
+                    if isinstance(m, list):
+                        missing_data.extend(m)
+            else:
+                # Ancienne structure par agent
+                for agent_name, agent_data in d["MTDCompleted"].items():
+                    if isinstance(agent_data, dict):
+                        mtd_comp = agent_data.get("mtd_complete")
+                        if isinstance(mtd_comp, dict):
+                            m = mtd_comp.get("what_missing", [])
+                            if isinstance(m, list):
+                                missing_data.extend(m)
         else:
             missing_data.extend(["no data"])
 

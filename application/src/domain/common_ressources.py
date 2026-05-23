@@ -316,6 +316,30 @@ class MTDComplete(BaseModel):
         default=[], description="List of missing elements required for a decision"
     )
 
+    expert_opinions: list[Reference] = Field(
+        default=[],
+        description="List of reflections and reasoning provided by the intermediate expert agents",
+    )
+
     references: list[Reference] = Field(
         description="list of references for missing items, including TNCD references"
+    )
+
+
+class ExpertIntermediateResponse(BaseModel):
+    expert_relevant: bool = Field(
+        description="Is your expertise relevant for this patient's case?"
+    )
+    is_mtd_complete: bool = Field(
+        default=True,
+        description="From your specialty's perspective, is the MDT file complete?",
+    )
+    what_missing: list[str] = Field(
+        default=[], description="List of missing elements required for a decision"
+    )
+    references: list[Reference] = Field(
+        description="list of references for missing items, including TNCD references"
+    )
+    reasoning: str = Field(
+        description="Detailed explanation of your reasoning and why elements are missing or complete."
     )

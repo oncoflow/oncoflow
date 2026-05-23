@@ -49,7 +49,7 @@ def search_on_mtd(
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
-    runtime.context["logger"].info(
+    runtime.context["logger"].debug(
         f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}, kwargs: {kwargs}"
     )
     reader: DocumentReader = runtime.context["reader"]
@@ -108,7 +108,7 @@ def search_on_ressources(
         )
         for doc in docs:
             retrieved_docs.append(doc)
-    runtime.context["logger"].info(
+    runtime.context["logger"].debug(
         f"search_on_ressources - retrieved_docs : {retrieved_docs}"
     )
     if retrieved_docs:

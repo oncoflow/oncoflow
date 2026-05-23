@@ -23,22 +23,25 @@ jobs:
 
       - name: Install dependencies
         run: |
-          # uv installe la version de python requise et les dépendances (dev incluses pour la CI)
+          # uv installe la version de python requise et les dépendances (test et lint incluses pour la CI)
           cd application
           uv python install
-          uv sync --frozen
+          uv sync --frozen --group test --group lint
 
       - name: Lint with ruff
         run: |
-          uvx ruff format application/ --check
+          cd application
+          uvx ruff format src/ --check
 
       - name: Ruff check
         run: |
-          uvx ruff check application/
+          cd application
+          uvx ruff check src/
       
       - name: Run Tests
         run: |
-          uv run pytest application/tests/
+          cd application
+          uv run pytest src/
 
       - name: Detect CVEs (Trivy)
         uses: aquasecurity/trivy-action@0.24.0

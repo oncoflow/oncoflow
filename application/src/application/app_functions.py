@@ -1,6 +1,8 @@
 import os
 from src.infrastructure.documents.mongodb import Mongodb
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.domain.patient_mdt_oncologic.patient_mdt_oncologic_form import (
+    PatientMDTOncologicForm,
+)
 
 
 def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):

@@ -18,6 +18,7 @@ dependencies = [
     "langchain-milvus==0.3.1",
     "langchain-mongodb>=0.8.0",
     "langchain-ollama>=1.0.1",
+    "langgraph>=1.0.9",
     "modelscope>=1.33.0",
     "ollama-ocr>=0.1.6",
     "openparse>=0.7.0",
@@ -36,9 +37,14 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = [
-  "pytest >=8.1.1,<9",
-]
 lint = [
   "ruff",
 ]
+test = [
+    "pytest>=8.4.2",
+    "pytest-mock>=3.15.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "--import-mode=importlib"

@@ -3,7 +3,7 @@ import streamlit as st
 import time
 
 from src.application.config import AppConfig
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.domain.patient_mdt_oncologic.patient_mdt_oncologic_form import PatientMDTOncologicForm
 
 
 app_conf = environ.to_config(AppConfig)

@@ -43,6 +43,9 @@ class VectorialDataBase:
 
         self.logger.info("Class vectorial_db succesfully init")
 
+    def get_embedding(self):
+        return self.llm_embeddings
+
     def init_client(self, config=AppConfig):
         """
         Set init client

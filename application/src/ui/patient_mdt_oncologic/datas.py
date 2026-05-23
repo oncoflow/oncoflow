@@ -1,6 +1,8 @@
 import environ
 import os
 import inspect
+import sys
+from ast import literal_eval
 from types import NoneType
 from datetime import datetime
 from enum import Enum
@@ -16,7 +18,9 @@ from src.application.config import AppConfig
 from src.application.app_functions import delete_document, full_read_mtd_agents
 from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.agents import Agents
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.domain.patient_mdt_oncologic.patient_mdt_oncologic_form import (
+    PatientMDTOncologicForm,
+)
 from src.domain.common_ressources import PatientPriority
 
 
@@ -321,21 +325,40 @@ def form():
                             model_data = data[model_name]
 
                             # Gestion des agents multiples (dictionnaire de résultats)
-                            is_multi = (
+                            has_agents = (
                                 hasattr(model_cls, "agents")
                                 and len(model_cls.agents) > 1
                             )
 
-                            if is_multi and isinstance(model_data, dict):
-                                agent_names = list(model_data.keys())
-                                if agent_names:
-                                    tabs = st.tabs(agent_names)
-                                    for tab, agent_name in zip(tabs, agent_names):
-                                        pydantic_model = model_cls.model_validate(
-                                            data[model_name][agent_name]
-                                        )
-                                        with tab:
-                                            render_fields(pydantic_model)
+                            if has_agents and isinstance(model_data, dict):
+                                agent_names = [a.agent_name for a in model_cls.agents]
+                                is_old_format = any(
+                                    aname in model_data for aname in agent_names
+                                )
+
+                                if is_old_format or not getattr(
+                                    model_cls, "multi_agent_reflection", False
+                                ):
+                                    existing_agent_names = [
+                                        name
+                                        for name in agent_names
+                                        if name in model_data
+                                    ]
+                                    if existing_agent_names:
+                                        tabs = st.tabs(existing_agent_names)
+                                        for tab, agent_name in zip(
+                                            tabs, existing_agent_names
+                                        ):
+                                            pydantic_model = model_cls.model_validate(
+                                                model_data[agent_name]
+                                            )
+                                            with tab:
+                                                render_fields(pydantic_model)
+                                else:
+                                    pydantic_model = model_cls.model_validate(
+                                        model_data
+                                    )
+                                    render_model_data(pydantic_model)
                             else:
                                 pydantic_model = model_cls.model_validate(
                                     data[model_name]
@@ -397,7 +420,7 @@ def form():
 
 power = st.sidebar.toggle("Power mode", key="power")
 
-if st.session_state["power"]:
+if st.session_state.get("power", False):
     st.sidebar.markdown(
         f"""
                         - **Modele:**: {app_conf.llm.models}
@@ -407,10 +430,11 @@ if st.session_state["power"]:
     )
 
 
-if "file" in st.query_params:
-    form()
-else:
-    st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py")
+if "pytest" not in sys.modules:
+    if "file" in st.query_params:
+        form()
+    else:
+        st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py")
 
 if "reader" in st.session_state:
     del st.session_state["reader"]
