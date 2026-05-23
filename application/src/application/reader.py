@@ -194,6 +194,12 @@ class DocumentReader:
     def get_retriever(self) -> VectorStoreRetriever:
         return self.vecdb.get_retriever()
 
+    def is_indexed(self):
+        """
+        Checks if the document is indexed in the VectorStore.
+        """
+        return self.vecdb.is_indexed()
+    
     @timed
     def read_document(self):
         """

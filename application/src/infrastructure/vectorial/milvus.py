@@ -127,6 +127,19 @@ class MilvusDB(VectorialDataBase):
     def get_version(self):
         return utility.get_server_version()
 
+    def is_indexed(self) -> bool:
+        try:
+            self.set_clientdb()
+            if hasattr(self.clientdb, "client") and self.clientdb.client is not None:
+                if self.clientdb.client.has_collection(self.coll_name):
+                    stats = self.clientdb.client.get_collection_stats(collection_name=self.coll_name)
+                    return stats.get("row_count", 0) > 0
+            if utility.has_collection(self.coll_name):
+                return True
+            return False
+        except Exception:
+            return False
+
     def add_to_collection(self, doc, flush_before=False):
         """
         Adds a document to the collection.

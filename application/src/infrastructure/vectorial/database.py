@@ -86,6 +86,12 @@ class VectorialDataBase:
             search_kwargs={"score_threshold": 0.8},
         )
 
+    def is_indexed(self) -> bool:
+        """
+        Checks if the collection exists and has indexed entities.
+        """
+        return False
+
     # Add a document to the collection.
 
     def add_to_collection(self, doc, flush_before=False):

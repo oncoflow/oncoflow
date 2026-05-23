@@ -51,3 +51,10 @@ class Chromadb(VectorialDataBase):
             self.coll_name,
             embedding_function=self.embeddings,
         )
+
+    def is_indexed(self) -> bool:
+        try:
+            col = self.client.get_collection(self.coll_name)
+            return col.count() > 0
+        except Exception:
+            return False

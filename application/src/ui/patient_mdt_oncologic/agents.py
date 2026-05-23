@@ -31,7 +31,20 @@ for i, (n, a) in enumerate(pmtd.list.items()):
             st.divider()
             st.markdown("**Ressources :**")
             for r in ag.ressources:
+                rag = DocumentReader(app_conf, document=r, document_type="ressource")
+                is_idx = False
+                try:
+                    is_idx = rag.is_indexed()
+                except Exception:
+                    pass
+
                 c1, c2 = st.columns([3, 1], vertical_alignment="center")
-                c1.caption(f"📄 {r}")
-                if c2.button("Index", key=f"{n}_{r}", use_container_width=True):
+                if is_idx:
+                    c1.markdown(f"📄 **{r}** :green[✓]")
+                else:
+                    c1.caption(f"📄 {r}")
+
+                button_label = "Re-Index" if is_idx else "Index"
+                if c2.button(button_label, key=f"{n}_{r}", use_container_width=True):
                     read(r, app_conf)
+                    st.rerun()
