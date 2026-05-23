@@ -7,7 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 
 # Copie des fichiers de définition de projet
-COPY pyproject.toml uv.lock ./
+COPY application/pyproject.toml application/uv.lock ./
 
 # Installation des dépendances (sans les outils de dev)
 RUN uv sync --frozen --no-dev --no-install-project
