@@ -42,3 +42,7 @@ dev = [
 lint = [
   "ruff",
 ]
+
+[tool.pyright]
+autoSearchPaths = false
+
