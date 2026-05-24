@@ -1,12 +1,13 @@
 import os
-from typing import List, Any, Optional
+from typing import List, Optional
 import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from src.application.config import AppConfig
 from src.infrastructure.llm.base import LLMConnect
 
 
-class OllamaCompatibleOpenAIEmbeddings(OpenAIEmbeddings):
+class VllmCompatibleEmbeddings(OpenAIEmbeddings):
     def _get_len_safe_embeddings(
         self,
         texts: List[str],
@@ -16,7 +17,7 @@ class OllamaCompatibleOpenAIEmbeddings(OpenAIEmbeddings):
         **kwargs,
     ) -> List[List[float]]:
         # Bypass tokenization and chunking - send raw strings directly to the API
-        # This fixes compatibility with local OpenAI-compatible embedding servers (like Ollama)
+        # This fixes compatibility with local OpenAI-compatible embedding servers (like vLLM)
         # that only accept standard string lists as input.
         model_name = self.model if self.model else engine
         params = {"model": model_name} | kwargs
@@ -26,26 +27,7 @@ class OllamaCompatibleOpenAIEmbeddings(OpenAIEmbeddings):
         return [r["embedding"] for r in response["data"]]
 
 
-class StrictChatOpenAI(ChatOpenAI):
-    def bind_tools(
-        self, tools: Any, *, strict: Optional[bool] = None, **kwargs: Any
-    ) -> Any:
-        # Force strict=True to prevent "ValueError: Only strict function tools can be auto-parsed"
-        # which is required by OpenAI structured output completions beta parse engine.
-        # Also remove conflicting response_format if tools are being bound.
-        if "response_format" in self.model_kwargs:
-            self.model_kwargs = self.model_kwargs.copy()
-            self.model_kwargs.pop("response_format", None)
-
-        # Natively pass response_format to bind_tools for OpenAI Structured Outputs
-        output_schema = self.__dict__.get("_output_schema", None)
-        if output_schema is not None and "response_format" not in kwargs:
-            kwargs["response_format"] = output_schema
-
-        return super().bind_tools(tools, strict=True, **kwargs)
-
-
-class OpenAIConnect(LLMConnect):
+class VllmConnect(LLMConnect):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
 
@@ -66,15 +48,13 @@ class OpenAIConnect(LLMConnect):
         if uri:
             self.base_url = f"{self.base_url}/{uri}"
 
-        self.logger = config.set_logger(
-            "openai", default_context={"host": self.base_url}
-        )
+        self.logger = config.set_logger("vllm", default_context={"host": self.base_url})
 
         # Get API key from config, falling back to environment variable, then a mock key
         self.api_key = (
             config.llm.api_key
             if config.llm.api_key
-            else os.environ.get("OPENAI_API_KEY", "mock-key")
+            else os.environ.get("OPENAI_API_KEY", "vllm-mock-key")
         )
 
         # Initialize the official openai client for utility calls like listing models and connection testing
@@ -84,23 +64,38 @@ class OpenAIConnect(LLMConnect):
         )
         self.test_connection()
 
-        # Initialize compatible embeddings
-        self.embedding = OllamaCompatibleOpenAIEmbeddings(
-            base_url=self.base_url if self.base_url else None,
-            api_key=self.api_key,
+        # In Oncoflow's local-first architecture, the vLLM engine on port 8080 is
+        # dedicated solely to text generation to maximize performance and conserve GPU VRAM.
+        # Embedding models are offloaded to the local Ollama instance running on port 11434.
+        import urllib.parse
+
+        ollama_url = config.llm.url
+        if ":11434" not in ollama_url:
+            parsed = urllib.parse.urlparse(ollama_url)
+            if parsed.netloc:
+                host = parsed.netloc.split(":")[0]
+                ollama_url = f"{parsed.scheme}://{host}:11434"
+            else:
+                host = ollama_url.split(":")[0]
+                ollama_url = f"{host}:11434"
+
+        self.logger.info(
+            f"Routing embeddings to local Ollama on {ollama_url} (model: {config.llm.embeddings})"
+        )
+        self.embedding = OllamaEmbeddings(
+            base_url=ollama_url,
             model=config.llm.embeddings,
         )
 
-        self.logger.info("Succesfully connected")
+        self.logger.info("Successfully connected to vLLM server")
 
     def chat(self, model, output=None, temperature=None, tools=[]):
-        # We set JSON mode if output is specified (matching the Ollama behavior)
-        # However, if tools are provided, we must not force JSON mode to avoid conflicts with tool calling.
+        # We set JSON mode if output is specified (matching the Ollama/OpenAI behavior)
         model_kwargs = {}
-        if not tools and output is not None:
+        if output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
 
-        model_instance = StrictChatOpenAI(
+        model_instance = ChatOpenAI(
             base_url=self.base_url if self.base_url else None,
             api_key=self.api_key,
             model=model,
@@ -110,8 +105,6 @@ class OpenAIConnect(LLMConnect):
             ),
             model_kwargs=model_kwargs,
         )
-        # Save output schema for use in bind_tools bypassing Pydantic setattr constraints
-        model_instance.__dict__["_output_schema"] = output
 
         return model_instance
 
@@ -120,7 +113,7 @@ class OpenAIConnect(LLMConnect):
             models_list = self.client.models.list()
             return [m.id for m in models_list.data]
         except Exception as e:
-            self.logger.error(f"Failed to list models: {e}")
+            self.logger.error(f"Failed to list vLLM models: {e}")
             # Return a default model list from config as fallback
             return [self.config.llm.models]
 
@@ -129,5 +122,5 @@ class OpenAIConnect(LLMConnect):
             # We list models as a fast connection test
             self.client.models.list()
         except Exception as e:
-            self.logger.error(f"Connection error : {e}")
+            self.logger.error(f"vLLM Connection error: {e}")
             exit(254)

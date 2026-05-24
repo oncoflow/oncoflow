@@ -74,6 +74,31 @@ class TestOpenAIConnection(unittest.TestCase):
             base_url="https://api.openai.com/v1",
             api_key="test-api-key",
             model="gpt-4o",
+            tools=[],
             temperature=0.7,
             model_kwargs={"response_format": {"type": "json_object"}},
+        )
+
+    @patch("src.infrastructure.llm.openai.ChatOpenAI.bind_tools")
+    def test_strict_chat_openai_bind_tools(self, mock_super_bind_tools):
+        from src.infrastructure.llm.openai import StrictChatOpenAI
+
+        model = StrictChatOpenAI(
+            api_key="test-api-key",
+            model="gpt-4o",
+            model_kwargs={"response_format": {"type": "json_object"}},
+        )
+
+        mock_output = MagicMock()
+        model.__dict__["_output_schema"] = mock_output
+
+        tools = ["mock_tool"]
+        model.bind_tools(tools)
+
+        # Verify that response_format was popped from model_kwargs
+        self.assertNotIn("response_format", model.model_kwargs)
+
+        # Verify that super().bind_tools was called with response_format
+        mock_super_bind_tools.assert_called_once_with(
+            tools, strict=True, response_format=mock_output
         )

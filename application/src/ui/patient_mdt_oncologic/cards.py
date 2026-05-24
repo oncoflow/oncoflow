@@ -12,6 +12,7 @@ from src.domain.common_ressources import PatientPriority
 app_conf = environ.to_config(AppConfig)
 
 # Connexion Base de données
+db_client = None
 if app_conf.rcp.display_type == "mongodb":
     db_client = Mongodb(app_conf)
 
@@ -38,7 +39,7 @@ def delete_card(filename: str):
 
 def get_rcp_data():
     """Récupère les données RCP depuis MongoDB et les formate pour l'affichage."""
-    if not hasattr(db_client, "database"):
+    if db_client is None or not hasattr(db_client, "database"):
         return []
 
     db_datas = list(db_client.database["rcp_info"].find())
@@ -156,9 +157,13 @@ def display_as_list(data):
         "urgency_score": -1,
     }
 
+    default_val = default_value_map.get(sort_by)
+    if default_val is None:
+        default_val = ""
+
     sorted_data = sorted(
         data,
-        key=lambda x: x.get(sort_by) or default_value_map.get(sort_by),
+        key=lambda x: x.get(sort_by) if x.get(sort_by) is not None else default_val,
         reverse=not ascending,
     )
 
@@ -442,5 +447,5 @@ def cards_view():
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
     cards_view()
-    if hasattr(db_client, "close"):
+    if db_client is not None and hasattr(db_client, "close"):
         db_client.close()

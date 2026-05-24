@@ -1,0 +1,12 @@
+FROM qwen2.5:14b-instruct-q4_K_M
+
+# Paramètres optimisés pour ton GPU/RAM
+PARAMETER num_ctx 16384
+PARAMETER temperature 0.1
+
+# Injection d'instructions système impératives pour le tooling
+SYSTEM """
+You are a helpful assistant with access to local tools.
+When the user requests an action that can be fulfilled by a tool, you MUST call that tool using the correct function call schema.
+Never output the tool call as plain text or markdown code blocks in your content. Execute the tool immediately.
+"""

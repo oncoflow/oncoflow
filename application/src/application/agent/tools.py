@@ -1,4 +1,4 @@
-from typing import TypedDict, List, Optional
+from typing import TypedDict, List, Optional, Any
 
 from langchain.tools import tool, ToolRuntime
 
@@ -12,6 +12,7 @@ class Context(TypedDict):
 
     reader: DocumentReader
     additionnal_readers: List[DocumentReader]
+    logger: Any
 
 
 @tool(response_format="content")
@@ -47,6 +48,16 @@ def search_on_mtd(
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
     """
+    # Defensive cleanup of parameters against LLM hallucinated string representations of empty values
+    if isinstance(expr, str) and expr.strip().lower() in ("none", "null", ""):
+        expr = None
+    if isinstance(param, str) and param.strip().lower() in ("none", "null", "{}", ""):
+        param = None
+    elif isinstance(param, dict) and not param:
+        param = None
+    if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
+        timeout = None
+
     runtime.context["logger"].info(
         f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
     )
@@ -93,6 +104,16 @@ def search_on_ressources(
     Returns:
         tuple: A tuple containing the serialized string of results and the raw artifacts.
     """
+    # Defensive cleanup of parameters against LLM hallucinated string representations of empty values
+    if isinstance(expr, str) and expr.strip().lower() in ("none", "null", ""):
+        expr = None
+    if isinstance(param, str) and param.strip().lower() in ("none", "null", "{}", ""):
+        param = None
+    elif isinstance(param, dict) and not param:
+        param = None
+    if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
+        timeout = None
+
     runtime.context["logger"].debug(
         f"tool search_on_ressources called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout} in {runtime.context['additionnal_readers']}"
     )

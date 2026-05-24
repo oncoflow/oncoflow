@@ -6,10 +6,11 @@ import ollama
 from httpx import ConnectError
 
 from src.application.config import AppConfig
+from src.infrastructure.llm.base import LLMConnect
 
 
-class OllamaConnect:
-    def __init__(self, config=AppConfig) -> None:
+class OllamaConnect(LLMConnect):
+    def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.logger = config.set_logger(
             "ollama", default_context={"host": config.llm.url, "port": config.llm.port}
@@ -24,10 +25,19 @@ class OllamaConnect:
         self.logger.info("Succesfully connected")
 
     def chat(self, model, output=None, temperature=None, tools=[]):
+        # In Ollama, format="json" or a schema forces strict JSON output.
+        # If output is specified, we use its schema.
+        # However, if tools/functions are provided, we MUST NOT force JSON mode
+        # as it conflicts with the model's native tool-calling token tags.
+        fmt = None
+        if not tools and output is not None:
+            fmt = output.model_json_schema()
+
         model = ChatOllama(
             base_url=f"{self.config.llm.url}:{self.config.llm.port}",
-            format=output.model_json_schema() if output is not None else "json",
+            format=fmt,
             model=model,
+            tools=tools,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp
             ),

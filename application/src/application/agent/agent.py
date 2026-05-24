@@ -1,6 +1,6 @@
 import json
 
-from typing import ClassVar
+from typing import ClassVar, Any
 from pydantic import ValidationError, BaseModel, Field
 
 from langchain.agents import create_agent
@@ -30,18 +30,21 @@ class OncowflowAgent:
     based on medical technical documents (MTD) and resources.
     """
 
-    model: ClassVar[str] = None
+    model: ClassVar[str | None] = None
     system_prompt: ClassVar[str] = ""
     question: ClassVar[str] = "Nothing"
-    models: ClassVar[list[str]] = None
-    ressources: ClassVar[str] = []
-    response_language = "french"
+    models: list[str] | None = None
+    ressources: ClassVar[list[str]] = []
+    response_language: str = "french"
+    output_format: type[BaseModel] | None = None
+    agent: Any = None
+    agent_name: str = ""
 
     def __init__(
         self,
         config: AppConfig,
-        mtd: DocumentReader = None,
-        output_format: BaseModel = None,
+        mtd: DocumentReader | None = None,
+        output_format: type[BaseModel] | None = None,
     ):
         """
         Initialize the OncowflowAgent.
@@ -60,8 +63,10 @@ class OncowflowAgent:
         llm_client = get_llm_client(config)
 
         # Determine the list of models to use
-        if self.models is None:
-            self.models = config.llm.models.split(",")
+        models_list = (
+            self.models if self.models is not None else config.llm.models.split(",")
+        )
+        self.models = models_list
 
         system_prompt = f"""Answer in {self.response_language} language, not mention it in the answer.
         {self.system_prompt}
@@ -70,28 +75,32 @@ class OncowflowAgent:
         self.logger = config.set_logger(
             "OncowAgent",
             default_context={
-                "model": self.models[0],
+                "model": models_list[0],
                 "output_format": self.output_format,
             },
         )
 
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
-            model=llm_client.chat(self.models[0], output=self.output_format),
+            model=llm_client.chat(
+                models_list[0],
+                output=self.output_format,
+            ),
             tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             middleware=[
-                ToolRetryMiddleware(
+                ToolRetryMiddleware[Any, Any](
                     max_retries=3,
                     backoff_factor=2.0,
                     initial_delay=1.0,
                 ),
-                ModelRetryMiddleware(
+                ModelRetryMiddleware[Any, Any](
                     max_retries=3,
                     backoff_factor=2.0,
                     initial_delay=1.0,
                 ),
             ],
             response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
+            # pyrefly: ignore [bad-argument-type]
             context_schema=Context,
             system_prompt=system_prompt,
         )
@@ -110,7 +119,7 @@ class OncowflowAgent:
         """
         )
 
-    def ask(self, question: str = None) -> dict:
+    def ask(self, question: str | None = None) -> Any:
         """
         Ask a question to the agent.
 
@@ -130,6 +139,7 @@ class OncowflowAgent:
 
         retry = 3
         validation_error = None
+        result = None
 
         for r in range(retry):
             # Invoke the agent with the user question and context (readers)
@@ -144,21 +154,39 @@ class OncowflowAgent:
 
             # if langchain tools work, load the response
             if "structured_response" in result:
-                if issubclass(self.output_format, BaseModel):
+                if self.output_format is not None and issubclass(
+                    self.output_format, BaseModel
+                ):
                     return result["structured_response"]
                 return json.loads(result["structured_response"])
 
             # Iterate through messages to find the AI response and validate it against the schema
             for msg in result["messages"]:
                 try:
-                    if type(msg).__name__ == "AIMessage":
+                    if (
+                        type(msg).__name__ in ("AIMessage", "AIMessageChunk")
+                        or getattr(msg, "type", None) == "ai"
+                    ):
                         self.logger.debug(f"AI response : {result['messages']}")
-                        # Validate the content against the Pydantic model
-                        if issubclass(self.output_format, BaseModel):
-                            return self.output_format.model_validate_json(msg.content)
 
-                        return json.loads(msg.content)
-                except ValidationError as e:
+                        # Strip markdown wrappers if any
+                        content = msg.content
+                        if isinstance(content, str):
+                            content = content.strip()
+                            if content.startswith("```json"):
+                                content = content[7:]
+                            if content.endswith("```"):
+                                content = content[:-3]
+                            content = content.strip()
+
+                        # Validate the content against the Pydantic model
+                        if self.output_format is not None and issubclass(
+                            self.output_format, BaseModel
+                        ):
+                            return self.output_format.model_validate_json(content)
+
+                        return json.loads(content)
+                except (ValidationError, ValueError, json.JSONDecodeError) as e:
                     validation_error = e
                     continue
             self.logger.info(f"Retry {r + 1}/{retry} ...")

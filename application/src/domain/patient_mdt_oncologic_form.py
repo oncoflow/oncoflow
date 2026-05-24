@@ -47,12 +47,15 @@ class PatientMDTOncologicForm(DocumentReader):
                 "DB Type %s not known, fallback to stdout", config.rcp.display_type
             )
 
-        self.db_client.set_uniq_index(collection="rcp_info", field="file")
-        db_document = self.db_client.get_or_create_document(
-            collection="rcp_info", document={"file": document}
-        )
-        self.mtd_datas["id"] = db_document["_id"]
-        self.dict_to_models(db_document)
+        if self.db_client is not None:
+            self.db_client.set_uniq_index(collection="rcp_info", field="file")
+            db_document = self.db_client.get_or_create_document(
+                collection="rcp_info", document={"file": document}
+            )
+            self.mtd_datas["id"] = db_document["_id"]
+            self.dict_to_models(db_document)
+        else:
+            self.mtd_datas["id"] = None
 
     def dict_to_models(self, dic: dict, subkey=None):
         for key, value in dic.items():
@@ -71,8 +74,10 @@ class PatientMDTOncologicForm(DocumentReader):
             self.read_model(model)
         return self.mtd_datas
 
-    def read_model(self, model: BaseModel, upsert: bool = False):
-        if upsert:
+    def read_model(
+        self, model: "type[PatientMDTOncologicForm.default_model]", upsert: bool = False
+    ):
+        if upsert and self.config.rcp.display_type == "mongodb":
             self.db_client = Mongodb(self.config)
         agents = [
             magent(config=self.config, mtd=self, output_format=model)
@@ -99,7 +104,7 @@ class PatientMDTOncologicForm(DocumentReader):
                     self.mtd_datas[model.__name__] = datas
             del a
         del agents
-        if upsert:
+        if upsert and self.db_client is not None:
             self.logger.info(self.mtd_datas)
             self.db_client.update_doc(
                 collection="rcp_info",
@@ -109,13 +114,15 @@ class PatientMDTOncologicForm(DocumentReader):
             self.db_client.close()
 
     def delete(self):
-        self.db_clientclient.delete_docs(
-            collections=["rcp_info", "rcp_metadata"],
-            filter={"file": self.mtd_datas["file"]},
-        )
+        if self.db_client is not None:
+            self.db_client.delete_docs(
+                collections=["rcp_info", "rcp_metadata"],
+                filter={"file": self.mtd_datas["file"]},
+            )
         if os.path.exists(self.document_path):
             os.remove(self.document_path)
-        self.db_client.close()
+        if self.db_client is not None:
+            self.db_client.close()
 
     def insert_datas_in_db(self, replace: bool = True):
         if self.db_client is not None:
@@ -141,7 +148,7 @@ class PatientMDTOncologicForm(DocumentReader):
 
     class default_model(BaseModel):
         question: ClassVar[str] = ""
-        agents: ClassVar[list[OncowflowAgent]] = [Agents.Administratives_agent]
+        agents: ClassVar[list[type[OncowflowAgent]]] = [Agents.Administratives_agent]
         agents_memory: ClassVar[bool] = False
 
     #  // // // // // Tested and Working classes // // // // //

@@ -1,9 +1,11 @@
 from src.application.config import AppConfig
+from src.infrastructure.llm.base import LLMConnect
 from src.infrastructure.llm.ollama import OllamaConnect
 from src.infrastructure.llm.openai import OpenAIConnect
+from src.infrastructure.llm.vllm import VllmConnect
 
 
-def get_llm_client(config=AppConfig):
+def get_llm_client(config: AppConfig) -> LLMConnect:
     """
     Factory function to return the appropriate LLM client instance
     based on the configured LLM type.
@@ -12,7 +14,7 @@ def get_llm_client(config=AppConfig):
         config (AppConfig): Application configuration.
 
     Returns:
-        OllamaConnect | OpenAIConnect: The resolved LLM client instance.
+        OllamaConnect | OpenAIConnect | VllmConnect: The resolved LLM client instance.
 
     Raises:
         ValueError: If config.llm.type is not supported.
@@ -22,8 +24,10 @@ def get_llm_client(config=AppConfig):
         return OllamaConnect(config)
     elif llm_type == "openai":
         return OpenAIConnect(config)
+    elif llm_type == "vllm":
+        return VllmConnect(config)
     else:
         raise ValueError(
             f"LLM type '{config.llm.type}' is not supported. "
-            f"Supported types are 'Ollama' and 'OpenAI'."
+            f"Supported types are 'Ollama', 'OpenAI', and 'vLLM'."
         )

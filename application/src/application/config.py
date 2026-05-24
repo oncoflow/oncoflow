@@ -23,7 +23,6 @@ from pathlib import Path
 
 # from environ-config
 import environ
-import langchain
 
 
 @environ.config(prefix="APP")
@@ -66,9 +65,11 @@ class AppConfig:
         Class for configuring the llm system.
         """
 
-        type = environ.var(default="Ollama", help="Type of llm system (ex Ollama)")
+        type = environ.var(
+            default="openai", help="Type of llm system (ex Ollama, OpenAI, vLLM)"
+        )
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
-        uri = environ.var(default="/v1", help="URI of llm system")
+        uri = environ.var(default="/v1", help="URI of llm system (openai style)")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
             default="qwen3.5:9b",
@@ -79,7 +80,7 @@ class AppConfig:
             help="Model of ocr in ollama llm system",
         )
         temp = environ.var(
-            default="1", converter=float, help="Temperature of llm system"
+            default="0.1", converter=float, help="Temperature of llm system"
         )
         embeddings = environ.var(
             default="bge-m3",
@@ -88,7 +89,7 @@ class AppConfig:
         )
         api_key = environ.var(
             default="ollama",
-            help="API Key for OpenAI system (if OpenAI is used)",
+            help="API Key for OpenAI/vLLM system (if OpenAI/vLLM is used)",
         )
 
     # llama3.1:70b-instruct-q4_0 mixtral:8x7b-instruct-v0.1-q8_0 llama3.1:8b-instruct-q8_0
@@ -210,7 +211,5 @@ class AppConfig:
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)
         logger.addHandler(ch)
-
-        langchain.debug = self.logs.langchaindebug
 
         return logger

@@ -1,7 +1,9 @@
 import uuid
 
 
-from langchain_core.vectorstores import VectorStoreRetriever
+from typing import Any
+
+from langchain_core.vectorstores import VectorStore, VectorStoreRetriever
 
 from src.application.config import AppConfig
 from src.infrastructure.llm.factory import get_llm_client
@@ -9,12 +11,14 @@ from src.infrastructure.llm.factory import get_llm_client
 
 
 class VectorialDataBase:
-    client = None
+    client: Any = None
+    clientdb: VectorStore
+    collection: Any = None
 
     # Initialize the client, collection and embeddings based on configuration.
     """Initialize the client, collection and embeddings based on configuration."""
 
-    def __init__(self, config=AppConfig, coll_prefix=None):
+    def __init__(self, config: AppConfig, coll_prefix: str | None = None):
 
         embedding_suffix = (
             config.llm.embeddings.replace("/", "_").replace(":", "_").replace("-", "_")
@@ -31,28 +35,43 @@ class VectorialDataBase:
 
         self.config = config
         self.embeddings = self.get_embedding()
-        self.init_client(config)
-        self.set_clientdb()
 
+        # Initialize the logger early so that subclass init_client calls can safely log warning/retry messages
         self.logger = config.set_logger(
             "vectorial_db",
             default_context={
                 "collection": self.coll_name,
                 "embeddings": self.embeddings,
-                "db_version": str(self.get_version()),
                 "db_type": config.dbvec.type.lower(),
             },
         )
 
-        self.logger.info("Class vectorial_db succesfully init")
+        self.init_client(config)
+        self.set_clientdb()
 
-    def init_client(self, config=AppConfig):
+        db_version = "unknown"
+        try:
+            db_version = self.get_version()
+        except Exception:
+            pass
+
+        self.logger.info(
+            "Class vectorial_db succesfully init - server version: %s", str(db_version)
+        )
+
+    def init_client(self, config: AppConfig):
         """
         Set init client
         """
         return None
 
+    def get_embedding(self) -> Any:
+        """Get embedding function."""
+        raise NotImplementedError("Subclasses must implement get_embedding")
+
     def get_version(self) -> str:
+        if self.client is None:
+            return "unknown"
         return self.client.get_version()
 
     def set_clientdb(self, flush=False):

@@ -22,6 +22,7 @@ from src.domain.common_ressources import PatientPriority
 
 app_conf = environ.to_config(AppConfig)
 
+db_client = None
 if app_conf.rcp.display_type == "mongodb":
     db_client = Mongodb(app_conf)
 
@@ -39,7 +40,10 @@ def delete(items: DataFrame):
 
 
 def update_date(filename, date):
-    db_client.update_docs("rcp_info", {"file": filename}, {"$set": {"ui_date": date}})
+    if db_client is not None:
+        db_client.update_docs(
+            "rcp_info", {"file": filename}, {"$set": {"ui_date": date}}
+        )
 
 
 def get_form_models():
@@ -185,7 +189,7 @@ def power_mode(element):
 
 
 def form_chat():
-    reader: PatientMDTOncologicForm = None
+    reader: PatientMDTOncologicForm | None = None
     st.header("Poser une question")
 
     if (
@@ -283,7 +287,11 @@ def form():
         )
 
         with tab_data:
-            data = db_client.database["rcp_info"].find_one({"file": filename})
+            data = (
+                db_client.database["rcp_info"].find_one({"file": filename})
+                if db_client is not None
+                else None
+            )
             if data:
                 models = get_form_models()
                 # On met PatientAdministrative en premier si présent
@@ -416,4 +424,5 @@ if "reader" in st.session_state:
     del st.session_state["reader"]
     st.session_state["reader"] = None
 
-db_client.close()
+if db_client is not None:
+    db_client.close()

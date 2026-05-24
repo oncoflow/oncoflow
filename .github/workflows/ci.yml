@@ -20,7 +20,7 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-          cache-dependency-path: 'application/uv.lock'
+          cache-dependency-glob: "**/application/uv.lock"
 
       - name: Install dependencies
         run: |

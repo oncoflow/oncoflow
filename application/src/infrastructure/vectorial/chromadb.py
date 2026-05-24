@@ -12,7 +12,7 @@ from src.infrastructure.vectorial.database import VectorialDataBase
 
 
 class Chromadb(VectorialDataBase):
-    def init_client(self, config=AppConfig):
+    def init_client(self, config: AppConfig):
         if config.chromadb.client == "HttpClient":
             self.client = chromadb.HttpClient(
                 host=config.chromadb.host, port=config.chromadb.port

@@ -67,6 +67,7 @@ class TestOllamaConnection(unittest.TestCase):
             base_url="http://127.0.0.1:11434",
             format={"type": "object"},
             model="llama3",
+            tools=[],
             temperature=0.7,
             validate_model_on_init=True,
         )

@@ -13,9 +13,13 @@ from pymilvus.exceptions import ConnectionNotExistException
 
 
 try:
-    from pymilvus.exceptions import PyMilvusDeprecationWarning
+    import pymilvus.exceptions as pymilvus_exceptions
 
-    warnings.filterwarnings("ignore", category=PyMilvusDeprecationWarning)
+    PyMilvusDeprecationWarning = getattr(
+        pymilvus_exceptions, "PyMilvusDeprecationWarning", None
+    )
+    if PyMilvusDeprecationWarning is not None:
+        warnings.filterwarnings("ignore", category=PyMilvusDeprecationWarning)
 except ImportError:
     pass
 
@@ -87,7 +91,7 @@ Milvus.drop = patched_drop
 
 
 class MilvusDB(VectorialDataBase):
-    def init_client(self, config=AppConfig):
+    def init_client(self, config: AppConfig):
         retry = 3
         for r in range(retry):
             try:

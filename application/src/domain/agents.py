@@ -1,5 +1,5 @@
 import inspect
-from typing import ClassVar
+from typing import ClassVar, Any
 
 
 from src.application.config import AppConfig
@@ -37,10 +37,10 @@ class Agents:
         def __init__(
             self,
             config: AppConfig,
-            mtd: DocumentReader = None,
-            output_format: any = None,
+            mtd: DocumentReader | None = None,
+            output_format: Any = None,
         ) -> None:
-            self.system_prompt = f"""
+            self.__class__.system_prompt = f"""
                 You are a distinguished medical expert specializing in {self.expert_type}.
                 Your task is to answer user questions by synthesizing patient data with scientific informations.
 
