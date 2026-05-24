@@ -312,6 +312,11 @@ class MTDComplete(BaseModel):
         description="Based on your specialty and provided documents, is the MDT file complete?",
     )
 
+    reflection: Optional[str] = Field(
+        default=None,
+        description="Detailed reflection, reasoning, or synthesis of the collaborative team discussion",
+    )
+
     what_missing: list[str] = Field(
         default=[], description="List of missing elements required for a decision"
     )

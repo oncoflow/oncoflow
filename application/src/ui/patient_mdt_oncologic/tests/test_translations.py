@@ -23,6 +23,15 @@ def test_translation_french():
         == "Priorité haute (Le patient doit être traité de toute urgence)"
     )
 
+    # Test reflection
+    assert translate("reflection") == "Réflexion / Synthèse du débat"
+    assert (
+        translate(
+            "Detailed reflection, reasoning, or synthesis of the collaborative team discussion"
+        )
+        == "Synthèse détaillée de la discussion et du raisonnement de l'équipe"
+    )
+
     # Test fallback
     assert translate("Some Unknown Label") == "Some Unknown Label"
 
@@ -36,3 +45,10 @@ def test_translation_english():
     assert translate("first_name") == "first_name"
     assert translate(WHOPerformanceStatus._0) == "No limitation of activities (none)"
     assert translate(PatientPriority.urgent) == "Patient must be treated urgently"
+    assert translate("reflection") == "reflection"
+    assert (
+        translate(
+            "Detailed reflection, reasoning, or synthesis of the collaborative team discussion"
+        )
+        == "Detailed reflection, reasoning, or synthesis of the collaborative team discussion"
+    )

@@ -53,6 +53,7 @@ TRANSLATIONS = {
     "Based on your specialty and provided documents, is the MDT file complete?": "En vous basant sur votre spécialité et les documents fournis, le dossier RCP est-il complet ?",
     "List of missing elements required for a decision": "Liste des éléments manquants requis pour une prise de décision",
     "list of references for missing items, including TNCD references": "Liste des références pour les éléments manquants, incluant le TNCD",
+    "Detailed reflection, reasoning, or synthesis of the collaborative team discussion": "Synthèse détaillée de la discussion et du raisonnement de l'équipe",
     # Field Name translations
     "first_name": "Prénom",
     "last_name": "Nom",
@@ -91,6 +92,7 @@ TRANSLATIONS = {
     "excerpt": "Extrait",
     "is_mtd_complete": "Dossier complet ?",
     "what_missing": "Éléments manquants",
+    "reflection": "Réflexion / Synthèse du débat",
     # Enum Values & Labels
     "Male": "Homme",
     "Female": "Femme",
