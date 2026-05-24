@@ -61,12 +61,27 @@ class PatientMDTOncologicForm(DocumentReader):
         for key, value in dic.items():
             for m in self.basemodel_list:
                 if m.__name__ == key:
-                    if len(m.agents) > 1:
+                    if len(m.agents) > 1 and not getattr(m, "collaborative", False):
                         for a in m.agents:
-                            self.mtd_datas[key] = {
-                                a.agent_name: m.model_validate(value[a.agent_name])
-                            }
+                            if isinstance(value, dict) and a.agent_name in value:
+                                self.mtd_datas[key] = {
+                                    a.agent_name: m.model_validate(value[a.agent_name])
+                                }
                     else:
+                        if (
+                            getattr(m, "collaborative", False)
+                            and len(m.agents) > 1
+                            and isinstance(value, dict)
+                        ):
+                            # Backward compatibility: extract nested data if saved in old agent-keyed format
+                            has_any_field = any(
+                                field in value for field in m.model_fields
+                            )
+                            if not has_any_field:
+                                for a in m.agents:
+                                    if a.agent_name in value:
+                                        value = value[a.agent_name]
+                                        break
                         self.mtd_datas[key] = m.model_validate(value)
 
     def read_all_models(self) -> dict:
@@ -79,31 +94,43 @@ class PatientMDTOncologicForm(DocumentReader):
     ):
         if upsert and self.config.rcp.display_type == "mongodb":
             self.db_client = Mongodb(self.config)
-        agents = [
-            magent(config=self.config, mtd=self, output_format=model)
-            for magent in model.agents
-        ]
-        memory = {}
-        for a in agents:
-            if memory and model.agents_memory:
-                model.question = f"""
-                Agents memory datas :
-                {memory}
-                {model.question}
-                """
-            datas = json.loads(a.ask(model.question).json())
-            self.logger.debug(f"DATAS : {datas} ...")
-            if datas:
-                if model.agents_memory:
-                    memory = memory | datas
-                if model.__name__ not in self.mtd_datas:
-                    self.mtd_datas[model.__name__] = {}
-                if len(agents) > 1:
-                    self.mtd_datas[model.__name__][a.agent_name] = datas
-                else:
-                    self.mtd_datas[model.__name__] = datas
-            del a
-        del agents
+
+        if getattr(model, "collaborative", False) and len(model.agents) > 1:
+            datas = OncowflowAgent.collaborative_debate(
+                agents_classes=model.agents,
+                question=model.question,
+                output_format=model,
+                config=self.config,
+                mtd=self,
+                logger=self.logger,
+            )
+            self.mtd_datas[model.__name__] = datas
+        else:
+            agents = [
+                magent(config=self.config, mtd=self, output_format=model)
+                for magent in model.agents
+            ]
+            memory = {}
+            for a in agents:
+                if memory and model.agents_memory:
+                    model.question = f"""
+                    Agents memory datas :
+                    {memory}
+                    {model.question}
+                    """
+                datas = json.loads(a.ask(model.question).json())
+                self.logger.debug(f"DATAS : {datas} ...")
+                if datas:
+                    if model.agents_memory:
+                        memory = memory | datas
+                    if model.__name__ not in self.mtd_datas:
+                        self.mtd_datas[model.__name__] = {}
+                    if len(agents) > 1:
+                        self.mtd_datas[model.__name__][a.agent_name] = datas
+                    else:
+                        self.mtd_datas[model.__name__] = datas
+                del a
+            del agents
         if upsert and self.db_client is not None:
             self.logger.info(self.mtd_datas)
             self.db_client.update_doc(
@@ -150,6 +177,7 @@ class PatientMDTOncologicForm(DocumentReader):
         question: ClassVar[str] = ""
         agents: ClassVar[list[type[OncowflowAgent]]] = [Agents.Administratives_agent]
         agents_memory: ClassVar[bool] = False
+        collaborative: ClassVar[bool] = False
 
     #  // // // // // Tested and Working classes // // // // //
 
@@ -334,7 +362,7 @@ class PatientMDTOncologicForm(DocumentReader):
         ]
         mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405
 
-        agents_memory = True
+        collaborative = True
 
         question: ClassVar[str] = """
             As an expert, determine if the MDT (Multidisciplinary Team) file is complete.

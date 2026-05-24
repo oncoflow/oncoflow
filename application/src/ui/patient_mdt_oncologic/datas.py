@@ -332,6 +332,7 @@ def form():
                             is_multi = (
                                 hasattr(model_cls, "agents")
                                 and len(model_cls.agents) > 1
+                                and not getattr(model_cls, "collaborative", False)
                             )
 
                             if is_multi and isinstance(model_data, dict):

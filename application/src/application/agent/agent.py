@@ -24,6 +24,12 @@ class ChatResponse(BaseModel):
     response: str = Field(description="The answer to the user question")
 
 
+class DebateTurn(BaseModel):
+    response: str = Field(
+        description="Votre avis clinique, arguments et recommandations basés sur votre spécialité."
+    )
+
+
 class OncowflowAgent:
     """
     Agent responsible for handling interactions with the LLM to answer questions
@@ -195,3 +201,92 @@ class OncowflowAgent:
         raise ValueError(
             f"Unable to find message, latest error : {validation_error} - AI response {result}"
         )
+
+    @classmethod
+    def collaborative_debate(
+        cls,
+        agents_classes: list[type["OncowflowAgent"]],
+        question: str,
+        output_format: type[BaseModel],
+        config: AppConfig,
+        mtd: DocumentReader,
+        logger: Any,
+    ) -> dict:
+        logger.info("Running collaborative debate mode...")
+
+        # Step 1: Initial Turn (Parallel Reasoning with DebateTurn format)
+        opinions = {}
+        for magent in agents_classes:
+            a = magent(config=config, mtd=mtd, output_format=DebateTurn)
+            logger.info(f"Debate: Requesting initial analysis from {a.agent_name}...")
+
+            opinion_prompt = (
+                f"En tant qu'expert en {a.expert_type if hasattr(a, 'expert_type') else a.agent_name}, "
+                f"analysez le dossier du patient et donnez vos arguments initiaux concernant la question suivante :\n{question}"
+            )
+            try:
+                res = a.ask(opinion_prompt)
+                opinions[a.agent_name] = res.response
+            except Exception as e:
+                logger.error(f"Error getting opinion from {a.agent_name}: {e}")
+                opinions[a.agent_name] = "Erreur ou pas d'avis fourni."
+            del a
+
+        # Step 2: Cross-Review & Debate Turn
+        compiled_opinions = "\n".join(
+            f"- **{name}** : {text}" for name, text in opinions.items()
+        )
+        logger.debug(f"Debate: Compiled initial opinions:\n{compiled_opinions}")
+
+        updated_opinions = {}
+        for magent in agents_classes:
+            a = magent(config=config, mtd=mtd, output_format=DebateTurn)
+            logger.info(f"Debate: Requesting cross-review from {a.agent_name}...")
+
+            debate_prompt = (
+                f"Nous menons un débat d'équipe multidisciplinaire (RCP). Voici les avis et arguments initiaux de tous les experts participants :\n\n"
+                f"{compiled_opinions}\n\n"
+                f"La question globale est : {question}\n\n"
+                f"Veuillez examiner les avis des autres experts. Donnez votre évaluation clinique finale affinée, en répondant aux points d'accord ou de désaccord, afin d'aider à dégager un consensus collectif."
+            )
+            try:
+                res = a.ask(debate_prompt)
+                updated_opinions[a.agent_name] = res.response
+            except Exception as e:
+                logger.error(f"Error getting updated opinion from {a.agent_name}: {e}")
+                updated_opinions[a.agent_name] = opinions.get(
+                    a.agent_name, "Pas d'avis fourni."
+                )
+            del a
+
+        # Step 3: Synthesis & Final Structured Consensus
+        final_compiled_opinions = "\n".join(
+            f"- **{name}** : {text}" for name, text in updated_opinions.items()
+        )
+        logger.debug(f"Debate: Compiled final opinions:\n{final_compiled_opinions}")
+
+        # Use the first agent as coordinator to generate final structured pydantic format
+        coordinator_agent_cls = agents_classes[0]
+        coordinator = coordinator_agent_cls(
+            config=config, mtd=mtd, output_format=output_format
+        )
+        logger.info(
+            f"Debate: Synthesizing final structured consensus using {coordinator.agent_name}..."
+        )
+
+        synthesis_prompt = (
+            f"Vous êtes le coordinateur du comité multidisciplinaire (RCP). Les experts ont terminé leur débat. "
+            f"Voici le résumé de leurs avis finaux :\n\n"
+            f"{final_compiled_opinions}\n\n"
+            f"La question globale est : {question}\n\n"
+            f"Veuillez synthétiser l'ensemble de la discussion, résoudre les éventuels désaccords pour parvenir à un consensus unique et remplir le format de réponse structuré attendu."
+        )
+
+        try:
+            datas = json.loads(coordinator.ask(synthesis_prompt).json())
+            return datas
+        except Exception as e:
+            logger.error(f"Error during debate synthesis: {e}")
+            raise e
+        finally:
+            del coordinator
