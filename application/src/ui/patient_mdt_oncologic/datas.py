@@ -18,6 +18,7 @@ from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.agents import Agents
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.domain.common_ressources import PatientPriority
+from src.ui.patient_mdt_oncologic.translations import translate
 
 
 app_conf = environ.to_config(AppConfig)
@@ -62,47 +63,51 @@ def get_form_models():
 def render_field(label, value):
     """Affiche un champ de manière formatée"""
 
+    translated_label = translate(label)
+
     if isinstance(value, PatientPriority):
+        translated_value = translate(value)
         if value.name == "urgent":
-            st.error(value.value, icon="🚨")
+            st.error(translated_value, icon="🚨")
         elif value.name == "medium":
-            st.warning(value.value, icon="⚠️")
+            st.warning(translated_value, icon="⚠️")
         elif value.name == "low":
-            st.success(value.value)
+            st.success(translated_value)
     elif isinstance(value, datetime):
-        st.markdown(f""" **{label}:** {value.strftime("%d-%m-%Y")}""")
+        st.markdown(f""" **{translated_label}:** {value.strftime("%d-%m-%Y")}""")
     elif isinstance(value, bool):
         if value:
-            st.success(label, icon="✔️")
+            st.success(translated_label, icon="✔️")
         else:
-            st.error(label, icon="✖️")
+            st.error(translated_label, icon="✖️")
     elif isinstance(value, list):
-        with st.expander(f"{label}", expanded=False):
+        with st.expander(f"{translated_label}", expanded=False):
             for item in value:
                 if isinstance(item, dict):
                     with st.container(border=True):
                         for k, v in item.items():
-                            st.markdown(f"**{k}:** {v}")
+                            st.markdown(f"**{translate(k)}:** {translate(v)}")
                 else:
-                    st.markdown(f"- {item}")
+                    st.markdown(f"- {translate(item)}")
     elif isinstance(value, dict):
         for field_name, field_info in value.items():
-            render_field(field_name, field_info)
+            render_field(translate(field_name), field_info)
     elif isinstance(value, Enum):
-        render_field(label, value.name)
+        render_field(translated_label, translate(value))
     elif isinstance(value, BaseModel):
-        render_field(label, value.__dict__)
+        render_field(translated_label, value.__dict__)
     elif isinstance(value, int):
-        st.markdown(f"**{label}:**  {value}")
+        st.markdown(f"**{translated_label}:**  {translate(value)}")
     elif not isinstance(value, NoneType):
-        if len(value) > 30:
+        translated_value = translate(value)
+        if len(str(translated_value)) > 30:
             st.markdown(
                 f"""
-            **{label}:**\\
-            {value}"""
+            **{translated_label}:**\\
+            {translated_value}"""
             )
         else:
-            st.markdown(f"**{label}:**  {value}")
+            st.markdown(f"**{translated_label}:**  {translated_value}")
 
 
 def render_fields(data: BaseModel):
@@ -111,7 +116,7 @@ def render_fields(data: BaseModel):
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
 
-        render_field(label, getattr(data, field_name))
+        render_field(translate(label), getattr(data, field_name))
 
 
 def render_model_data(data: BaseModel):
@@ -119,7 +124,7 @@ def render_model_data(data: BaseModel):
 
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
-        render_field(label, getattr(data, field_name))
+        render_field(translate(label), getattr(data, field_name))
 
 
 def rerun_all_models(filename):
@@ -304,7 +309,7 @@ def form():
                     title = (
                         model_cls.__doc__.strip() if model_cls.__doc__ else model_name
                     )
-                    with st.expander(f"📌 {title}", expanded=True):
+                    with st.expander(f"📌 {translate(title)}", expanded=True):
                         if (
                             f"pills_{title}_ai" in st.session_state
                             and st.session_state[f"pills_{title}_ai"]

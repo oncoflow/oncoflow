@@ -53,6 +53,16 @@ st.logo(
 )
 
 
+if "language" not in st.session_state:
+    st.session_state["language"] = "Français"
+
+st.sidebar.selectbox(
+    "🌐 Langue / Language",
+    options=["Français", "English"],
+    key="language",
+)
+
+
 pages = {}
 
 

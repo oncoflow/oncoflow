@@ -99,13 +99,20 @@ def get_rcp_data():
         # Données Manquantes
         missing_data = []
         if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
-            for agent_name, agent_data in d["MTDCompleted"].items():
-                if isinstance(agent_data, dict):
-                    mtd_comp = agent_data.get("mtd_complete")
-                    if isinstance(mtd_comp, dict):
-                        m = mtd_comp.get("what_missing", [])
-                        if isinstance(m, list):
-                            missing_data.extend(m)
+            if "mtd_complete" in d["MTDCompleted"]:
+                mtd_comp = d["MTDCompleted"].get("mtd_complete")
+                if isinstance(mtd_comp, dict):
+                    m = mtd_comp.get("what_missing", [])
+                    if isinstance(m, list):
+                        missing_data.extend(m)
+            else:
+                for agent_name, agent_data in d["MTDCompleted"].items():
+                    if isinstance(agent_data, dict):
+                        mtd_comp = agent_data.get("mtd_complete")
+                        if isinstance(mtd_comp, dict):
+                            m = mtd_comp.get("what_missing", [])
+                            if isinstance(m, list):
+                                missing_data.extend(m)
         else:
             missing_data.extend(["no data"])
 
