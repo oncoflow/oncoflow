@@ -30,6 +30,44 @@ class StrictChatOpenAI(ChatOpenAI):
     def bind_tools(
         self, tools: Any, *, strict: Optional[bool] = None, **kwargs: Any
     ) -> Any:
+        # Check if the API endpoint is official OpenAI or a local/custom OpenAI-compatible layer (like Ollama/vLLM)
+        is_openai_official = True
+        base_url = (
+            getattr(self, "openai_api_base", None)
+            or getattr(self, "base_url", None)
+            or ""
+        )
+        base_url_str = str(base_url)
+
+        api_key_obj = getattr(self, "openai_api_key", None) or getattr(
+            self, "api_key", None
+        )
+        api_key_str = ""
+        if api_key_obj is not None:
+            if hasattr(api_key_obj, "get_secret_value"):
+                api_key_str = api_key_obj.get_secret_value()
+            else:
+                api_key_str = str(api_key_obj)
+
+        if "api.openai.com" not in base_url_str and (
+            base_url_str
+            or api_key_str == "ollama"
+            or "localhost" in base_url_str
+            or "127.0.0.1" in base_url_str
+        ):
+            is_openai_official = False
+
+        if not is_openai_official:
+            # For non-official OpenAI backends (Ollama, vLLM, etc.):
+            # 1. Strip response_format if present to prevent conflicting with tool calling in Ollama
+            if "response_format" in self.model_kwargs:
+                self.model_kwargs = self.model_kwargs.copy()
+                self.model_kwargs.pop("response_format", None)
+            kwargs.pop("response_format", None)
+
+            # 2. Call standard bind_tools without forcing strict=True (which local endpoints don't support)
+            return super().bind_tools(tools, strict=False, **kwargs)
+
         # Force strict=True to prevent "ValueError: Only strict function tools can be auto-parsed"
         # which is required by OpenAI structured output completions beta parse engine.
         # Also remove conflicting response_format if tools are being bound.

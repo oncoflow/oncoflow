@@ -366,8 +366,8 @@ class PatientMDTOncologicForm(DocumentReader):
 
         question: ClassVar[str] = """
             As an expert, determine if the MDT (Multidisciplinary Team) file is complete.
-            Are there missing elements required for a decision that doesn't present in agent memory ?
-            You can use search_on_ressources tool what type of document is needed.
+            Are there missing elements required for a treatment decision?
+            You can use search_on_ressources tool what type of elements/documents is needed.
             You can use tools multiple times for each element
             """
 

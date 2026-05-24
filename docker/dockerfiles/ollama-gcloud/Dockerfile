@@ -15,7 +15,7 @@ ENV OLLAMA_KEEP_ALIVE -1
 # # Store the model weights in the container image
 RUN ollama serve \
     & sleep 5 \
-    && ollama pull gemma4:31b \
+    && ollama pull gemma4:26b \
     && ollama pull bge-m3
 
 # Start Ollama

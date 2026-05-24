@@ -66,13 +66,13 @@ class AppConfig:
         """
 
         type = environ.var(
-            default="openai", help="Type of llm system (ex Ollama, OpenAI, vLLM)"
+            default="ollama", help="Type of llm system (ex Ollama, OpenAI, vLLM)"
         )
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
         uri = environ.var(default="/v1", help="URI of llm system (openai style)")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
-            default="gemma4:e4b",
+            default="gemma4:26b",
             help="Model of llm system, type all for test all ollama models",
         )
         ocrmodels = environ.var(
