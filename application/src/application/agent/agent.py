@@ -45,6 +45,7 @@ class OncowflowAgent:
     output_format: type[BaseModel] | None = None
     agent: Any = None
     agent_name: str = ""
+    reasoning: bool = False
 
     def __init__(
         self,
@@ -91,6 +92,7 @@ class OncowflowAgent:
             model=llm_client.chat(
                 models_list[0],
                 output=self.output_format,
+                reasoning=True,
             ),
             tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             middleware=[
@@ -125,7 +127,11 @@ class OncowflowAgent:
         """
         )
 
-    def ask(self, question: str | None = None) -> Any:
+    def ask(
+        self,
+        question: str | None = None,
+        output_format: type[BaseModel] | str | None = None,
+    ) -> Any:
         """
         Ask a question to the agent.
 
@@ -142,6 +148,9 @@ class OncowflowAgent:
 
         if question is None:
             question = self.question
+
+        if output_format is None:
+            output_format = self.output_format
 
         retry = 3
         validation_error = None
@@ -196,6 +205,8 @@ class OncowflowAgent:
                     validation_error = e
                     continue
             self.logger.info(f"Retry {r + 1}/{retry} ...")
+            question = f"""You made a mistake, retry to answer the question : {question}\n\n
+                        Error : {validation_error}"""
 
         # Raise error if no valid structured response was found
         raise ValueError(
@@ -225,7 +236,7 @@ class OncowflowAgent:
                 f"analysez le dossier du patient et donnez vos arguments initiaux concernant la question suivante :\n{question}"
             )
             try:
-                res = a.ask(opinion_prompt)
+                res = a.ask(opinion_prompt, DebateTurn)
                 opinions[a.agent_name] = res.response
             except Exception as e:
                 logger.error(f"Error getting opinion from {a.agent_name}: {e}")
@@ -250,7 +261,7 @@ class OncowflowAgent:
                 f"Veuillez examiner les avis des autres experts. Donnez votre évaluation clinique finale affinée, en répondant aux points d'accord ou de désaccord, afin d'aider à dégager un consensus collectif."
             )
             try:
-                res = a.ask(debate_prompt)
+                res = a.ask(debate_prompt, DebateTurn)
                 updated_opinions[a.agent_name] = res.response
             except Exception as e:
                 logger.error(f"Error getting updated opinion from {a.agent_name}: {e}")
@@ -283,7 +294,7 @@ class OncowflowAgent:
         )
 
         try:
-            datas = json.loads(coordinator.ask(synthesis_prompt).json())
+            datas = json.loads(coordinator.ask(synthesis_prompt, output_format).json())
             return datas
         except Exception as e:
             logger.error(f"Error during debate synthesis: {e}")

@@ -131,7 +131,7 @@ class OpenAIConnect(LLMConnect):
 
         self.logger.info("Succesfully connected")
 
-    def chat(self, model, output=None, temperature=None, tools=[]):
+    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
         # We set JSON mode if output is specified (matching the Ollama behavior)
         # However, if tools are provided, we must not force JSON mode to avoid conflicts with tool calling.
         model_kwargs = {}
@@ -143,6 +143,7 @@ class OpenAIConnect(LLMConnect):
             api_key=self.api_key,
             model=model,
             tools=tools,
+            reasoning={"effort": "medium"} if reasoning else None,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp
             ),

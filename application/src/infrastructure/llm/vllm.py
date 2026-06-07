@@ -89,10 +89,9 @@ class VllmConnect(LLMConnect):
 
         self.logger.info("Successfully connected to vLLM server")
 
-    def chat(self, model, output=None, temperature=None, tools=[]):
-        # We set JSON mode if output is specified (matching the Ollama/OpenAI behavior)
+    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
         model_kwargs = {}
-        if output is not None:
+        if output is not None and not tools:
             model_kwargs["response_format"] = {"type": "json_object"}
 
         model_instance = ChatOpenAI(
@@ -100,6 +99,7 @@ class VllmConnect(LLMConnect):
             api_key=self.api_key,
             model=model,
             tools=tools,
+            reasoning={"effort": "medium"} if reasoning else None,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp
             ),

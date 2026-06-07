@@ -72,7 +72,7 @@ class AppConfig:
         uri = environ.var(default="/v1", help="URI of llm system (openai style)")
         port = environ.var(default="11434", help="Port of llm system")
         models = environ.var(
-            default="gemma4:26b",
+            default="gemma4:12b",
             help="Model of llm system, type all for test all ollama models",
         )
         ocrmodels = environ.var(
@@ -80,7 +80,7 @@ class AppConfig:
             help="Model of ocr in ollama llm system",
         )
         temp = environ.var(
-            default="0.1", converter=float, help="Temperature of llm system"
+            default="1", converter=float, help="Temperature of llm system"
         )
         embeddings = environ.var(
             default="bge-m3",

@@ -146,7 +146,7 @@ class DocumentReader:
 
         self.default_loader = config.rcp.doc_type
 
-        self.logger.info(
+        self.logger.debug(
             f"Class reader succesfully init, Start reading document {self.document_path}"
         )
 
@@ -212,7 +212,7 @@ class DocumentReader:
         Then, adds the chunks to a VectorStore.
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
-        self.logger.info(f"Start reading document {self.document_path}")
+        self.logger.debug(f"Start reading document {self.document_path}")
 
         self.chunked_documents = self._load_document(self.document_path)
 

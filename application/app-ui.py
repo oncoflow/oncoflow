@@ -1,3 +1,7 @@
+import os
+
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+
 import logging
 import warnings
 import streamlit as st

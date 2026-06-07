@@ -25,6 +25,7 @@ class LLMConnect(ABC):
         output: Any = None,
         temperature: float | None = None,
         tools: List[Any] = [],
+        reasoning: bool = True,
     ) -> Any:
         """Create and return a LangChain ChatModel instance."""
         pass

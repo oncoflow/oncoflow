@@ -29,7 +29,7 @@ services:
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
   ollama:
-    image: ollama/ollama
+    image: ollama/ollama:0.30.6
     restart: always
     ports:
      - 11434:11434

@@ -24,13 +24,13 @@ class OllamaConnect(LLMConnect):
 
         self.logger.info("Succesfully connected")
 
-    def chat(self, model, output=None, temperature=None, tools=[]):
+    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
         # In Ollama, format="json" or a schema forces strict JSON output.
         # If output is specified, we use its schema.
         # However, if tools/functions are provided, we MUST NOT force JSON mode
         # as it conflicts with the model's native tool-calling token tags.
         fmt = None
-        if not tools and output is not None:
+        if output is not None and not tools:
             fmt = output.model_json_schema()
 
         model = ChatOllama(
@@ -38,6 +38,8 @@ class OllamaConnect(LLMConnect):
             format=fmt,
             model=model,
             tools=tools,
+            reasoning=reasoning,
+            num_predict=2048,
             temperature=(
                 temperature if temperature is not None else self.config.llm.temp
             ),

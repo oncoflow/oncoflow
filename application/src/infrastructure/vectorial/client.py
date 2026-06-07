@@ -1,4 +1,3 @@
-from src.infrastructure.vectorial.chromadb import Chromadb
 from src.infrastructure.vectorial.mongodb import Mongodb
 from src.infrastructure.vectorial.milvus import MilvusDB
 from src.infrastructure.vectorial.database import VectorialDataBase
@@ -12,6 +11,8 @@ class VectorialDataBaseClient:
 
     def __init__(self, config: AppConfig, coll_prefix: str | None = None) -> None:
         if config.dbvec.type.lower() == "chromadb":
+            from src.infrastructure.vectorial.chromadb import Chromadb
+
             self.vectordb = Chromadb(config, coll_prefix)
         elif config.dbvec.type.lower() == "mongodb":
             self.vectordb = Mongodb(config, coll_prefix)

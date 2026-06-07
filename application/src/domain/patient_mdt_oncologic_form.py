@@ -132,7 +132,9 @@ class PatientMDTOncologicForm(DocumentReader):
                 del a
             del agents
         if upsert and self.db_client is not None:
-            self.logger.info(self.mtd_datas)
+            self.logger.debug(
+                f"Document final inserted: {json.dumps(self.mtd_datas, default=str)}"
+            )
             self.db_client.update_doc(
                 collection="rcp_info",
                 filter={"file": self.mtd_datas["file"]},
