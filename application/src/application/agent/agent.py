@@ -26,7 +26,7 @@ class ChatResponse(BaseModel):
 
 class DebateTurn(BaseModel):
     response: str = Field(
-        description="Votre avis clinique, arguments et recommandations basés sur votre spécialité."
+        description="Your clinical opinion, arguments, and recommendations based on your specialty."
     )
 
 
@@ -232,8 +232,8 @@ class OncowflowAgent:
             logger.info(f"Debate: Requesting initial analysis from {a.agent_name}...")
 
             opinion_prompt = (
-                f"En tant qu'expert en {a.expert_type if hasattr(a, 'expert_type') else a.agent_name}, "
-                f"analysez le dossier du patient et donnez vos arguments initiaux concernant la question suivante :\n{question}"
+                f"As an expert in {a.expert_type if hasattr(a, 'expert_type') else a.agent_name}, "
+                f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}"
             )
             try:
                 res = a.ask(opinion_prompt, DebateTurn)
@@ -255,10 +255,10 @@ class OncowflowAgent:
             logger.info(f"Debate: Requesting cross-review from {a.agent_name}...")
 
             debate_prompt = (
-                f"Nous menons un débat d'équipe multidisciplinaire (RCP). Voici les avis et arguments initiaux de tous les experts participants :\n\n"
+                f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
                 f"{compiled_opinions}\n\n"
-                f"La question globale est : {question}\n\n"
-                f"Veuillez examiner les avis des autres experts. Donnez votre évaluation clinique finale affinée, en répondant aux points d'accord ou de désaccord, afin d'aider à dégager un consensus collectif."
+                f"The overall question is: {question}\n\n"
+                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help reach a collective consensus."
             )
             try:
                 res = a.ask(debate_prompt, DebateTurn)
@@ -266,7 +266,7 @@ class OncowflowAgent:
             except Exception as e:
                 logger.error(f"Error getting updated opinion from {a.agent_name}: {e}")
                 updated_opinions[a.agent_name] = opinions.get(
-                    a.agent_name, "Pas d'avis fourni."
+                    a.agent_name, "No opinion provided."
                 )
             del a
 
@@ -286,11 +286,11 @@ class OncowflowAgent:
         )
 
         synthesis_prompt = (
-            f"Vous êtes le coordinateur du comité multidisciplinaire (RCP). Les experts ont terminé leur débat. "
-            f"Voici le résumé de leurs avis finaux :\n\n"
+            f"You are the coordinator of the multidisciplinary team (MDT/RCP). The experts have completed their debate. "
+            f"Here is the summary of their final opinions:\n\n"
             f"{final_compiled_opinions}\n\n"
-            f"La question globale est : {question}\n\n"
-            f"Veuillez synthétiser l'ensemble de la discussion, résoudre les éventuels désaccords pour parvenir à un consensus unique et remplir le format de réponse structuré attendu."
+            f"The overall question is: {question}\n\n"
+            f"Please synthesize the entire discussion, resolve any disagreements to reach a single consensus, and fill out the expected structured response format."
         )
 
         try:
