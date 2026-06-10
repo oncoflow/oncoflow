@@ -23,6 +23,11 @@ from pathlib import Path
 
 # from environ-config
 import environ
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 
 
 @environ.config(prefix="APP")

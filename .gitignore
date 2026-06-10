@@ -6,3 +6,5 @@ chromadb
 */chroma
 documents_parser_llm/rcp
 docker/compose/volumes/*
+.env
+.env.*

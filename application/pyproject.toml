@@ -37,6 +37,9 @@ dependencies = [
     "uuid>=1.30",
     "pytz>=2026.2",
     "protobuf<7.0.0",
+    "python-dotenv>=1.0.1",
+    "opencv-python-headless",
+
 ]
 
 [dependency-groups]
