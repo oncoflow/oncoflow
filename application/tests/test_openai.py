@@ -75,9 +75,10 @@ class TestOpenAIConnection(unittest.TestCase):
             api_key="test-api-key",
             model="gpt-4o",
             tools=[],
-            reasoning=None,
+            reasoning={"effort": "medium"},
             temperature=0.7,
             model_kwargs={"response_format": {"type": "json_object"}},
+            streaming=True,
         )
 
     @patch("src.infrastructure.llm.openai.ChatOpenAI.bind_tools")

@@ -148,6 +148,7 @@ class OpenAIConnect(LLMConnect):
                 temperature if temperature is not None else self.config.llm.temp
             ),
             model_kwargs=model_kwargs,
+            streaming=True,
         )
         # Save output schema for use in bind_tools bypassing Pydantic setattr constraints
         model_instance.__dict__["_output_schema"] = output

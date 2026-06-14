@@ -101,20 +101,26 @@ class TestCollaborativeDebate(unittest.TestCase):
             "Anticipated nested comment",
         )
 
+    @patch("src.application.agent.collaborate.Agents.Coordinator_agent")
     @patch("src.application.reader.get_llm_client")
     @patch("src.domain.patient_mdt_oncologic_form.Mongodb")
     @patch("src.domain.patient_mdt_oncologic_form.DocumentReader.read_document")
     @patch("src.application.reader.VectorialDataBaseClient")
     def test_read_model_collaborative_debate_flow(
-        self, mock_vecdb, mock_read_doc, mock_mongodb, mock_get_llm
+        self,
+        mock_vecdb,
+        mock_read_doc,
+        mock_mongodb,
+        mock_get_llm,
+        mock_coordinator_cls,
     ):
         mock_get_llm.return_value = MagicMock()
+        mock_coordinator_cls.return_value = coordinator_instance = MagicMock()
         form = PatientMDTOncologicForm(self.mock_config, "test_doc.pdf")
 
         # Create instances of mocked agents
         agent1_instance = MagicMock()
         agent2_instance = MagicMock()
-        coordinator_instance = MagicMock()
 
         self.mock_agent1_cls.return_value = agent1_instance
         self.mock_agent2_cls.return_value = agent2_instance
@@ -125,17 +131,12 @@ class TestCollaborativeDebate(unittest.TestCase):
         agent1_instance.ask.return_value = opinion1
         agent2_instance.ask.return_value = opinion2
 
-        # When coordinator is instantiated, mock it separately or use agent1_instance
-        # In step 3, coordinator_agent_cls = model.agents[0] (which is mock_agent1_cls)
-        # It gets re-instantiated with output_format=model.
         # We side_effect mock_agent1_cls so that:
         # First call (round 1): agent1_instance
         # Second call (round 2): agent1_instance
-        # Third call (synthesis): coordinator_instance
         self.mock_agent1_cls.side_effect = [
             agent1_instance,
             agent1_instance,
-            coordinator_instance,
         ]
         self.mock_agent2_cls.side_effect = [agent2_instance, agent2_instance]
 

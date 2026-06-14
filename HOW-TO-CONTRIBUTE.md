@@ -75,7 +75,7 @@ Les ports locaux indispensables pour l'application sont :
 
 ### 2. Configuration des Modèles IA locaux (Ollama)
 
-Oncoflow nécessite trois types de modèles locaux pour fonctionner. Vous devez les récupérer via le client Ollama avant de démarrer l'application. 
+Oncoflow nécessite trois types de modèles locaux pour fonctionner. Vous devez les récupérer via le client Ollama avant de démarrer l'application.
 
 Voici les correspondances avec les variables de configuration (`AppConfig`) :
 

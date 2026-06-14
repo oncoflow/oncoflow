@@ -116,6 +116,26 @@ def get_rcp_data():
         else:
             missing_data.extend(["no data"])
 
+        # Intervention requise
+        intervention_required = None
+        intervention_type = None
+        if "isInterventionRequiered" in d and isinstance(
+            d["isInterventionRequiered"], dict
+        ):
+            int_data = d["isInterventionRequiered"]
+            if "intervention_required" in int_data:
+                intervention_required = int_data.get("intervention_required")
+                intervention_type = int_data.get("intervention_type")
+            else:
+                for agent_data in int_data.values():
+                    if (
+                        isinstance(agent_data, dict)
+                        and "intervention_required" in agent_data
+                    ):
+                        intervention_required = agent_data.get("intervention_required")
+                        intervention_type = agent_data.get("intervention_type")
+                        break
+
         cards_data.append(
             {
                 "file": d["file"],
@@ -127,6 +147,8 @@ def get_rcp_data():
                 "urgency": urgency_level,
                 "urgency_score": urgency_score,
                 "link": f"datas/?file={d['file']}",
+                "intervention_required": intervention_required,
+                "intervention_type": intervention_type,
             }
         )
 
@@ -231,13 +253,24 @@ def display_as_list(data):
         row_cols[2].markdown(urgency_display)
 
         # Colonne Statut
-        if item["missing"]:
-            with row_cols[3]:
+        with row_cols[3]:
+            if item["missing"]:
                 with st.expander(f"⚠️ Incomplet ({len(item['missing'])})"):
                     for m in item["missing"]:
                         st.markdown(f"- {m}")
-        else:
-            row_cols[3].markdown("✅ Complet")
+            else:
+                st.markdown("✅ Complet")
+
+            # Statut Intervention
+            if item.get("intervention_required") is True:
+                int_type = (
+                    f" ({item['intervention_type']})"
+                    if item.get("intervention_type")
+                    else ""
+                )
+                st.markdown(f"💉 **Intervention requise**{int_type}")
+            elif item.get("intervention_required") is False:
+                st.markdown("✔️ Pas d'intervention")
 
         # Colonne Experts
         if item["experts"]:
@@ -285,11 +318,29 @@ def display_as_cards(data):
                     ":orange-badge[⚠️ Dossier Incomplet]" if item["missing"] else ""
                 )
 
+                badge_intervention = ""
+                if item.get("intervention_required") is True:
+                    int_type = (
+                        f" ({item['intervention_type']})"
+                        if item.get("intervention_type")
+                        else ""
+                    )
+                    badge_intervention = (
+                        f":orange-badge[💉 Intervention conseillée{int_type}]"
+                    )
+                elif item.get("intervention_required") is False:
+                    badge_intervention = ":green-badge[Pas d'intervention]"
+
                 st.subheader(
                     item["patient"],
                     help=f"Refresh : {item['date_refresh'].strftime('%d-%m-%Y')} - Fichier: {item['file']}",
                 )
-                st.markdown(f"{badge_urgent} {badge_missing}")
+
+                # Combine badges
+                badges = [badge_urgent, badge_missing, badge_intervention]
+                badges_str = " ".join([b for b in badges if b])
+                if badges_str:
+                    st.markdown(badges_str)
 
                 if item["date"] is not None:
                     st.caption(f"📅 {item['date'].strftime('%d-%m-%Y')}")

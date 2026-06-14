@@ -23,6 +23,11 @@ try:
 except ImportError:
     pass
 
+import logging
+
+logging.getLogger("pymilvus").setLevel(logging.ERROR)
+warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
+
 # Monkeypatch PyMilvus connection manager to seamlessly route generated MilvusClient connections
 # to the ORM 'default' connection. This is necessary because MilvusClient in Milvus v2.5+
 # generates unique connection aliases that are not registered in the legacy ORM connections manager,

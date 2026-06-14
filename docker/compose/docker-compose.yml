@@ -45,17 +45,16 @@ services:
               count: 1
               capabilities: [gpu]
 
-  vllm-gemma4:
-    image: vllm/vllm-openai:latest
-    container_name: vllm-gemma4-server
+  llama-cpp-chat:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    container_name: llama-cpp-chat-server
     environment:
-      - HF_TOKEN=${HF_TOKEN:-} # Optionnel si vous utilisez des modèles gated
-      - VLLM_COLOR_LOGS=1
       - NVIDIA_VISIBLE_DEVICES=all
     ports:
-      - "8080:8000"
+      - "8081:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface:z
+      - ./model-config:/models-config
     ipc: host
     devices:
         - nvidia.com/gpu=all
@@ -66,22 +65,72 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    # Modèle AWQ pré-quantifié de la communauté (non gated - ne nécessite pas de HF_TOKEN)
-    # Très rapide et compatible avec toutes les générations de GPU NVIDIA (Ampere, Turing, etc.)
     command: >
-      --model solidrust/gemma-2-9b-it-AWQ
-      --port 8000
-      --quantization awq_marlin
-      --max-model-len 1536
-      --gpu-memory-utilization 0.62
-      --max-num-seqs 32
-      --enforce-eager
-      --served-model-name gemma4-local
-      --enable-auto-tool-choice
-      --tool-call-parser hermes
+      -hf Qwen/Qwen3-14B-GGUF:Q4_K_M
+      --port 8080
+      --host 0.0.0.0
+      -c 40960
+      -ngl 40
+      --temp 1.0
+      --top-p 0.95
+      --top-k 40
+      --min-p 0
+      --cache-type-k q4_0
+      --cache-type-v q4_0
+      --jinja
+      -n 32768
+      --presence-penalty 2.0
+      --repeat-penalty 1.0
+      --no-context-shift
     networks:
       - search-community
     restart: unless-stopped
+
+  llama-cpp-embeddings:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: llama-cpp-embeddings-server
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    ports:
+      - "8082:8080"
+    volumes:
+      - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface:z
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    command: >
+      --hf-repo gpustack/bge-m3-GGUF
+      --hf-file bge-m3-Q4_K_M.gguf
+      --port 8080
+      --host 0.0.0.0
+      --embedding
+      -c 8192
+      -b 8192
+      -ub 8192
+    networks:
+      - search-community
+    restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-proxy
+    #network_mode: "host"
+    ports:
+     - 4000:4000
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    command: [ "--config", "/app/config.yaml", "--port", "4000" ]
+    depends_on:
+      - llama-cpp-chat
+      - llama-cpp-embeddings
+    restart: unless-stopped
+    networks:
+      - search-community
 
 
   # chromadb:

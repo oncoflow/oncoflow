@@ -1,4 +1,5 @@
 import json
+import re
 
 from typing import ClassVar, Any
 from pydantic import ValidationError, BaseModel, Field
@@ -11,13 +12,52 @@ from src.infrastructure.llm.factory import get_llm_client
 # Legacy import to support existing patch-based unit tests
 from src.application.reader import DocumentReader
 from src.application.agent.tools import (
-    search_on_mtd,
     search_on_ressources,
     get_mtd_markdown,
     Context,
 )
-from langchain.agents.structured_output import ToolStrategy
 from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
+
+
+def extract_json_str(text: str) -> str:
+    """
+    Extract the most likely valid JSON substring from text.
+    """
+    # 1. Try to find content inside ```json ... ``` blocks first
+    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    for block in json_blocks:
+        block_clean = block.strip()
+        try:
+            json.loads(block_clean)
+            return block_clean
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Try to find content inside general ``` ... ``` blocks
+    code_blocks = re.findall(r"```\s*(.*?)\s*```", text, re.DOTALL)
+    for block in code_blocks:
+        block_clean = block.strip()
+        try:
+            json.loads(block_clean)
+            return block_clean
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Try to scan all braces to find the first valid JSON object
+    open_braces = [m.start() for m in re.finditer(r"\{", text)]
+    close_braces = [m.start() for m in re.finditer(r"\}", text)]
+
+    for start in open_braces:
+        for end in reversed(close_braces):
+            if end > start:
+                candidate = text[start : end + 1]
+                try:
+                    json.loads(candidate)
+                    return candidate
+                except json.JSONDecodeError:
+                    pass
+
+    return text.strip()
 
 
 class ChatResponse(BaseModel):
@@ -45,13 +85,13 @@ class OncowflowAgent:
     output_format: type[BaseModel] | None = None
     agent: Any = None
     agent_name: str = ""
-    reasoning: bool = False
 
     def __init__(
         self,
         config: AppConfig,
         mtd: DocumentReader | None = None,
         output_format: type[BaseModel] | None = None,
+        reasoning: bool = True,
     ):
         """
         Initialize the OncowflowAgent.
@@ -75,8 +115,15 @@ class OncowflowAgent:
         )
         self.models = models_list
 
+        if reasoning is None:
+            reasoning = getattr(config.llm, "reasoning", True)
+
         system_prompt = f"""Answer in {self.response_language} language, not mention it in the answer.
         {self.system_prompt}
+        You MUST respond with valid JSON and nothing else.
+        No markdown, no explanation, no code blocks — just raw JSON.
+        Respond with JSON matching this exact schema:
+        {json.dumps(self.output_format.model_json_schema(), indent=2)}
         """
         # Configure logging for the agent
         self.logger = config.set_logger(
@@ -87,14 +134,26 @@ class OncowflowAgent:
             },
         )
 
+        # Set up readers for the main document and additional resources
+        if mtd is not None:
+            self.reader = mtd
+        self.additionnal_readers = [
+            DocumentReader(config, ressource, document_type="ressource")
+            for ressource in self.ressources
+        ]
+        tools = [get_mtd_markdown]
+        if len(self.additionnal_readers) > 0:
+            tools.append(search_on_ressources)
+
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
             model=llm_client.chat(
                 models_list[0],
-                output=self.output_format,
-                reasoning=True,
+                reasoning=reasoning,
+                # output=self.output_format,
+                # tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             ),
-            tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
+            tools=tools,
             middleware=[
                 ToolRetryMiddleware[Any, Any](
                     max_retries=3,
@@ -107,30 +166,63 @@ class OncowflowAgent:
                     initial_delay=1.0,
                 ),
             ],
-            response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
+            # response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
+            response_format=self.output_format,
             # pyrefly: ignore [bad-argument-type]
             context_schema=Context,
             system_prompt=system_prompt,
         )
-
-        # Set up readers for the main document and additional resources
-        if mtd is not None:
-            self.reader = mtd
-        self.additionnal_readers = [
-            DocumentReader(config, ressource, document_type="ressource")
-            for ressource in self.ressources
-        ]
 
         self.logger.info(
             f"""Agent succefully created with prompt :
         {system_prompt}
         """
         )
+        self.latest_thinking = ""
+
+    def extract_thinking(self, messages: list) -> str:
+        thinking_parts = []
+        for msg in messages:
+            if (
+                type(msg).__name__ in ("AIMessage", "AIMessageChunk")
+                or getattr(msg, "type", None) == "ai"
+            ):
+                # 1. Check reasoning_content attribute/kwargs
+                reasoning = getattr(msg, "reasoning_content", None)
+                if not reasoning and isinstance(
+                    getattr(msg, "additional_kwargs", None), dict
+                ):
+                    reasoning = msg.additional_kwargs.get("reasoning_content")
+                if reasoning:
+                    thinking_parts.append(reasoning.strip())
+                    continue
+
+                content = msg.content
+                # 2. Check block list
+                if isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            if part.get("type") == "thinking":
+                                think_text = (
+                                    part.get("thinking") or part.get("text") or ""
+                                )
+                                if think_text:
+                                    thinking_parts.append(think_text.strip())
+                # 3. Check string with <think> tags
+                elif isinstance(content, str):
+                    matches = re.findall(
+                        r"<think>(.*?)(?:</think>|$)", content, re.DOTALL
+                    )
+                    for m in matches:
+                        if m.strip():
+                            thinking_parts.append(m.strip())
+        return "\n\n".join(thinking_parts)
 
     def ask(
         self,
         question: str | None = None,
         output_format: type[BaseModel] | str | None = None,
+        callbacks: list | None = None,
     ) -> Any:
         """
         Ask a question to the agent.
@@ -165,8 +257,10 @@ class OncowflowAgent:
                     additionnal_readers=self.additionnal_readers,
                     logger=self.logger,
                 ),
+                config={"callbacks": callbacks} if callbacks else None,
             )
-
+            # Extract and store the thinking process from the execution history
+            self.latest_thinking = self.extract_thinking(result.get("messages", []))
             # if langchain tools work, load the response
             if "structured_response" in result:
                 if self.output_format is not None and issubclass(
@@ -176,6 +270,7 @@ class OncowflowAgent:
                 return json.loads(result["structured_response"])
 
             # Iterate through messages to find the AI response and validate it against the schema
+            self.logger.info(f"AI response : {result}")
             for msg in result["messages"]:
                 try:
                     if (
@@ -184,15 +279,20 @@ class OncowflowAgent:
                     ):
                         self.logger.debug(f"AI response : {result['messages']}")
 
-                        # Strip markdown wrappers if any
                         content = msg.content
+                        # Handle list of blocks (e.g. thinking / text parts)
+                        if isinstance(content, list):
+                            text_parts = []
+                            for part in content:
+                                if isinstance(part, dict):
+                                    if part.get("type") == "text":
+                                        text_parts.append(part.get("text", ""))
+                                elif isinstance(part, str):
+                                    text_parts.append(part)
+                            content = "".join(text_parts)
+
                         if isinstance(content, str):
-                            content = content.strip()
-                            if content.startswith("```json"):
-                                content = content[7:]
-                            if content.endswith("```"):
-                                content = content[:-3]
-                            content = content.strip()
+                            content = extract_json_str(content)
 
                         # Validate the content against the Pydantic model
                         if self.output_format is not None and issubclass(
@@ -204,100 +304,12 @@ class OncowflowAgent:
                 except (ValidationError, ValueError, json.JSONDecodeError) as e:
                     validation_error = e
                     continue
-            self.logger.info(f"Retry {r + 1}/{retry} ...")
-            question = f"""You made a mistake, retry to answer the question : {question}\n\n
-                        Error : {validation_error}"""
+            self.logger.info(f"Error, previous result : {result}")
+            question = f"""You made a mistake, correct the outpout\n\n
+                        Error : {validation_error}\n\n
+                        Here is the previous result:\n{result}"""
 
         # Raise error if no valid structured response was found
         raise ValueError(
             f"Unable to find message, latest error : {validation_error} - AI response {result}"
         )
-
-    @classmethod
-    def collaborative_debate(
-        cls,
-        agents_classes: list[type["OncowflowAgent"]],
-        question: str,
-        output_format: type[BaseModel],
-        config: AppConfig,
-        mtd: DocumentReader,
-        logger: Any,
-    ) -> dict:
-        logger.info("Running collaborative debate mode...")
-
-        # Step 1: Initial Turn (Parallel Reasoning with DebateTurn format)
-        opinions = {}
-        for magent in agents_classes:
-            a = magent(config=config, mtd=mtd, output_format=DebateTurn)
-            logger.info(f"Debate: Requesting initial analysis from {a.agent_name}...")
-
-            opinion_prompt = (
-                f"As an expert in {a.expert_type if hasattr(a, 'expert_type') else a.agent_name}, "
-                f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}"
-            )
-            try:
-                res = a.ask(opinion_prompt, DebateTurn)
-                opinions[a.agent_name] = res.response
-            except Exception as e:
-                logger.error(f"Error getting opinion from {a.agent_name}: {e}")
-                opinions[a.agent_name] = "Erreur ou pas d'avis fourni."
-            del a
-
-        # Step 2: Cross-Review & Debate Turn
-        compiled_opinions = "\n".join(
-            f"- **{name}** : {text}" for name, text in opinions.items()
-        )
-        logger.debug(f"Debate: Compiled initial opinions:\n{compiled_opinions}")
-
-        updated_opinions = {}
-        for magent in agents_classes:
-            a = magent(config=config, mtd=mtd, output_format=DebateTurn)
-            logger.info(f"Debate: Requesting cross-review from {a.agent_name}...")
-
-            debate_prompt = (
-                f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
-                f"{compiled_opinions}\n\n"
-                f"The overall question is: {question}\n\n"
-                f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help reach a collective consensus."
-            )
-            try:
-                res = a.ask(debate_prompt, DebateTurn)
-                updated_opinions[a.agent_name] = res.response
-            except Exception as e:
-                logger.error(f"Error getting updated opinion from {a.agent_name}: {e}")
-                updated_opinions[a.agent_name] = opinions.get(
-                    a.agent_name, "No opinion provided."
-                )
-            del a
-
-        # Step 3: Synthesis & Final Structured Consensus
-        final_compiled_opinions = "\n".join(
-            f"- **{name}** : {text}" for name, text in updated_opinions.items()
-        )
-        logger.debug(f"Debate: Compiled final opinions:\n{final_compiled_opinions}")
-
-        # Use the first agent as coordinator to generate final structured pydantic format
-        coordinator_agent_cls = agents_classes[0]
-        coordinator = coordinator_agent_cls(
-            config=config, mtd=mtd, output_format=output_format
-        )
-        logger.info(
-            f"Debate: Synthesizing final structured consensus using {coordinator.agent_name}..."
-        )
-
-        synthesis_prompt = (
-            f"You are the coordinator of the multidisciplinary team (MDT/RCP). The experts have completed their debate. "
-            f"Here is the summary of their final opinions:\n\n"
-            f"{final_compiled_opinions}\n\n"
-            f"The overall question is: {question}\n\n"
-            f"Please synthesize the entire discussion, resolve any disagreements to reach a single consensus, and fill out the expected structured response format."
-        )
-
-        try:
-            datas = json.loads(coordinator.ask(synthesis_prompt, output_format).json())
-            return datas
-        except Exception as e:
-            logger.error(f"Error during debate synthesis: {e}")
-            raise e
-        finally:
-            del coordinator

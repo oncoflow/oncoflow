@@ -44,6 +44,7 @@ class OllamaConnect(LLMConnect):
                 temperature if temperature is not None else self.config.llm.temp
             ),
             validate_model_on_init=True,
+            streaming=True,
         )
 
         return model

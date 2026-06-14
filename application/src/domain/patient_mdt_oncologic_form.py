@@ -14,6 +14,7 @@ from src.domain.agents import Agents
 from src.application.agent.agent import OncowflowAgent
 from src.application.reader import DocumentReader
 from src.infrastructure.documents.mongodb import Mongodb
+from src.application.agent.collaborate import collaborative_debate
 
 
 class PatientMDTOncologicForm(DocumentReader):
@@ -29,6 +30,7 @@ class PatientMDTOncologicForm(DocumentReader):
         super(PatientMDTOncologicForm, self).__init__(config=config, document=document)
 
         self.mtd_datas["file"] = document
+        self.mtd_datas["execution_times"] = {}
 
         self.basemodel_list = [
             cls_attribute
@@ -53,6 +55,8 @@ class PatientMDTOncologicForm(DocumentReader):
                 collection="rcp_info", document={"file": document}
             )
             self.mtd_datas["id"] = db_document["_id"]
+            if "execution_times" in db_document:
+                self.mtd_datas["execution_times"] = db_document["execution_times"]
             self.dict_to_models(db_document)
         else:
             self.mtd_datas["id"] = None
@@ -90,19 +94,27 @@ class PatientMDTOncologicForm(DocumentReader):
         return self.mtd_datas
 
     def read_model(
-        self, model: "type[PatientMDTOncologicForm.default_model]", upsert: bool = False
+        self,
+        model: "type[PatientMDTOncologicForm.default_model]",
+        upsert: bool = False,
+        callbacks: list = None,
     ):
+        import time
+
         if upsert and self.config.rcp.display_type == "mongodb":
             self.db_client = Mongodb(self.config)
 
+        start_time = time.time()
+
         if getattr(model, "collaborative", False) and len(model.agents) > 1:
-            datas = OncowflowAgent.collaborative_debate(
+            datas = collaborative_debate(
                 agents_classes=model.agents,
                 question=model.question,
                 output_format=model,
                 config=self.config,
                 mtd=self,
                 logger=self.logger,
+                callbacks=callbacks,
             )
             self.mtd_datas[model.__name__] = datas
         else:
@@ -118,9 +130,13 @@ class PatientMDTOncologicForm(DocumentReader):
                     {memory}
                     {model.question}
                     """
-                datas = json.loads(a.ask(model.question).json())
+                datas = json.loads(a.ask(model.question, callbacks=callbacks).json())
                 self.logger.debug(f"DATAS : {datas} ...")
                 if datas:
+                    if isinstance(datas, dict):
+                        datas["reasoning_thinking"] = getattr(
+                            a, "latest_thinking", None
+                        )
                     if model.agents_memory:
                         memory = memory | datas
                     if model.__name__ not in self.mtd_datas:
@@ -131,6 +147,12 @@ class PatientMDTOncologicForm(DocumentReader):
                         self.mtd_datas[model.__name__] = datas
                 del a
             del agents
+
+        duration = time.time() - start_time
+        if "execution_times" not in self.mtd_datas:
+            self.mtd_datas["execution_times"] = {}
+        self.mtd_datas["execution_times"][model.__name__] = duration
+
         if upsert and self.db_client is not None:
             self.logger.debug(
                 f"Document final inserted: {json.dumps(self.mtd_datas, default=str)}"
@@ -138,7 +160,10 @@ class PatientMDTOncologicForm(DocumentReader):
             self.db_client.update_doc(
                 collection="rcp_info",
                 filter={"file": self.mtd_datas["file"]},
-                upsertable_data={model.__name__: self.mtd_datas[model.__name__]},
+                upsertable_data={
+                    model.__name__: self.mtd_datas[model.__name__],
+                    "execution_times": self.mtd_datas["execution_times"],
+                },
             )
             self.db_client.close()
 
@@ -180,6 +205,9 @@ class PatientMDTOncologicForm(DocumentReader):
         agents: ClassVar[list[type[OncowflowAgent]]] = [Agents.Administratives_agent]
         agents_memory: ClassVar[bool] = False
         collaborative: ClassVar[bool] = False
+        collaborative_agent: ClassVar[type[OncowflowAgent] | None] = None
+        reasoning_thinking: ClassVar[str | None] = None
+        time_execution: ClassVar[int | None] = None
 
     #  // // // // // Tested and Working classes // // // // //
 
@@ -190,6 +218,10 @@ class PatientMDTOncologicForm(DocumentReader):
 
         first_name: str = Field(description="First name of the patient")
         last_name: str = Field(description="Last name of the patient")
+        born_name: Optional[str] = Field(
+            description="Name of the patient at birth", default=None
+        )
+
         age: int = Field(description="Age of the patient")
         date_birth: Optional[PastDatetime] = Field(
             description="Date of birth of the patient (Format: YYYY-MM-DD)"
@@ -218,7 +250,6 @@ class PatientMDTOncologicForm(DocumentReader):
         question: ClassVar[
             str
         ] = """Search and Extract the patient's administrative details from MTD.
-            Think step-by-step:
             1. Find the patient's First Name, Last Name, Age AND Date of birth. Note that age is often written as 'XX ans'. If age is missing but Date of birth is present, you can deduce the age based on the Date of RCP.
             2. Find the date of the MTD (RCP).
             3. Find the gender of the patient.
@@ -241,7 +272,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Determine the WHO performance status of the patient (0-4). Think step-by-step. Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, indicate it."
+            "Determine the WHO performance status of the patient (0-4). Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, indicate it."
         )
 
     class TumorLocation(default_model):
@@ -254,7 +285,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
         question: ClassVar[str] = (
-            "Identify the primary organ where the tumor is located. Think step-by-step. Search for the principal diagnosis or the primary tumor site."
+            "Identify the primary organ where the tumor is located. Search for the principal diagnosis or the primary tumor site."
         )
 
     class TumorBiology(default_model):
@@ -265,7 +296,7 @@ class PatientMDTOncologicForm(DocumentReader):
         msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
 
         question: ClassVar[str] = (
-            "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)? Think step-by-step. Search for 'MSI', 'MSS', 'instabilité microsatellitaire', or 'statut MMR'. If not mentioned, state it."
+            "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)? Search for 'MSI', 'MSS', 'instabilité microsatellitaire', or 'statut MMR'. If not mentioned, state it."
         )
 
     class RadiologicExams(default_model):
@@ -325,7 +356,7 @@ class PatientMDTOncologicForm(DocumentReader):
         )
 
     class ExpertAnswer(default_model):
-        agents = [
+        agents: ClassVar[list[type[OncowflowAgent]]] = [
             Agents.Pancreas_expert_agent,
             Agents.Oesophagus_expert_agent,
             Agents.Hepatocellular_expert_agent,
@@ -357,11 +388,7 @@ class PatientMDTOncologicForm(DocumentReader):
             """
 
     class MTDCompleted(default_model):
-        agents = [
-            Agents.Pancreas_expert_agent,
-            Agents.Oesophagus_expert_agent,
-            Agents.Hepatocellular_expert_agent,
-        ]
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
         mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405
 
         collaborative = True
@@ -371,6 +398,38 @@ class PatientMDTOncologicForm(DocumentReader):
             Are there missing elements required for a treatment decision?
             You can use search_on_ressources tool what type of elements/documents is needed.
             You can use tools multiple times for each element
+            """
+
+    class isInterventionRequiered(default_model):
+        """
+        Consensus on whether an intervention is required, its urgency, and description.
+        """
+
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        collaborative = True
+
+        intervention_required: bool = Field(
+            description="Is a medical, surgical, or radiologic intervention required for this patient?"
+        )
+        urgency: Optional[PatientPriority] = Field(  # noqa: F405
+            default=None,
+            description="How urgently the intervention should be performed. None if no intervention is required.",
+        )
+        intervention_type: Optional[str] = Field(
+            default=None,
+            description="Type of intervention required (e.g., surgery, chemotherapy, biliary drainage, endoscopy, etc.). None if no intervention is required.",
+        )
+        justification: str = Field(
+            description="Clinical justification for the consensus decision."
+        )
+
+        question: ClassVar[str] = """
+            Based on the expert debate, determine if a medical, surgical, or radiological intervention is required for this patient.
+            If yes, specify:
+            1. If the intervention must be done urgently (rapidly) or not.
+               CRITICAL SAFETY RULE: If even a single expert in the debate recommends or identifies that the intervention is urgent or high priority (e.g., if one expert says it is urgent due to rapid tumor progression or suspected metastases), you MUST default to classifying the overall urgency as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority. The consensus must respect this safety principle and escalate to the highest urgency flagged.
+            2. What kind of intervention is required.
+            Provide a clear justification detailing the positions of the experts, especially highlighting any divergence in opinions regarding urgency.
             """
 
     # class ExpertPancreasAnswer(default_model):

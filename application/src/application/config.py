@@ -66,13 +66,14 @@ class AppConfig:
         """
 
         type = environ.var(
-            default="ollama", help="Type of llm system (ex Ollama, OpenAI, vLLM)"
+            default="LiteLLM",
+            help="Type of llm system (ex Ollama, OpenAI, vLLM, LiteLLM)",
         )
         url = environ.var(default="http://127.0.0.1", help="URL of llm system")
-        uri = environ.var(default="/v1", help="URI of llm system (openai style)")
-        port = environ.var(default="11434", help="Port of llm system")
+        uri = environ.var(default="/", help="URI of llm system (openai style)")
+        port = environ.var(default="4000", help="Port of llm system")
         models = environ.var(
-            default="gemma4:12b",
+            default="openai/qwen3:14b",
             help="Model of llm system, type all for test all ollama models",
         )
         ocrmodels = environ.var(
@@ -83,7 +84,7 @@ class AppConfig:
             default="1", converter=float, help="Temperature of llm system"
         )
         embeddings = environ.var(
-            default="bge-m3",
+            default="openai/bge-m3",
             help="embeddings Model to use",
             # default="mahonzhan/all-MiniLM-L6-v2", help="embeddings Model to use"
         )
@@ -190,7 +191,14 @@ class AppConfig:
         logger.handlers.clear()
         ch = logging.StreamHandler()
         ch.setLevel(level=self.logs.level)
+        # Configure LangChain global logs
+        from langchain_core.globals import set_verbose, set_debug
 
+        if self.logs.langchaindebug:
+            set_debug(True)
+            set_verbose(True)
+        elif self.logs.level == "DEBUG":
+            set_verbose(True)
         if self.logs.type == "text":
             formatlog = "%(asctime)s - %(levelname)s - %(name)s"
             for k, v in default_context.items():

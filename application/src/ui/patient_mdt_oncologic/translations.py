@@ -14,6 +14,8 @@ TRANSLATIONS = {
     "Chemotherapy treatments": "Traitements par chimiothérapie",
     "ExpertAnswer": "Réponse de l'expert",
     "MTDCompleted": "Dossier RCP complet",
+    "Consensus on whether an intervention is required, its urgency, and description.": "Consensus sur la nécessité d'une intervention, son urgence et son type",
+    "isInterventionRequiered": "Nécessité d'intervention",
     # Field Descriptions
     "First name of the patient": "Prénom du patient",
     "Last name of the patient": "Nom de famille du patient",
@@ -54,6 +56,10 @@ TRANSLATIONS = {
     "List of missing elements required for a decision": "Liste des éléments manquants requis pour une prise de décision",
     "list of references for missing items, including TNCD references": "Liste des références pour les éléments manquants, incluant le TNCD",
     "Detailed reflection, reasoning, or synthesis of the collaborative team discussion": "Synthèse détaillée de la discussion et du raisonnement de l'équipe",
+    "Is a medical, surgical, or radiologic intervention required for this patient?": "Une intervention médicale, chirurgicale ou radiologique est-elle requise pour ce patient ?",
+    "How urgently the intervention should be performed. None if no intervention is required.": "Degré d'urgence de l'intervention. Aucun si aucune intervention n'est requise.",
+    "Type of intervention required (e.g., surgery, chemotherapy, biliary drainage, endoscopy, etc.). None if no intervention is required.": "Type d'intervention requise (ex : chirurgie, chimiothérapie, drainage biliaire, endoscopie, etc.). Aucun si aucune intervention n'est requise.",
+    "Clinical justification for the consensus decision.": "Justification clinique de la décision de consensus.",
     # Field Name translations
     "first_name": "Prénom",
     "last_name": "Nom",
@@ -93,6 +99,9 @@ TRANSLATIONS = {
     "is_mtd_complete": "Dossier complet ?",
     "what_missing": "Éléments manquants",
     "reflection": "Réflexion / Synthèse du débat",
+    "intervention_required": "Intervention Conseillé",
+    "intervention_type": "Type d'intervention",
+    "justification": "Justification du consensus",
     # Enum Values & Labels
     "Male": "Homme",
     "Female": "Femme",

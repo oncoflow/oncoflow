@@ -162,3 +162,78 @@ class TestOncowflowAgent(unittest.TestCase):
             agent.ask("My question")
 
         self.assertIn("AI response", str(cm.exception))
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_handles_list_content_and_thinking_blocks(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        # Setup agent
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        # Content is a list of blocks (thinking block + text block)
+        expected_dict = {"response": "Successful answer from block list"}
+        list_content = [
+            {
+                "type": "thinking",
+                "thinking": "Let me think about this question first...",
+            },
+            {"type": "text", "text": json.dumps(expected_dict)},
+        ]
+        valid_msg = AIMessage(content=list_content)
+
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("question"), valid_msg]
+        }
+
+        # Execute
+        result = agent.ask("My question")
+
+        # Assert
+        self.assertEqual(result, self.output_format(**expected_dict))
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_handles_malformed_json_with_garbage(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        # Setup agent
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        # Malformed JSON with thinking tags/unclosed trailing blocks
+        expected_dict = {"response": "Cleaned response"}
+        malformed_text = (
+            f"{json.dumps(expected_dict)}</think>\n"
+            "```json\n"
+            f"{json.dumps(expected_dict)}\n"
+            "```\n"
+            "<tool_response>\n"
+            '{"name": "another_tool", "arguments": {"query":'
+        )
+        valid_msg = AIMessage(content=malformed_text)
+
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("question"), valid_msg]
+        }
+
+        # Execute
+        result = agent.ask("My question")
+
+        # Assert
+        self.assertEqual(result, self.output_format(**expected_dict))

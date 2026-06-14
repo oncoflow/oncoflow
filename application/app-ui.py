@@ -1,6 +1,24 @@
 import os
+import signal
+import atexit
+
+
+def clean_exit(signum=None, frame=None):
+    try:
+        # Send SIGKILL to the entire process group to stop all processes instantly
+        os.killpg(os.getpgid(0), signal.SIGKILL)
+    except Exception:
+        os._exit(0)
+
+
+try:
+    signal.signal(signal.SIGINT, clean_exit)
+    signal.signal(signal.SIGTERM, clean_exit)
+except ValueError:
+    atexit.register(clean_exit)
 
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+os.environ["DOCLING_DEVICE"] = "cpu"
 
 import logging
 import warnings
@@ -18,13 +36,12 @@ warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
 warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
 # Suppress PyMilvus deprecation warnings
-try:
-    from pymilvus.exceptions import PyMilvusDeprecationWarning
-
-    warnings.filterwarnings("ignore", category=PyMilvusDeprecationWarning)
-except ImportError:
-    pass
 warnings.filterwarnings("ignore", message=".*ORM-style.*")
+warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
+logging.getLogger("pymilvus").setLevel(logging.ERROR)
+
+# Suppress Streamlit's missing ScriptRunContext warnings from ThreadPoolExecutor
+logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.DEBUG)
 
 
 PAGES_DIR_SRC = "src/ui"

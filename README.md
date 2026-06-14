@@ -103,7 +103,7 @@ flowchart TB
 * **Base de données de Cache & Métadonnées** : MongoDB (`pymongo>=4.17.0`)
 * **Parsers de Documents** : Docling, MuPDF, OpenParse & Ollama OCR
 
-👉 **[Découvrir la Fiche Technique Complète & Variables](docs/guide_technique.md)**  
+👉 **[Découvrir la Fiche Technique Complète & Variables](docs/guide_technique.md)**
 👉 **[Accéder au Guide de Contribution & Setup local](HOW-TO-CONTRIBUTE.md)**
 
 ---

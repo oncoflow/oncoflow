@@ -58,7 +58,7 @@ def search_on_mtd(
     if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
         timeout = None
 
-    runtime.context["logger"].info(
+    runtime.context["logger"].debug(
         f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
     )
     reader: DocumentReader = runtime.context["reader"]

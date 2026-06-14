@@ -3,6 +3,8 @@ from src.infrastructure.llm.base import LLMConnect
 from src.infrastructure.llm.ollama import OllamaConnect
 from src.infrastructure.llm.openai import OpenAIConnect
 from src.infrastructure.llm.vllm import VllmConnect
+from src.infrastructure.llm.litellm import LiteLLMConnect
+from src.infrastructure.llm.llamacpp import LlamaCppConnect
 
 
 def get_llm_client(config: AppConfig) -> LLMConnect:
@@ -14,7 +16,7 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
         config (AppConfig): Application configuration.
 
     Returns:
-        OllamaConnect | OpenAIConnect | VllmConnect: The resolved LLM client instance.
+        OllamaConnect | OpenAIConnect | VllmConnect | LiteLLMConnect | LlamaCppConnect: The resolved LLM client instance.
 
     Raises:
         ValueError: If config.llm.type is not supported.
@@ -26,8 +28,12 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
         return OpenAIConnect(config)
     elif llm_type == "vllm":
         return VllmConnect(config)
+    elif llm_type == "litellm":
+        return LiteLLMConnect(config)
+    elif llm_type == "llamacpp":
+        return LlamaCppConnect(config)
     else:
         raise ValueError(
             f"LLM type '{config.llm.type}' is not supported. "
-            f"Supported types are 'Ollama', 'OpenAI', and 'vLLM'."
+            f"Supported types are 'Ollama', 'OpenAI', 'vLLM', 'LiteLLM', and 'LlamaCpp'."
         )

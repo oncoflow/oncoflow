@@ -68,7 +68,9 @@ class TestOllamaConnection(unittest.TestCase):
             format={"type": "object"},
             model="llama3",
             tools=[],
-            reasoning=False,
+            reasoning=True,
+            num_predict=2048,
             temperature=0.7,
             validate_model_on_init=True,
+            streaming=True,
         )

@@ -16,7 +16,7 @@ Oncoflow is a secure, open-source, local-first web application designed for onco
 - **Core Runtime**: Python `>=3.13` (strictly enforced in `pyproject.toml`; note that legacy `HOW-TO-CONTRIBUTE.md` may mention `3.11.X`, but `pyproject.toml` is the source of truth).
 - **Frontend Dashboard**: Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`).
 - **Orchestration**: LangChain (`langchain-core`, `langchain-community`, `langchain-experimental`, `langchain-ollama`).
-- **Vector Search Databases**: 
+- **Vector Search Databases**:
   - Milvus (`pymilvus==2.6.14`, `langchain-milvus==0.3.3`) for main retrieval.
   - Chroma (`chromadb>=1.5.9`, `langchain-chroma`) as alternative.
 - **Relational / Document DB**: MongoDB (`pymongo>=4.17.0`, `langchain-mongodb`) for caching and storing patient records meta-information.

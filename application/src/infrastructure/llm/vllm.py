@@ -104,6 +104,7 @@ class VllmConnect(LLMConnect):
                 temperature if temperature is not None else self.config.llm.temp
             ),
             model_kwargs=model_kwargs,
+            streaming=True,
         )
 
         return model_instance

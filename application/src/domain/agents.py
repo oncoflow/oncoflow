@@ -15,6 +15,13 @@ class Agents:
             if inspect.isclass(cls_attribute) and "_model" not in cls_attribute.__name__
         }
 
+        self.expert_agents: list[type[OncowflowAgent]] = [
+            cls_attribute
+            for cls_attribute in self.__class__.__dict__.values()
+            if inspect.isclass(cls_attribute)
+            and issubclass(cls_attribute, Agents.Expert_model)
+        ]
+
     class Administratives_agent(OncowflowAgent):
         agent_name: str = "Administrative"
         system_prompt: ClassVar[str] = """
@@ -27,7 +34,21 @@ class Agents:
         4. If the information is not found, state clearly that it is missing from the record.
         5. You can use tools multiple time for each element. Use multiple keywords or synonyms in your search query to improve retrieval.
         6. Respect stricly the response output format.
-        7. Think step-by-step before calling tools or returning a final answer.
+        """
+
+    class Coordinator_agent(OncowflowAgent):
+        agent_name: str = "MDT Coordinator"
+        system_prompt: ClassVar[str] = """
+        You are the coordinator of a multidisciplinary team (MDT). Your role is to ensure that all necessary information is gathered from the patient record and relevant scientific literature to make a treatment decision.
+
+        Instructions:
+        1. Analyze the current MDT file and identify any missing information required for a complete treatment decision.
+        2. Use the `search_on_mtd` tool to retrieve relevant information from the patient record.
+        3. Use the `search_on_ressources` tool to retrieve scientific information to support your analysis.
+        4. Coordinate the different specialists to ensure all aspects of the patient's case are considered.
+        5. If information is missing, clearly state what is needed and why.
+        6. You can use tools multiple times for each element.
+        7. Respect strictly the response output format.
         """
 
     class Expert_model(OncowflowAgent):
@@ -50,7 +71,6 @@ class Agents:
                 3. Answer the user's question by combining patient data and scientific evidence.
                 4. Respect stricly the response output format.
                 5. You can use tools multiple time for each element. Use multiple keywords or synonyms in your search query.
-                6. Think step-by-step before making clinical correlations.
 
                 Rules:
                 - **Patient Record**: Use the patient record as the sole source of truth for the patient's status.

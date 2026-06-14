@@ -1,17 +1,18 @@
 import environ
 import os
 import inspect
+from typing import Any
 from types import NoneType
 from datetime import datetime
 from enum import Enum
 import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
-
+import threading
+from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+from langchain_core.callbacks import BaseCallbackHandler
 from pandas import DataFrame
 from pydantic import BaseModel
-
 from src.infrastructure.llm.factory import get_llm_client
-
 from src.application.config import AppConfig
 from src.application.app_functions import delete_document, full_read_mtd_agents
 from src.infrastructure.documents.mongodb import Mongodb
@@ -19,6 +20,73 @@ from src.domain.agents import Agents
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.domain.common_ressources import PatientPriority
 from src.ui.patient_mdt_oncologic.translations import translate
+
+
+class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
+    def __init__(self, parent_container):
+        self.parent_container = parent_container
+        self.ctx = get_script_run_ctx()
+        self.thinking_container = None
+        self.thinking_text = ""
+        self.in_think = False
+
+    def on_llm_new_token(self, token: str, chunk: Any = None, **kwargs: Any) -> None:
+        if self.ctx and not get_script_run_ctx():
+            add_script_run_ctx(threading.current_thread(), self.ctx)
+
+        reasoning_token = None
+        if chunk and hasattr(chunk, "message"):
+            msg = chunk.message
+            reasoning_token = getattr(msg, "reasoning_content", None)
+            if not reasoning_token and isinstance(
+                getattr(msg, "additional_kwargs", None), dict
+            ):
+                reasoning_token = msg.additional_kwargs.get("reasoning_content")
+
+        is_think_token = False
+        clean_token = token
+
+        if reasoning_token:
+            is_think_token = True
+            clean_token = reasoning_token
+        else:
+            if "<think>" in token:
+                self.in_think = True
+                clean_token = token.replace("<think>", "")
+                is_think_token = True
+            elif "</think>" in token:
+                self.in_think = False
+                clean_token = token.replace("</think>", "")
+                is_think_token = True
+            elif self.in_think:
+                is_think_token = True
+
+        if is_think_token:
+            self.thinking_text += clean_token
+            if not self.thinking_container:
+                with self.parent_container:
+                    self.thinking_container = st.empty()
+            with self.thinking_container:
+                with st.expander(
+                    "💭 Réflexion en cours... / Thinking...", expanded=True
+                ):
+                    with st.container(height=250, border=False):
+                        st.write(self.thinking_text)
+
+    def on_tool_start(
+        self, serialized: dict[str, Any], input_str: str, **kwargs: Any
+    ) -> None:
+        if self.ctx and not get_script_run_ctx():
+            add_script_run_ctx(threading.current_thread(), self.ctx)
+        tool_name = serialized.get("name", "tool")
+        with self.parent_container:
+            st.write(f"🔧 *Appel de l'outil / Tool:* `{tool_name}`")
+
+    def on_tool_error(self, error: BaseException, **kwargs: Any) -> None:
+        if self.ctx and not get_script_run_ctx():
+            add_script_run_ctx(threading.current_thread(), self.ctx)
+        with self.parent_container:
+            st.error(f"❌ *Erreur outil / Tool error:* {error}")
 
 
 app_conf = environ.to_config(AppConfig)
@@ -298,6 +366,7 @@ def form():
                 else None
             )
             if data:
+                execution_times = data.get("execution_times", {})
                 models = get_form_models()
                 # On met PatientAdministrative en premier si présent
                 models.sort(
@@ -324,9 +393,14 @@ def form():
                             key=f"pills_{title}",
                         )
                         if selection == ":material/robot: AI exec":
-                            with st.status(f"Relance de l'IA pour {model_name} ..."):
+                            with st.status(
+                                f"Relance de l'IA pour {model_name} ..."
+                            ) as status:
+                                st_callback = ThreadSafeStreamlitCallbackHandler(status)
                                 reader = get_mtd_reader()
-                                reader.read_model(model_cls, upsert=True)
+                                reader.read_model(
+                                    model_cls, upsert=True, callbacks=[st_callback]
+                                )
                                 st.session_state[f"pills_{title}_ai"] = True
                             st.rerun()
 
@@ -345,16 +419,55 @@ def form():
                                 if agent_names:
                                     tabs = st.tabs(agent_names)
                                     for tab, agent_name in zip(tabs, agent_names):
+                                        agent_dict = data[model_name][agent_name]
                                         pydantic_model = model_cls.model_validate(
-                                            data[model_name][agent_name]
+                                            agent_dict
                                         )
                                         with tab:
                                             render_fields(pydantic_model)
+                                            # Show thinking process for this agent if present
+                                            thinking = (
+                                                agent_dict.get("reasoning_thinking")
+                                                if isinstance(agent_dict, dict)
+                                                else None
+                                            )
+                                            if thinking:
+                                                with st.expander(
+                                                    "💭 Réflexion / Thinking",
+                                                    expanded=False,
+                                                ):
+                                                    with st.container(
+                                                        height=250, border=False
+                                                    ):
+                                                        st.write(thinking)
                             else:
                                 pydantic_model = model_cls.model_validate(
                                     data[model_name]
                                 )
                                 render_model_data(pydantic_model)
+                                # Show thinking process for this model if present
+                                thinking = (
+                                    model_data.get("reasoning_thinking")
+                                    if isinstance(model_data, dict)
+                                    else None
+                                )
+                                if thinking:
+                                    with st.expander(
+                                        "💭 Réflexion / Thinking", expanded=False
+                                    ):
+                                        with st.container(height=250, border=False):
+                                            st.write(thinking)
+
+                            # Discretely show execution time for this model if present!
+                            exec_time = execution_times.get(model_name)
+                            if exec_time is not None:
+                                label = (
+                                    "Execution time"
+                                    if st.session_state.get("language", "Français")
+                                    == "English"
+                                    else "Temps d'exécution"
+                                )
+                                st.caption(f"⏱️ {label} : {exec_time:.2f} s")
                         else:
                             st.warning("Données non trouvées.")
 

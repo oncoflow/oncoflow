@@ -1,6 +1,24 @@
 import os
+import signal
+import atexit
+
+
+def clean_exit(signum=None, frame=None):
+    try:
+        # Send SIGKILL to the entire process group to stop all processes instantly
+        os.killpg(os.getpgid(0), signal.SIGKILL)
+    except Exception:
+        os._exit(0)
+
+
+try:
+    signal.signal(signal.SIGINT, clean_exit)
+    signal.signal(signal.SIGTERM, clean_exit)
+except ValueError:
+    atexit.register(clean_exit)
 
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+os.environ["DOCLING_DEVICE"] = "cpu"
 
 import logging
 import warnings
@@ -25,7 +43,9 @@ from src.application.app_functions import full_read_file
 
 # Suppress Hugging Face transformers warning logs and user warnings
 logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("pymilvus").setLevel(logging.ERROR)
 warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
+warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
 # Suppress PyMilvus deprecation warnings about ORM-style Index.to_dict
 warnings.filterwarnings(
     "ignore", message=".*Index.to_dict is an ORM-style PyMilvus API.*"
