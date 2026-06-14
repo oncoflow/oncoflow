@@ -1,4 +1,3 @@
-import environ
 import pytz
 from datetime import datetime
 import streamlit as st
@@ -9,7 +8,7 @@ from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.common_ressources import PatientPriority
 
 # Configuration de l'application
-app_conf = environ.to_config(AppConfig)
+app_conf = AppConfig()
 
 # Connexion Base de données
 db_client = None

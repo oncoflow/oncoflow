@@ -2,14 +2,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 import httpx
 
-from src.application.config import AppConfig
 from src.infrastructure.llm.llamacpp import LlamaCppConnect
 
 
 class TestLlamaCppConnection(unittest.TestCase):
     def setUp(self):
         # Configure a mock config matching llama.cpp direct connection
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.llm.url = "http://localhost"
         self.mock_config.llm.port = "8081"
         self.mock_config.llm.embeddings_port = "8082"

@@ -2,14 +2,13 @@ import unittest
 from unittest.mock import MagicMock, patch
 import httpx
 
-from src.application.config import AppConfig
 from src.infrastructure.llm.litellm import LiteLLMConnect
 
 
 class TestLiteLLMConnection(unittest.TestCase):
     def setUp(self):
         # Configure a mock config
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.llm.url = "http://localhost"
         self.mock_config.llm.port = "4000"
         self.mock_config.llm.uri = "/v1"

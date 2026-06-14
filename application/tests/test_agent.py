@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 from pydantic import BaseModel
 
 from src.application.agent.agent import OncowflowAgent
-from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 
 
@@ -32,7 +31,7 @@ class MockOutputSchema(BaseModel):
 
 class TestOncowflowAgent(unittest.TestCase):
     def setUp(self):
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.llm.type = "ollama"
         self.mock_config.llm.models = "llama3,mistral"
         self.mock_config.set_logger.return_value = MagicMock()

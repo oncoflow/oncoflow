@@ -1,5 +1,5 @@
 import streamlit as st
-import environ
+
 from src.domain.agents import Agents
 from src.application.reader import DocumentReader
 from src.application.config import AppConfig
@@ -16,7 +16,7 @@ pmtd = Agents()
 st.title("🕵️ Liste des agents")
 
 cols = st.columns(3)
-app_conf = environ.to_config(AppConfig)
+app_conf = AppConfig()
 for i, (n, a) in enumerate(pmtd.list.items()):
     with cols[i % 3]:
         with st.container(border=True):

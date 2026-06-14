@@ -2,15 +2,10 @@ import uuid
 import time
 import inspect
 import warnings
-from langchain_milvus import Milvus
-from langchain_core.documents import Document
-from src.infrastructure.vectorial.database import VectorialDataBase
-from src.application.config import AppConfig
 
-
-from pymilvus import MilvusException, connections, db, utility
-from pymilvus.exceptions import ConnectionNotExistException
-
+# Suppress PyMilvus async client initialization and ORM deprecation warnings before import
+warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
+warnings.filterwarnings("ignore", message=".*ORM-style.*")
 
 try:
     import pymilvus.exceptions as pymilvus_exceptions
@@ -23,10 +18,18 @@ try:
 except ImportError:
     pass
 
-import logging
+from langchain_milvus import Milvus  # noqa: E402
+from langchain_core.documents import Document  # noqa: E402
+from src.infrastructure.vectorial.database import VectorialDataBase  # noqa: E402
+from src.application.config import AppConfig  # noqa: E402
+
+
+from pymilvus import MilvusException, connections, db, utility  # noqa: E402
+from pymilvus.exceptions import ConnectionNotExistException  # noqa: E402
+
+import logging  # noqa: E402
 
 logging.getLogger("pymilvus").setLevel(logging.ERROR)
-warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
 
 # Monkeypatch PyMilvus connection manager to seamlessly route generated MilvusClient connections
 # to the ORM 'default' connection. This is necessary because MilvusClient in Milvus v2.5+

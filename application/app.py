@@ -20,15 +20,14 @@ except ValueError:
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 os.environ["DOCLING_DEVICE"] = "cpu"
 
-import logging
-import warnings
+import json
 from os import listdir
 from os.path import isfile, join
 from argparse import ArgumentParser
 
 from pprint import pprint  # noqa: F401
 
-import environ
+
 import inquirer
 
 from pymupdf import FileDataError
@@ -39,17 +38,6 @@ from pdfminer.pdfparser import PDFSyntaxError
 from src.application.config import AppConfig
 from src.application.reader import DocumentReader
 from src.application.app_functions import full_read_file
-
-
-# Suppress Hugging Face transformers warning logs and user warnings
-logging.getLogger("transformers").setLevel(logging.ERROR)
-logging.getLogger("pymilvus").setLevel(logging.ERROR)
-warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
-warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
-# Suppress PyMilvus deprecation warnings about ORM-style Index.to_dict
-warnings.filterwarnings(
-    "ignore", message=".*Index.to_dict is an ORM-style PyMilvus API.*"
-)
 
 
 def manual_prompt(dir, config):
@@ -103,9 +91,9 @@ if __name__ == "__main__":
 
     if args.envlist:
         print("List of environment Variables :")
-        print(environ.generate_help(AppConfig, display_defaults=True))
+        print(json.dumps(AppConfig.model_json_schema(), indent=2))
     else:
-        app_conf = environ.to_config(AppConfig)
+        app_conf = AppConfig()
         logger = app_conf.set_logger("main")
 
         if app_conf.rcp.manual_query:

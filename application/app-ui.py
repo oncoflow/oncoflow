@@ -20,28 +20,7 @@ except ValueError:
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 os.environ["DOCLING_DEVICE"] = "cpu"
 
-import logging
-import warnings
 import streamlit as st
-
-# Suppress Hugging Face transformers warning logs and user warnings
-try:
-    from transformers import logging as transformers_logging
-
-    transformers_logging.set_verbosity_error()
-except ImportError:
-    logging.getLogger("transformers").setLevel(logging.ERROR)
-
-warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
-warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
-
-# Suppress PyMilvus deprecation warnings
-warnings.filterwarnings("ignore", message=".*ORM-style.*")
-warnings.filterwarnings("ignore", message=".*Failed to initialize AsyncMilvusClient.*")
-logging.getLogger("pymilvus").setLevel(logging.ERROR)
-
-# Suppress Streamlit's missing ScriptRunContext warnings from ThreadPoolExecutor
-logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.DEBUG)
 
 
 PAGES_DIR_SRC = "src/ui"

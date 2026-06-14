@@ -218,7 +218,6 @@ dependencies = [
     { name = "blinker" },
     { name = "chromadb" },
     { name = "docling-core", extra = ["chunking"] },
-    { name = "environ-config" },
     { name = "inquirer" },
     { name = "langchain" },
     { name = "langchain-chroma" },
@@ -238,6 +237,7 @@ dependencies = [
     { name = "panda" },
     { name = "pdfminer-six" },
     { name = "protobuf" },
+    { name = "pydantic-settings" },
     { name = "pymilvus" },
     { name = "pymongo" },
     { name = "pymupdf" },
@@ -264,7 +264,6 @@ requires-dist = [
     { name = "blinker", specifier = ">=1.9.0" },
     { name = "chromadb", specifier = ">=1.3.5" },
     { name = "docling-core", extras = ["chunking"], specifier = ">=2.77.0" },
-    { name = "environ-config", specifier = ">=24.1.0" },
     { name = "inquirer", specifier = ">=3.4.1" },
     { name = "langchain", specifier = ">=1.3.4" },
     { name = "langchain-chroma", specifier = ">=1.1.0" },
@@ -284,6 +283,7 @@ requires-dist = [
     { name = "panda", specifier = ">=0.3.1" },
     { name = "pdfminer-six", specifier = ">=20260107" },
     { name = "protobuf", specifier = "<7.0.0" },
+    { name = "pydantic-settings", specifier = ">=2.9.0" },
     { name = "pymilvus", specifier = "==2.6.4" },
     { name = "pymongo", specifier = ">=4.17.0" },
     { name = "pymupdf", specifier = ">=1.27.2.3" },
@@ -1090,18 +1090,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/78/0d2db9382c92a163d7095fc08efff7800880f830a152cfced40161e7638d/emoji-2.15.0.tar.gz", hash = "sha256:eae4ab7d86456a70a00a985125a03263a5eac54cd55e51d7e184b1ed3b6757e4", size = 615483, upload-time = "2025-09-21T12:13:02.755Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e1/5e/4b5aaaabddfacfe36ba7768817bd1f71a7a810a43705e531f3ae4c690767/emoji-2.15.0-py3-none-any.whl", hash = "sha256:205296793d66a89d88af4688fa57fd6496732eb48917a87175a023c8138995eb", size = 608433, upload-time = "2025-09-21T12:13:01.197Z" },
-]
-
-[[package]]
-name = "environ-config"
-version = "24.1.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/45/86/fd196faaa41935f67cfba00b68a372dad0d606a3739450055ebaecbd7b8a/environ_config-24.1.0.tar.gz", hash = "sha256:473a25809b2199bcd2aab0d70c9ed9289d3ff4dfca16eec518a74c65f2a9f021", size = 44900, upload-time = "2024-08-08T07:45:54.221Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/79/02/3cd9af1cc344a171761a60b7a1b21dc5e6922ad7b921f89758e654139a95/environ_config-24.1.0-py3-none-any.whl", hash = "sha256:f63c03ac6533cbf0836de988fb40dd330278bf6424734218f807d509ee835737", size = 19931, upload-time = "2024-08-08T07:45:53.178Z" },
 ]
 
 [[package]]

@@ -1,14 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.application.config import AppConfig
 from src.infrastructure.llm.vllm import VllmConnect
 
 
 class TestVllmConnection(unittest.TestCase):
     def setUp(self):
         # Configure a mock config
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.llm.url = "http://127.0.0.1"
         self.mock_config.llm.port = "8080"
         self.mock_config.llm.uri = "/v1"

@@ -1,4 +1,3 @@
-import environ
 import os
 import inspect
 from typing import Any
@@ -89,7 +88,7 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
             st.error(f"❌ *Erreur outil / Tool error:* {error}")
 
 
-app_conf = environ.to_config(AppConfig)
+app_conf = AppConfig()
 
 db_client = None
 if app_conf.rcp.display_type == "mongodb":

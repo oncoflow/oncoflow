@@ -1,14 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.application.config import AppConfig
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 
 
 class TestParsers(unittest.TestCase):
     def setUp(self):
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.llm.ocrmodels = "granite3.2-vision"
         self.mock_config.llm.url = "http://127.0.0.1"
         self.mock_config.llm.port = "11434"

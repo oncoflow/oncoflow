@@ -3,7 +3,6 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel, Field
 
-from src.application.config import AppConfig
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.application.agent.agent import DebateTurn
 
@@ -22,7 +21,7 @@ class MockDebateModel(PatientMDTOncologicForm.default_model):
 
 class TestCollaborativeDebate(unittest.TestCase):
     def setUp(self):
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.rcp.display_type = "stdout"
         self.mock_config.llm.type = "ollama"
         self.mock_config.llm.models = "llama3"

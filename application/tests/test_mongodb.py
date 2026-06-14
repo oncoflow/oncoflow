@@ -1,14 +1,13 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.application.config import AppConfig
 from src.infrastructure.documents.mongodb import Mongodb
 
 
 class TestMongodbDocumentStore(unittest.TestCase):
     def setUp(self):
         # Configure a mock config object
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.mongodb.host = "127.0.0.1"
         self.mock_config.mongodb.port = "27017"
         self.mock_config.mongodb.user = "root"

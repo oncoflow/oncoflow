@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from langchain_core.embeddings import Embeddings
-from src.application.config import AppConfig
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
 from src.infrastructure.vectorial.chromadb import Chromadb
 from src.infrastructure.vectorial.milvus import MilvusDB
@@ -12,7 +11,7 @@ from src.infrastructure.vectorial.mongodb import Mongodb as MongoDBVectorDB
 class TestVectorialDatabases(unittest.TestCase):
     def setUp(self):
         # Configure a generic mock config
-        self.mock_config = MagicMock(spec=AppConfig)
+        self.mock_config = MagicMock()
         self.mock_config.dbvec.type = "milvus"
         self.mock_config.dbvec.collection = "oncoflowDocs"
         self.mock_config.llm.type = "ollama"

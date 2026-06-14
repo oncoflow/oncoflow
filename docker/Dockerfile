@@ -19,5 +19,7 @@ COPY application application
 RUN uv sync --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
 
+WORKDIR /app/application
+
 # Lancement de l'application
-CMD ["python", "application/main.py"]
+CMD ["uv", "run", "streamlit", "run", "app-ui.py"]
