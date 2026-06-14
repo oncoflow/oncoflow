@@ -186,8 +186,8 @@ class ChromaDBSettings(BaseSettings):
         default="localhost",
         description="Hostname of the ChromaDB server (used when client is 'HttpClient').",
     )
-    port: str = Field(
-        default="8000",
+    port: int = Field(
+        default=8000,
         description="Port number of the ChromaDB server (used when client is 'HttpClient').",
     )
 

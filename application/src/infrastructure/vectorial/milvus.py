@@ -52,16 +52,6 @@ def patched_fetch_handler(alias=None):
 
 connections._fetch_handler = patched_fetch_handler
 
-if hasattr(connections, "_generate_call_context"):
-    original_generate_call_context = connections._generate_call_context
-
-    def patched_generate_call_context(alias, **kwargs):
-        if alias not in connections._alias_config:
-            alias = "default"
-        return original_generate_call_context(alias, **kwargs)
-
-    connections._generate_call_context = patched_generate_call_context
-
 
 # Monkeypatch Milvus.drop to prevent unawaited coroutine warning in AsyncMilvusClient._get_connection
 original_drop = Milvus.drop
