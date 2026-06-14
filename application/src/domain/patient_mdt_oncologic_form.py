@@ -97,7 +97,7 @@ class PatientMDTOncologicForm(DocumentReader):
         self,
         model: "type[PatientMDTOncologicForm.default_model]",
         upsert: bool = False,
-        callbacks: list = None,
+        callbacks: list | None = None,
     ):
         import time
 

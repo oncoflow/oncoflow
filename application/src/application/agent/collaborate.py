@@ -20,7 +20,7 @@ def collaborative_debate(
     mtd: DocumentReader,
     logger: Any,
     coordinator_agent_cls: type["OncowflowAgent"] | None = None,
-    callbacks: list = None,
+    callbacks: list | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
         coordinator_agent_cls = Agents.Coordinator_agent

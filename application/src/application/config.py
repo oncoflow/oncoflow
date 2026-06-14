@@ -113,6 +113,10 @@ class ConfigllmSettings(BaseSettings):
         default="openai/bge-m3",
         description="Embedding model identifier for vector representation of documents.",
     )
+    embeddings_port: str = Field(
+        default="4000",
+        description="Port number of the embeddings LLM server.",
+    )
     api_key: str = Field(
         default="ollama",
         description="API key for the LLM backend (required for OpenAI/vLLM, defaults to 'ollama' for local Ollama).",
