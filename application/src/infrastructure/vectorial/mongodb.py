@@ -25,6 +25,9 @@ class Mongodb(VectorialDataBase):
         self.mongo_database = self.client[config.mongodb.vectordatabase]
         self.mongo_collection = self.mongo_database[self.coll_name]
 
+    def get_embedding(self):
+        return self.llm_embeddings
+
     def set_clientdb(
         self,
         flush=False,

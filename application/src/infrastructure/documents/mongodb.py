@@ -12,7 +12,7 @@ class Mongodb:
     connection and operations performed, and closing the database connection when done.
     """
 
-    def __init__(self, config=AppConfig) -> None:
+    def __init__(self, config: AppConfig) -> None:
 
         self.logger = config.set_logger(
             "mongodb",

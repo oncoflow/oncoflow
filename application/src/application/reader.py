@@ -36,11 +36,12 @@ from src.application.tools import timed
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
-from src.infrastructure.llm.ollama import OllamaConnect
+from src.infrastructure.llm.base import LLMConnect
+from src.infrastructure.llm.factory import get_llm_client
 from langchain_core.vectorstores import VectorStoreRetriever
 from langchain_core.documents import Document
 
-from src.domain.interfaces import IVectorDatabaseClient, ILlmClient
+from src.infrastructure.vectorial.database import VectorialDataBase
 
 from slugify import slugify
 
@@ -62,6 +63,7 @@ class DocumentReader:
     retriever = None
     additional_pdf = None
     docs_pdf: list[str] = []
+    vecdb: VectorialDataBase
 
     _docling_converter = None
     _docling_chunker = None
@@ -83,6 +85,7 @@ class DocumentReader:
             print("Preloading RapidOCR models and Docling Converter...")
             ocr_options = RapidOcrOptions()
             pipeline_options = PdfPipelineOptions(ocr_options=ocr_options)
+            pipeline_options.allow_external_plugins = True
 
             cls._docling_converter = DocumentConverter(
                 format_options={
@@ -102,8 +105,8 @@ class DocumentReader:
         document: str,
         document_type: str = "mtd",
         models=None,
-        vecdb_client: IVectorDatabaseClient | None = None,
-        llm_client: ILlmClient | None = None,
+        vecdb_client: VectorialDataBase | None = None,
+        llm_client: LLMConnect | None = None,
     ):
         self.config = config
         self.document = document
@@ -117,6 +120,7 @@ class DocumentReader:
             raise ValueError(f"{document_type} not yet supported")
 
         if vecdb_client is None:
+            # pyrefly: ignore [bad-assignment]
             self.vecdb = VectorialDataBaseClient(
                 config, coll_prefix=slugify(document, separator="_")
             ).vectordb
@@ -124,10 +128,7 @@ class DocumentReader:
             self.vecdb = vecdb_client
 
         if llm_client is None:
-            if config.llm.type.lower() == "ollama":
-                llm_client_instance = OllamaConnect(config)
-            else:
-                raise ValueError(f"{config.llm.type} not yet supported")
+            llm_client_instance = get_llm_client(config)
             self.embeddings = llm_client_instance.embedding
         else:
             self.embeddings = llm_client.embedding
@@ -145,11 +146,13 @@ class DocumentReader:
 
         self.default_loader = config.rcp.doc_type
 
-        self.logger.info(
+        self.logger.debug(
             f"Class reader succesfully init, Start reading document {self.document_path}"
         )
 
-    def _load_document(self, document=str, loader_type=None) -> list[Document]:
+    def _load_document(
+        self, document: str, loader_type: str | None = None
+    ) -> list[Document]:
         """Loads a document from the specified path using the given loader type."""
         try:
             if loader_type is None:
@@ -177,6 +180,7 @@ class DocumentReader:
                 cla = getattr(document_loaders, loader_type)
 
                 if isinstance(cla, document_loaders.UnstructuredPDFLoader):
+                    # pyrefly: ignore [not-callable]
                     return cla(
                         document,
                         chunking_strategy="by_title",
@@ -191,7 +195,15 @@ class DocumentReader:
             raise
 
     def get_retriever(self) -> VectorStoreRetriever:
+        # pyrefly: ignore [missing-attribute, not-callable]
         return self.vecdb.get_retriever()
+
+    def is_indexed(self) -> bool:
+        """
+        Checks if the document is indexed in the VectorStore.
+        """
+        # pyrefly: ignore [missing-attribute]
+        return self.vecdb.is_indexed()
 
     @timed
     def read_document(self):
@@ -200,10 +212,11 @@ class DocumentReader:
         Then, adds the chunks to a VectorStore.
         Finally, creates a retrieval chain that allows users to ask questions about the document.
         """
-        self.logger.info(f"Start reading document {self.document_path}")
+        self.logger.debug(f"Start reading document {self.document_path}")
 
         self.chunked_documents = self._load_document(self.document_path)
 
+        # pyrefly: ignore [missing-attribute]
         self.vecdb.add_chunked_to_collection(self.chunked_documents, flush_before=True)
 
         self.current_model = self.config.llm.embeddings

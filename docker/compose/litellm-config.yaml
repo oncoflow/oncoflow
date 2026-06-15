@@ -1,0 +1,13 @@
+model_list:
+  - model_name: qwen3:14b
+    litellm_params:
+      model: openai/Qwen3-14B-GGUF
+      api_base: http://llama-cpp-chat:8080/v1
+      api_key: not-needed
+      drop_params: true
+      stream: false
+  - model_name: bge-m3
+    litellm_params:
+      model: openai/bge-m3
+      api_base: http://llama-cpp-embeddings:8080/v1
+      api_key: not-needed

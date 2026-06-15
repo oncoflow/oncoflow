@@ -1,10 +1,33 @@
+import os
+import signal
+import atexit
+
+
+def clean_exit(signum=None, frame=None):
+    try:
+        # Send SIGKILL to the entire process group to stop all processes instantly
+        os.killpg(os.getpgid(0), signal.SIGKILL)
+    except Exception:
+        os._exit(0)
+
+
+try:
+    signal.signal(signal.SIGINT, clean_exit)
+    signal.signal(signal.SIGTERM, clean_exit)
+except ValueError:
+    atexit.register(clean_exit)
+
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+os.environ["DOCLING_DEVICE"] = "cpu"
+
+import json
 from os import listdir
 from os.path import isfile, join
 from argparse import ArgumentParser
 
 from pprint import pprint  # noqa: F401
 
-import environ
+
 import inquirer
 
 from pymupdf import FileDataError
@@ -68,9 +91,9 @@ if __name__ == "__main__":
 
     if args.envlist:
         print("List of environment Variables :")
-        print(environ.generate_help(AppConfig, display_defaults=True))
+        print(json.dumps(AppConfig.model_json_schema(), indent=2))
     else:
-        app_conf = environ.to_config(AppConfig)
+        app_conf = AppConfig()
         logger = app_conf.set_logger("main")
 
         if app_conf.rcp.manual_query:

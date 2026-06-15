@@ -15,9 +15,8 @@ ENV OLLAMA_KEEP_ALIVE -1
 # # Store the model weights in the container image
 RUN ollama serve \
     & sleep 5 \
-    && ollama pull gpt-oss \
-    && ollama pull mahonzhan/all-MiniLM-L6-v2 \
-    && ollama pull nomic-embed-text
+    && ollama pull gemma4:26b \
+    && ollama pull bge-m3
 
 # Start Ollama
 ENTRYPOINT ["ollama", "serve"]

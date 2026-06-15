@@ -1,3 +1,25 @@
+import os
+import signal
+import atexit
+
+
+def clean_exit(signum=None, frame=None):
+    try:
+        # Send SIGKILL to the entire process group to stop all processes instantly
+        os.killpg(os.getpgid(0), signal.SIGKILL)
+    except Exception:
+        os._exit(0)
+
+
+try:
+    signal.signal(signal.SIGINT, clean_exit)
+    signal.signal(signal.SIGTERM, clean_exit)
+except ValueError:
+    atexit.register(clean_exit)
+
+os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
+os.environ["DOCLING_DEVICE"] = "cpu"
+
 import streamlit as st
 
 
@@ -28,6 +50,16 @@ def logout():
 st.logo(
     "static/logo.png",
     icon_image="static/icon.png",
+)
+
+
+if "language" not in st.session_state:
+    st.session_state["language"] = "Français"
+
+st.sidebar.selectbox(
+    "🌐 Langue / Language",
+    options=["Français", "English"],
+    key="language",
 )
 
 

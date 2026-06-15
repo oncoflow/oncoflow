@@ -1,4 +1,3 @@
-import environ
 import streamlit as st
 import time
 
@@ -6,7 +5,7 @@ from src.application.config import AppConfig
 from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
 
 
-app_conf = environ.to_config(AppConfig)
+app_conf = AppConfig()
 PAGES_DIR_SRC = "src/ui"
 uploaded_files = st.file_uploader(
     "Choisir un fichier", type=["pdf"], accept_multiple_files=True

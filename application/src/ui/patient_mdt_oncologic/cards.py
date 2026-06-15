@@ -1,4 +1,3 @@
-import environ
 import pytz
 from datetime import datetime
 import streamlit as st
@@ -9,13 +8,23 @@ from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.common_ressources import PatientPriority
 
 # Configuration de l'application
-app_conf = environ.to_config(AppConfig)
+app_conf = AppConfig()
 
 # Connexion Base de données
+db_client = None
 if app_conf.rcp.display_type == "mongodb":
     db_client = Mongodb(app_conf)
 
 logger = app_conf.set_logger("ui", default_context={"page": "cards"})
+
+
+def to_naive(dt: datetime | None) -> datetime | None:
+    """Convertit un datetime (aware ou naive) en datetime naive (Europe/Paris)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is not None:
+        return dt.astimezone(pytz.timezone("Europe/Paris")).replace(tzinfo=None)
+    return dt
 
 
 @st.dialog("Confirmation de suppression")
@@ -29,7 +38,7 @@ def delete_card(filename: str):
 
 def get_rcp_data():
     """Récupère les données RCP depuis MongoDB et les formate pour l'affichage."""
-    if not hasattr(db_client, "database"):
+    if db_client is None or not hasattr(db_client, "database"):
         return []
 
     db_datas = list(db_client.database["rcp_info"].find())
@@ -49,6 +58,7 @@ def get_rcp_data():
                 hour=0, minute=0, second=0, microsecond=0
             ),
         )
+        date_refresh = to_naive(date_refresh)
 
         date_mcp = (
             d["PatientAdministrative"]["date_rcp"]
@@ -57,6 +67,7 @@ def get_rcp_data():
         )
         if isinstance(date_mcp, str):
             date_mcp = datetime.fromisoformat(date_mcp)
+        date_mcp = to_naive(date_mcp)
 
         # Experts Pertinents & Urgence
         relevant_experts = []
@@ -87,15 +98,42 @@ def get_rcp_data():
         # Données Manquantes
         missing_data = []
         if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
-            for agent_name, agent_data in d["MTDCompleted"].items():
-                if isinstance(agent_data, dict):
-                    mtd_comp = agent_data.get("mtd_complete")
-                    if isinstance(mtd_comp, dict):
-                        m = mtd_comp.get("what_missing", [])
-                        if isinstance(m, list):
-                            missing_data.extend(m)
+            if "mtd_complete" in d["MTDCompleted"]:
+                mtd_comp = d["MTDCompleted"].get("mtd_complete")
+                if isinstance(mtd_comp, dict):
+                    m = mtd_comp.get("what_missing", [])
+                    if isinstance(m, list):
+                        missing_data.extend(m)
+            else:
+                for agent_name, agent_data in d["MTDCompleted"].items():
+                    if isinstance(agent_data, dict):
+                        mtd_comp = agent_data.get("mtd_complete")
+                        if isinstance(mtd_comp, dict):
+                            m = mtd_comp.get("what_missing", [])
+                            if isinstance(m, list):
+                                missing_data.extend(m)
         else:
             missing_data.extend(["no data"])
+
+        # Intervention requise
+        intervention_required = None
+        intervention_type = None
+        if "isInterventionRequiered" in d and isinstance(
+            d["isInterventionRequiered"], dict
+        ):
+            int_data = d["isInterventionRequiered"]
+            if "intervention_required" in int_data:
+                intervention_required = int_data.get("intervention_required")
+                intervention_type = int_data.get("intervention_type")
+            else:
+                for agent_data in int_data.values():
+                    if (
+                        isinstance(agent_data, dict)
+                        and "intervention_required" in agent_data
+                    ):
+                        intervention_required = agent_data.get("intervention_required")
+                        intervention_type = agent_data.get("intervention_type")
+                        break
 
         cards_data.append(
             {
@@ -108,6 +146,8 @@ def get_rcp_data():
                 "urgency": urgency_level,
                 "urgency_score": urgency_score,
                 "link": f"datas/?file={d['file']}",
+                "intervention_required": intervention_required,
+                "intervention_type": intervention_type,
             }
         )
 
@@ -145,9 +185,13 @@ def display_as_list(data):
         "urgency_score": -1,
     }
 
+    default_val = default_value_map.get(sort_by)
+    if default_val is None:
+        default_val = ""
+
     sorted_data = sorted(
         data,
-        key=lambda x: x.get(sort_by) or default_value_map.get(sort_by),
+        key=lambda x: x.get(sort_by) if x.get(sort_by) is not None else default_val,
         reverse=not ascending,
     )
 
@@ -208,13 +252,24 @@ def display_as_list(data):
         row_cols[2].markdown(urgency_display)
 
         # Colonne Statut
-        if item["missing"]:
-            with row_cols[3]:
+        with row_cols[3]:
+            if item["missing"]:
                 with st.expander(f"⚠️ Incomplet ({len(item['missing'])})"):
                     for m in item["missing"]:
                         st.markdown(f"- {m}")
-        else:
-            row_cols[3].markdown("✅ Complet")
+            else:
+                st.markdown("✅ Complet")
+
+            # Statut Intervention
+            if item.get("intervention_required") is True:
+                int_type = (
+                    f" ({item['intervention_type']})"
+                    if item.get("intervention_type")
+                    else ""
+                )
+                st.markdown(f"💉 **Intervention requise**{int_type}")
+            elif item.get("intervention_required") is False:
+                st.markdown("✔️ Pas d'intervention")
 
         # Colonne Experts
         if item["experts"]:
@@ -262,11 +317,29 @@ def display_as_cards(data):
                     ":orange-badge[⚠️ Dossier Incomplet]" if item["missing"] else ""
                 )
 
+                badge_intervention = ""
+                if item.get("intervention_required") is True:
+                    int_type = (
+                        f" ({item['intervention_type']})"
+                        if item.get("intervention_type")
+                        else ""
+                    )
+                    badge_intervention = (
+                        f":orange-badge[💉 Intervention conseillée{int_type}]"
+                    )
+                elif item.get("intervention_required") is False:
+                    badge_intervention = ":green-badge[Pas d'intervention]"
+
                 st.subheader(
                     item["patient"],
                     help=f"Refresh : {item['date_refresh'].strftime('%d-%m-%Y')} - Fichier: {item['file']}",
                 )
-                st.markdown(f"{badge_urgent} {badge_missing}")
+
+                # Combine badges
+                badges = [badge_urgent, badge_missing, badge_intervention]
+                badges_str = " ".join([b for b in badges if b])
+                if badges_str:
+                    st.markdown(badges_str)
 
                 if item["date"] is not None:
                     st.caption(f"📅 {item['date'].strftime('%d-%m-%Y')}")
@@ -431,5 +504,5 @@ def cards_view():
 if __name__ == "__main__":
     st.set_page_config(layout="wide")
     cards_view()
-    if hasattr(db_client, "close"):
+    if db_client is not None and hasattr(db_client, "close"):
         db_client.close()

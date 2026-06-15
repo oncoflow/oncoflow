@@ -1,4 +1,4 @@
-FROM python:3.11-slim 
+FROM python:3.11-slim
 
 LABEL LABEL org.opencontainers.image.source https://github.com/oncoflow/oncoflow
 

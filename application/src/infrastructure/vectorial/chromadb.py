@@ -12,7 +12,7 @@ from src.infrastructure.vectorial.database import VectorialDataBase
 
 
 class Chromadb(VectorialDataBase):
-    def init_client(self, config=AppConfig):
+    def init_client(self, config: AppConfig):
         if config.chromadb.client == "HttpClient":
             self.client = chromadb.HttpClient(
                 host=config.chromadb.host, port=config.chromadb.port
@@ -51,3 +51,10 @@ class Chromadb(VectorialDataBase):
             self.coll_name,
             embedding_function=self.embeddings,
         )
+
+    def is_indexed(self) -> bool:
+        try:
+            col = self.client.get_collection(self.coll_name)
+            return col.count() > 0
+        except Exception:
+            return False

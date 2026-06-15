@@ -7,7 +7,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 WORKDIR /app
 
 # Copie des fichiers de définition de projet
-COPY pyproject.toml uv.lock ./
+COPY application/pyproject.toml application/uv.lock ./
 
 # Installation des dépendances (sans les outils de dev)
 RUN uv sync --frozen --no-dev --no-install-project
@@ -19,5 +19,7 @@ COPY application application
 RUN uv sync --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
 
+WORKDIR /app/application
+
 # Lancement de l'application
-CMD ["python", "application/main.py"]
+CMD ["uv", "run", "streamlit", "run", "app-ui.py"]
