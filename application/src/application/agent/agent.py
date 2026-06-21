@@ -85,6 +85,7 @@ class OncowflowAgent:
     output_format: type[BaseModel] | None = None
     agent: Any = None
     agent_name: str = ""
+    additionnal_readers: list[DocumentReader] = []
 
     def __init__(
         self,
@@ -92,6 +93,8 @@ class OncowflowAgent:
         mtd: DocumentReader | None = None,
         output_format: type[BaseModel] | None = None,
         reasoning: bool = True,
+        reader: DocumentReader | None = None,
+        additionnal_readers: list[DocumentReader] = [],
     ):
         """
         Initialize the OncowflowAgent.
@@ -135,13 +138,17 @@ class OncowflowAgent:
         )
 
         # Set up readers for the main document and additional resources
+        self.reader = mtd
+        tools = []
         if mtd is not None:
-            self.reader = mtd
+            tools.append(get_mtd_markdown)
+
         self.additionnal_readers = [
             DocumentReader(config, ressource, document_type="ressource")
             for ressource in self.ressources
         ]
-        tools = [get_mtd_markdown]
+
+        self.additionnal_readers.extend(additionnal_readers)
         if len(self.additionnal_readers) > 0:
             tools.append(search_on_ressources)
 
