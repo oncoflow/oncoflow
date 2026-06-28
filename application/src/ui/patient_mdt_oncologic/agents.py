@@ -12,11 +12,13 @@ def read(ressource: str, config: AppConfig):
     st.toast(f"Ressource '{ressource}' indexée avec succès !", icon="✅")
 
 
+app_conf = AppConfig()
+
 pmtd = Agents()
 st.title("🕵️ Liste des agents")
 
 cols = st.columns(3)
-app_conf = AppConfig()
+
 for i, (n, a) in enumerate(pmtd.list.items()):
     with cols[i % 3]:
         with st.container(border=True):
@@ -39,10 +41,17 @@ for i, (n, a) in enumerate(pmtd.list.items()):
                     pass
 
                 c1, c2 = st.columns([3, 1], vertical_alignment="center")
-                if is_idx:
-                    c1.markdown(f"📄 **{r}** :green[✓]")
-                else:
-                    c1.caption(f"📄 {r}")
+                btn_name = f"📄 {r} ✅" if is_idx else f"📄 {r} ⚠️"
+                if c1.button(
+                    btn_name,
+                    key=f"link_{n}_{r}",
+                    use_container_width=True,
+                    help="Consulter cette ressource",
+                ):
+                    st.switch_page(
+                        "src/ui/patient_mdt_oncologic/ressources.py",
+                        query_params={"resource": r},
+                    )
 
                 button_label = "Re-Index" if is_idx else "Index"
                 if c2.button(button_label, key=f"{n}_{r}", use_container_width=True):

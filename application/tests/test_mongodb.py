@@ -73,7 +73,6 @@ class TestMongodbDocumentStore(unittest.TestCase):
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_insert_docs(self, mock_mongo_client_cls):
-        mock_client = mock_mongo_client_cls.return_value
         db = Mongodb(self.mock_config)
 
         mock_collection = MagicMock()
@@ -84,7 +83,7 @@ class TestMongodbDocumentStore(unittest.TestCase):
         db.insert_docs()
 
         mock_collection.insert_many.assert_called_once_with([{"file": "PDF1.pdf"}])
-        mock_client.close.assert_called_once()
+        self.assertEqual(db.documents_to_insert, {})
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_delete_docs(self, mock_mongo_client_cls):

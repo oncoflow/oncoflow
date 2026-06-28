@@ -7,8 +7,8 @@ services:
       - sh
       - -c
       - |
-        openssl rand -base64 756 > /tmp/keyfile  && chown 101:101 /tmp/keyfile ;
-        python3 /usr/local/bin/docker-entrypoint.py
+        openssl rand -base64 756 > /tmp/keyfile  && chmod 600 /tmp/keyfile ;
+        exec python3 -c "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())" "$$@"
     command: >-
          mongod
          --config /etc/mongod.conf
@@ -18,6 +18,7 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
       - ./mongod.conf:/etc/mongod.conf:ro
     extra_hosts:
@@ -70,7 +71,8 @@ services:
       --port 8080
       --host 0.0.0.0
       -c 40960
-      -ngl 40
+      -ngl 99
+      -fa
       --temp 1.0
       --top-p 0.95
       --top-k 40
@@ -92,7 +94,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     ports:
-      - "8082:8080"
+      - "8081:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface:z
     ipc: host
@@ -119,7 +121,7 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
-    #network_mode: "host"
+    network_mode: "host"
     ports:
      - 4000:4000
     volumes:
@@ -129,8 +131,8 @@ services:
       - llama-cpp-chat
       - llama-cpp-embeddings
     restart: unless-stopped
-    networks:
-      - search-community
+    #networks:
+    #  - search-community
 
 
   # chromadb:

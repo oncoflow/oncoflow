@@ -5,7 +5,7 @@ import streamlit as st
 from src.application.config import AppConfig
 from src.application.app_functions import delete_document
 from src.infrastructure.documents.mongodb import Mongodb
-from src.domain.common_ressources import PatientPriority
+from src.domain.common.common_ressources import PatientPriority
 
 # Configuration de l'application
 app_conf = AppConfig()

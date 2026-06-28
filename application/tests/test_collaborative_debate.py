@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel, Field
 
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.domain.oncology.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.application.agent.agent import DebateTurn
 
 
@@ -43,8 +43,8 @@ class TestCollaborativeDebate(unittest.TestCase):
         MockDebateModel.agents = [self.mock_agent1_cls, self.mock_agent2_cls]
 
     @patch("src.application.reader.get_llm_client")
-    @patch("src.domain.patient_mdt_oncologic_form.Mongodb")
-    @patch("src.domain.patient_mdt_oncologic_form.DocumentReader.read_document")
+    @patch("src.domain.common.patient_mdt_common_form.Mongodb")
+    @patch("src.domain.common.patient_mdt_common_form.DocumentReader.read_document")
     @patch("src.application.reader.VectorialDataBaseClient")
     def test_dict_to_models_collaborative(
         self, mock_vecdb, mock_read_doc, mock_mongodb, mock_get_llm
@@ -69,8 +69,8 @@ class TestCollaborativeDebate(unittest.TestCase):
         )
 
     @patch("src.application.reader.get_llm_client")
-    @patch("src.domain.patient_mdt_oncologic_form.Mongodb")
-    @patch("src.domain.patient_mdt_oncologic_form.DocumentReader.read_document")
+    @patch("src.domain.common.patient_mdt_common_form.Mongodb")
+    @patch("src.domain.common.patient_mdt_common_form.DocumentReader.read_document")
     @patch("src.application.reader.VectorialDataBaseClient")
     def test_dict_to_models_collaborative_backward_compatibility(
         self, mock_vecdb, mock_read_doc, mock_mongodb, mock_get_ll
@@ -102,8 +102,8 @@ class TestCollaborativeDebate(unittest.TestCase):
 
     @patch("src.application.agent.collaborate.Agents.Coordinator_agent")
     @patch("src.application.reader.get_llm_client")
-    @patch("src.domain.patient_mdt_oncologic_form.Mongodb")
-    @patch("src.domain.patient_mdt_oncologic_form.DocumentReader.read_document")
+    @patch("src.domain.common.patient_mdt_common_form.Mongodb")
+    @patch("src.domain.common.patient_mdt_common_form.DocumentReader.read_document")
     @patch("src.application.reader.VectorialDataBaseClient")
     def test_read_model_collaborative_debate_flow(
         self,

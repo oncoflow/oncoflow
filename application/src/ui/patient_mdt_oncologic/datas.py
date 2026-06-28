@@ -16,8 +16,8 @@ from src.application.config import AppConfig
 from src.application.app_functions import delete_document, full_read_mtd_agents
 from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.agents import Agents
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
-from src.domain.common_ressources import PatientPriority
+from src.domain.patient_mdt_form import PatientMDTForm
+from src.domain.common.common_ressources import PatientPriority
 from src.ui.patient_mdt_oncologic.translations import translate
 
 
@@ -115,9 +115,9 @@ def update_date(filename, date):
 
 
 def get_form_models():
-    """Récupère dynamiquement les classes de modèles définies dans PatientMDTOncologicForm"""
+    """Récupère dynamiquement les classes de modèles définies dans PatientMDTForm"""
     models = []
-    for name, obj in inspect.getmembers(PatientMDTOncologicForm):
+    for name, obj in inspect.getmembers(PatientMDTForm):
         if (
             inspect.isclass(obj)
             and issubclass(obj, BaseModel)
@@ -209,9 +209,7 @@ def rerun_all_models(filename):
 
 def get_mtd_reader():
     if "reader" not in st.session_state or st.session_state["reader"] is None:
-        st.session_state["reader"] = PatientMDTOncologicForm(
-            app_conf, st.query_params["file"]
-        )
+        st.session_state["reader"] = PatientMDTForm(app_conf, st.query_params["file"])
     return st.session_state["reader"]
 
 
@@ -261,7 +259,7 @@ def power_mode(element):
 
 
 def form_chat():
-    reader: PatientMDTOncologicForm | None = None
+    reader: PatientMDTForm | None = None
     st.header("Poser une question")
 
     if (
@@ -305,6 +303,12 @@ def form_chat():
             if st.session_state["agent"] is not None:
                 del st.session_state["agent"]
             del st.session_state["messages"]
+            try:
+                from src.application.app_functions import unload_active_models
+
+                unload_active_models(app_conf)
+            except Exception:
+                pass
             st.rerun()
 
         messages = st.container(height=300)

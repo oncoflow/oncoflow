@@ -64,6 +64,7 @@ class LiteLLMConnect(LLMConnect):
         temperature: float | None = None,
         tools: List[Any] = [],
         reasoning: bool = False,
+        reasoning_budget: int | None = None,
     ) -> Any:
         # If temperature is not provided, fallback to the config value
         temp = temperature if temperature is not None else self.config.llm.temp
@@ -73,6 +74,10 @@ class LiteLLMConnect(LLMConnect):
             model_kwargs["response_format"] = {"type": "json_object"}
         if reasoning:
             model_kwargs["reasoning"] = {"effort": "low"}
+            if reasoning_budget is not None:
+                model_kwargs["extra_body"] = {
+                    "thinking_budget_tokens": reasoning_budget
+                }
 
         model_instance = ChatLiteLLM(
             api_base=self.base_url,

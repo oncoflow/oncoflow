@@ -5,6 +5,14 @@ import atexit
 
 def clean_exit(signum=None, frame=None):
     try:
+        from src.application.config import AppConfig
+        from src.application.app_functions import unload_active_models
+
+        config = AppConfig()
+        unload_active_models(config)
+    except Exception:
+        pass
+    try:
         # Send SIGKILL to the entire process group to stop all processes instantly
         os.killpg(os.getpgid(0), signal.SIGKILL)
     except Exception:
@@ -83,6 +91,11 @@ pages["Patient mdt Oncologic"] = [
         f"{PAGES_DIR_SRC}/patient_mdt_oncologic/agents.py",
         title="Agents and ressources",
         icon=":material/robot:",
+    ),
+    st.Page(
+        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/ressources.py",
+        title="Ressources",
+        icon="📚",
     ),
 ]
 pages["Reports"] = [

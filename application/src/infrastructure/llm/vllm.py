@@ -89,10 +89,20 @@ class VllmConnect(LLMConnect):
 
         self.logger.info("Successfully connected to vLLM server")
 
-    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
+    def chat(
+        self,
+        model,
+        output=None,
+        temperature=None,
+        tools=[],
+        reasoning=True,
+        reasoning_budget=None,
+    ):
         model_kwargs = {}
         if output is not None and not tools:
             model_kwargs["response_format"] = {"type": "json_object"}
+        if reasoning and reasoning_budget is not None:
+            model_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
 
         model_instance = ChatOpenAI(
             base_url=self.base_url if self.base_url else None,

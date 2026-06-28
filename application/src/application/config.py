@@ -301,6 +301,11 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
+    domain: str = Field(
+        default="oncology",
+        description="Domain of the application. Valid values: oncology, sma.",
+    )
+
     llm: ConfigllmSettings = Field(
         default_factory=ConfigllmSettings,
         description="LLM system configuration (model, URL, port, temperature, embeddings).",

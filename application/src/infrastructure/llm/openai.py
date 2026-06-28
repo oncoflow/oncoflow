@@ -131,12 +131,22 @@ class OpenAIConnect(LLMConnect):
 
         self.logger.info("Succesfully connected")
 
-    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
+    def chat(
+        self,
+        model,
+        output=None,
+        temperature=None,
+        tools=[],
+        reasoning=True,
+        reasoning_budget=None,
+    ):
         # We set JSON mode if output is specified (matching the Ollama behavior)
         # However, if tools are provided, we must not force JSON mode to avoid conflicts with tool calling.
         model_kwargs = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
+        if reasoning and reasoning_budget is not None:
+            model_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
 
         model_instance = StrictChatOpenAI(
             base_url=self.base_url if self.base_url else None,

@@ -1,0 +1,147 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llama-cpp-chat
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/minScale: "0"
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-type: nvidia-l4
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        env:
+        - name: GGML_CUDA_PDL
+          value: "0"
+        - name: GGML_CUDA_DISABLE_GRAPHS
+          value: "0"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+        args:
+        # ─── Model ─────────────────────────────────────────────────────────────
+        # Qwen3.6-35B-A3B — Mixture of Experts — UD-IQ4_NL — ~80-160 T/s sur L4
+        #
+        # ARCHITECTURE MoE :
+        #   35B paramètres totaux en mémoire (tous les experts sont chargés)
+        #   Seulement 3B paramètres ACTIFS par token → vitesse proche d'un 3B !
+        #   Qualité proche d'un dense 27B car accès à 35B de "connaissance"
+        #
+        # BUDGET VRAM (L4 = 22.5 GB usable) :
+        #   Poids modèle UD-IQ4_NL : ~18.5 GB  ← vérifié HuggingFace
+        #   KV cache q4_0 @ 16k ctx × 1 slot  :  ~0.75 GB
+        #   Total estimé : ~19.3 GB → ~3.2 GB de marge
+        #
+        # MTP (Multi-Token Prediction) inclus dans ce repo unsloth
+        # → llama.cpp peut faire du speculative decoding natif (+40 à +100% T/s)
+        #
+        # Repo vérifié HuggingFace le 2026-06-28 :
+        #   unsloth/Qwen3.6-35B-A3B-MTP-GGUF (public, accès libre)
+        #   Fichier : Qwen3.6-35B-A3B-UD-IQ4_NL.gguf (18.5 GB)
+        # Chargement local direct pour éviter le timeout du premier démarrage
+        - "-m"
+        - "/root/.cache/huggingface/models/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf"
+        - "--port"
+        - "8080"
+        - "--host"
+        - "0.0.0.0"
+        # ─── Context ───────────────────────────────────────────────────────────
+        # RÉDUIT à 16k — chaque token de contexte consomme de la VRAM précieuse
+        # Le MoE laisse peu de marge pour le KV cache → ne pas dépasser 16k
+        # Suffisant pour les MTDs oncologiques + chunks RAG TNCD
+        - "-c"
+        - "16384"
+        - "-n"
+        - "8192"
+        # ─── GPU ───────────────────────────────────────────────────────────────
+        # Offload TOUS les layers → essentiel pour la vitesse MoE
+        # Les experts non-actifs restent en VRAM (pas de CPU roundtrip)
+        - "-ngl"
+        - "99"
+        - "--flash-attn"
+        - "on"
+        - "--no-mmap"
+        # ─── MTP — Multi-Token Prediction ──────────────────────────────────────
+        # Le repo unsloth/Qwen3.6-35B-A3B-MTP-GGUF inclut la draft head MTP
+        # --draft-mtp n'est PAS encore supporté par l'image llama.cpp:server-cuda12
+        # stable (flag invalide → crash). À activer quand l'image sera mise à jour.
+        # - "--draft-mtp"
+        # ─── Batch ─────────────────────────────────────────────────────────────
+        # Pour un MoE 3B actif, les batchs modérés sont suffisants
+        # Un batch trop large gaspille de la VRAM pour peu de gain
+        - "-b"
+        - "4096"
+        - "-ub"
+        - "1024"
+        # ─── Threading ─────────────────────────────────────────────────────────
+        - "-t"
+        - "6"
+        # 1 slot parallèle UNIQUEMENT — le modèle occupe ~20 GB, pas de marge
+        # pour plusieurs KV caches simultanés (chacun pèse ~3.0 GB @ 16k ctx)
+        - "-np"
+        - "1"
+
+        # ─── Sampling ──────────────────────────────────────────────────────────
+        - "--temp"
+        - "1.0"
+        - "--top-p"
+        - "0.95"
+        - "--top-k"
+        - "40"
+        - "--min-p"
+        - "0"
+        - "--presence-penalty"
+        - "2.0"
+        - "--repeat-penalty"
+        - "1.0"
+        # ─── Qwen3 Thinking ────────────────────────────────────────────────────
+        # Même famille Qwen → mêmes paramètres de thinking que Qwen3-8B/14B
+        - "--jinja"
+        - "--reasoning-format"
+        - "deepseek"
+        # Budget de réflexion réduit vs 14B car le MoE est déjà plus intelligent
+        # et les tokens de thinking coûtent cher en contexte (16k limité)
+        - "--reasoning-budget"
+        - "6144"
+        - "--reasoning-budget-message"
+        - "\nOkay, I have enough information to answer."
+        - "--no-context-shift"
+        - "--no-warmup"
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          # 360 × 10s = 60 minutes
+          # Nécessaire pour le PREMIER démarrage : téléchargement de 18.5 GB
+          # depuis HuggingFace via GCS FUSE peut prendre 30-50 minutes.
+          # Les démarrages suivants seront rapides (modèle en cache GCS).
+          # Pré-peupler le cache pour éviter ce délai :
+          #   gsutil -m cp -r \
+          #     ~/.cache/huggingface/hub/models--unsloth--Qwen3.6-35B-A3B-MTP-GGUF \
+          #     gs://oncoflow-models-cache/hub/
+          failureThreshold: 359
+        resources:
+          limits:
+            cpu: "8"
+            memory: "32Gi"   # Modèle de 18.5 GB, 32 GB RAM requis pour le chargement (hors VRAM GPU)
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: gcs-hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: gcs-hf-cache
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: oncoflow-models-cache
