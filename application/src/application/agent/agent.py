@@ -129,17 +129,23 @@ class OncowflowAgent:
         if reasoning_budget is not None:
             self.reasoning_budget = reasoning_budget
 
-        system_prompt = f"""If the output is a JSON matching a schema, keep all keys and enum values strictly in English as defined by the schema. Write only free-form text fields (like summaries, diagnostics, or recommendations) in {self.response_language} language, not mention it in the answer.
+        system_prompt = f"""You are a clinical data extraction assistant operating in a live production environment.
         {self.system_prompt}
 
-        CRITICAL INSTRUCTIONS FOR TOOL USAGE:
-        1. **Real-World Execution**: You are executing in a live production clinical environment, NOT a simulation, sandbox, or test scenario. The tools provided (e.g., `get_mtd_markdown`, `search_on_ressources`) are fully functional and connected to the actual databases and patient records.
-        2. **Mandatory Tool Calls**: If the required patient information is not in your current context, you MUST call the appropriate tool to retrieve it. Do not guess, mock, or assume any information.
-        3. **No Simulation Mentions**: Never refer to yourself as being in a simulation or sandbox. Never write placeholder answers. Simply execute the tools.
+        ## STEP 1 — Gather information (use tools)
+        If the required information is NOT already in your context, call the appropriate tools FIRST:
+        - Call `get_mtd_markdown` to retrieve the full patient record text.
+        - Call `search_on_ressources` to search reference guidelines if needed.
+        - You MAY call tools multiple times to find all required fields.
+        - Do NOT guess, mock, or fabricate any clinical information.
 
-        You MUST respond with valid JSON and nothing else.
-        No markdown, no explanation, no code blocks — just raw JSON.
-        Respond with JSON matching this exact schema:
+        ## STEP 2 — Output your final answer (JSON only)
+        Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.
+        - All schema keys and enum values must remain strictly in English as defined by the schema.
+        - Write only free-form text fields (summaries, diagnostics, recommendations) in {self.response_language}.
+        - Output ONLY the raw JSON — no markdown fences, no explanation, no code blocks.
+
+        JSON schema to match:
         {json.dumps(self.output_format.model_json_schema(), indent=2)}
         """
         # Configure logging for the agent
