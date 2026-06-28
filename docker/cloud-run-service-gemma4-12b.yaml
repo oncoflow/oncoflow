@@ -1,0 +1,114 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llama-cpp-chat
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/minScale: "0"
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-type: nvidia-l4
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        env:
+        - name: GGML_CUDA_PDL
+          value: "0"
+        - name: GGML_CUDA_DISABLE_GRAPHS
+          value: "1"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+        args:
+        # ─── Model ─────────────────────────────────────────────────────────────
+        # Gemma 4 12B Q4_K_M — ~7.5 GB VRAM — ~38-42 T/s sur L4
+        # À tester : multimodal natif, function calling optimisé Google DeepMind
+        # Note: bartowski maintient les builds GGUF officiels de Gemma 4
+        - "-hf"
+        - "bartowski/google_gemma-4-12b-it-GGUF:Q4_K_M"
+        - "--port"
+        - "8080"
+        - "--host"
+        - "0.0.0.0"
+        # ─── Context ───────────────────────────────────────────────────────────
+        # Gemma 4 supporte 128k tokens natif — on limite à 32k pour économiser
+        # le KV cache VRAM et permettre 3 slots parallèles confortables
+        - "-c"
+        - "32768"
+        - "-n"
+        - "16384"
+        # ─── GPU ───────────────────────────────────────────────────────────────
+        - "-ngl"
+        - "99"
+        - "--flash-attn"
+        - "on"
+        - "--no-mmap"
+        # ─── Batch (12B: bonne quantité de VRAM libre) ──────────────────────────
+        # Batch prefill large pour exploiter la bande passante L4
+        - "-b"
+        - "8192"
+        - "-ub"
+        - "2048"
+        # ─── Threading ─────────────────────────────────────────────────────────
+        - "-t"
+        - "4"
+        # 3 slots parallèles — 12B + contexte 32k laisse de la marge
+        - "-np"
+        - "3"
+        # ─── KV Cache ──────────────────────────────────────────────────────────
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
+        # ─── Sampling (paramètres recommandés par Google DeepMind pour Gemma 4) ─
+        - "--temp"
+        - "1.0"
+        # Gemma 4: top-k 64 recommandé officiellement (vs 40 pour Qwen)
+        - "--top-k"
+        - "64"
+        - "--top-p"
+        - "0.95"
+        - "--min-p"
+        - "0"
+        # Gemma 4 génère nativement du contenu structuré — penalties plus légères
+        - "--presence-penalty"
+        - "0.0"
+        - "--repeat-penalty"
+        - "1.0"
+        # ─── Chat Template ─────────────────────────────────────────────────────
+        # Jinja requis pour le format natif Gemma 4 (function calling, thinking)
+        - "--jinja"
+        # Note: Gemma 4 utilise son propre format de thinking natif,
+        # pas --reasoning-format deepseek (spécifique Qwen3/DeepSeek)
+        # Pas de --reasoning-budget non plus (géré par le template Gemma)
+        - "--no-context-shift"
+        - "--no-warmup"
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 120
+        resources:
+          limits:
+            cpu: "4"
+            memory: "16Gi"      # 7.5 GB modèle + 3 KV caches + overhead OS
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: gcs-hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: gcs-hf-cache
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: oncoflow-models-cache

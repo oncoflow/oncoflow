@@ -1,97 +1,166 @@
 #!/bin/bash
 set -e
 
-# Ensure executing from the script's directory
+# ─── Usage ─────────────────────────────────────────────────────────────────────
+usage() {
+    echo ""
+    echo "Usage: $0 <model>"
+    echo ""
+    echo "Available models:"
+    echo "  qwen3-14b   Qwen3-14B Q4_K_M  — ~20 T/s — Qualité maximale (référence)"
+    echo "  qwen3-8b    Qwen3-8B  Q4_K_M  — ~40 T/s — Recommandé vitesse/qualité"
+    echo "  gemma4-12b  Gemma4-12B Q4_K_M — ~40 T/s — À tester (Google DeepMind)"
+    echo ""
+    echo "Examples:"
+    echo "  $0 qwen3-8b"
+    echo "  $0 gemma4-12b"
+    echo ""
+    exit 1
+}
+
+# ─── Model selection ───────────────────────────────────────────────────────────
+MODEL="${1:-}"
+if [ -z "$MODEL" ]; then
+    echo "❌ Error: model argument required."
+    usage
+fi
+
+case "$MODEL" in
+    qwen3-14b)
+        SERVICE_YAML="cloud-run-service-qwen3-14b.yaml"
+        MODEL_LABEL="Qwen3-14B Q4_K_M"
+        LITELLM_MODEL="openai/Qwen3-14B-GGUF"
+        ;;
+    qwen3-8b)
+        SERVICE_YAML="cloud-run-service-qwen3-8b.yaml"
+        MODEL_LABEL="Qwen3-8B Q4_K_M"
+        LITELLM_MODEL="openai/Qwen3-8B-GGUF"
+        ;;
+    gemma4-12b)
+        SERVICE_YAML="cloud-run-service-gemma4-12b.yaml"
+        MODEL_LABEL="Gemma4-12B Q4_K_M"
+        LITELLM_MODEL="openai/google_gemma-4-12b-it-GGUF"
+        ;;
+    *)
+        echo "❌ Error: unknown model '$MODEL'."
+        usage
+        ;;
+esac
+
+# ─── Ensure executing from the script's directory ──────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 cd "${SCRIPT_DIR}"
 
-# Configuration variables
+# Check the YAML file exists
+if [ ! -f "$SERVICE_YAML" ]; then
+    echo "❌ Error: service file '$SERVICE_YAML' not found in $SCRIPT_DIR"
+    exit 1
+fi
+
+# ─── Configuration variables ───────────────────────────────────────────────────
 REGION="europe-west1"
 SERVICE_NAME="llama-cpp-chat"
 BUCKET_NAME="oncoflow-models-cache"
 REPO_NAME="oncoflow-images"
 
-echo "============================================="
-echo "Deploying ${SERVICE_NAME} to GCP Cloud Run..."
-echo "============================================="
+echo ""
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║         Oncoflow — Cloud Run LLM Deployment                  ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+printf "║  Model   : %-50s ║\n" "$MODEL_LABEL"
+printf "║  YAML    : %-50s ║\n" "$SERVICE_YAML"
+printf "║  Region  : %-50s ║\n" "$REGION"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
 
-# Check if gcloud is installed
+# ─── Prerequisites ─────────────────────────────────────────────────────────────
 if ! command -v gcloud &> /dev/null; then
-    echo "Error: gcloud CLI is not installed. Please install it first."
+    echo "❌ Error: gcloud CLI is not installed."
     exit 1
 fi
 
-# Get current project ID
 PROJECT_ID=$(gcloud config get-value project 2>/dev/null || true)
 if [ -z "$PROJECT_ID" ]; then
-    echo "Error: No active GCP project configured. Run 'gcloud config set project <PROJECT_ID>'."
+    echo "❌ Error: No active GCP project. Run: gcloud config set project <PROJECT_ID>"
     exit 1
 fi
-echo "Using GCP Project: ${PROJECT_ID}"
+echo "✅ GCP Project: ${PROJECT_ID}"
 
-# Resolve container tool (podman or docker)
+# Resolve container tool
 if command -v podman &> /dev/null; then
     CONTAINER_TOOL="podman"
 elif command -v docker &> /dev/null; then
     CONTAINER_TOOL="docker"
 else
-    echo "Error: Neither podman nor docker was found."
+    echo "❌ Error: Neither podman nor docker found."
     exit 1
 fi
-echo "Using container tool: ${CONTAINER_TOOL}"
+echo "✅ Container tool: ${CONTAINER_TOOL}"
 
 echo ""
-echo "Prerequisites Check:"
-echo "1. Ensure GCS bucket '${BUCKET_NAME}' exists."
-echo "   Command: gcloud storage buckets create gs://${BUCKET_NAME} --location=${REGION}"
-echo ""
-echo "2. Ensure the Cloud Run service account has permissions on the bucket."
+echo "Prerequisites:"
+echo "  1. GCS bucket '${BUCKET_NAME}' must exist:"
+echo "     gcloud storage buckets create gs://${BUCKET_NAME} --location=${REGION}"
+echo "  2. Cloud Run service account must have read access to the bucket."
 echo ""
 
-read -p "Do you want to proceed with deployment in region '${REGION}'? (y/n): " -n 1 -r
+read -p "Deploy model '$MODEL_LABEL' to region '$REGION'? (y/n): " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Deployment cancelled."
     exit 0
 fi
 
-# 1. Create Artifact Registry if it doesn't exist
-echo "Checking Artifact Registry repository '${REPO_NAME}'..."
+# ─── Step 1: Artifact Registry ─────────────────────────────────────────────────
+echo ""
+echo "🔧 [1/4] Checking Artifact Registry '${REPO_NAME}'..."
 if ! gcloud artifacts repositories describe "${REPO_NAME}" --location="${REGION}" &>/dev/null; then
-    echo "Creating Artifact Registry repository '${REPO_NAME}'..."
+    echo "  Creating repository '${REPO_NAME}'..."
     gcloud artifacts repositories create "${REPO_NAME}" \
         --repository-format=docker \
         --location="${REGION}" \
         --description="Docker images for Oncoflow"
 fi
+echo "  ✅ Repository ready."
 
-# 2. Configure credentials
-echo "Configuring container registry credentials..."
+# ─── Step 2: Credentials ───────────────────────────────────────────────────────
+echo ""
+echo "🔧 [2/4] Configuring container registry credentials..."
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+echo "  ✅ Credentials configured."
 
-# 3. Pull, tag, and push image
+# ─── Step 3: Push image ────────────────────────────────────────────────────────
 TARGET_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/llama-cpp:server-cuda12"
-echo "Pulling llama.cpp server image from GHCR..."
+echo ""
+echo "🔧 [3/4] Syncing llama.cpp server image..."
 ${CONTAINER_TOOL} pull ghcr.io/ggml-org/llama.cpp:server-cuda12
-echo "Tagging image for Google Artifact Registry..."
 ${CONTAINER_TOOL} tag ghcr.io/ggml-org/llama.cpp:server-cuda12 "${TARGET_IMAGE}"
-echo "Pushing image to Google Artifact Registry (this may take a minute)..."
 ${CONTAINER_TOOL} push "${TARGET_IMAGE}"
+echo "  ✅ Image pushed: ${TARGET_IMAGE}"
 
-# 4. Generate resolved service YAML pointing to GCS bucket and GAR image
+# ─── Step 4: Deploy ────────────────────────────────────────────────────────────
 RESOLVED_YAML="resolved-cloud-run-service.yaml"
-echo "Generating resolved service configuration..."
-sed "s|image:.*|image: ${TARGET_IMAGE}|g" cloud-run-service.yaml > "${RESOLVED_YAML}"
-# Replace bucket name if different (optional but robust)
+echo ""
+echo "🔧 [4/4] Deploying Cloud Run service with model: ${MODEL_LABEL}..."
+sed "s|image:.*|image: ${TARGET_IMAGE}|g" "${SERVICE_YAML}" > "${RESOLVED_YAML}"
 sed -i "s|bucketName:.*|bucketName: ${BUCKET_NAME}|g" "${RESOLVED_YAML}"
 
-# 5. Deploy Cloud Run service
-echo "Deploying Cloud Run service..."
 gcloud beta run services replace "${RESOLVED_YAML}" --region="${REGION}"
-
-# Clean up temporary file
 rm -f "${RESOLVED_YAML}"
 
+# ─── Done ──────────────────────────────────────────────────────────────────────
 echo ""
-echo "Deployment triggered successfully!"
-echo "You can check status using: gcloud run services describe ${SERVICE_NAME} --region=${REGION}"
+echo "╔══════════════════════════════════════════════════════════════╗"
+echo "║  ✅ Deployment complete!                                      ║"
+echo "╠══════════════════════════════════════════════════════════════╣"
+printf "║  Model  : %-51s ║\n" "$MODEL_LABEL"
+printf "║  LiteLLM: %-51s ║\n" "$LITELLM_MODEL"
+echo "╠══════════════════════════════════════════════════════════════╣"
+echo "║  Next steps:                                                  ║"
+echo "║  1. Update litellm-config.yaml with the model name above      ║"
+echo "║  2. Update APP_CONFIGLLM_MODELS env var in your .env          ║"
+echo "║  3. Check service status:                                     ║"
+printf "║     gcloud run services describe %-27s ║\n" "${SERVICE_NAME}"
+echo "╚══════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  LiteLLM model identifier to use: ${LITELLM_MODEL}"
