@@ -29,9 +29,9 @@ spec:
         # ─── Model ─────────────────────────────────────────────────────────────
         # Gemma 4 12B Q4_K_M — ~7.5 GB VRAM — ~38-42 T/s sur L4
         # À tester : multimodal natif, function calling optimisé Google DeepMind
-        # Note: bartowski maintient les builds GGUF officiels de Gemma 4
+        # Note: unsloth maintient les builds GGUF officiels de Gemma 4
         - "-hf"
-        - "bartowski/google_gemma-4-12b-it-GGUF:Q4_K_M"
+        - "unsloth/gemma-4-12b-it-GGUF:Q4_K_M"
         - "--port"
         - "8080"
         - "--host"
@@ -87,6 +87,11 @@ spec:
         # Note: Gemma 4 utilise son propre format de thinking natif,
         # pas --reasoning-format deepseek (spécifique Qwen3/DeepSeek)
         # Pas de --reasoning-budget non plus (géré par le template Gemma)
+        # ─── Multimodal ────────────────────────────────────────────────────────
+        # Oncoflow n'envoie que du texte → désactiver le mmproj (projecteur vision)
+        # Le mmproj-BF16.gguf pèse ~2-3 GB VRAM et ralentit l'inférence text-only
+        # car llama.cpp le charge automatiquement avec les GGUF unsloth/gemma-4
+        - "--no-mmproj"
         - "--no-context-shift"
         - "--no-warmup"
         ports:

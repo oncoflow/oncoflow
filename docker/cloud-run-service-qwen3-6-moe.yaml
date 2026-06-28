@@ -17,7 +17,7 @@ spec:
       containerConcurrency: 80
       timeoutSeconds: 300
       containers:
-      - image: europe-west1-docker.pkg.dev/oncowflow-ollama/oncoflow-images/llama-cpp:server-cuda12
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
         env:
         - name: GGML_CUDA_PDL
           value: "0"
@@ -27,40 +27,61 @@ spec:
           value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
-        # Qwen3-8B Q4_K_M — ~5.0 GB VRAM — ~40 T/s on L4
-        # Recommandé #1 : vitesse x2, même famille Qwen3, RAG compense la taille
+        # Qwen3.6-35B-A3B — Mixture of Experts — IQ4_NL — ~80-120 T/s sur L4
+        #
+        # ARCHITECTURE MoE :
+        #   35B paramètres totaux en mémoire (tous les experts sont chargés)
+        #   Seulement 3B paramètres ACTIFS par token → vitesse proche d'un 3B !
+        #   Qualité proche d'un dense 27B car accès à 35B de "connaissance"
+        #
+        # BUDGET VRAM (L4 = 22.5 GB usable) :
+        #   Poids modèle IQ4_NL : ~19.5 GB
+        #   KV cache q4_0 @ 16k ctx × 1 slot : ~0.75 GB
+        #   Total estimé : ~20.3 GB → ~2.2 GB de marge
+        #
+        # ⚠️  VÉRIFIER LE NOM DU REPO AVANT DE DÉPLOYER :
+        #   huggingface.co/Qwen/Qwen3.6-35B-A3B-Instruct-GGUF
+        #   Si ce repo n'existe pas, essayer :
+        #   - unsloth/Qwen3.6-35B-A3B-Instruct-GGUF
+        #   - bartowski/Qwen3.6-35B-A3B-Instruct-GGUF
         - "-hf"
-        - "Qwen/Qwen3-8B-GGUF:Q4_K_M"
+        - "Qwen/Qwen3.6-35B-A3B-Instruct-GGUF:IQ4_NL"
         - "--port"
         - "8080"
         - "--host"
         - "0.0.0.0"
         # ─── Context ───────────────────────────────────────────────────────────
-        # 40k: même fenêtre que 14B — le 8B a plus de VRAM disponible pour le KV
+        # RÉDUIT à 16k — chaque token de contexte consomme de la VRAM précieuse
+        # Le MoE laisse peu de marge pour le KV cache → ne pas dépasser 16k
+        # Suffisant pour les MTDs oncologiques + chunks RAG TNCD
         - "-c"
-        - "40960"
+        - "16384"
         - "-n"
-        - "32768"
+        - "8192"
         # ─── GPU ───────────────────────────────────────────────────────────────
+        # Offload TOUS les layers → essentiel pour la vitesse MoE
+        # Les experts non-actifs restent en VRAM (pas de CPU roundtrip)
         - "-ngl"
         - "99"
         - "--flash-attn"
         - "on"
         - "--no-mmap"
-        # ─── Batch (8B: plus de VRAM libre → batchs plus larges) ───────────────
-        # Batch prefill plus grand → TTFT réduit, meilleure utilisation L4
+        # ─── Batch ─────────────────────────────────────────────────────────────
+        # Pour un MoE 3B actif, les batchs modérés sont suffisants
+        # Un batch trop large gaspille de la VRAM pour peu de gain
         - "-b"
-        - "8192"
-        # Micro-batch GPU plus large → tensor cores mieux saturés
+        - "4096"
         - "-ub"
-        - "2048"
+        - "1024"
         # ─── Threading ─────────────────────────────────────────────────────────
         - "-t"
         - "4"
-        # 4 slots parallèles — 8B libère ~19 GB pour 4 KV caches simultanés
+        # 1 slot parallèle UNIQUEMENT — le modèle occupe ~20 GB, pas de marge
+        # pour plusieurs KV caches simultanés (chacun pèse ~750 MB @ 16k ctx)
         - "-np"
-        - "4"
+        - "1"
         # ─── KV Cache ──────────────────────────────────────────────────────────
+        # q4_0 indispensable — chaque MB compte sur ce modèle
         - "--cache-type-k"
         - "q4_0"
         - "--cache-type-v"
@@ -79,13 +100,14 @@ spec:
         - "--repeat-penalty"
         - "1.0"
         # ─── Qwen3 Thinking ────────────────────────────────────────────────────
+        # Même famille Qwen → mêmes paramètres de thinking que Qwen3-8B/14B
         - "--jinja"
         - "--reasoning-format"
         - "deepseek"
-        # 8k tokens de réflexion — suffisant pour extraction clinique structurée
-        # Réduit la latence totale tout en gardant un raisonnement de qualité
+        # Budget de réflexion réduit vs 14B car le MoE est déjà plus intelligent
+        # et les tokens de thinking coûtent cher en contexte (16k limité)
         - "--reasoning-budget"
-        - "8192"
+        - "6144"
         - "--reasoning-budget-message"
         - "\nOkay, I have enough information to answer."
         - "--no-context-shift"
@@ -98,11 +120,13 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
-          failureThreshold: 120
+          # Augmenté à 180 : le modèle de 35B (~20 GB) prend plus longtemps
+          # à télécharger depuis HuggingFace si absent du cache GCS
+          failureThreshold: 180
         resources:
           limits:
             cpu: "4"
-            memory: "16Gi"      # 5 GB modèle + 4 KV caches + overhead OS
+            memory: "16Gi"   # Modèle en VRAM GPU, RAM sert surtout à l'OS
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache

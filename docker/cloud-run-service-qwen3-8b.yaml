@@ -102,7 +102,7 @@ spec:
         resources:
           limits:
             cpu: "4"
-            memory: "12Gi"      # 5 GB modèle + 4 KV caches + overhead OS
+            memory: "16Gi"      # 5 GB modèle + 4 KV caches + overhead OS
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache

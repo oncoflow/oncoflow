@@ -8,12 +8,14 @@ usage() {
     echo ""
     echo "Available models:"
     echo "  qwen3-14b   Qwen3-14B Q4_K_M  — ~20 T/s — Qualité maximale (référence)"
-    echo "  qwen3-8b    Qwen3-8B  Q4_K_M  — ~40 T/s — Recommandé vitesse/qualité"
-    echo "  gemma4-12b  Gemma4-12B Q4_K_M — ~40 T/s — À tester (Google DeepMind)"
+    echo "  qwen3-8b    Qwen3-8B  Q4_K_M  — ~40 T/s — ✅ Recommandé vitesse/qualité"
+    echo "  gemma4-12b  Gemma4-12B Q4_K_M — ~26 T/s — ⚠️  Limité par SWA (pas recommandé)"
+    echo "  qwen3-6-moe Qwen3.6-35B-A3B IQ4_NL — ~80-120 T/s — 🧪 Expérimental MoE (vérifier repo HF)"
     echo ""
     echo "Examples:"
     echo "  $0 qwen3-8b"
     echo "  $0 gemma4-12b"
+    echo "  $0 qwen3-6-moe"
     echo ""
     exit 1
 }
@@ -40,6 +42,17 @@ case "$MODEL" in
         SERVICE_YAML="cloud-run-service-gemma4-12b.yaml"
         MODEL_LABEL="Gemma4-12B Q4_K_M"
         LITELLM_MODEL="openai/google_gemma-4-12b-it-GGUF"
+        ;;
+    qwen3-6-moe)
+        SERVICE_YAML="cloud-run-service-qwen3-6-moe.yaml"
+        MODEL_LABEL="Qwen3.6-35B-A3B IQ4_NL (MoE)"
+        LITELLM_MODEL="openai/Qwen3.6-35B-A3B-Instruct-GGUF"
+        echo ""
+        echo "⚠️  ATTENTION — Modèle expérimental MoE"
+        echo "   Vérifier que le repo HuggingFace existe avant de continuer :"
+        echo "   https://huggingface.co/Qwen/Qwen3.6-35B-A3B-Instruct-GGUF"
+        echo "   Si 404, éditer cloud-run-service-qwen3-6-moe.yaml pour corriger le nom."
+        echo ""
         ;;
     *)
         echo "❌ Error: unknown model '$MODEL'."
