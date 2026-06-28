@@ -45,14 +45,8 @@ case "$MODEL" in
         ;;
     qwen3-6-moe)
         SERVICE_YAML="cloud-run-service-qwen3-6-moe.yaml"
-        MODEL_LABEL="Qwen3.6-35B-A3B IQ4_NL (MoE)"
-        LITELLM_MODEL="openai/Qwen3.6-35B-A3B-Instruct-GGUF"
-        echo ""
-        echo "⚠️  ATTENTION — Modèle expérimental MoE"
-        echo "   Vérifier que le repo HuggingFace existe avant de continuer :"
-        echo "   https://huggingface.co/Qwen/Qwen3.6-35B-A3B-Instruct-GGUF"
-        echo "   Si 404, éditer cloud-run-service-qwen3-6-moe.yaml pour corriger le nom."
-        echo ""
+        MODEL_LABEL="Qwen3.6-35B-A3B UD-IQ4_NL + MTP (MoE)"
+        LITELLM_MODEL="openai/Qwen3.6-35B-A3B-MTP-GGUF"
         ;;
     *)
         echo "❌ Error: unknown model '$MODEL'."

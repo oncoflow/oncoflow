@@ -27,7 +27,7 @@ spec:
           value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
-        # Qwen3.6-35B-A3B — Mixture of Experts — IQ4_NL — ~80-120 T/s sur L4
+        # Qwen3.6-35B-A3B — Mixture of Experts — UD-IQ4_NL — ~80-160 T/s sur L4
         #
         # ARCHITECTURE MoE :
         #   35B paramètres totaux en mémoire (tous les experts sont chargés)
@@ -35,17 +35,19 @@ spec:
         #   Qualité proche d'un dense 27B car accès à 35B de "connaissance"
         #
         # BUDGET VRAM (L4 = 22.5 GB usable) :
-        #   Poids modèle IQ4_NL : ~19.5 GB
-        #   KV cache q4_0 @ 16k ctx × 1 slot : ~0.75 GB
-        #   Total estimé : ~20.3 GB → ~2.2 GB de marge
+        #   Poids modèle UD-IQ4_NL : ~18.5 GB  ← vérifié HuggingFace
+        #   KV cache q4_0 @ 16k ctx × 1 slot  :  ~0.75 GB
+        #   Total estimé : ~19.3 GB → ~3.2 GB de marge
         #
-        # ⚠️  VÉRIFIER LE NOM DU REPO AVANT DE DÉPLOYER :
-        #   huggingface.co/Qwen/Qwen3.6-35B-A3B-Instruct-GGUF
-        #   Si ce repo n'existe pas, essayer :
-        #   - unsloth/Qwen3.6-35B-A3B-Instruct-GGUF
-        #   - bartowski/Qwen3.6-35B-A3B-Instruct-GGUF
-        - "-hf"
-        - "Qwen/Qwen3.6-35B-A3B-Instruct-GGUF:IQ4_NL"
+        # MTP (Multi-Token Prediction) inclus dans ce repo unsloth
+        # → llama.cpp peut faire du speculative decoding natif (+40 à +100% T/s)
+        #
+        # Repo vérifié HuggingFace le 2026-06-28 :
+        #   unsloth/Qwen3.6-35B-A3B-MTP-GGUF (public, accès libre)
+        #   Fichier : Qwen3.6-35B-A3B-UD-IQ4_NL.gguf (18.5 GB)
+        # Chargement local direct pour éviter le timeout du premier démarrage
+        - "-m"
+        - "/root/.cache/huggingface/models/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf"
         - "--port"
         - "8080"
         - "--host"
@@ -66,6 +68,11 @@ spec:
         - "--flash-attn"
         - "on"
         - "--no-mmap"
+        # ─── MTP — Multi-Token Prediction ──────────────────────────────────────
+        # Le repo unsloth/Qwen3.6-35B-A3B-MTP-GGUF inclut la draft head MTP
+        # --draft-mtp n'est PAS encore supporté par l'image llama.cpp:server-cuda12
+        # stable (flag invalide → crash). À activer quand l'image sera mise à jour.
+        # - "--draft-mtp"
         # ─── Batch ─────────────────────────────────────────────────────────────
         # Pour un MoE 3B actif, les batchs modérés sont suffisants
         # Un batch trop large gaspille de la VRAM pour peu de gain
@@ -120,13 +127,19 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
-          # Augmenté à 180 : le modèle de 35B (~20 GB) prend plus longtemps
-          # à télécharger depuis HuggingFace si absent du cache GCS
-          failureThreshold: 180
+          # 360 × 10s = 60 minutes
+          # Nécessaire pour le PREMIER démarrage : téléchargement de 18.5 GB
+          # depuis HuggingFace via GCS FUSE peut prendre 30-50 minutes.
+          # Les démarrages suivants seront rapides (modèle en cache GCS).
+          # Pré-peupler le cache pour éviter ce délai :
+          #   gsutil -m cp -r \
+          #     ~/.cache/huggingface/hub/models--unsloth--Qwen3.6-35B-A3B-MTP-GGUF \
+          #     gs://oncoflow-models-cache/hub/
+          failureThreshold: 359
         resources:
           limits:
             cpu: "4"
-            memory: "16Gi"   # Modèle en VRAM GPU, RAM sert surtout à l'OS
+            memory: "16Gi"   # Modèle de 18.5 GB, 32 GB RAM requis pour le chargement (hors VRAM GPU)
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache

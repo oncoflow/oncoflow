@@ -1,0 +1,13 @@
+[project]
+name = "gcs"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "google>=3.0.0",
+    "google-api-python-client>=2.198.0",
+    "google-cloud>=0.34.0",
+    "google-cloud-storage>=3.12.0",
+    "requests>=2.34.2",
+]

@@ -23,8 +23,11 @@ def extract_json_str(text: str) -> str:
     """
     Extract the most likely valid JSON substring from text.
     """
+    # 0. Clean thinking blocks (<think>...</think>) from the text to isolate target JSON
+    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
     # 1. Try to find content inside ```json ... ``` blocks first
-    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
     for block in json_blocks:
         block_clean = block.strip()
         try:
@@ -34,7 +37,7 @@ def extract_json_str(text: str) -> str:
             pass
 
     # 2. Try to find content inside general ``` ... ``` blocks
-    code_blocks = re.findall(r"```\s*(.*?)\s*```", text, re.DOTALL)
+    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
     for block in code_blocks:
         block_clean = block.strip()
         try:
@@ -44,20 +47,20 @@ def extract_json_str(text: str) -> str:
             pass
 
     # 3. Try to scan all braces to find the first valid JSON object
-    open_braces = [m.start() for m in re.finditer(r"\{", text)]
-    close_braces = [m.start() for m in re.finditer(r"\}", text)]
+    open_braces = [m.start() for m in re.finditer(r"\{", text_clean)]
+    close_braces = [m.start() for m in re.finditer(r"\}", text_clean)]
 
     for start in open_braces:
         for end in reversed(close_braces):
             if end > start:
-                candidate = text[start : end + 1]
+                candidate = text_clean[start : end + 1]
                 try:
                     json.loads(candidate)
                     return candidate
                 except json.JSONDecodeError:
                     pass
 
-    return text.strip()
+    return text_clean
 
 
 class ChatResponse(BaseModel):
@@ -300,6 +303,9 @@ class OncowflowAgent:
                                 if isinstance(part, dict):
                                     if part.get("type") == "text":
                                         text_parts.append(part.get("text", ""))
+                                    elif part.get("type") == "thinking":
+                                        # Do not append thinking to final output content
+                                        pass
                                 elif isinstance(part, str):
                                     text_parts.append(part)
                             content = "".join(text_parts)
