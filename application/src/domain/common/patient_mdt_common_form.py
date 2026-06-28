@@ -24,7 +24,7 @@ class PatientMDTForm(DocumentReader):
 
     mtd_datas: dict = {}
     mtd_datas_json: dict = {}
-    db_client = None
+    db_client: Mongodb
 
     def __init__(self, config: AppConfig, document: str) -> None:
         super(PatientMDTForm, self).__init__(config=config, document=document)
@@ -42,6 +42,7 @@ class PatientMDTForm(DocumentReader):
 
         self.read_document()
 
+        self.db_client = None
         if config.rcp.display_type == "mongodb":
             self.db_client = Mongodb(config)
         else:
@@ -54,10 +55,16 @@ class PatientMDTForm(DocumentReader):
             db_document = self.db_client.get_or_create_document(
                 collection="rcp_info", document={"file": document}
             )
-            self.mtd_datas["id"] = db_document["_id"]
-            if "execution_times" in db_document:
-                self.mtd_datas["execution_times"] = db_document["execution_times"]
-            self.dict_to_models(db_document)
+            if db_document is not None:
+                self.mtd_datas["id"] = db_document.get("_id")
+                if "execution_times" in db_document:
+                    self.mtd_datas["execution_times"] = db_document["execution_times"]
+                self.dict_to_models(db_document)
+            else:
+                self.logger.warning(
+                    "No database document found or created for %s", document
+                )
+                self.mtd_datas["id"] = None
         else:
             self.mtd_datas["id"] = None
 
@@ -166,6 +173,7 @@ class PatientMDTForm(DocumentReader):
                 },
             )
             self.db_client.close()
+            self.db_client = None
 
     def delete(self):
         if self.db_client is not None:
@@ -177,6 +185,7 @@ class PatientMDTForm(DocumentReader):
             os.remove(self.document_path)
         if self.db_client is not None:
             self.db_client.close()
+            self.db_client = None
 
     def insert_datas_in_db(self, replace: bool = True):
         if self.db_client is not None:
@@ -190,6 +199,7 @@ class PatientMDTForm(DocumentReader):
             )
             self.db_client.insert_docs()
             self.db_client.close()
+            self.db_client = None
 
     @classmethod
     def parse_raw(cls, value):

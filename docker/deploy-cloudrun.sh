@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+# Ensure executing from the script's directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
+cd "${SCRIPT_DIR}"
+
 # Configuration variables
 REGION="europe-west1"
 SERVICE_NAME="llama-cpp-chat"
@@ -66,11 +70,11 @@ echo "Configuring container registry credentials..."
 gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 
 # 3. Pull, tag, and push image
-TARGET_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/llama-cpp:server-cuda"
+TARGET_IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO_NAME}/llama-cpp:server-cuda12"
 echo "Pulling llama.cpp server image from GHCR..."
-${CONTAINER_TOOL} pull ghcr.io/ggml-org/llama.cpp:server-cuda
+${CONTAINER_TOOL} pull ghcr.io/ggml-org/llama.cpp:server-cuda12
 echo "Tagging image for Google Artifact Registry..."
-${CONTAINER_TOOL} tag ghcr.io/ggml-org/llama.cpp:server-cuda "${TARGET_IMAGE}"
+${CONTAINER_TOOL} tag ghcr.io/ggml-org/llama.cpp:server-cuda12 "${TARGET_IMAGE}"
 echo "Pushing image to Google Artifact Registry (this may take a minute)..."
 ${CONTAINER_TOOL} push "${TARGET_IMAGE}"
 

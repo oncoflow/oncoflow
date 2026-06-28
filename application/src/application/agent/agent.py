@@ -123,6 +123,12 @@ class OncowflowAgent:
 
         system_prompt = f"""Answer in {self.response_language} language, not mention it in the answer.
         {self.system_prompt}
+
+        CRITICAL INSTRUCTIONS FOR TOOL USAGE:
+        1. **Real-World Execution**: You are executing in a live production clinical environment, NOT a simulation, sandbox, or test scenario. The tools provided (e.g., `get_mtd_markdown`, `search_on_ressources`) are fully functional and connected to the actual databases and patient records.
+        2. **Mandatory Tool Calls**: If the required patient information is not in your current context, you MUST call the appropriate tool to retrieve it. Do not guess, mock, or assume any information.
+        3. **No Simulation Mentions**: Never refer to yourself as being in a simulation or sandbox. Never write placeholder answers. Simply execute the tools.
+
         You MUST respond with valid JSON and nothing else.
         No markdown, no explanation, no code blocks — just raw JSON.
         Respond with JSON matching this exact schema:

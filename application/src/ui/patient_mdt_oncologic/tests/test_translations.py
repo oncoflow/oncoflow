@@ -1,6 +1,6 @@
 import streamlit as st
 from src.ui.patient_mdt_oncologic.translations import translate
-from src.domain.common_ressources import PatientPriority, WHOPerformanceStatus
+from src.domain.common.common_ressources import PatientPriority, WHOPerformanceStatus
 
 
 def test_translation_french():

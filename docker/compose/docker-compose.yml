@@ -92,7 +92,7 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
     ports:
-      - "8082:8080"
+      - "8081:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface:z
     ipc: host
@@ -119,7 +119,7 @@ services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
-    #network_mode: "host"
+    network_mode: "host"
     ports:
      - 4000:4000
     volumes:
@@ -129,8 +129,8 @@ services:
       - llama-cpp-chat
       - llama-cpp-embeddings
     restart: unless-stopped
-    networks:
-      - search-community
+    #networks:
+    #  - search-community
 
 
   # chromadb:
