@@ -89,6 +89,7 @@ class OncowflowAgent:
     agent: Any = None
     agent_name: str = ""
     additionnal_readers: list[DocumentReader] = []
+    reasoning_budget: int | None = 1024
 
     def __init__(
         self,
@@ -96,6 +97,7 @@ class OncowflowAgent:
         mtd: DocumentReader | None = None,
         output_format: type[BaseModel] | None = None,
         reasoning: bool = True,
+        reasoning_budget: int | None = None,
         reader: DocumentReader | None = None,
         additionnal_readers: list[DocumentReader] = [],
     ):
@@ -124,7 +126,10 @@ class OncowflowAgent:
         if reasoning is None:
             reasoning = getattr(config.llm, "reasoning", True)
 
-        system_prompt = f"""Answer in {self.response_language} language, not mention it in the answer.
+        if reasoning_budget is not None:
+            self.reasoning_budget = reasoning_budget
+
+        system_prompt = f"""If the output is a JSON matching a schema, keep all keys and enum values strictly in English as defined by the schema. Write only free-form text fields (like summaries, diagnostics, or recommendations) in {self.response_language} language, not mention it in the answer.
         {self.system_prompt}
 
         CRITICAL INSTRUCTIONS FOR TOOL USAGE:
@@ -166,7 +171,8 @@ class OncowflowAgent:
             model=llm_client.chat(
                 models_list[0],
                 reasoning=reasoning,
-                # output=self.output_format,
+                reasoning_budget=self.reasoning_budget,
+                output=self.output_format,
                 # tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             ),
             tools=tools,
@@ -277,6 +283,7 @@ class OncowflowAgent:
             )
             # Extract and store the thinking process from the execution history
             self.latest_thinking = self.extract_thinking(result.get("messages", []))
+
             # if langchain tools work, load the response
             if "structured_response" in result:
                 if self.output_format is not None and issubclass(
@@ -287,6 +294,7 @@ class OncowflowAgent:
 
             # Iterate through messages to find the AI response and validate it against the schema
             self.logger.info(f"AI response : {result}")
+            last_failed_output = None
             for msg in result["messages"]:
                 try:
                     if (
@@ -313,6 +321,8 @@ class OncowflowAgent:
                         if isinstance(content, str):
                             content = extract_json_str(content)
 
+                        last_failed_output = content
+
                         # Validate the content against the Pydantic model
                         if self.output_format is not None and issubclass(
                             self.output_format, BaseModel
@@ -323,10 +333,13 @@ class OncowflowAgent:
                 except (ValidationError, ValueError, json.JSONDecodeError) as e:
                     validation_error = e
                     continue
-            self.logger.info(f"Error, previous result : {result}")
-            question = f"""You made a mistake, correct the outpout\n\n
+            self.logger.info(f"Error, previous result : {last_failed_output or result}")
+            failed_representation = (
+                last_failed_output if last_failed_output else str(result)
+            )
+            question = f"""You made a mistake, correct the output\n\n
                         Error : {validation_error}\n\n
-                        Here is the previous result:\n{result}"""
+                        Here is the previous invalid output:\n{failed_representation}"""
 
         # Raise error if no valid structured response was found
         raise ValueError(

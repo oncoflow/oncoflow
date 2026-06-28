@@ -125,12 +125,15 @@ class LlamaCppConnect(LLMConnect):
         temperature: float | None = None,
         tools: List[Any] = [],
         reasoning: bool = True,
+        reasoning_budget: int | None = None,
     ) -> Any:
         # Set JSON mode if output is specified and no tools are provided.
         # When tools are present, JSON mode conflicts with tool calling.
         model_kwargs = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
+        if reasoning and reasoning_budget is not None:
+            model_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
 
         model_instance = ChatOpenAI(
             base_url=self.base_url if self.base_url else None,

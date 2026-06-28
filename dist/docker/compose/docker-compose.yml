@@ -71,7 +71,8 @@ services:
       --port 8080
       --host 0.0.0.0
       -c 40960
-      -ngl 40
+      -ngl 99
+      -fa
       --temp 1.0
       --top-p 0.95
       --top-k 40

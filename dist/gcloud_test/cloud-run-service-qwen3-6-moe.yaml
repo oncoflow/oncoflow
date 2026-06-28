@@ -22,7 +22,7 @@ spec:
         - name: GGML_CUDA_PDL
           value: "0"
         - name: GGML_CUDA_DISABLE_GRAPHS
-          value: "1"
+          value: "0"
         - name: LD_LIBRARY_PATH
           value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
         args:
@@ -82,17 +82,12 @@ spec:
         - "1024"
         # ─── Threading ─────────────────────────────────────────────────────────
         - "-t"
-        - "4"
+        - "6"
         # 1 slot parallèle UNIQUEMENT — le modèle occupe ~20 GB, pas de marge
-        # pour plusieurs KV caches simultanés (chacun pèse ~750 MB @ 16k ctx)
+        # pour plusieurs KV caches simultanés (chacun pèse ~3.0 GB @ 16k ctx)
         - "-np"
         - "1"
-        # ─── KV Cache ──────────────────────────────────────────────────────────
-        # q4_0 indispensable — chaque MB compte sur ce modèle
-        - "--cache-type-k"
-        - "q4_0"
-        - "--cache-type-v"
-        - "q4_0"
+
         # ─── Sampling ──────────────────────────────────────────────────────────
         - "--temp"
         - "1.0"
@@ -138,8 +133,8 @@ spec:
           failureThreshold: 359
         resources:
           limits:
-            cpu: "4"
-            memory: "16Gi"   # Modèle de 18.5 GB, 32 GB RAM requis pour le chargement (hors VRAM GPU)
+            cpu: "8"
+            memory: "32Gi"   # Modèle de 18.5 GB, 32 GB RAM requis pour le chargement (hors VRAM GPU)
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache

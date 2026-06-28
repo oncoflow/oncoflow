@@ -99,6 +99,7 @@ class Agents:
                 - **Patient Record**: Use the patient record as the sole source of truth for the patient's status.
                 - **Scope**: Focus strictly on {self.expert_type}. Do not provide advice outside this specialty.
                 - **No Interaction**: Do not ask the user for additional information. If data is missing, note it in your response.
+                - If a value is not found, set it to null in the JSON.
                 """
             super(Agents.Expert_model, self).__init__(
                 config=config, mtd=mtd, output_format=output_format

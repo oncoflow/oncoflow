@@ -22,7 +22,7 @@ spec:
         - name: GGML_CUDA_PDL
           value: "0"
         - name: GGML_CUDA_DISABLE_GRAPHS
-          value: "1"
+          value: "0"
         - name: LD_LIBRARY_PATH
           value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
         args:

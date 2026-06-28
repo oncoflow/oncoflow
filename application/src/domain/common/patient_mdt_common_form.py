@@ -263,7 +263,7 @@ class PatientMDTForm(DocumentReader):
             1. Find the patient's First Name, Last Name, Age AND Date of birth. Note that age is often written as 'XX ans'. If age is missing but Date of birth is present, you can deduce the age based on the Date of RCP.
             2. Find the date of the MTD (RCP).
             3. Find the gender of the patient.
-            If a value is not found, state it clearly.
+            If a value is not found, set it to null in the JSON.
             You can use tools multiple time for each element.
             Format all dates strictly as YYYY-MM-DD (e.g. 1956-06-04).
             Ensure dates are coherent:
