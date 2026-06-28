@@ -271,3 +271,16 @@ class PatientMDTForm(DocumentReader):
             2. Date of RCP must be less than 5 years ago.
             3. Date of birth must be strictly before Date of RCP.
             """
+
+    class MTDCompleted(default_model):
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405
+
+        collaborative = True
+
+        question: ClassVar[str] = """
+            As an expert, determine if the MDT (Multidisciplinary Team) file is complete.
+            Are there missing elements required for a treatment decision?
+            You can use search_on_ressources tool what type of elements/documents is needed.
+            You can use tools multiple times for each element
+            """

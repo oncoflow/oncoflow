@@ -140,19 +140,6 @@ class PatientMDTOncologicForm(PatientMDTForm):
             You can use tools multiple times for each element and have more scientific elements.
             """
 
-    class MTDCompleted(PatientMDTForm.default_model):
-        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
-        mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405
-
-        collaborative = True
-
-        question: ClassVar[str] = """
-            As an expert, determine if the MDT (Multidisciplinary Team) file is complete.
-            Are there missing elements required for a treatment decision?
-            You can use search_on_ressources tool what type of elements/documents is needed.
-            You can use tools multiple times for each element
-            """
-
     class isInterventionRequiered(PatientMDTForm.default_model):
         """
         Consensus on whether an intervention is required, its urgency, and description.
