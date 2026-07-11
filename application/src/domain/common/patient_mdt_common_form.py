@@ -14,7 +14,7 @@ from src.application.agent.agent import OncowflowAgent
 from src.application.reader import DocumentReader
 from src.infrastructure.documents.mongodb import Mongodb
 from src.application.agent.collaborate import collaborative_debate
-from src.domain.common.agents import Agents as Agents
+from src.domain.agents import Agents
 
 
 class PatientMDTForm(DocumentReader):

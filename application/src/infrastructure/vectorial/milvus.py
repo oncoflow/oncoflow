@@ -136,7 +136,13 @@ class MilvusDB(VectorialDataBase):
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
             drop_old=flush,  # set to True if seeking to drop the collection with that name if it exists
+            enable_dynamic_field=True,
         )
+        if flush:
+            self.logger.info(
+                "Waiting 2 seconds for collection recreation to stabilize on Milvus..."
+            )
+            time.sleep(2.0)
 
     def get_version(self):
         return utility.get_server_version()
@@ -190,6 +196,26 @@ class MilvusDB(VectorialDataBase):
             self.set_clientdb(flush=True)
 
         # Add the document to the collection with metadata and page content.
-        doc = Document(metadatas=doc.metadata, page_content=doc.page_content)
+        doc = Document(metadata=doc.metadata, page_content=doc.page_content)
 
-        self.clientdb.add_documents(ids=[str(uuid.uuid1())], documents=[doc])
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self.clientdb.add_documents(ids=[str(uuid.uuid1())], documents=[doc])
+                break
+            except MilvusException as e:
+                if attempt < max_retries - 1 and (
+                    "partition not found" in str(e).lower()
+                    or "segment" in str(e).lower()
+                    or "unrecoverable" in str(e).lower()
+                ):
+                    self.logger.warning(
+                        f"Milvus insertion failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                        "Waiting for metadata synchronization before retrying..."
+                    )
+                    time.sleep(2.0)
+                else:
+                    self.logger.error(
+                        f"Failed to insert document after {max_retries} attempts: {e}"
+                    )
+                    raise
