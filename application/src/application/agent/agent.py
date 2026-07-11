@@ -1,7 +1,7 @@
 import json
 import re
 
-from typing import ClassVar, Any
+from typing import ClassVar, Any, cast
 from pydantic import ValidationError, BaseModel, Field
 
 from langchain.agents import create_agent
@@ -195,14 +195,14 @@ class OncowflowAgent:
                 ),
             ],
             # response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
-            response_format=self.output_format,
-            # pyrefly: ignore [bad-argument-type]
-            context_schema=Context,
+            # response_format=self.output_format,
+            response_format=None,
+            context_schema=cast(Any, Context),
             system_prompt=system_prompt,
         )
 
         self.logger.info(
-            f"""Agent succefully created with prompt :
+            f"""Agent succefully created with prompt (reasoning : {reasoning}, reasoning_budget : {self.reasoning_budget}) :
         {system_prompt}
         """
         )
