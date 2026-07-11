@@ -65,7 +65,7 @@ jobs:
           # Conversion en minuscules pour respecter le format docker
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           VERSION=${{ github.sha }}
-          docker build -f docker/Dockerfile -t $IMAGE_ID:$VERSION .
+          docker build -f dist/docker/Dockerfile -t $IMAGE_ID:$VERSION .
 
       - name: Push Docker image
         if: github.event_name == 'push'
