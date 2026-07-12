@@ -145,7 +145,8 @@ class OncowflowAgent:
         - Write only free-form text fields (summaries, diagnostics, recommendations) in {self.response_language}.
         - Output ONLY the raw JSON — no markdown fences, no explanation, no code blocks.
 
-        JSON schema to match:
+        ## STEP 3 — formatting outputs
+        - You MUST respond with output JSON schema:
         {json.dumps(self.output_format.model_json_schema(), indent=2)}
         """
         # Configure logging for the agent
@@ -285,7 +286,12 @@ class OncowflowAgent:
                     additionnal_readers=self.additionnal_readers,
                     logger=self.logger,
                 ),
-                config={"callbacks": callbacks} if callbacks else None,
+                config={
+                    "callbacks": callbacks,
+                    "tags": [self.agent_name] if self.agent_name else [],
+                }
+                if callbacks
+                else None,
             )
             # Extract and store the thinking process from the execution history
             self.latest_thinking = self.extract_thinking(result.get("messages", []))

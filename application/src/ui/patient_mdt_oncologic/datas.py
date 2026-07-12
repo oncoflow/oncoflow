@@ -28,64 +28,100 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
         self.thinking_container = None
         self.thinking_text = ""
         self.in_think = False
+        self.agent_name = "Assistant"
+
+    def on_llm_start(
+        self, serialized: dict[str, Any], prompts: list[str], **kwargs: Any
+    ) -> None:
+        try:
+            if self.ctx and not get_script_run_ctx():
+                add_script_run_ctx(threading.current_thread(), self.ctx)
+            # Reset thinking state for each new agent/LLM run to open a new expander
+            self.thinking_container = None
+            self.thinking_text = ""
+            self.in_think = False
+
+            # Extract agent name from tags if present
+            tags = kwargs.get("tags", [])
+            self.agent_name = tags[0] if tags else "Assistant"
+        except Exception as e:
+            logger.warning(f"Callback on_llm_start failed: {e}")
 
     def on_llm_new_token(self, token: str, chunk: Any = None, **kwargs: Any) -> None:
-        if self.ctx and not get_script_run_ctx():
-            add_script_run_ctx(threading.current_thread(), self.ctx)
+        try:
+            if self.ctx and not get_script_run_ctx():
+                add_script_run_ctx(threading.current_thread(), self.ctx)
 
-        reasoning_token = None
-        if chunk and hasattr(chunk, "message"):
-            msg = chunk.message
-            reasoning_token = getattr(msg, "reasoning_content", None)
-            if not reasoning_token and isinstance(
-                getattr(msg, "additional_kwargs", None), dict
-            ):
-                reasoning_token = msg.additional_kwargs.get("reasoning_content")
-
-        is_think_token = False
-        clean_token = token
-
-        if reasoning_token:
-            is_think_token = True
-            clean_token = reasoning_token
-        else:
-            if "<think>" in token:
-                self.in_think = True
-                clean_token = token.replace("<think>", "")
-                is_think_token = True
-            elif "</think>" in token:
-                self.in_think = False
-                clean_token = token.replace("</think>", "")
-                is_think_token = True
-            elif self.in_think:
-                is_think_token = True
-
-        if is_think_token:
-            self.thinking_text += clean_token
-            if not self.thinking_container:
-                with self.parent_container:
-                    self.thinking_container = st.empty()
-            with self.thinking_container:
-                with st.expander(
-                    "💭 Réflexion en cours... / Thinking...", expanded=True
+            reasoning_token = None
+            if chunk and hasattr(chunk, "message"):
+                msg = chunk.message
+                reasoning_token = getattr(msg, "reasoning_content", None)
+                if not reasoning_token and isinstance(
+                    getattr(msg, "additional_kwargs", None), dict
                 ):
-                    with st.container(height=250, border=False):
-                        st.write(self.thinking_text)
+                    reasoning_token = msg.additional_kwargs.get("reasoning_content")
+
+            is_think_token = False
+            clean_token = token
+
+            if reasoning_token:
+                is_think_token = True
+                clean_token = reasoning_token
+            else:
+                if "<think>" in token:
+                    self.in_think = True
+                    clean_token = token.replace("<think>", "")
+                    is_think_token = True
+                elif "</think>" in token:
+                    self.in_think = False
+                    clean_token = token.replace("</think>", "")
+                    is_think_token = True
+                elif self.in_think:
+                    is_think_token = True
+
+            if is_think_token:
+                # Do not show thinking if it's just general system/Assistant runs without an expert tag
+                if getattr(self, "agent_name", "Assistant") == "Assistant":
+                    return
+                self.thinking_text += clean_token
+                if not self.thinking_container:
+                    with self.parent_container:
+                        self.thinking_container = st.empty()
+                with self.thinking_container:
+                    agent_display = getattr(self, "agent_name", "Assistant")
+                    agent_display = (
+                        agent_display[0].upper() + agent_display[1:]
+                        if agent_display
+                        else "Assistant"
+                    )
+                    with st.expander(
+                        f"💭 Réflexion : {agent_display} / Thinking...", expanded=True
+                    ):
+                        with st.container(height=250, border=False):
+                            st.write(self.thinking_text)
+        except Exception as e:
+            logger.warning(f"Callback on_llm_new_token failed: {e}")
 
     def on_tool_start(
         self, serialized: dict[str, Any], input_str: str, **kwargs: Any
     ) -> None:
-        if self.ctx and not get_script_run_ctx():
-            add_script_run_ctx(threading.current_thread(), self.ctx)
-        tool_name = serialized.get("name", "tool")
-        with self.parent_container:
-            st.write(f"🔧 *Appel de l'outil / Tool:* `{tool_name}`")
+        try:
+            if self.ctx and not get_script_run_ctx():
+                add_script_run_ctx(threading.current_thread(), self.ctx)
+            tool_name = serialized.get("name", "tool")
+            with self.parent_container:
+                st.write(f"🔧 *Appel de l'outil / Tool:* `{tool_name}`")
+        except Exception as e:
+            logger.warning(f"Callback on_tool_start failed: {e}")
 
     def on_tool_error(self, error: BaseException, **kwargs: Any) -> None:
-        if self.ctx and not get_script_run_ctx():
-            add_script_run_ctx(threading.current_thread(), self.ctx)
-        with self.parent_container:
-            st.error(f"❌ *Erreur outil / Tool error:* {error}")
+        try:
+            if self.ctx and not get_script_run_ctx():
+                add_script_run_ctx(threading.current_thread(), self.ctx)
+            with self.parent_container:
+                st.error(f"❌ *Erreur outil / Tool error:* {error}")
+        except Exception as e:
+            logger.warning(f"Callback on_tool_error failed: {e}")
 
 
 app_conf = AppConfig()
@@ -105,6 +141,15 @@ def delete(items: DataFrame):
         for doc in items["file"].to_list():
             delete_document(app_conf, doc)
         st.rerun()
+
+
+def trigger_ai(title):
+    val = st.session_state.get(f"pills_{title}")
+    if val == ":material/robot: AI exec":
+        # Reset pills selection inside the callback (allowed in Streamlit)
+        st.session_state[f"pills_{title}"] = None
+        # Set trigger flag
+        st.session_state[f"run_ai_{title}"] = True
 
 
 def update_date(filename, date):
@@ -382,30 +427,33 @@ def form():
                         model_cls.__doc__.strip() if model_cls.__doc__ else model_name
                     )
                     with st.expander(f"📌 {translate(title)}", expanded=True):
-                        if (
-                            f"pills_{title}_ai" in st.session_state
-                            and st.session_state[f"pills_{title}_ai"]
-                        ):
-                            st.session_state[f"pills_{title}"] = None
-                            st.session_state[f"pills_{title}_ai"] = None
-                        selection = st.pills(
+                        st.pills(
                             "Retry ai",
                             label_visibility="collapsed",
                             options=[":material/robot: AI exec"],
                             selection_mode="single",
                             key=f"pills_{title}",
+                            on_change=trigger_ai,
+                            args=(title,),
                         )
-                        if selection == ":material/robot: AI exec":
-                            with st.status(
-                                f"Relance de l'IA pour {model_name} ..."
-                            ) as status:
-                                st_callback = ThreadSafeStreamlitCallbackHandler(status)
-                                reader = get_mtd_reader()
-                                reader.read_model(
-                                    model_cls, upsert=True, callbacks=[st_callback]
-                                )
-                                st.session_state[f"pills_{title}_ai"] = True
-                            st.rerun()
+                        if st.session_state.get(f"run_ai_{title}"):
+                            st.session_state[f"run_ai_{title}"] = False
+                            try:
+                                with st.status(
+                                    f"Relance de l'IA pour {model_name} ..."
+                                ) as status:
+                                    st_callback = ThreadSafeStreamlitCallbackHandler(
+                                        status
+                                    )
+                                    reader = get_mtd_reader()
+                                    reader.read_model(
+                                        model_cls, upsert=True, callbacks=[st_callback]
+                                    )
+                            except Exception as e:
+                                logger.error(f"Erreur lors de la relance de l'IA : {e}")
+                                st.error(f"Erreur lors de l'exécution de l'IA : {e}")
+                            finally:
+                                st.rerun()
 
                         if model_name in data:
                             model_data = data[model_name]

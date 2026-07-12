@@ -86,7 +86,7 @@ def search_on_mtd(
 def search_on_ressources(
     runtime: ToolRuntime[Context],
     query: str,
-    k: int = 4,
+    k: int = 3,
     param: Optional[dict | list[dict]] = None,
     expr: Optional[str] = None,
     timeout: Optional[float] = None,

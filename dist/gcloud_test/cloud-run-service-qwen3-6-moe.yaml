@@ -53,11 +53,10 @@ spec:
         - "--host"
         - "0.0.0.0"
         # ─── Context ───────────────────────────────────────────────────────────
-        # RÉDUIT à 16k — chaque token de contexte consomme de la VRAM précieuse
-        # Le MoE laisse peu de marge pour le KV cache → ne pas dépasser 16k
-        # Suffisant pour les MTDs oncologiques + chunks RAG TNCD
+        # Augmenté à 64k pour supporter les très grands dossiers patients et débats complexes.
+        # Nécessite la quantification du KV Cache en q4_0 pour éviter le dépassement de VRAM sur L4.
         - "-c"
-        - "16384"
+        - "64000"
         - "-n"
         - "8192"
         # ─── GPU ───────────────────────────────────────────────────────────────
@@ -114,6 +113,11 @@ spec:
         - "\nOkay, I have enough information to answer."
         - "--no-context-shift"
         - "--no-warmup"
+        # ─── KV Cache ──────────────────────────────────────────────────────────
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
         ports:
         - containerPort: 8080
         startupProbe:
