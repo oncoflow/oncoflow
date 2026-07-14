@@ -306,6 +306,11 @@ class AppConfig(BaseSettings):
         description="Domain of the application. Valid values: oncology, sma.",
     )
 
+    language: str = Field(
+        default="french",
+        description="Language of the application. Valid values: french, english.",
+    )
+
     dev_mode: bool = Field(
         default=True,
         description="Enable development mode. When True, uses development configurations.",

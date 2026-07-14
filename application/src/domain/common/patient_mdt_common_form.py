@@ -137,7 +137,9 @@ class PatientMDTForm(DocumentReader):
                     {memory}
                     {model.question}
                     """
-                datas = json.loads(a.ask(model.question, callbacks=callbacks).json())
+                datas = json.loads(
+                    a.ask(model.question, callbacks=callbacks).model_dump_json()
+                )
                 self.logger.debug(f"DATAS : {datas} ...")
                 if datas:
                     if isinstance(datas, dict):

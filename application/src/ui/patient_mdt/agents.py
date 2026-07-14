@@ -45,7 +45,7 @@ for i, (n, a) in enumerate(pmtd.list.items()):
                 if c1.button(
                     btn_name,
                     key=f"link_{n}_{r}",
-                    use_container_width=True,
+                    width="stretch",
                     help="Consulter cette ressource",
                 ):
                     st.switch_page(
@@ -54,6 +54,6 @@ for i, (n, a) in enumerate(pmtd.list.items()):
                     )
 
                 button_label = "Re-Index" if is_idx else "Index"
-                if c2.button(button_label, key=f"{n}_{r}", use_container_width=True):
+                if c2.button(button_label, key=f"{n}_{r}", width="stretch"):
                     read(r, app_conf)
                     st.rerun()

@@ -265,9 +265,7 @@ def form_navigate(filename):
         st.query_params.clear()
         st.rerun()
     c2.subheader(f"Dossier: {filename}")
-    if c3.button(
-        "🔄 Rerun All", help="Relancer l'analyse complète", use_container_width=True
-    ):
+    if c3.button("🔄 Rerun All", help="Relancer l'analyse complète", width="stretch"):
         rerun_all_models(filename)
     power_mode(c4)
 

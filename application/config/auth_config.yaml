@@ -3,6 +3,7 @@ credentials:
     admin:
       email: admin@oncoflow.local
       name: Administrateur Oncoflow
+      password: $2b$12$9LXgmjTUz.yBbCeVguBp5e1nOcusvbxWjVRACQB4AmqEqMOvA709q
 cookie:
   expiry_days: 30
   key: oncoflow_secret_cookie_key_2026_secure

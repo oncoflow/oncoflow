@@ -205,21 +205,17 @@ def display_as_list(data):
     header_cols = st.columns((3, 2, 2, 3, 4, 2))
 
     with header_cols[0]:
-        if st.button(
-            f"Patient{get_sort_indicator('patient')}", use_container_width=True
-        ):
+        if st.button(f"Patient{get_sort_indicator('patient')}", width="stretch"):
             set_sort_order("patient")
             st.rerun()
 
     with header_cols[1]:
-        if st.button(f"Date RCP{get_sort_indicator('date')}", use_container_width=True):
+        if st.button(f"Date RCP{get_sort_indicator('date')}", width="stretch"):
             set_sort_order("date")
             st.rerun()
 
     with header_cols[2]:
-        if st.button(
-            f"Urgence{get_sort_indicator('urgency_score')}", use_container_width=True
-        ):
+        if st.button(f"Urgence{get_sort_indicator('urgency_score')}", width="stretch"):
             set_sort_order("urgency_score")
             st.rerun()
 
@@ -284,7 +280,7 @@ def display_as_list(data):
                 st.link_button(
                     "👁️",
                     item["link"],
-                    use_container_width=True,
+                    width="stretch",
                     help="Ouvrir le dossier",
                 )
             with b2:
@@ -292,7 +288,7 @@ def display_as_list(data):
                     "🗑️",
                     key=f"btn_del_list_{item['file']}",
                     type="primary",
-                    use_container_width=True,
+                    width="stretch",
                     help="Supprimer le dossier",
                 ):
                     delete_card(item["file"])
@@ -368,13 +364,13 @@ def display_as_cards(data):
                 # Boutons
                 b1, b2 = st.columns(2)
                 with b1:
-                    st.link_button("Ouvrir", item["link"], use_container_width=True)
+                    st.link_button("Ouvrir", item["link"], width="stretch")
                 with b2:
                     if st.button(
                         "Supprimer",
                         key=f"btn_del_card_{item['file']}",
                         type="primary",
-                        use_container_width=True,
+                        width="stretch",
                     ):
                         delete_card(item["file"])
 
@@ -393,12 +389,13 @@ def cards_view():
 
     with col_main:
         # View Toggle
-        view_mode = st.radio(
+        view_mode = st.segmented_control(
             "Vue",
             options=["Cartes", "Liste"],
-            horizontal=True,
+            default="Cartes",
             label_visibility="collapsed",
         )
+        view_mode = view_mode or "Cartes"
 
     # --- Filtres (Right) ---
     with col_filters:
@@ -413,9 +410,12 @@ def cards_view():
         )
 
         # Completeness Filter
-        completeness_filter = st.radio(
-            "Statut dossier", ["Tous", "Complet", "Incomplet"], index=0
+        completeness_filter = st.segmented_control(
+            "Statut dossier",
+            options=["Tous", "Complet", "Incomplet"],
+            default="Tous",
         )
+        completeness_filter = completeness_filter or "Tous"
 
         # Experts Filter
         all_experts = sorted(list(set([e for item in data for e in item["experts"]])))

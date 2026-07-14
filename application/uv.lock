@@ -210,6 +210,7 @@ dependencies = [
     { name = "blinker" },
     { name = "chromadb" },
     { name = "docling-core", extra = ["chunking"] },
+    { name = "fastapi" },
     { name = "inquirer" },
     { name = "langchain" },
     { name = "langchain-chroma" },
@@ -234,6 +235,7 @@ dependencies = [
     { name = "pymilvus" },
     { name = "pymongo" },
     { name = "pymupdf" },
+    { name = "python-multipart" },
     { name = "python-slugify" },
     { name = "pytz" },
     { name = "sentence-transformers" },
@@ -242,6 +244,7 @@ dependencies = [
     { name = "streamlit-pdf-viewer" },
     { name = "unstructured", extra = ["pdf"] },
     { name = "uuid" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -257,6 +260,7 @@ requires-dist = [
     { name = "blinker", specifier = ">=1.9.0" },
     { name = "chromadb", specifier = ">=1.3.5" },
     { name = "docling-core", extras = ["chunking"], specifier = ">=2.77.0" },
+    { name = "fastapi", specifier = ">=0.115.0" },
     { name = "inquirer", specifier = ">=3.4.1" },
     { name = "langchain", specifier = ">=1.3.4" },
     { name = "langchain-chroma", specifier = ">=1.1.0" },
@@ -281,6 +285,7 @@ requires-dist = [
     { name = "pymilvus", specifier = "==2.6.4" },
     { name = "pymongo", specifier = ">=4.17.0" },
     { name = "pymupdf", specifier = ">=1.27.2.3" },
+    { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "python-slugify", specifier = ">=8.0.4" },
     { name = "pytz", specifier = ">=2026.2" },
     { name = "sentence-transformers", specifier = ">=5.5.1" },
@@ -289,6 +294,7 @@ requires-dist = [
     { name = "streamlit-pdf-viewer", specifier = ">=0.0.29" },
     { name = "unstructured", extras = ["pdf"], specifier = ">=0.22.30" },
     { name = "uuid", specifier = ">=1.30" },
+    { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -1193,6 +1199,22 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/cc/2d/3ead106cef42eab305e15f9c089dcc68a40387d5ce04af18585af4ebbb44/faker-40.28.1.tar.gz", hash = "sha256:2a63fb51abab8790636d4030a094cf942404cbccc9c288d1cad70e2e3e9ecd58", size = 2022717, upload-time = "2026-07-01T22:23:43.763Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/92/a6/6111b9f13c1564b0e2f5dbeeb611fd00dc731e6add2336f62b798598c73d/faker-40.28.1-py3-none-any.whl", hash = "sha256:e8d3f5c469100a553d246dce7937c291308068a5ec6c9c3a228d7878b50720be", size = 2061052, upload-time = "2026-07-01T22:23:41.946Z" },
+]
+
+[[package]]
+name = "fastapi"
+version = "0.139.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "annotated-doc" },
+    { name = "pydantic" },
+    { name = "starlette" },
+    { name = "typing-extensions" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d3/af/a5f50ccfa659ec1802cb4ca842c23f06d906a8cc9aef6016a2caeea3d4ed/fastapi-0.139.0.tar.gz", hash = "sha256:99ab7b2d92223c76d6cf10757ab3f89d45b38267fc20b2a136cf02f6beac3145", size = 423016, upload-time = "2026-07-01T16:35:33.436Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/7c/8e3c6ad324ea5cb36604fc3f968554887891c316d9dfde57761611d907ad/fastapi-0.139.0-py3-none-any.whl", hash = "sha256:cf15e1e9e667ddb0ad63811e60bd11390d1aac838ca4a7a23f421807b2308189", size = 130339, upload-time = "2026-07-01T16:35:32.19Z" },
 ]
 
 [[package]]

@@ -84,6 +84,13 @@ st.sidebar.selectbox(
     key="language",
 )
 
+if st.session_state.get("language") == "English":
+    os.environ["APP_LANGUAGE"] = "english"
+    app_config.language = "english"
+else:
+    os.environ["APP_LANGUAGE"] = "french"
+    app_config.language = "french"
+
 
 pages = {}
 
@@ -94,7 +101,7 @@ pages["Patient mdt Oncologic"] = [
         icon="📇",
         default=True,
     ),
-    st.Page(f"{PAGES_DIR_SRC}/patient_mdt/datas.py", title="RCP", icon="📇"),
+    st.Page(f"{PAGES_DIR_SRC}/patient_mdt/datas.py", title="RCP", icon="📝"),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/upload.py",
         title="Charger le/les fichier(s)",
@@ -103,7 +110,7 @@ pages["Patient mdt Oncologic"] = [
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/agents.py",
         title="Agents and ressources",
-        icon=":material/robot:",
+        icon="🤖",
     ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/ressources.py",
@@ -115,14 +122,14 @@ pages["Reports"] = [
     st.Page(
         f"{PAGES_DIR_SRC}/reports/bugs.py",
         title="Bug reports",
-        icon=":material/bug_report:",
+        icon="🐛",
     )
 ]
 
 
 if st.session_state.get("authentication_status"):
     with st.sidebar:
-        if st.button("Se déconnecter", key="logout_btn", icon=":material/logout:"):
+        if st.button("Se déconnecter", key="logout_btn", icon="🚪"):
             try:
                 authenticator.logout(location="unrendered")
             except KeyError:

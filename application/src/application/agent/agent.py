@@ -114,6 +114,9 @@ class OncowflowAgent:
         else:
             self.output_format = output_format
 
+        # Determine language dynamically from config
+        self.response_language = getattr(config, "language", "french")
+
         # Initialize the LLM client based on configuration
         llm_client = get_llm_client(config)
 
@@ -129,7 +132,8 @@ class OncowflowAgent:
         if reasoning_budget is not None:
             self.reasoning_budget = reasoning_budget
 
-        system_prompt = f"""You are a clinical data extraction assistant operating in a live production environment.
+        system_prompt = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
+        You are a clinical data extraction assistant operating in a live production environment.
         {self.system_prompt}
 
         ## STEP 1 — Gather information (use tools)
@@ -349,9 +353,22 @@ class OncowflowAgent:
             failed_representation = (
                 last_failed_output if last_failed_output else str(result)
             )
-            question = f"""You made a mistake, correct the output\n\n
-                        Error : {validation_error}\n\n
-                        Here is the previous invalid output:\n{failed_representation}"""
+            if self.response_language == "french":
+                question = f"""Answer in French language, not mention it in the answer.
+                            Vous avez fait une erreur, veuillez corriger la sortie JSON pour correspondre exactement au schéma attendu.
+
+                            Erreur : {validation_error}
+
+                            Voici la sortie invalide précédente :
+                            {failed_representation}"""
+            else:
+                question = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
+                            You made a mistake, please correct the JSON output to match the expected schema exactly.
+
+                            Error: {validation_error}
+
+                            Here is the previous invalid output:
+                            {failed_representation}"""
 
         # Raise error if no valid structured response was found
         raise ValueError(

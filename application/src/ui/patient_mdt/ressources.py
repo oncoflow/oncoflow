@@ -66,7 +66,7 @@ else:
         if is_indexed
         else "Indexer dans la base vectorielle"
     )
-    if st.sidebar.button(btn_label, use_container_width=True, type="primary"):
+    if st.sidebar.button(btn_label, width="stretch", type="primary"):
         with st.spinner(f"Indexation de {selected_resource} en cours..."):
             try:
                 ressources_manager.index_ressource(selected_resource)
@@ -83,7 +83,7 @@ else:
 
     # Back button to agents page
     st.sidebar.markdown("---")
-    if st.sidebar.button("◀ Retour aux agents", use_container_width=True):
+    if st.sidebar.button("◀ Retour aux agents", width="stretch"):
         st.query_params.clear()
         st.switch_page("src/ui/patient_mdt_oncologic/agents.py")
 
@@ -127,7 +127,7 @@ else:
                 f,
                 file_name=selected_resource,
                 mime="application/pdf",
-                use_container_width=True,
+                width="stretch",
             )
 
         # Chat toggle button next to download
@@ -135,7 +135,7 @@ else:
             if not chat_active:
                 if c2.button(
                     "💬 Interroger l'Assistant IA",
-                    use_container_width=True,
+                    width="stretch",
                     type="secondary",
                 ):
                     st.session_state["chat_active_res"] = True
@@ -163,7 +163,7 @@ else:
             else:
                 if c2.button(
                     "❌ Fermer l'Assistant IA",
-                    use_container_width=True,
+                    width="stretch",
                     type="secondary",
                 ):
                     st.session_state["chat_active_res"] = False

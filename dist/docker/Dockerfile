@@ -1,8 +1,13 @@
 # Utilisation d'une image Python (version alignée avec votre projet)
 FROM python:3.13-slim
 
-# Installation de uv
+# Installation de uv et des outils de compilation
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    && rm -rf /var/lib/apt/lists/*
+ENV UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /app
 

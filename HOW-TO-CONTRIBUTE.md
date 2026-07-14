@@ -42,19 +42,19 @@ Pour rejoindre la communauté et commencer à contribuer :
 
 ### 1. Démarrage des Services de l'Infrastructure (Docker Compose)
 
-Les services d'infrastructure d'Oncoflow sont divisés en deux fichiers Docker Compose situés dans `docker/compose/`. Lancez-les depuis la **racine du dépôt** :
+Les services d'infrastructure d'Oncoflow sont divisés en deux fichiers Docker Compose situés dans `dist/docker/compose/`. Lancez-les depuis la **racine du dépôt** :
 
 #### A. Base de Données Vectorielle (Milvus Standalone)
 Milvus est notre base de données de similarité principale. Elle utilise trois conteneurs locaux (milvus-standalone, etcd, minio) :
 ```bash
-docker compose -f docker/compose/milvus-standalone-docker-compose.yml up -d
+docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
 ```
 * **Vérification** : Milvus écoute sur le port local `19530`.
 
 #### B. Services Communs (MongoDB & Ollama)
 Ce fichier lance MongoDB (stockage des métadonnées patients et cache) et une instance optionnelle d'Ollama avec support GPU Nvidia :
 ```bash
-docker compose -f docker/compose/docker-compose.yml up -d
+docker compose -f dist/docker/compose/docker-compose.yml up -d
 ```
 * **MongoDB** : Écoute sur le port `27017` avec les identifiants par défaut `root:root`.
 * **Ollama (Docker)** : Écoute sur le port `11434` et monte ses modèles sur `/data/ollama`.

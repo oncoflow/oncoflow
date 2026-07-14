@@ -29,9 +29,8 @@ def unload_active_models(app_conf):
     """
     import urllib.request
     import json
-    import logging
 
-    logger = logging.getLogger("cleanup")
+    logger = app_conf.set_logger("cleanup")
 
     # Check configured models
     models_to_unload = []

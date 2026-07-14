@@ -36,6 +36,7 @@ def collaborative_debate(
         logger.info(f"Debate: Requesting initial analysis from {magent.agent_name}...")
 
         opinion_prompt = (
+            f"Answer in {magent.response_language.capitalize()} language, not mention it in the answer.\n"
             f"As an expert in {magent.expert_type if hasattr(magent, 'expert_type') else magent.agent_name}, "
             f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}"
         )
@@ -57,6 +58,7 @@ def collaborative_debate(
         logger.info(f"Debate: Requesting cross-review from {magent.agent_name}...")
 
         debate_prompt = (
+            f"Answer in {magent.response_language.capitalize()} language, not mention it in the answer.\n"
             f"We are conducting a multidisciplinary team (MDT/RCP) debate. Here are the initial opinions and arguments from all participating experts:\n\n"
             f"{compiled_opinions}\n\n"
             f"The overall question is: {question}\n\n"
@@ -89,6 +91,7 @@ def collaborative_debate(
     )
 
     synthesis_prompt = (
+        f"Answer in {coordinator.response_language.capitalize()} language, not mention it in the answer.\n"
         f"You are the coordinator of the multidisciplinary team (MDT/RCP). The experts have completed their debate. "
         f"Here is the summary of their final opinions:\n\n"
         f"{final_compiled_opinions}\n\n"
@@ -100,7 +103,9 @@ def collaborative_debate(
 
     try:
         datas = json.loads(
-            coordinator.ask(synthesis_prompt, output_format, callbacks=callbacks).json()
+            coordinator.ask(
+                synthesis_prompt, output_format, callbacks=callbacks
+            ).model_dump_json()
         )
         if isinstance(datas, dict):
             datas["reasoning_thinking"] = getattr(coordinator, "latest_thinking", None)
