@@ -124,6 +124,25 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
+        if flush:
+            # Drop the collection manually before recreating the client
+            # to avoid a race condition where the Milvus() constructor
+            # tries to load_collection before the server has stabilized
+            # after dropping.
+            try:
+                if utility.has_collection(self.coll_name):
+                    utility.drop_collection(self.coll_name)
+                    self.logger.info(
+                        "Dropped collection '%s'. Waiting for Milvus to stabilize...",
+                        self.coll_name,
+                    )
+                    time.sleep(2.0)
+            except MilvusException as e:
+                self.logger.warning(
+                    "Failed to drop collection '%s' during flush: %s",
+                    self.coll_name,
+                    e,
+                )
 
         self.clientdb = Milvus(
             embedding_function=self.embeddings,
@@ -135,14 +154,9 @@ class MilvusDB(VectorialDataBase):
             },
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
-            drop_old=flush,  # set to True if seeking to drop the collection with that name if it exists
+            drop_old=False,  # We handle drop manually above to avoid race conditions
             enable_dynamic_field=True,
         )
-        if flush:
-            self.logger.info(
-                "Waiting 2 seconds for collection recreation to stabilize on Milvus..."
-            )
-            time.sleep(2.0)
 
     def get_version(self):
         return utility.get_server_version()
