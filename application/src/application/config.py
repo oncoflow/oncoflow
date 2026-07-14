@@ -306,6 +306,11 @@ class AppConfig(BaseSettings):
         description="Domain of the application. Valid values: oncology, sma.",
     )
 
+    dev_mode: bool = Field(
+        default=True,
+        description="Enable development mode. When True, uses development configurations.",
+    )
+
     llm: ConfigllmSettings = Field(
         default_factory=ConfigllmSettings,
         description="LLM system configuration (model, URL, port, temperature, embeddings).",
@@ -334,6 +339,14 @@ class AppConfig(BaseSettings):
         default_factory=MilvusDBSettings,
         description="Milvus vector database connection settings.",
     )
+
+    @property
+    def auth_config_path(self) -> Path:
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        if self.dev_mode:
+            return base_dir / "config/auth_config_dev.yaml"
+        else:
+            return base_dir / "config/auth_config.yaml"
 
     def set_logger(self, name, default_context={}, additional_context=None):
 

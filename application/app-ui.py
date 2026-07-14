@@ -29,31 +29,45 @@ os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 os.environ["DOCLING_DEVICE"] = "cpu"
 
 import streamlit as st
+import yaml
+from yaml.loader import SafeLoader
+import streamlit_authenticator as stauth
 
 
 PAGES_DIR_SRC = "src/ui"
 navigation = {}
 st.set_page_config(layout="wide")
 
+# Configuration de l'authentification
+from src.application.config import AppConfig
 
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
+app_config = AppConfig()
 
+if app_config.dev_mode:
+    logger = app_config.set_logger("oncoflow.ui")
+    logger.warning(
+        "\n"
+        + "=" * 60
+        + "\n"
+        + "⚠️  ONCOFLOW EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
+        + "\n"
+        + "=" * 60
+        + "\n"
+    )
 
-def login():
-    if st.button("Log in"):
-        st.session_state.logged_in = True
-        st.rerun()
+auth_config_path = app_config.auth_config_path
+try:
+    with open(auth_config_path, "r", encoding="utf-8") as file:
+        config = yaml.load(file, Loader=SafeLoader)
+    authenticator = stauth.Authenticate(
+        config["credentials"],
+        config["cookie"]["name"],
+        config["cookie"]["key"],
+        config["cookie"]["expiry_days"],
+    )
+except Exception as e:
+    st.error(f"Erreur lors du chargement de la configuration d'authentification : {e}")
 
-
-def logout():
-    if st.button("Log out"):
-        st.session_state.logged_in = False
-        st.rerun()
-
-
-# login_page = st.Page(login, title="Log in", icon=":material/login:")
-# logout_page = st.Page(logout, title="Log out", icon=":material/logout:")
 
 st.logo(
     "static/logo.png",
@@ -107,9 +121,23 @@ pages["Reports"] = [
 ]
 
 
-# if st.session_state.logged_in:
-pg = st.navigation(pages)
-# else:
-#     pg = st.navigation([login_page])
+if st.session_state.get("authentication_status"):
+    with st.sidebar:
+        if st.button("Se déconnecter", key="logout_btn", icon=":material/logout:"):
+            try:
+                authenticator.logout(location="unrendered")
+            except KeyError:
+                pass
+            st.rerun()
+    pg = st.navigation(pages)
+    pg.run()
+else:
+    try:
+        authenticator.login(location="main")
+    except Exception as e:
+        st.error(f"Erreur d'initialisation de l'authentification : {e}")
 
-pg.run()
+    if st.session_state.get("authentication_status") is False:
+        st.error("Identifiant ou mot de passe incorrect")
+    elif st.session_state.get("authentication_status") is None:
+        st.warning("Veuillez saisir votre identifiant et votre mot de passe")

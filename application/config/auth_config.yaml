@@ -1,0 +1,11 @@
+credentials:
+  usernames:
+    admin:
+      email: admin@oncoflow.local
+      name: Administrateur Oncoflow
+cookie:
+  expiry_days: 30
+  key: oncoflow_secret_cookie_key_2026_secure
+  name: oncoflow_auth_cookie
+preauthorized:
+  emails: []
