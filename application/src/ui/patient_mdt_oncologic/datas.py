@@ -584,7 +584,6 @@ if st.session_state["power"]:
                         """
     )
 
-
 if "file" in st.query_params:
     form()
 else:

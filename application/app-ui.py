@@ -87,7 +87,6 @@ st.sidebar.selectbox(
 
 pages = {}
 
-
 pages["Patient mdt Oncologic"] = [
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py",
@@ -129,7 +128,16 @@ if st.session_state.get("authentication_status"):
             except KeyError:
                 pass
             st.rerun()
+
     pg = st.navigation(pages)
+
+    # Redirection automatique vers la fiche patient si spécifiée dans l'URL
+    if "file" in st.query_params and pg.title != "RCP":
+        st.switch_page(
+            f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py",
+            query_params={"file": st.query_params["file"]},
+        )
+
     pg.run()
 else:
     try:

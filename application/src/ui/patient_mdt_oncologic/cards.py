@@ -145,7 +145,7 @@ def get_rcp_data():
                 "missing": list(set(missing_data)),
                 "urgency": urgency_level,
                 "urgency_score": urgency_score,
-                "link": f"datas/?file={d['file']}",
+                "link": f"datas?file={d['file']}",
                 "intervention_required": intervention_required,
                 "intervention_type": intervention_type,
             }
