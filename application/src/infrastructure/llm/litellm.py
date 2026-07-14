@@ -85,7 +85,7 @@ class LiteLLMConnect(LLMConnect):
             model=model,
             temperature=temp,
             model_kwargs=model_kwargs,
-            reasoning=reasoning,
+            reasoning={"effort": "low"} if reasoning else False,
             streaming=True,
         )
         # Save output schema for use in bind_tools bypassing Pydantic setattr constraints
