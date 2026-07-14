@@ -18,7 +18,7 @@ from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.agents import Agents
 from src.domain.patient_mdt_form import PatientMDTForm
 from src.domain.common.common_ressources import PatientPriority
-from src.ui.patient_mdt_oncologic.translations import translate
+from src.ui.patient_mdt.translations import translate
 
 
 class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
@@ -587,7 +587,7 @@ if st.session_state["power"]:
 if "file" in st.query_params:
     form()
 else:
-    st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py")
+    st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
 
 if "reader" in st.session_state:
     del st.session_state["reader"]

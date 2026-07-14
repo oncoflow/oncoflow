@@ -1,5 +1,5 @@
 import streamlit as st
-from src.ui.patient_mdt_oncologic.translations import translate
+from src.ui.patient_mdt.translations import translate
 from src.domain.common.common_ressources import PatientPriority, WHOPerformanceStatus
 
 

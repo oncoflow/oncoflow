@@ -26,4 +26,4 @@ if uploaded_files:
             # full_read_mtd_agents(app_conf=app_conf, filename=f, logger=logger)
             st.write("Succès")
             time.sleep(1)
-        st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py")
+        st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/datas.py")

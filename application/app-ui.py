@@ -89,24 +89,24 @@ pages = {}
 
 pages["Patient mdt Oncologic"] = [
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/cards.py",
+        f"{PAGES_DIR_SRC}/patient_mdt/cards.py",
         title="Liste RCP",
         icon="📇",
         default=True,
     ),
-    st.Page(f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py", title="RCP", icon="📇"),
+    st.Page(f"{PAGES_DIR_SRC}/patient_mdt/datas.py", title="RCP", icon="📇"),
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/upload.py",
+        f"{PAGES_DIR_SRC}/patient_mdt/upload.py",
         title="Charger le/les fichier(s)",
         icon="🚀",
     ),
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/agents.py",
+        f"{PAGES_DIR_SRC}/patient_mdt/agents.py",
         title="Agents and ressources",
         icon=":material/robot:",
     ),
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt_oncologic/ressources.py",
+        f"{PAGES_DIR_SRC}/patient_mdt/ressources.py",
         title="Ressources",
         icon="📚",
     ),
@@ -134,7 +134,7 @@ if st.session_state.get("authentication_status"):
     # Redirection automatique vers la fiche patient si spécifiée dans l'URL
     if "file" in st.query_params and pg.title != "RCP":
         st.switch_page(
-            f"{PAGES_DIR_SRC}/patient_mdt_oncologic/datas.py",
+            f"{PAGES_DIR_SRC}/patient_mdt/datas.py",
             query_params={"file": st.query_params["file"]},
         )
 

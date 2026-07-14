@@ -49,7 +49,7 @@ for i, (n, a) in enumerate(pmtd.list.items()):
                     help="Consulter cette ressource",
                 ):
                     st.switch_page(
-                        "src/ui/patient_mdt_oncologic/ressources.py",
+                        "src/ui/patient_mdt/ressources.py",
                         query_params={"resource": r},
                     )
 

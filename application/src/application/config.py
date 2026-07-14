@@ -240,12 +240,12 @@ class RCPSettings(BaseSettings):
 
     path: Path = Field(
         default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/PatientMDTOncologicForm",
+        / "../../ressources/PatientMDTForm",
         description="Filesystem path to the directory containing patient MDT/RCP files.",
     )
     additional_path: Path = Field(
         default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/TNCD",
+        / "../../ressources/documents",
         description="Filesystem path to the directory containing additional reference files (e.g. TNCD guidelines).",
     )
     doc_type: str = Field(
@@ -339,6 +339,16 @@ class AppConfig(BaseSettings):
         default_factory=MilvusDBSettings,
         description="Milvus vector database connection settings.",
     )
+
+    def model_post_init(self, __context) -> None:
+        super().model_post_init(__context)
+        # Dynamically append the domain (e.g., oncology, sma) to the additional_path
+        if self.domain:
+            self.rcp.additional_path = self.rcp.additional_path / self.domain
+            try:
+                self.rcp.additional_path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
 
     @property
     def auth_config_path(self) -> Path:
