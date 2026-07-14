@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 os.environ["DOCLING_DEVICE"] = "cpu"
 
+import uvicorn
 from fastapi import FastAPI
 
 from src.application.config import AppConfig
@@ -48,3 +49,6 @@ def get_openapi_json():
 app.include_router(rcp_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(resources_router, prefix="/api/v1")
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)
