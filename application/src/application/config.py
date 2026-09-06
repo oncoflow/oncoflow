@@ -98,7 +98,7 @@ class ConfigllmSettings(BaseSettings):
         description="Port number of the LLM server.",
     )
     models: str = Field(
-        default="openai/qwen3:14b",
+        default="openai/agents",
         description="Model identifier to use for reasoning. Use 'all' to test all available Ollama models.",
     )
     ocrmodels: str = Field(
@@ -110,7 +110,7 @@ class ConfigllmSettings(BaseSettings):
         description="Temperature parameter for LLM generation. Higher values produce more random output.",
     )
     embeddings: str = Field(
-        default="openai/bge-m3",
+        default="openai/embeddings",
         description="Embedding model identifier for vector representation of documents.",
     )
     embeddings_port: str = Field(

@@ -1,4 +1,5 @@
 import os
+import time
 from typing import List, Any, Optional
 import httpx
 
@@ -30,6 +31,55 @@ class LlamaCppCompatibleEmbeddings(OpenAIEmbeddings):
         if not isinstance(response, dict):
             response = response.model_dump()
         return [r["embedding"] for r in response["data"]]
+
+
+class LlamaCppChatOpenAI(ChatOpenAI):
+    """
+    OpenAI-compatible chat model for llama.cpp server that preserves reasoning_content
+    tokens both during streaming chunks and in final generation messages.
+    """
+
+    def _convert_chunk_to_generation_chunk(
+        self,
+        chunk: dict,
+        default_chunk_class: type,
+        base_generation_info: dict | None,
+    ):
+        gen_chunk = super()._convert_chunk_to_generation_chunk(
+            chunk, default_chunk_class, base_generation_info
+        )
+        if gen_chunk and gen_chunk.message:
+            choices = chunk.get("choices", []) or chunk.get("chunk", {}).get(
+                "choices", []
+            )
+            if choices:
+                delta = choices[0].get("delta", {})
+                reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+                if reasoning:
+                    gen_chunk.message.additional_kwargs["reasoning_content"] = reasoning
+                    setattr(gen_chunk.message, "reasoning_content", reasoning)
+        return gen_chunk
+
+    def _create_chat_result(
+        self,
+        response: dict | Any,
+        generation_info: dict | None = None,
+    ):
+        chat_result = super()._create_chat_result(response, generation_info)
+        response_dict = (
+            response if isinstance(response, dict) else response.model_dump()
+        )
+        choices = response_dict.get("choices", [])
+        for i, gen in enumerate(chat_result.generations):
+            if i < len(choices):
+                msg_data = choices[i].get("message", {})
+                reasoning = msg_data.get("reasoning_content") or msg_data.get(
+                    "reasoning"
+                )
+                if reasoning:
+                    gen.message.additional_kwargs["reasoning_content"] = reasoning
+                    setattr(gen.message, "reasoning_content", reasoning)
+        return chat_result
 
 
 class LlamaCppConnect(LLMConnect):
@@ -132,21 +182,25 @@ class LlamaCppConnect(LLMConnect):
         model_kwargs = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
-        if reasoning and reasoning_budget is not None:
-            model_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
 
-        model_instance = ChatOpenAI(
-            base_url=self.base_url if self.base_url else None,
-            api_key=self.api_key,
-            model=model,
-            tools=tools,
-            temperature=(
+        chat_kwargs = {
+            "base_url": self.base_url if self.base_url else None,
+            "api_key": self.api_key,
+            "model": model,
+            "temperature": (
                 temperature if temperature is not None else self.config.llm.temp
             ),
-            max_tokens=4096,
-            model_kwargs=model_kwargs,
-            streaming=True,
-        )
+            "max_tokens": 4096,
+            "model_kwargs": model_kwargs,
+            "streaming": True,
+        }
+        if reasoning and reasoning_budget is not None:
+            chat_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
+
+        model_instance = LlamaCppChatOpenAI(**chat_kwargs)
+
+        if tools:
+            model_instance = model_instance.bind_tools(tools)
 
         return model_instance
 
@@ -154,7 +208,7 @@ class LlamaCppConnect(LLMConnect):
         try:
             headers = {"Authorization": f"Bearer {self.api_key}"}
             response = httpx.get(
-                f"{self.base_url}/models", headers=headers, timeout=5.0
+                f"{self.base_url}/models", headers=headers, timeout=30.0
             )
             if response.status_code == 200:
                 data = response.json()
@@ -164,22 +218,46 @@ class LlamaCppConnect(LLMConnect):
         # Return fallback model list from configuration
         return [self.config.llm.models]
 
-    def test_connection(self) -> None:
-        try:
-            # llama.cpp exposes a /health endpoint for readiness checks
-            # Strip /v1 suffix to hit the root health endpoint
-            health_url = self.base_url.rsplit("/v1", 1)[0]
-            response = httpx.get(f"{health_url}/health", timeout=5.0)
-            if response.status_code != 200:
+    def test_connection(
+        self,
+        max_retries: int = 15,
+        retry_delay: float = 3.0,
+        timeout: float = 10.0,
+    ) -> None:
+        """
+        Verify that the llama.cpp server is reachable and ready.
+        Supports cold starts (e.g. Cloud Run, model loading) by retrying on timeouts and connect errors.
+        """
+        health_url = self.base_url.rsplit("/v1", 1)[0]
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                # llama.cpp exposes a /health endpoint for readiness checks
+                response = httpx.get(f"{health_url}/health", timeout=timeout)
+                if response.status_code == 200:
+                    return
                 # Fall back to listing models if /health is not available
-                headers = {"Authorization": f"Bearer {self.api_key}"}
                 response = httpx.get(
-                    f"{self.base_url}/models", headers=headers, timeout=5.0
+                    f"{self.base_url}/models", headers=headers, timeout=timeout
                 )
-                if response.status_code != 200:
-                    self.logger.warning(
-                        f"llama.cpp server returned status {response.status_code}"
+                if response.status_code == 200:
+                    return
+                self.logger.warning(
+                    f"llama.cpp server returned status {response.status_code} (attempt {attempt}/{max_retries})"
+                )
+            except (httpx.TimeoutException, httpx.ConnectError) as e:
+                if attempt < max_retries:
+                    self.logger.info(
+                        f"Waiting for llama.cpp server to respond ({e})... "
+                        f"(attempt {attempt}/{max_retries}, retrying in {retry_delay}s)"
                     )
-        except Exception as e:
-            self.logger.error(f"Connection error to llama.cpp server: {e}")
-            exit(254)
+                    time.sleep(retry_delay)
+                else:
+                    self.logger.error(
+                        f"Connection error to llama.cpp server after {max_retries} attempts: {e}"
+                    )
+                    exit(254)
+            except Exception as e:
+                self.logger.error(f"Connection error to llama.cpp server: {e}")
+                exit(254)

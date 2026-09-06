@@ -4,10 +4,11 @@
 # ==============================================================================
 
 SHELL := /bin/bash
-export PATH := $(HOME)/.local/bin:$(PATH)
+export PATH := $(HOME)/.local/bin:$(HOME)/google-cloud-sdk/bin:$(PATH)
 
-# Détection de l'exécutable uv
+# Détection de l'exécutable uv et gcloud
 UV := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
+GCLOUD := $(shell command -v gcloud 2>/dev/null || echo $(HOME)/google-cloud-sdk/bin/gcloud)
 
 # Dossier de l'application
 APP_DIR := application
@@ -28,19 +29,21 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui cloudrun-proxy stop test lint format docker-up docker-down docker-status pull-models clean status api ui proxy dev
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
 	@echo -e "$(CYAN)Usage: make <commande>$(RESET)"
 	@echo ""
 	@echo -e "$(GREEN)Commandes principales :$(RESET)"
-	@echo -e "  $(YELLOW)make install$(RESET)          Installe les dépendances via uv sync"
-	@echo -e "  $(YELLOW)make upgrade$(RESET)          Met à jour toutes les dépendances (uv lock --upgrade && uv sync)"
-	@echo -e "  $(YELLOW)make start-api$(RESET)        Démarre l'API FastAPI (port $(PORT_API))"
-	@echo -e "  $(YELLOW)make start-ui$(RESET)         Démarre le dashboard Streamlit (port $(PORT_UI))"
-	@echo -e "  $(YELLOW)make cloudrun-proxy$(RESET)   Lance le proxy Cloud Run pour $(CLOUDRUN_SERVICE) (port $(CLOUDRUN_PORT))"
-	@echo -e "  $(YELLOW)make stop$(RESET)             Arrête l'UI, l'API et le proxy Cloud Run"
+	@echo -e "  $(YELLOW)make install$(RESET)             Installe les dépendances via uv sync"
+	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances (uv lock --upgrade && uv sync)"
+	@echo -e "  $(YELLOW)make start-api$(RESET)           Démarre l'API FastAPI (port $(PORT_API))"
+	@echo -e "  $(YELLOW)make start-ui$(RESET)            Démarre le dashboard Streamlit (port $(PORT_UI))"
+	@echo -e "  $(YELLOW)make start-ui-dev$(RESET)        Démarre Docker en mode proxy, proxy GCP et Streamlit UI"
+	@echo -e "  $(YELLOW)make cloudrun-proxy$(RESET)      Lance le proxy Cloud Run en tâche de fond (port $(CLOUDRUN_PORT))"
+	@echo -e "  $(YELLOW)make cloudrun-proxy-stop$(RESET) Arrête le proxy Cloud Run"
+	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI, l'API et le proxy Cloud Run"
 	@echo ""
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
 	@echo -e "  $(YELLOW)make test$(RESET)             Exécute la suite de tests Pytest"
@@ -49,6 +52,7 @@ help:
 	@echo ""
 	@echo -e "$(GREEN)Commandes d'infrastructure & Ollama :$(RESET)"
 	@echo -e "  $(YELLOW)make docker-up$(RESET)        Démarre Milvus et MongoDB via Docker Compose"
+	@echo -e "  $(YELLOW)make docker-up-proxy$(RESET)  Démarre Docker en mode proxy (Milvus + MongoDB + embeddings)"
 	@echo -e "  $(YELLOW)make docker-down$(RESET)      Arrête les conteneurs Milvus et MongoDB"
 	@echo -e "  $(YELLOW)make docker-status$(RESET)    Vérifie l'état des conteneurs Docker"
 	@echo -e "  $(YELLOW)make pull-models$(RESET)      Télécharge les modèles recommandés dans Ollama local"
@@ -76,15 +80,67 @@ start-ui:
 	@echo -e "$(CYAN)--> Démarrage de Streamlit UI sur http://localhost:$(PORT_UI)...$(RESET)"
 	cd $(APP_DIR) && $(UV) run streamlit run app-ui.py --server.port=$(PORT_UI)
 
-## Lance le proxy Cloud Run vers le service LLM distant
+## Démarre Streamlit UI connecté au proxy GCP Cloud Run avec l'infrastructure Docker en mode proxy (sans chat local)
+start-ui-dev: docker-up-proxy cloudrun-proxy
+	@echo -e "$(CYAN)--> Vérification de la disponibilité du serveur llama.cpp (Cloud Run)...$(RESET)"
+	@READY=0; \
+	for i in {1..30}; do \
+		if curl -s -m 2 http://127.0.0.1:$(CLOUDRUN_PORT)/health 2>/dev/null | grep -q '"status":"ok"'; then \
+			READY=1; \
+			echo -e "  [$(GREEN)PRÊT$(RESET)] Serveur llama.cpp opérationnel."; \
+			break; \
+		fi; \
+		if [ $$i -eq 1 ]; then \
+			echo -n "  Attente de démarrage du modèle sur Cloud Run (cold start possible)"; \
+		else \
+			echo -n "."; \
+		fi; \
+		sleep 2; \
+	done; \
+	if [ $$READY -eq 0 ]; then \
+		echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le serveur llama.cpp n'a pas encore répondu au /health (le chargement du modèle peut encore être en cours)."; \
+	fi
+	@APP_CONFIGLLM_TYPE=litellm \
+	APP_CONFIGLLM_URL=http://127.0.0.1 \
+	$(MAKE) start-ui
+
+## Lance le proxy Cloud Run en arrière-plan (ou le réutilise s'il est déjà actif)
 cloudrun-proxy:
-	@echo -e "$(CYAN)--> Démarrage du proxy Cloud Run vers $(CLOUDRUN_SERVICE) sur le port $(CLOUDRUN_PORT)...$(RESET)"
-	gcloud run services proxy $(CLOUDRUN_SERVICE) --port=$(CLOUDRUN_PORT)
+	@if ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
+		echo -e "  [$(GREEN)OK$(RESET)] Proxy Cloud Run déjà actif sur le port $(CLOUDRUN_PORT)"; \
+	else \
+		echo -e "$(CYAN)--> Lancement du proxy Cloud Run vers $(CLOUDRUN_SERVICE) sur le port $(CLOUDRUN_PORT) en arrière-plan...$(RESET)"; \
+		nohup $(GCLOUD) run services proxy $(CLOUDRUN_SERVICE) --port=$(CLOUDRUN_PORT) > /tmp/oncoflow-cloudrun-proxy.log 2>&1 & \
+		echo -n "  Attente de la disponibilité du proxy"; \
+		for i in {1..15}; do \
+			if ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
+				echo -e " [$(GREEN)PRÊT$(RESET)]"; \
+				break; \
+			fi; \
+			echo -n "."; \
+			sleep 1; \
+		done; \
+		if ! ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
+			echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le proxy n'a pas encore répondu sur le port $(CLOUDRUN_PORT). Logs : /tmp/oncoflow-cloudrun-proxy.log"; \
+		fi; \
+	fi
+
+## Arrête le proxy Cloud Run
+cloudrun-proxy-stop:
+	@echo -e "$(YELLOW)--> Arrêt du proxy Cloud Run...$(RESET)"
+	@if pgrep -f "[g]cloud.*run.*services.*proxy" >/dev/null 2>&1; then \
+		pkill -f "[g]cloud.*run.*services.*proxy" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Cloud Run Proxy"; \
+	else \
+		echo -e "  [$(GREEN)OK$(RESET)] Cloud Run Proxy n'est pas actif"; \
+	fi
 
 # Raccourcis et alias
 api: start-api
 ui: start-ui
+ui-dev: start-ui-dev
+start: start-ui
 proxy: cloudrun-proxy
+proxy-stop: cloudrun-proxy-stop
 
 ## Démarre l'API en arrière-plan puis Streamlit au premier plan
 dev:
@@ -96,7 +152,7 @@ dev:
 	@$(MAKE) start-ui
 
 ## Arrête les processus actifs (Streamlit, API FastAPI, proxy Cloud Run)
-stop:
+stop: cloudrun-proxy-stop docker-down
 	@echo -e "$(YELLOW)--> Arrêt des processus applicatifs...$(RESET)"
 	@if pgrep -f "[s]treamlit run app-ui.py" >/dev/null 2>&1; then \
 		pkill -f "[s]treamlit run app-ui.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Streamlit UI"; \
@@ -107,11 +163,6 @@ stop:
 		pkill -f "[p]ython.*app-api.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] FastAPI App"; \
 	else \
 		echo -e "  [$(GREEN)OK$(RESET)] FastAPI App n'est pas active"; \
-	fi
-	@if pgrep -f "[g]cloud.*run.*services.*proxy" >/dev/null 2>&1; then \
-		pkill -f "[g]cloud.*run.*services.*proxy" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Cloud Run Proxy"; \
-	else \
-		echo -e "  [$(GREEN)OK$(RESET)] Cloud Run Proxy n'est pas actif"; \
 	fi
 	@echo -e "$(GREEN)Terminé.$(RESET)"
 
@@ -130,18 +181,37 @@ format:
 	@echo -e "$(CYAN)--> Formatage Ruff sur src/...$(RESET)"
 	cd $(APP_DIR) && $(UV) run ruff format src/
 
+## Initialise le replica set MongoDB (rs0) si nécessaire
+mongo-init:
+	@echo -e "$(CYAN)--> Initialisation / vérification du Replica Set MongoDB (rs0)...$(RESET)"
+	@cd $(APP_DIR) && $(UV) run python -c "import time, sys; from pymongo import MongoClient; \
+c = MongoClient('mongodb://root:root@127.0.0.1:27017/?directConnection=true&authSource=admin', serverSelectionTimeoutMS=2000); \
+h = c.admin.command('hello'); \
+(print('  [OK] MongoDB Replica Set déjà initialisé (Primary actif)'), sys.exit(0)) if h.get('isWritablePrimary') else None; \
+c.admin.command('replSetInitiate', {'_id': 'rs0', 'members': [{'_id': 0, 'host': '127.0.0.1:27017'}]}); \
+print('  [OK] MongoDB Replica Set (rs0) initialisé avec succès')" 2>/dev/null || echo -e "  [$(GREEN)OK$(RESET)] MongoDB Replica Set prêt."
+
 ## Démarre les services d'infrastructure Docker (Milvus & MongoDB)
 docker-up:
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
 	@echo -e "$(CYAN)--> Démarrage des services communs (MongoDB)...$(RESET)"
 	docker compose -f dist/docker/compose/docker-compose.yml up -d
+	@$(MAKE) mongo-init
+
+## Démarre les conteneurs en mode proxy (Milvus, MongoDB, embeddings - sans chat local)
+docker-up-proxy:
+	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
+	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
+	@echo -e "$(CYAN)--> Démarrage des services en mode proxy (MongoDB + embeddings, sans chat local)...$(RESET)"
+	docker compose -f dist/docker/compose/docker-compose.yml --profile llamacpp up -d
+	@$(MAKE) mongo-init
 
 ## Arrête les services d'infrastructure Docker
 docker-down:
 	@echo -e "$(YELLOW)--> Arrêt des conteneurs Docker...$(RESET)"
-	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml down
-	docker compose -f dist/docker/compose/docker-compose.yml down
+	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml down --remove-orphans
+	docker compose -f dist/docker/compose/docker-compose.yml down --remove-orphans
 
 ## Vérifie l'état des conteneurs Docker de la plateforme
 docker-status:

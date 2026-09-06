@@ -26,7 +26,6 @@ services:
     networks:
          - search-community
 
-
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
   ollama:
@@ -45,6 +44,9 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    profiles:
+    - "dev"
+    - "ollama"
 
   llama-cpp-chat:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda
@@ -87,6 +89,9 @@ services:
     networks:
       - search-community
     restart: unless-stopped
+    profiles:
+    - "local"
+    - "llamacpp-chat"
 
   llama-cpp-embeddings:
     image: ghcr.io/ggml-org/llama.cpp:server
@@ -117,6 +122,9 @@ services:
     networks:
       - search-community
     restart: unless-stopped
+    profiles:
+    - "dev"
+    - "llamacpp"
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
@@ -127,9 +135,6 @@ services:
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
     command: [ "--config", "/app/config.yaml", "--port", "4000" ]
-    depends_on:
-      - llama-cpp-chat
-      - llama-cpp-embeddings
     restart: unless-stopped
     #networks:
     #  - search-community

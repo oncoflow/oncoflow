@@ -73,7 +73,6 @@ class TestOpenAIConnection(unittest.TestCase):
             base_url="https://api.openai.com/v1",
             api_key="test-api-key",
             model="gpt-4o",
-            tools=[],
             reasoning={"effort": "medium"},
             temperature=0.7,
             model_kwargs={"response_format": {"type": "json_object"}},

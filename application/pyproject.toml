@@ -60,3 +60,6 @@ extraPaths = ["."]
 [tool.ruff.lint.per-file-ignores]
 "app-ui.py" = ["E402"]
 "app.py" = ["E402"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
