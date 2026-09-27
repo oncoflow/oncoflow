@@ -10,7 +10,7 @@ class Context(TypedDict):
     Type definition for the context passed to tools at runtime.
     """
 
-    reader: DocumentReader
+    reader: Optional[DocumentReader]
     additionnal_readers: List[DocumentReader]
     logger: Any
 
@@ -20,7 +20,10 @@ def get_mtd_markdown(runtime: ToolRuntime[Context]):
     """Get the Medical Technical Documents (MTD) / Patient Records in Markdown format."""
     runtime.context["logger"].info("tool get_mtd_markdown called")
 
-    return runtime.context["reader"].markdown_exporter[0].page_content
+    reader = runtime.context["reader"]
+    if reader is None:
+        raise ValueError("No main document reader (mtd) provided in Context.")
+    return reader.markdown_exporter[0].page_content
 
 
 @tool(response_format="content_and_artifact")
@@ -61,7 +64,9 @@ def search_on_mtd(
     runtime.context["logger"].debug(
         f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
     )
-    reader: DocumentReader = runtime.context["reader"]
+    reader = runtime.context["reader"]
+    if reader is None:
+        raise ValueError("No main document reader (mtd) provided in Context.")
 
     retrieved_docs = reader.vecdb.clientdb.max_marginal_relevance_search(
         query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
@@ -81,7 +86,7 @@ def search_on_mtd(
 def search_on_ressources(
     runtime: ToolRuntime[Context],
     query: str,
-    k: int = 4,
+    k: int = 3,
     param: Optional[dict | list[dict]] = None,
     expr: Optional[str] = None,
     timeout: Optional[float] = None,

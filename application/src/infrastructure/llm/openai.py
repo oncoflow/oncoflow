@@ -131,27 +131,41 @@ class OpenAIConnect(LLMConnect):
 
         self.logger.info("Succesfully connected")
 
-    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
+    def chat(
+        self,
+        model,
+        output=None,
+        temperature=None,
+        tools=[],
+        reasoning=True,
+        reasoning_budget=None,
+    ):
         # We set JSON mode if output is specified (matching the Ollama behavior)
         # However, if tools are provided, we must not force JSON mode to avoid conflicts with tool calling.
         model_kwargs = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
 
-        model_instance = StrictChatOpenAI(
-            base_url=self.base_url if self.base_url else None,
-            api_key=self.api_key,
-            model=model,
-            tools=tools,
-            reasoning={"effort": "medium"} if reasoning else None,
-            temperature=(
+        chat_kwargs = {
+            "base_url": self.base_url if self.base_url else None,
+            "api_key": self.api_key,
+            "model": model,
+            "reasoning": {"effort": "medium"} if reasoning else None,
+            "temperature": (
                 temperature if temperature is not None else self.config.llm.temp
             ),
-            model_kwargs=model_kwargs,
-            streaming=True,
-        )
+            "model_kwargs": model_kwargs,
+            "streaming": True,
+        }
+        if reasoning and reasoning_budget is not None:
+            chat_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
+
+        model_instance = StrictChatOpenAI(**chat_kwargs)
         # Save output schema for use in bind_tools bypassing Pydantic setattr constraints
         model_instance.__dict__["_output_schema"] = output
+
+        if tools:
+            model_instance = model_instance.bind_tools(tools)
 
         return model_instance
 

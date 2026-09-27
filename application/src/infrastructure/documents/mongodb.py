@@ -84,9 +84,7 @@ class Mongodb:
             collection = self.database[collection]
             collection.insert_many(documents)
         self.logger.info("Success inserting documents")
-
-        # Close the database connection when done
-        self.client.close()
+        self.documents_to_insert.clear()
 
     def delete_docs(self, collections: list, filter):
         self.logger.info(f"Delete documents by filter : {filter}")

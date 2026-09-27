@@ -1,0 +1,112 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llama-cpp-chat
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/minScale: "0"
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-type: nvidia-l4
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        env:
+        - name: GGML_CUDA_PDL
+          value: "0"
+        - name: GGML_CUDA_DISABLE_GRAPHS
+          value: "0"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+        args:
+        # ─── Model ─────────────────────────────────────────────────────────────
+        # Qwen3-14B Q4_K_M — ~8.5 GB VRAM — ~20 T/s on L4
+        # Usage: qualité maximale, raisonnement clinique profond
+        - "-hf"
+        - "Qwen/Qwen3-14B-GGUF:Q4_K_M"
+        - "--port"
+        - "8080"
+        - "--host"
+        - "0.0.0.0"
+        # ─── Context ───────────────────────────────────────────────────────────
+        # 40k: couvre les longs dossiers MTD + chunks RAG TNCD
+        - "-c"
+        - "40960"
+        - "-n"
+        - "32768"
+        # ─── GPU ───────────────────────────────────────────────────────────────
+        - "-ngl"
+        - "99"
+        - "--flash-attn"
+        - "on"
+        - "--no-mmap"
+        # ─── Batch (14B: taille modérée, VRAM partielle occupée) ───────────────
+        - "-b"
+        - "4096"
+        - "-ub"
+        - "1024"
+        # ─── Threading ─────────────────────────────────────────────────────────
+        - "-t"
+        - "4"
+        # 2 slots parallèles — 14B laisse ~15 GB libres pour 2 KV caches
+        - "-np"
+        - "2"
+        # ─── KV Cache ──────────────────────────────────────────────────────────
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
+        # ─── Sampling ──────────────────────────────────────────────────────────
+        - "--temp"
+        - "1.0"
+        - "--top-p"
+        - "0.95"
+        - "--top-k"
+        - "40"
+        - "--min-p"
+        - "0"
+        - "--presence-penalty"
+        - "2.0"
+        - "--repeat-penalty"
+        - "1.0"
+        # ─── Qwen3 Thinking ────────────────────────────────────────────────────
+        - "--jinja"
+        - "--reasoning-format"
+        - "deepseek"
+        # 16k tokens de réflexion — raisonnement maximal pour cas complexes
+        - "--reasoning-budget"
+        - "16384"
+        - "--reasoning-budget-message"
+        - "\nOkay, I have enough information to answer."
+        - "--no-context-shift"
+        - "--no-warmup"
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 120
+        resources:
+          limits:
+            cpu: "4"
+            memory: "16Gi"      # 8.5 GB modèle + 2 KV caches + overhead OS
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: gcs-hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: gcs-hf-cache
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: oncoflow-models-cache

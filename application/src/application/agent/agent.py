@@ -1,7 +1,7 @@
 import json
 import re
 
-from typing import ClassVar, Any
+from typing import ClassVar, Any, cast
 from pydantic import ValidationError, BaseModel, Field
 
 from langchain.agents import create_agent
@@ -23,8 +23,11 @@ def extract_json_str(text: str) -> str:
     """
     Extract the most likely valid JSON substring from text.
     """
+    # 0. Clean thinking blocks (<think>...</think>) from the text to isolate target JSON
+    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+
     # 1. Try to find content inside ```json ... ``` blocks first
-    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text, re.DOTALL)
+    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
     for block in json_blocks:
         block_clean = block.strip()
         try:
@@ -34,7 +37,7 @@ def extract_json_str(text: str) -> str:
             pass
 
     # 2. Try to find content inside general ``` ... ``` blocks
-    code_blocks = re.findall(r"```\s*(.*?)\s*```", text, re.DOTALL)
+    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
     for block in code_blocks:
         block_clean = block.strip()
         try:
@@ -44,20 +47,20 @@ def extract_json_str(text: str) -> str:
             pass
 
     # 3. Try to scan all braces to find the first valid JSON object
-    open_braces = [m.start() for m in re.finditer(r"\{", text)]
-    close_braces = [m.start() for m in re.finditer(r"\}", text)]
+    open_braces = [m.start() for m in re.finditer(r"\{", text_clean)]
+    close_braces = [m.start() for m in re.finditer(r"\}", text_clean)]
 
     for start in open_braces:
         for end in reversed(close_braces):
             if end > start:
-                candidate = text[start : end + 1]
+                candidate = text_clean[start : end + 1]
                 try:
                     json.loads(candidate)
                     return candidate
                 except json.JSONDecodeError:
                     pass
 
-    return text.strip()
+    return text_clean
 
 
 class ChatResponse(BaseModel):
@@ -85,6 +88,8 @@ class OncowflowAgent:
     output_format: type[BaseModel] | None = None
     agent: Any = None
     agent_name: str = ""
+    additionnal_readers: list[DocumentReader] = []
+    reasoning_budget: int | None = 1024
 
     def __init__(
         self,
@@ -92,6 +97,9 @@ class OncowflowAgent:
         mtd: DocumentReader | None = None,
         output_format: type[BaseModel] | None = None,
         reasoning: bool = True,
+        reasoning_budget: int | None = None,
+        reader: DocumentReader | None = None,
+        additionnal_readers: list[DocumentReader] = [],
     ):
         """
         Initialize the OncowflowAgent.
@@ -106,6 +114,9 @@ class OncowflowAgent:
         else:
             self.output_format = output_format
 
+        # Determine language dynamically from config
+        self.response_language = getattr(config, "language", "french")
+
         # Initialize the LLM client based on configuration
         llm_client = get_llm_client(config)
 
@@ -118,11 +129,28 @@ class OncowflowAgent:
         if reasoning is None:
             reasoning = getattr(config.llm, "reasoning", True)
 
-        system_prompt = f"""Answer in {self.response_language} language, not mention it in the answer.
+        if reasoning_budget is not None:
+            self.reasoning_budget = reasoning_budget
+
+        system_prompt = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
+        You are a clinical data extraction assistant operating in a live production environment.
         {self.system_prompt}
-        You MUST respond with valid JSON and nothing else.
-        No markdown, no explanation, no code blocks — just raw JSON.
-        Respond with JSON matching this exact schema:
+
+        ## STEP 1 — Gather information (use tools)
+        If the required information is NOT already in your context, call the appropriate tools FIRST:
+        - Call `get_mtd_markdown` to retrieve the full patient record text.
+        - Call `search_on_ressources` to search reference guidelines if needed.
+        - You MAY call tools multiple times to find all required fields.
+        - Do NOT guess, mock, or fabricate any clinical information.
+
+        ## STEP 2 — Output your final answer (JSON only)
+        Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.
+        - All schema keys and enum values must remain strictly in English as defined by the schema.
+        - Write only free-form text fields (summaries, diagnostics, recommendations) in {self.response_language}.
+        - Output ONLY the raw JSON — no markdown fences, no explanation, no code blocks.
+
+        ## STEP 3 — formatting outputs
+        - You MUST respond with output JSON schema:
         {json.dumps(self.output_format.model_json_schema(), indent=2)}
         """
         # Configure logging for the agent
@@ -135,13 +163,17 @@ class OncowflowAgent:
         )
 
         # Set up readers for the main document and additional resources
+        self.reader = mtd
+        tools = []
         if mtd is not None:
-            self.reader = mtd
+            tools.append(get_mtd_markdown)
+
         self.additionnal_readers = [
             DocumentReader(config, ressource, document_type="ressource")
             for ressource in self.ressources
         ]
-        tools = [get_mtd_markdown]
+
+        self.additionnal_readers.extend(additionnal_readers)
         if len(self.additionnal_readers) > 0:
             tools.append(search_on_ressources)
 
@@ -150,7 +182,8 @@ class OncowflowAgent:
             model=llm_client.chat(
                 models_list[0],
                 reasoning=reasoning,
-                # output=self.output_format,
+                reasoning_budget=self.reasoning_budget,
+                output=self.output_format,
                 # tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
             ),
             tools=tools,
@@ -167,14 +200,14 @@ class OncowflowAgent:
                 ),
             ],
             # response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
-            response_format=self.output_format,
-            # pyrefly: ignore [bad-argument-type]
-            context_schema=Context,
+            # response_format=self.output_format,
+            response_format=None,
+            context_schema=cast(Any, Context),
             system_prompt=system_prompt,
         )
 
         self.logger.info(
-            f"""Agent succefully created with prompt :
+            f"""Agent succefully created with prompt (reasoning : {reasoning}, reasoning_budget : {self.reasoning_budget}) :
         {system_prompt}
         """
         )
@@ -257,10 +290,16 @@ class OncowflowAgent:
                     additionnal_readers=self.additionnal_readers,
                     logger=self.logger,
                 ),
-                config={"callbacks": callbacks} if callbacks else None,
+                config={
+                    "callbacks": callbacks,
+                    "tags": [self.agent_name] if self.agent_name else [],
+                }
+                if callbacks
+                else None,
             )
             # Extract and store the thinking process from the execution history
             self.latest_thinking = self.extract_thinking(result.get("messages", []))
+
             # if langchain tools work, load the response
             if "structured_response" in result:
                 if self.output_format is not None and issubclass(
@@ -271,6 +310,7 @@ class OncowflowAgent:
 
             # Iterate through messages to find the AI response and validate it against the schema
             self.logger.info(f"AI response : {result}")
+            last_failed_output = None
             for msg in result["messages"]:
                 try:
                     if (
@@ -287,12 +327,17 @@ class OncowflowAgent:
                                 if isinstance(part, dict):
                                     if part.get("type") == "text":
                                         text_parts.append(part.get("text", ""))
+                                    elif part.get("type") == "thinking":
+                                        # Do not append thinking to final output content
+                                        pass
                                 elif isinstance(part, str):
                                     text_parts.append(part)
                             content = "".join(text_parts)
 
                         if isinstance(content, str):
                             content = extract_json_str(content)
+
+                        last_failed_output = content
 
                         # Validate the content against the Pydantic model
                         if self.output_format is not None and issubclass(
@@ -304,10 +349,26 @@ class OncowflowAgent:
                 except (ValidationError, ValueError, json.JSONDecodeError) as e:
                     validation_error = e
                     continue
-            self.logger.info(f"Error, previous result : {result}")
-            question = f"""You made a mistake, correct the outpout\n\n
-                        Error : {validation_error}\n\n
-                        Here is the previous result:\n{result}"""
+            self.logger.info(f"Error, previous result : {last_failed_output or result}")
+            failed_representation = (
+                last_failed_output if last_failed_output else str(result)
+            )
+            if self.response_language == "french":
+                question = f"""Answer in French language, not mention it in the answer.
+                            Vous avez fait une erreur, veuillez corriger la sortie JSON pour correspondre exactement au schéma attendu.
+
+                            Erreur : {validation_error}
+
+                            Voici la sortie invalide précédente :
+                            {failed_representation}"""
+            else:
+                question = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
+                            You made a mistake, please correct the JSON output to match the expected schema exactly.
+
+                            Error: {validation_error}
+
+                            Here is the previous invalid output:
+                            {failed_representation}"""
 
         # Raise error if no valid structured response was found
         raise ValueError(
