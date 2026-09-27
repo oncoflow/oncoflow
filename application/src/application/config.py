@@ -76,14 +76,14 @@ class ConfigllmSettings(BaseSettings):
 
     Environment variables: APP_CONFIGLLM_TYPE, APP_CONFIGLLM_URL, APP_CONFIGLLM_URI,
     APP_CONFIGLLM_PORT, APP_CONFIGLLM_MODELS, APP_CONFIGLLM_OCRMODELS, APP_CONFIGLLM_TEMP,
-    APP_CONFIGLLM_EMBEDDINGS, APP_CONFIGLLM_API_KEY
+    APP_CONFIGLLM_EMBEDDINGS, APP_CONFIGLLM_API_KEY, APP_CONFIGLLM_VIRTUAL_KEY
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_CONFIGLLM_")
 
     type: str = Field(
         default="LiteLLM",
-        description="Type of LLM backend system. Supported values: Ollama, OpenAI, vLLM, LiteLLM.",
+        description="Type of LLM backend system. Supported values: Ollama, OpenAI, vLLM, LiteLLM, LlamaCpp, Bifrost.",
     )
     url: str = Field(
         default="http://127.0.0.1",
@@ -120,6 +120,10 @@ class ConfigllmSettings(BaseSettings):
     api_key: str = Field(
         default="ollama",
         description="API key for the LLM backend (required for OpenAI/vLLM, defaults to 'ollama' for local Ollama).",
+    )
+    virtual_key: str = Field(
+        default="",
+        description="Bifrost governance virtual key, sent with the x-bf-vk header (Bifrost only, optional).",
     )
 
 

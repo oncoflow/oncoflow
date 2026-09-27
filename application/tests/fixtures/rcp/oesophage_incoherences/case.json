@@ -1,0 +1,52 @@
+{
+  "description": "Cancer du tiers moyen de l'œsophage cT3N1M0 dont la fiche contient trois incohérences internes : âge / date de naissance, type histologique, état général OMS.",
+  "synthetic": true,
+  "expected": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": null,
+      "resectability": null,
+      "comment": "Non évalué : la tumeur est localisée mais l'opérabilité dépend de la levée de l'incohérence OMS 0 / OMS 3."
+    },
+    "MissingDataForResection": {
+      "data_missing": null,
+      "comment": "Non évalué."
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": true,
+      "must_mention": [
+        ["age", "54", "naissance", "1958"],
+        ["epidermoide", "adenocarcinome", "histolog"],
+        ["oms", "performance", "etat general", "alite"]
+      ]
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false
+    }
+  },
+  "gold": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": true,
+      "resectability": "resectable",
+      "justification": "Tumeur du tiers moyen de l'œsophage cT3N1M0 sans métastase au TEP-scanner : une stratégie multimodale incluant l'œsophagectomie peut être discutée, sous réserve de l'état général (OMS 0 ou 3 selon les sections de la fiche) et de la fonction respiratoire (BPCO)."
+    },
+    "MissingDataForResection": {
+      "data_missing": true,
+      "missing_items": [
+        {"item": "État général OMS fiable", "why_needed": "La fiche indique à la fois OMS 0 et OMS 3, ce qui conditionne l'opérabilité."},
+        {"item": "Épreuves fonctionnelles respiratoires", "why_needed": "BPCO stade 2 chez un patient candidat à une œsophagectomie."}
+      ]
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": true,
+      "inconsistencies": [
+        {"field": "Âge", "description": "Âge indiqué 54 ans alors que la date de naissance (1958-03-12) donne 68 ans à la date de la RCP (2026-09-15)."},
+        {"field": "Type histologique", "description": "La section anatomopathologie mentionne un carcinome épidermoïde, la synthèse un adénocarcinome."},
+        {"field": "État général OMS", "description": "OMS 0 dans l'en-tête, OMS 3 (alité plus de la moitié de la journée) dans l'histoire de la maladie."}
+      ]
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false,
+      "discordances": []
+    }
+  }
+}

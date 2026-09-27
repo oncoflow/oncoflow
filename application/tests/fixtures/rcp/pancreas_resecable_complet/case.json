@@ -1,0 +1,38 @@
+{
+  "description": "Adénocarcinome de la tête du pancréas résécable, bilan complet et cohérent.",
+  "synthetic": true,
+  "expected": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": true,
+      "resectability": ["resectable"]
+    },
+    "MissingDataForResection": {
+      "data_missing": false
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false
+    }
+  },
+  "gold": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": true,
+      "resectability": "resectable",
+      "justification": "Adénocarcinome prouvé de la tête du pancréas de 24 mm sans contact artériel, contact veineux inférieur à 90°, sans métastase au scanner TAP ni à l'IRM hépatique, chez un patient OMS 0 : tumeur résécable, la chirurgie doit être discutée (d'emblée ou après chimiothérapie néoadjuvante)."
+    },
+    "MissingDataForResection": {
+      "data_missing": false,
+      "missing_items": []
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false,
+      "inconsistencies": []
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false,
+      "discordances": []
+    }
+  }
+}

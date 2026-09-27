@@ -1,0 +1,50 @@
+{
+  "description": "Masse du corps du pancréas adressée pour avis de résécabilité, sans histologie, sans imagerie thoracique, sans CA 19-9 ni OMS.",
+  "synthetic": true,
+  "expected": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": true,
+      "resectability": ["unknown", "borderline", "locally_advanced"],
+      "comment": "Le dossier est adressé pour avis de résécabilité : la résection doit être discutée, mais le bilan ne permet pas de conclure."
+    },
+    "MissingDataForResection": {
+      "data_missing": true,
+      "must_mention": [
+        ["histolog", "biopsie", "preuve", "anatomopatholog", "cytolog"],
+        ["thorax", "thoraci", "pulmon"],
+        ["ca 19-9", "ca19-9", "ca 19.9", "ca19.9", "marqueur"],
+        ["oms", "performance", "etat general"]
+      ]
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false
+    }
+  },
+  "gold": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": true,
+      "resectability": "unknown",
+      "justification": "Masse de 30 mm du corps du pancréas au contact du tronc cœliaque, adressée pour avis de résécabilité. Le degré de contact artériel, l'extension thoracique et la nature histologique ne sont pas connus : la résection doit être discutée mais la résécabilité ne peut pas être établie."
+    },
+    "MissingDataForResection": {
+      "data_missing": true,
+      "missing_items": [
+        {"item": "Preuve histologique (biopsie sous écho-endoscopie)", "why_needed": "Confirmer l'adénocarcinome avant tout traitement."},
+        {"item": "Scanner thoracique et scanner pancréatique multiphasique", "why_needed": "Éliminer des métastases pulmonaires et préciser le degré de contact avec le tronc cœliaque."},
+        {"item": "Dosage du CA 19-9", "why_needed": "Marqueur pronostique utilisé dans la décision de chirurgie d'emblée ou de traitement néoadjuvant."},
+        {"item": "État général OMS et bilan nutritionnel", "why_needed": "Évaluer l'opérabilité de la patiente."}
+      ]
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false,
+      "inconsistencies": []
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false,
+      "discordances": []
+    }
+  }
+}

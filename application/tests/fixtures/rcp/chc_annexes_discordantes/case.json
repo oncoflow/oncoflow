@@ -1,0 +1,50 @@
+{
+  "description": "CHC présenté comme unique, Child-Pugh A5, sans thrombose, pour résection ; les annexes montrent un CHC multinodulaire avec thrombose portale tumorale, Child-Pugh B9 et AFP à 480.",
+  "synthetic": true,
+  "expected": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": null,
+      "resectability": null,
+      "comment": "Non évalué : la réponse dépend de la prise en compte des annexes (d'après celles-ci, la résection n'est pas indiquée)."
+    },
+    "MissingDataForResection": {
+      "data_missing": null,
+      "comment": "Non évalué."
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": null,
+      "comment": "Non évalué : la fiche est cohérente en elle-même, les contradictions sont entre la fiche et les annexes."
+    },
+    "AnnexDiscordance": {
+      "has_discordance": true,
+      "must_mention": [
+        ["nodule", "multinodul", "multifocal", "plurinodul", "segment vii", "segment iv", "trois"],
+        ["thrombose", "portal", "porte"],
+        ["child", "bilirubine", "albumine", "prothrombine"]
+      ]
+    }
+  },
+  "gold": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": false,
+      "resectability": "non_resectable",
+      "justification": "D'après les annexes, CHC multinodulaire (3 nodules) avec thrombose tumorale de la branche portale droite sur cirrhose Child-Pugh B9 : la résection n'est pas indiquée ; le dossier doit être rediscuté pour un traitement systémique après correction de la fiche."
+    },
+    "MissingDataForResection": {
+      "data_missing": false,
+      "missing_items": []
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false,
+      "inconsistencies": []
+    },
+    "AnnexDiscordance": {
+      "has_discordance": true,
+      "discordances": [
+        {"document": "cr_irm_hepatique", "rcp_form_value": "CHC unique de 30 mm du segment VI", "annex_value": "3 nodules (segments VI 31 mm, VII 18 mm, IV 12 mm)", "clinical_impact": "Un CHC multinodulaire n'est plus classé BCLC A et la résection segmentaire n'est plus adaptée."},
+        {"document": "cr_irm_hepatique", "rcp_form_value": "Pas de thrombose portale", "annex_value": "Thrombose tumorale partielle de la branche portale droite", "clinical_impact": "Envahissement vasculaire : stade BCLC C, contre-indication à la résection."},
+        {"document": "bilan_biologique", "rcp_form_value": "Child-Pugh A5, AFP 25 ng/mL", "annex_value": "Bilirubine 42 µmol/L, albumine 29 g/L, TP 58 %, Child-Pugh B9, AFP 480 ng/mL", "clinical_impact": "Fonction hépatique altérée contre-indiquant une hépatectomie ; pronostic plus défavorable."}
+      ]
+    }
+  }
+}

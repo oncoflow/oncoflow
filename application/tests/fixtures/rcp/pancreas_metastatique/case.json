@@ -1,0 +1,38 @@
+{
+  "description": "Adénocarcinome du pancréas corporéo-caudal métastatique (foie, poumon), dossier complet et cohérent, présenté pour chimiothérapie palliative.",
+  "synthetic": true,
+  "expected": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": false,
+      "resectability": ["metastatic", "non_resectable"]
+    },
+    "MissingDataForResection": {
+      "data_missing": false
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false
+    }
+  },
+  "gold": {
+    "SurgicalResectionDiscussion": {
+      "discuss_resection": false,
+      "resectability": "metastatic",
+      "justification": "Adénocarcinome pancréatique avec plus de dix métastases hépatiques prouvées histologiquement et des nodules pulmonaires suspects : maladie métastatique, pas d'indication de résection ; la question porte sur la chimiothérapie palliative."
+    },
+    "MissingDataForResection": {
+      "data_missing": false,
+      "missing_items": []
+    },
+    "RecordInconsistencies": {
+      "has_inconsistencies": false,
+      "inconsistencies": []
+    },
+    "AnnexDiscordance": {
+      "has_discordance": false,
+      "discordances": []
+    }
+  }
+}

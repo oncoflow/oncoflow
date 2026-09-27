@@ -6,3 +6,5 @@ chromadb
 */chroma
 documents_parser_llm/rcp
 docker/compose/volumes/*
+docker/compose/bifrost/oncoflow-bifrost.env
+docker/compose/bifrost/data/

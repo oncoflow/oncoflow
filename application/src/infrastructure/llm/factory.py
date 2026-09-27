@@ -5,6 +5,7 @@ from src.infrastructure.llm.openai import OpenAIConnect
 from src.infrastructure.llm.vllm import VllmConnect
 from src.infrastructure.llm.litellm import LiteLLMConnect
 from src.infrastructure.llm.llamacpp import LlamaCppConnect
+from src.infrastructure.llm.bifrost import BifrostConnect
 
 
 def get_llm_client(config: AppConfig) -> LLMConnect:
@@ -16,7 +17,7 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
         config (AppConfig): Application configuration.
 
     Returns:
-        OllamaConnect | OpenAIConnect | VllmConnect | LiteLLMConnect | LlamaCppConnect: The resolved LLM client instance.
+        OllamaConnect | OpenAIConnect | VllmConnect | LiteLLMConnect | LlamaCppConnect | BifrostConnect: The resolved LLM client instance.
 
     Raises:
         ValueError: If config.llm.type is not supported.
@@ -32,8 +33,10 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
         return LiteLLMConnect(config)
     elif llm_type == "llamacpp":
         return LlamaCppConnect(config)
+    elif llm_type == "bifrost":
+        return BifrostConnect(config)
     else:
         raise ValueError(
             f"LLM type '{config.llm.type}' is not supported. "
-            f"Supported types are 'Ollama', 'OpenAI', 'vLLM', 'LiteLLM', and 'LlamaCpp'."
+            f"Supported types are 'Ollama', 'OpenAI', 'vLLM', 'LiteLLM', 'LlamaCpp', and 'Bifrost'."
         )

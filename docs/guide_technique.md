@@ -67,6 +67,8 @@ All machine learning models run strictly inside the local network boundary via *
 * **OCR/Vision Model**: `granite3.2-vision` (used by Ollama OCR to analyze complex scanned paper diagrams or handwritten hospital documents).
 * **Embeddings**: `nomic-embed-text` or `all-MiniLM-L6-v2` (for converting text chunks into 384/768-dimensional float vectors).
 
+The LLM backend is selected with `APP_CONFIGLLM_TYPE` (`Ollama`, `OpenAI`, `vLLM`, `LiteLLM`, `LlamaCpp` or `Bifrost`). To route every call through a homelab [Bifrost](https://github.com/maximhq/bifrost) gateway, see **[docs/bifrost.md](bifrost.md)**.
+
 ---
 
 ## ⚙️ Comprehensive Environment Variables

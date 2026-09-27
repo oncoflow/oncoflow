@@ -105,6 +105,7 @@ flowchart TB
 
 👉 **[Découvrir la Fiche Technique Complète & Variables](docs/guide_technique.md)**
 👉 **[Accéder au Guide de Contribution & Setup local](HOW-TO-CONTRIBUTE.md)**
+👉 **[Déployer derrière une passerelle LLM Bifrost (homelab)](docs/bifrost.md)**
 
 ---
 
