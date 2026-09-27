@@ -20,8 +20,8 @@ from src.application.evaluation.rcp_eval import (
     normalize,
     score_answer,
 )
-from src.domain.patient_mdt_oncologic_form import PatientMDTOncologicForm
-from src.domain.rcp_review import RCP_REVIEW_QUESTIONS, RCPReviewerAgent
+from src.domain.common.patient_mdt_common_form import PatientMDTForm
+from src.domain.oncology.rcp_review import RCP_REVIEW_QUESTIONS, RCPReviewerAgent
 
 FIXTURES = Path(__file__).parent / "fixtures" / "rcp"
 CASES = load_rcp_cases(FIXTURES)
@@ -98,7 +98,7 @@ def test_stated_age_matches_date_of_birth_unless_expected(case):
 
 @pytest.mark.parametrize("case", CASES, ids=CASE_IDS)
 def test_administrative_data_passes_form_validator(case):
-    admin = PatientMDTOncologicForm.PatientAdministrative(
+    admin = PatientMDTForm.PatientAdministrative(
         first_name=fiche_field(case, "Prénom"),
         last_name=fiche_field(case, "Nom"),
         age=int(re.match(r"\d+", fiche_field(case, "Âge")).group()),
@@ -110,7 +110,7 @@ def test_administrative_data_passes_form_validator(case):
 
     # A date of birth after the RCP date must be rejected by the form validator
     with pytest.raises(ValidationError):
-        PatientMDTOncologicForm.PatientAdministrative(
+        PatientMDTForm.PatientAdministrative(
             **admin.model_dump()
             | {
                 "date_birth": admin.date_rcp,

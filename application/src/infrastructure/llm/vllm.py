@@ -89,23 +89,37 @@ class VllmConnect(LLMConnect):
 
         self.logger.info("Successfully connected to vLLM server")
 
-    def chat(self, model, output=None, temperature=None, tools=[], reasoning=True):
+    def chat(
+        self,
+        model,
+        output=None,
+        temperature=None,
+        tools=[],
+        reasoning=True,
+        reasoning_budget=None,
+    ):
         model_kwargs = {}
         if output is not None and not tools:
             model_kwargs["response_format"] = {"type": "json_object"}
 
-        model_instance = ChatOpenAI(
-            base_url=self.base_url if self.base_url else None,
-            api_key=self.api_key,
-            model=model,
-            tools=tools,
-            reasoning={"effort": "medium"} if reasoning else None,
-            temperature=(
+        chat_kwargs = {
+            "base_url": self.base_url if self.base_url else None,
+            "api_key": self.api_key,
+            "model": model,
+            "reasoning": {"effort": "medium"} if reasoning else None,
+            "temperature": (
                 temperature if temperature is not None else self.config.llm.temp
             ),
-            model_kwargs=model_kwargs,
-            streaming=True,
-        )
+            "model_kwargs": model_kwargs,
+            "streaming": True,
+        }
+        if reasoning and reasoning_budget is not None:
+            chat_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
+
+        model_instance = ChatOpenAI(**chat_kwargs)
+
+        if tools:
+            model_instance = model_instance.bind_tools(tools)
 
         return model_instance
 

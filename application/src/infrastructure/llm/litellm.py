@@ -48,9 +48,25 @@ class LiteLLMConnect(LLMConnect):
 
         self.test_connection()
 
-        # Initialize LiteLLM embeddings pointing to LiteLLM Proxy
+        # Initialize LiteLLM embeddings pointing to LiteLLM Proxy or dedicated embeddings server
+        embeddings_port = getattr(config.llm, "embeddings_port", None)
+        if (
+            isinstance(embeddings_port, str)
+            and embeddings_port.strip()
+            and embeddings_port != port
+        ):
+            if port and f":{port}" in url:
+                embeddings_base = url.replace(f":{port}", f":{embeddings_port}")
+            else:
+                embeddings_base = f"{url}:{embeddings_port}"
+            embeddings_base = embeddings_base.rstrip("/")
+            if uri:
+                embeddings_base = f"{embeddings_base}/{uri}"
+        else:
+            embeddings_base = self.base_url
+
         self.embedding = LiteLLMEmbeddings(
-            api_base=self.base_url,
+            api_base=embeddings_base,
             api_key=self.api_key,
             model=config.llm.embeddings,
         )
@@ -64,6 +80,7 @@ class LiteLLMConnect(LLMConnect):
         temperature: float | None = None,
         tools: List[Any] = [],
         reasoning: bool = False,
+        reasoning_budget: int | None = None,
     ) -> Any:
         # If temperature is not provided, fallback to the config value
         temp = temperature if temperature is not None else self.config.llm.temp
@@ -73,6 +90,10 @@ class LiteLLMConnect(LLMConnect):
             model_kwargs["response_format"] = {"type": "json_object"}
         if reasoning:
             model_kwargs["reasoning"] = {"effort": "low"}
+            if reasoning_budget is not None:
+                model_kwargs["extra_body"] = {
+                    "thinking_budget_tokens": reasoning_budget
+                }
 
         model_instance = ChatLiteLLM(
             api_base=self.base_url,
@@ -80,7 +101,7 @@ class LiteLLMConnect(LLMConnect):
             model=model,
             temperature=temp,
             model_kwargs=model_kwargs,
-            reasoning={"effort": "low"} if reasoning else None,
+            reasoning={"effort": "low"} if reasoning else False,
             streaming=True,
         )
         # Save output schema for use in bind_tools bypassing Pydantic setattr constraints

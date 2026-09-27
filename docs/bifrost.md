@@ -29,10 +29,10 @@ Le client reste sur `/v1/chat/completions` (pas d'API *Responses*, que tous les 
 
 ## 3. Déploiement Docker
 
-`docker/compose/bifrost/` contient une stack prête à l'emploi : Oncoflow (Streamlit), MongoDB et ChromaDB. Bifrost n'y est **pas** démarré : Oncoflow rejoint le réseau Docker externe du homelab (`homelab` par défaut, surchargeable avec `HOMELAB_NETWORK`).
+`dist/docker/compose/bifrost/` contient une stack prête à l'emploi : Oncoflow (Streamlit), MongoDB et ChromaDB. Bifrost n'y est **pas** démarré : Oncoflow rejoint le réseau Docker externe du homelab (`homelab` par défaut, surchargeable avec `HOMELAB_NETWORK`).
 
 ```bash
-cd docker/compose/bifrost
+cd dist/docker/compose/bifrost
 cp oncoflow-bifrost.env.example oncoflow-bifrost.env   # à adapter, jamais commité
 docker network create homelab                          # s'il n'existe pas déjà
 HOMELAB_NETWORK=homelab docker compose up -d --build
@@ -43,7 +43,7 @@ Les données (fiches PDF déposées, MongoDB, ChromaDB) sont conservées dans `.
 
 ## 4. Évaluer un modèle sur les fiches RCP synthétiques
 
-Des fiches RCP fictives avec leurs documents annexes (`application/tests/fixtures/rcp/`) servent à mesurer la qualité des réponses aux quatre questions de relecture (`application/src/domain/rcp_review.py`) :
+Des fiches RCP fictives avec leurs documents annexes (`application/tests/fixtures/rcp/`) servent à mesurer la qualité des réponses aux quatre questions de relecture (`application/src/domain/oncology/rcp_review.py`) :
 
 1. faut-il discuter le dossier pour une résection chirurgicale ?
 2. manque-t-il des données pour discuter la résection ?
@@ -59,6 +59,7 @@ PYTHONPATH=. uv run pytest tests/test_rcp_review.py tests/test_bifrost.py
 export APP_CONFIGLLM_TYPE=Bifrost APP_CONFIGLLM_URL=http://bifrost APP_CONFIGLLM_PORT=8080 \
        APP_CONFIGLLM_URI=/v1 APP_CONFIGLLM_MODELS=ollama/qwen3:14b APP_CONFIGLLM_EMBEDDINGS=ollama/bge-m3
 PYTHONPATH=. uv run python -m src.application.evaluation.rcp_eval tests/fixtures/rcp
+# ou depuis la racine du dépôt : make eval-rcp
 # ou via pytest
 ONCOFLOW_LLM_EVAL=1 PYTHONPATH=. uv run pytest tests/test_rcp_eval_llm.py -v
 ```

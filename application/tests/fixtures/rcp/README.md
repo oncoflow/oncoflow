@@ -7,7 +7,7 @@ Chaque cas contient :
 - `fiche_rcp.md` : la fiche RCP telle que présentée en réunion ;
 - `annexes/*.md` : les documents annexes (comptes rendus d'imagerie, d'anatomopathologie, de biologie…) ;
 - `case.json` :
-  - `expected` : pour chacune des questions de `src/domain/rcp_review.py`, les valeurs attendues des champs booléens / énumérés (`null` = non évalué) et `must_mention`, une liste de groupes de mots-clés dont au moins un de chaque groupe doit apparaître dans la réponse ;
+  - `expected` : pour chacune des questions de `src/domain/oncology/rcp_review.py`, les valeurs attendues des champs booléens / énumérés (`null` = non évalué) et `must_mention`, une liste de groupes de mots-clés dont au moins un de chaque groupe doit apparaître dans la réponse ;
   - `gold` : une réponse de référence pour chaque question, valide pour son modèle Pydantic.
 
 | Cas | Discuter une résection ? | Données manquantes ? | Incohérences dans la fiche ? | Annexes discordantes ? |

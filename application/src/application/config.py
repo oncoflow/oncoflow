@@ -98,7 +98,7 @@ class ConfigllmSettings(BaseSettings):
         description="Port number of the LLM server.",
     )
     models: str = Field(
-        default="openai/qwen3:14b",
+        default="openai/agents",
         description="Model identifier to use for reasoning. Use 'all' to test all available Ollama models.",
     )
     ocrmodels: str = Field(
@@ -110,7 +110,7 @@ class ConfigllmSettings(BaseSettings):
         description="Temperature parameter for LLM generation. Higher values produce more random output.",
     )
     embeddings: str = Field(
-        default="openai/bge-m3",
+        default="openai/embeddings",
         description="Embedding model identifier for vector representation of documents.",
     )
     embeddings_port: str = Field(
@@ -244,12 +244,12 @@ class RCPSettings(BaseSettings):
 
     path: Path = Field(
         default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/PatientMDTOncologicForm",
+        / "../../ressources/PatientMDTForm",
         description="Filesystem path to the directory containing patient MDT/RCP files.",
     )
     additional_path: Path = Field(
         default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/TNCD",
+        / "../../ressources/documents",
         description="Filesystem path to the directory containing additional reference files (e.g. TNCD guidelines).",
     )
     doc_type: str = Field(
@@ -305,6 +305,21 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
+    domain: str = Field(
+        default="oncology",
+        description="Domain of the application. Valid values: oncology, sma.",
+    )
+
+    language: str = Field(
+        default="french",
+        description="Language of the application. Valid values: french, english.",
+    )
+
+    dev_mode: bool = Field(
+        default=True,
+        description="Enable development mode. When True, uses development configurations.",
+    )
+
     llm: ConfigllmSettings = Field(
         default_factory=ConfigllmSettings,
         description="LLM system configuration (model, URL, port, temperature, embeddings).",
@@ -333,6 +348,24 @@ class AppConfig(BaseSettings):
         default_factory=MilvusDBSettings,
         description="Milvus vector database connection settings.",
     )
+
+    def model_post_init(self, __context) -> None:
+        super().model_post_init(__context)
+        # Dynamically append the domain (e.g., oncology, sma) to the additional_path
+        if self.domain:
+            self.rcp.additional_path = self.rcp.additional_path / self.domain
+            try:
+                self.rcp.additional_path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+
+    @property
+    def auth_config_path(self) -> Path:
+        base_dir = Path(__file__).resolve().parent.parent.parent
+        if self.dev_mode:
+            return base_dir / "config/auth_config_dev.yaml"
+        else:
+            return base_dir / "config/auth_config.yaml"
 
     def set_logger(self, name, default_context={}, additional_context=None):
 

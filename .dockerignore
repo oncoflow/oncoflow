@@ -1,5 +1,8 @@
+*/.venv/
 */venv/
+*/.chroma/
 */chroma/
+*/.rcp/
 */rcp/
 **/.venv
 **/__pycache__

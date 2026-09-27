@@ -34,7 +34,7 @@ class TestLlamaCppConnection(unittest.TestCase):
         # Assert /health endpoint was called for connection test
         mock_get.assert_any_call(
             "http://localhost:8081/health",
-            timeout=5.0,
+            timeout=10.0,
         )
         # Assert embeddings initialized with embeddings_port from config
         mock_embeddings_cls.assert_called_once_with(
@@ -64,7 +64,7 @@ class TestLlamaCppConnection(unittest.TestCase):
 
         self.assertEqual(models, ["Qwen3-14B-GGUF"])
 
-    @patch("src.infrastructure.llm.llamacpp.ChatOpenAI")
+    @patch("src.infrastructure.llm.llamacpp.LlamaCppChatOpenAI")
     @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
     @patch("src.infrastructure.llm.llamacpp.httpx.get")
     def test_chat_creation_with_output(
@@ -83,7 +83,6 @@ class TestLlamaCppConnection(unittest.TestCase):
             base_url="http://localhost:8081/v1",
             api_key="not-needed",
             model="Qwen3-14B-GGUF",
-            tools=[],
             temperature=0.7,
             max_tokens=4096,
             model_kwargs={
@@ -92,13 +91,13 @@ class TestLlamaCppConnection(unittest.TestCase):
             streaming=True,
         )
 
-    @patch("src.infrastructure.llm.llamacpp.ChatOpenAI")
+    @patch("src.infrastructure.llm.llamacpp.LlamaCppChatOpenAI")
     @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
     @patch("src.infrastructure.llm.llamacpp.httpx.get")
     def test_chat_creation_with_tools_no_json_mode(
         self, mock_get, mock_embeddings_cls, mock_chat_openai_cls
     ):
-        """When tools are provided, JSON mode must NOT be forced."""
+        """When tools are provided, JSON mode must NOT be forced and tools must be bound."""
         mock_response = MagicMock(spec=httpx.Response)
         mock_response.status_code = 200
         mock_get.return_value = mock_response
@@ -113,11 +112,13 @@ class TestLlamaCppConnection(unittest.TestCase):
             base_url="http://localhost:8081/v1",
             api_key="not-needed",
             model="Qwen3-14B-GGUF",
-            tools=[mock_tool],
             temperature=0.7,
             max_tokens=4096,
             model_kwargs={},
             streaming=True,
+        )
+        mock_chat_openai_cls.return_value.bind_tools.assert_called_once_with(
+            [mock_tool]
         )
 
     @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
@@ -148,7 +149,7 @@ class TestLlamaCppConnection(unittest.TestCase):
 
         self.assertEqual(models, ["Qwen3-14B-GGUF"])
 
-    @patch("src.infrastructure.llm.llamacpp.ChatOpenAI")
+    @patch("src.infrastructure.llm.llamacpp.LlamaCppChatOpenAI")
     @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
     @patch("src.infrastructure.llm.llamacpp.httpx.get")
     def test_chat_without_output_no_json_mode(
@@ -166,7 +167,6 @@ class TestLlamaCppConnection(unittest.TestCase):
             base_url="http://localhost:8081/v1",
             api_key="not-needed",
             model="Qwen3-14B-GGUF",
-            tools=[],
             temperature=0.7,
             max_tokens=4096,
             model_kwargs={},
@@ -188,6 +188,23 @@ class TestLlamaCppConnection(unittest.TestCase):
         # Should not raise/exit because /models succeeds
         conn = LlamaCppConnect(self.mock_config)
         self.assertIsNotNone(conn)
+
+    @patch("src.infrastructure.llm.llamacpp.time.sleep")
+    @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
+    @patch("src.infrastructure.llm.llamacpp.httpx.get")
+    def test_retry_on_timeout_success(self, mock_get, mock_embeddings_cls, mock_sleep):
+        """If connection times out on first attempt, it should retry and succeed when backend is ready."""
+        mock_ok = MagicMock(spec=httpx.Response)
+        mock_ok.status_code = 200
+
+        mock_get.side_effect = [
+            httpx.TimeoutException("timed out"),
+            mock_ok,
+        ]
+
+        conn = LlamaCppConnect(self.mock_config)
+        self.assertIsNotNone(conn)
+        self.assertEqual(mock_sleep.call_count, 1)
 
 
 if __name__ == "__main__":

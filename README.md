@@ -97,11 +97,22 @@ flowchart TB
 ```
 
 ### Stack Technique Principale :
-* **Frontend Dashboard** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`)
+* **Frontend Dashboard** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`)
 * **Orchestration RAG** : LangChain (`langchain-core`, `langchain-community`, `langchain-ollama`)
 * **Indexation Vectorielle** : Milvus standalone (`pymilvus==2.6.14`, `langchain-milvus==0.3.3`) ou ChromaDB
 * **Base de données de Cache & Métadonnées** : MongoDB (`pymongo>=4.17.0`)
 * **Parsers de Documents** : Docling, MuPDF, OpenParse & Ollama OCR
+
+### 🔐 Authentification & Sécurité :
+L'application intègre un système d'authentification local sécurisé via `streamlit-authenticator` :
+* **Fichier de configuration** : Les utilisateurs et leurs informations sont gérés localement dans le fichier `application/auth_config.yaml`.
+* **Identifiants par défaut** :
+  * Nom d'utilisateur : `admin`
+  * Mot de passe : `admin`
+* **Gestion des utilisateurs** : Les informations des utilisateurs et leurs mots de passe hachés en Bcrypt sont gérés dans le fichier YAML. Un script d'ajout d'utilisateurs interactif est disponible sous `application/scratch/add_user.py`. Vous pouvez le lancer depuis le dossier `application/` pour ajouter ou modifier des utilisateurs de façon transparente :
+  ```bash
+  uv run python scratch/add_user.py
+  ```
 
 👉 **[Découvrir la Fiche Technique Complète & Variables](docs/guide_technique.md)**
 👉 **[Accéder au Guide de Contribution & Setup local](HOW-TO-CONTRIBUTE.md)**

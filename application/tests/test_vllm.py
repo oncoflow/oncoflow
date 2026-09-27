@@ -67,7 +67,6 @@ class TestVllmConnection(unittest.TestCase):
             base_url="http://127.0.0.1:8080/v1",
             api_key="test-api-key",
             model="gemma4-local",
-            tools=[],
             reasoning={"effort": "medium"},
             temperature=0.1,
             model_kwargs={"response_format": {"type": "json_object"}},

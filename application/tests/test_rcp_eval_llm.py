@@ -41,7 +41,7 @@ def config():
     ],
 )
 def test_llm_answers_rcp_question(config, case, question):
-    from src.domain.rcp_review import RCP_REVIEW_QUESTIONS, RCPReviewerAgent
+    from src.domain.oncology.rcp_review import RCP_REVIEW_QUESTIONS, RCPReviewerAgent
 
     model = RCP_REVIEW_QUESTIONS[question]
     agent = RCPReviewerAgent(config=config, mtd=case.to_record(), output_format=model)

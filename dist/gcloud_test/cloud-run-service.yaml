@@ -1,0 +1,113 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llama-cpp-chat
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/minScale: "0"
+spec:
+  template:
+    metadata:
+      annotations:
+        # Required for GPU support: gen2 execution environment
+        run.googleapis.com/execution-environment: gen2
+        # Request NVIDIA L4 GPU (Ada Lovelace, Compute Capability 8.9)
+        run.googleapis.com/gpu-type: nvidia-l4
+        # GPU service requires CPU to be always allocated
+        run.googleapis.com/cpu-throttling: "false"
+        # Disable GPU zonal redundancy to avoid quota errors
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        env:
+        # PDL (Programmatic Dependent Launch) requires Compute Capability >= 9.0
+        # The L4 is Ada Lovelace (CC 8.9) and does NOT support PDL — keep disabled
+        - name: GGML_CUDA_PDL
+          value: "0"
+        # Disable CUDA graphs: more stable in virtualized/containerized environments
+        - name: GGML_CUDA_DISABLE_GRAPHS
+          value: "1"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+        args:
+        - "-hf"
+        - "Qwen/Qwen3-14B-GGUF:Q4_K_M"
+        - "--port"
+        - "8080"
+        - "--host"
+        - "0.0.0.0"
+        - "-c"
+        - "40960"
+        # Offload all layers to GPU — L4 has 24 GB VRAM, Qwen3-14B Q4_K_M ~8.5 GB
+        - "-ngl"
+        - "99"
+        # Enable Flash Attention: massive speedup and less VRAM usage
+        - "--flash-attn"
+        - "on"
+        # Disable mmap: prevents slow lazy-loads and page faults over GCS FUSE
+        - "--no-mmap"
+        # Optimize prompt processing batch size for L4 Tensor Cores
+        - "-b"
+        - "4096"
+        - "-ub"
+        - "1024"
+        # Set CPU thread limit to match allocated container vCPUs
+        - "-t"
+        - "4"
+        # Explicit parallel slots (saves memory compared to auto-detecting 4)
+        - "-np"
+        - "2"
+        # Skip the startup warmup inference run to speed up cold starts
+        - "--no-warmup"
+        - "--temp"
+        - "1.0"
+        - "--top-p"
+        - "0.95"
+        - "--top-k"
+        - "40"
+        - "--min-p"
+        - "0"
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
+        - "--jinja"
+        - "-n"
+        - "32768"
+        - "--presence-penalty"
+        - "2.0"
+        - "--repeat-penalty"
+        - "1.0"
+        - "--reasoning-format"
+        - "deepseek"
+        - "--reasoning-budget"
+        - "16384"
+        - "--reasoning-budget-message"
+        - "\nOkay, I have enough information to answer."
+        - "--no-context-shift"
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 120
+        resources:
+          limits:
+            cpu: "4"            # Minimum requirement for L4 GPU
+            memory: "16Gi"      # Minimum requirement for L4 GPU
+            nvidia.com/gpu: "1" # Limit to 1 GPU instance
+        volumeMounts:
+        - name: gcs-hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: gcs-hf-cache
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: oncoflow-models-cache

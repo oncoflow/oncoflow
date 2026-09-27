@@ -33,7 +33,7 @@ All development operations must follow these exact shell commands. Standard pref
 | :--- | :--- | :--- |
 | **Verify Tooling** | `rtk --version` | Verify the Rust Token Killer utility |
 | **Environment Check** | `rtk gain` | View token analytics and dev operation savings |
-| **Docker Compose** | `docker compose -f docker/compose/milvus-standalone-docker-compose.yml up -d` | Spin up local Milvus Standalone database |
+| **Docker Compose** | `docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d` | Spin up local Milvus Standalone database |
 | **Install Dependencies**| `uv pip install -e .` or `uv sync` | Fast dependency resolution using `uv` |
 | **Run Linter** | `ruff check src/` | Lint python files with Ruff rules |
 | **Format Code** | `ruff format src/` | Format python files according to PEP8 |
@@ -131,3 +131,12 @@ Context7 provides a CLI wizard to search, install, and generate modular skills f
 - **Search existing skills**: `npx ctx7 skills search <keywords>`
 - **Install specialized community skills**: `npx ctx7 skills install <owner/repo>`
 - **Launch the Skill Wizard to generate a skill**: `npx ctx7 skills generate`
+
+---
+
+## 🚫 Streamlit Architectural Boundary (CRITICAL RULE)
+
+> [!CAUTION]
+> **IL EST FORMELLEMENT INTERDIT DE FAIRE DU STREAMLIT EN DEHORS DE L'ui.**
+> L'importation de la bibliothèque `streamlit` (`import streamlit as st`) ou l'utilisation de `st.session_state` est strictement limitée aux fichiers et sous-répertoires situés sous `src/ui/`.
+> Le code de base de l'application (`src/application/`, `src/infrastructure/`, `src/domain/`) doit rester neutre et exempt de tout couplage direct avec Streamlit pour garantir la modularité et la testabilité du système.

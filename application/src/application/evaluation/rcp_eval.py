@@ -6,7 +6,7 @@ A case is a directory containing:
     - annexes/*.md   : annex documents (imaging, pathology, biology reports...)
     - case.json      : {"description", "synthetic", "expected": {...}, "gold": {...}}
 
-`expected` gives, for each question of `src.domain.rcp_review.RCP_REVIEW_QUESTIONS`,
+`expected` gives, for each question of `src.domain.oncology.rcp_review.RCP_REVIEW_QUESTIONS`,
 the boolean fields that must match (null = not scored) and `must_mention`, a list of
 groups of keywords: at least one keyword of each group must appear in the answer.
 `gold` gives a reference answer for each question, valid against its model.
@@ -25,7 +25,7 @@ from typing import Any
 from langchain_core.documents import Document
 from pydantic import BaseModel
 
-from src.domain.rcp_review import RCP_REVIEW_QUESTIONS
+from src.domain.oncology.rcp_review import RCP_REVIEW_QUESTIONS
 
 # Keys of the `expected` block that are not model fields
 NON_FIELD_KEYS = {"must_mention", "comment"}
@@ -145,7 +145,7 @@ def score_answer(
 
 def evaluate_case(config: Any, case: RCPCase) -> list[EvalResult]:
     """Ask every scored question of a case to a live LLM and score the answers."""
-    from src.domain.rcp_review import RCPReviewerAgent
+    from src.domain.oncology.rcp_review import RCPReviewerAgent
 
     results = []
     for question_key, expected in case.expected.items():

@@ -95,7 +95,11 @@ class MilvusDB(VectorialDataBase):
         retry = 3
         for r in range(retry):
             try:
-                connections.connect(host=config.milvus.host, port=config.milvus.port)
+                connections.connect(
+                    host=config.milvus.host,
+                    port=config.milvus.port,
+                    token=config.milvus.token,
+                )
                 self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
                 self.token = config.milvus.token
                 self.database = config.milvus.database
@@ -120,6 +124,25 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
+        if flush:
+            # Drop the collection manually before recreating the client
+            # to avoid a race condition where the Milvus() constructor
+            # tries to load_collection before the server has stabilized
+            # after dropping.
+            try:
+                if utility.has_collection(self.coll_name):
+                    utility.drop_collection(self.coll_name)
+                    self.logger.info(
+                        "Dropped collection '%s'. Waiting for Milvus to stabilize...",
+                        self.coll_name,
+                    )
+                    time.sleep(2.0)
+            except MilvusException as e:
+                self.logger.warning(
+                    "Failed to drop collection '%s' during flush: %s",
+                    self.coll_name,
+                    e,
+                )
 
         self.clientdb = Milvus(
             embedding_function=self.embeddings,
@@ -131,7 +154,8 @@ class MilvusDB(VectorialDataBase):
             },
             index_params={"index_type": "FLAT", "metric_type": "L2"},
             consistency_level="Strong",
-            drop_old=flush,  # set to True if seeking to drop the collection with that name if it exists
+            drop_old=False,  # We handle drop manually above to avoid race conditions
+            enable_dynamic_field=True,
         )
 
     def get_version(self):
@@ -186,6 +210,26 @@ class MilvusDB(VectorialDataBase):
             self.set_clientdb(flush=True)
 
         # Add the document to the collection with metadata and page content.
-        doc = Document(metadatas=doc.metadata, page_content=doc.page_content)
+        doc = Document(metadata=doc.metadata, page_content=doc.page_content)
 
-        self.clientdb.add_documents(ids=[str(uuid.uuid1())], documents=[doc])
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                self.clientdb.add_documents(ids=[str(uuid.uuid1())], documents=[doc])
+                break
+            except MilvusException as e:
+                if attempt < max_retries - 1 and (
+                    "partition not found" in str(e).lower()
+                    or "segment" in str(e).lower()
+                    or "unrecoverable" in str(e).lower()
+                ):
+                    self.logger.warning(
+                        f"Milvus insertion failed (attempt {attempt + 1}/{max_retries}): {e}. "
+                        "Waiting for metadata synchronization before retrying..."
+                    )
+                    time.sleep(2.0)
+                else:
+                    self.logger.error(
+                        f"Failed to insert document after {max_retries} attempts: {e}"
+                    )
+                    raise

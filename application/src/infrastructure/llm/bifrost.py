@@ -89,29 +89,37 @@ class BifrostConnect(LLMConnect):
         temperature: float | None = None,
         tools: List[Any] = [],
         reasoning: bool = True,
+        reasoning_budget: int | None = None,
     ) -> Any:
         # JSON mode only when no tools are bound, to avoid conflicts with tool calling
         model_kwargs = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
 
-        model_instance = StrictChatOpenAI(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            default_headers=self.default_headers,
-            model=model,
+        chat_kwargs = {
+            "base_url": self.base_url,
+            "api_key": self.api_key,
+            "default_headers": self.default_headers,
+            "model": model,
             # Stay on /v1/chat/completions: the Responses API is not available
             # for every provider routed by Bifrost (e.g. Ollama).
-            use_responses_api=False,
-            reasoning_effort="low" if reasoning else None,
-            temperature=(
+            "use_responses_api": False,
+            "reasoning_effort": "low" if reasoning else None,
+            "temperature": (
                 temperature if temperature is not None else self.config.llm.temp
             ),
-            model_kwargs=model_kwargs,
-            streaming=True,
-        )
+            "model_kwargs": model_kwargs,
+            "streaming": True,
+        }
+        if reasoning and reasoning_budget is not None:
+            chat_kwargs["extra_body"] = {"thinking_budget_tokens": reasoning_budget}
+
+        model_instance = StrictChatOpenAI(**chat_kwargs)
         # Save output schema for use in bind_tools bypassing Pydantic setattr constraints
         model_instance.__dict__["_output_schema"] = output
+
+        if tools:
+            model_instance = model_instance.bind_tools(tools)
 
         return model_instance
 

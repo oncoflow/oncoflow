@@ -123,6 +123,27 @@ class TestBifrostConnection(unittest.TestCase):
         )
         self.assertEqual(chat_instance.__dict__["_output_schema"], mock_output)
 
+    @patch("src.infrastructure.llm.bifrost.StrictChatOpenAI")
+    @patch("src.infrastructure.llm.bifrost.OllamaCompatibleOpenAIEmbeddings")
+    @patch("src.infrastructure.llm.bifrost.openai.OpenAI")
+    def test_chat_reasoning_budget_and_tools(
+        self, mock_openai_client_cls, mock_embeddings_cls, mock_chat_cls
+    ):
+        conn = BifrostConnect(self.mock_config)
+
+        chat_instance = conn.chat(
+            model="ollama/qwen3:14b", tools=["mock_tool"], reasoning_budget=512
+        )
+
+        kwargs = mock_chat_cls.call_args.kwargs
+        self.assertEqual(kwargs["extra_body"], {"thinking_budget_tokens": 512})
+        # JSON mode is disabled when tools are bound
+        self.assertEqual(kwargs["model_kwargs"], {})
+        mock_chat_cls.return_value.bind_tools.assert_called_once_with(["mock_tool"])
+        self.assertEqual(
+            chat_instance, mock_chat_cls.return_value.bind_tools.return_value
+        )
+
     @patch("src.infrastructure.llm.bifrost.OllamaCompatibleOpenAIEmbeddings")
     @patch("src.infrastructure.llm.bifrost.openai.OpenAI")
     def test_chat_uses_chat_completions_api(
