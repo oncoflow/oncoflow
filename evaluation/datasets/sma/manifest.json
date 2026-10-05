@@ -1,0 +1,13 @@
+{
+  "domain": "sma",
+  "description": "Cas d'evaluation RCP pour l'Amyotrophie Spinale Infantile (SMA)",
+  "cases": [
+    {
+      "id": "sma-01",
+      "filename": "CHEVALIER-Emilie_anon.pdf",
+      "patient_label": "Dossier Test SMA 01",
+      "target_organ_hint": "neurology_pediatrics",
+      "suspected_pathology": "Amyotrophie Spinale type 2 / suspicion genetique"
+    }
+  ]
+}

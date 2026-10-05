@@ -228,6 +228,43 @@ class MongoDBSettings(BaseSettings):
     )
 
 
+class TelemetrySettings(BaseSettings):
+    """
+    Configuration for OpenTelemetry and MLflow tracing.
+
+    Environment variables: APP_TELEMETRY_ENABLED, APP_TELEMETRY_ENDPOINT,
+    APP_TELEMETRY_SERVICE_NAME, APP_TELEMETRY_AUTOLOG_LANGCHAIN,
+    APP_TELEMETRY_AUTOLOG_OPENAI, APP_TELEMETRY_SESSION_ID
+    """
+
+    model_config = SettingsConfigDict(env_prefix="APP_TELEMETRY_")
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable OpenTelemetry and MLflow tracing.",
+    )
+    endpoint: str = Field(
+        default="http://127.0.0.1:5000",
+        description="MLflow tracking server and OpenTelemetry collector endpoint.",
+    )
+    service_name: str = Field(
+        default="oncoflow",
+        description="Service name for OpenTelemetry spans and traces.",
+    )
+    autolog_langchain: bool = Field(
+        default=True,
+        description="Automatically trace LangChain chains and agents with OpenTelemetry.",
+    )
+    autolog_openai: bool = Field(
+        default=True,
+        description="Automatically trace OpenAI / LiteLLM calls with OpenTelemetry.",
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Current clinical or evaluation session ID for grouping traces.",
+    )
+
+
 class RCPSettings(BaseSettings):
     """
     Configuration for the RCP (Réunion de Concertation Pluridisciplinaire) pipeline.
@@ -344,6 +381,10 @@ class AppConfig(BaseSettings):
         default_factory=MilvusDBSettings,
         description="Milvus vector database connection settings.",
     )
+    telemetry: TelemetrySettings = Field(
+        default_factory=TelemetrySettings,
+        description="OpenTelemetry and MLflow tracing configuration.",
+    )
 
     def model_post_init(self, __context) -> None:
         super().model_post_init(__context)
@@ -352,6 +393,15 @@ class AppConfig(BaseSettings):
             self.rcp.additional_path = self.rcp.additional_path / self.domain
             try:
                 self.rcp.additional_path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+
+        # Initialisation idempotente de la télémétrie OpenTelemetry et MLflow
+        if getattr(self.telemetry, "enabled", False):
+            try:
+                from src.infrastructure.telemetry.tracing import init_telemetry
+
+                init_telemetry(self)
             except Exception:
                 pass
 

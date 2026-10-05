@@ -1,0 +1,67 @@
+# Grille d'evaluation sans verite terrain - Domaine Amyotrophie Spinale (PNDS SMA)
+domain: "sma"
+guidelines_source: "Protocole National de Diagnostic et de Soins (PNDS) - Amyotrophie Spinale"
+evaluated_specialties:
+  - "Neurologist expert"
+  - "Geneticist expert"
+  - "Pulmonologist expert"
+  - "Physiotherapy expert"
+  - "Orthopedist expert"
+  - "Administrative"
+  - "MDT Coordinator"
+
+metrics:
+  clinical_faithfulness:
+    name: "clinical_faithfulness"
+    description: "Fidelite et ancrage strict sur le dossier patient (MTD). Absence d'extrapolations sur les mutations ou symptomes."
+    scale: "1 a 5"
+    criteria:
+      1: "Hallucinations sur le nombre de copies SMN2 ou sur le statut moteur non documente."
+      2: "Extrapolations non verifiables sur les scores fonctionnels (CHOP-INTEND, HFMSE)."
+      3: "Ancrage acceptable avec quelques ambiguites de synthese."
+      4: "Tres bon ancrage : tous les elements moteurs, respiratoires et genetiques sont tires du MTD."
+      5: "Fidelite absolue : distinction nette entre donnees confirmees et non testees."
+
+  completeness_awareness:
+    name: "completeness_awareness"
+    description: "Detection rigoureuse des examens genetiques, respiratoires et moteurs manquants (what_missing)."
+    scale: "1 a 5"
+    criteria:
+      1: "Absence de signalement des manques critiques (ex: statut ventilatoire ou copies SMN2 non renseignes)."
+      2: "Signalement partiel : omission des bilans fonctionnels ou orthopediques requis."
+      3: "Detection correcte mais incomplete des besoins pluridisciplinaires."
+      4: "Bonne exhaustivite : bilans moteur, respiratoire et genetique manquants bien recenses."
+      5: "Excellence : reperage exhaustif de tous les examens indispensables a la validation de prise en charge."
+
+  pnds_conformance:
+    name: "pnds_conformance"
+    description: "Conformite aux parcours de soins pluridisciplinaires recommandes par le PNDS pour la SMA."
+    scale: "1 a 5"
+    criteria:
+      1: "Propositions de soins contraires aux recommandations de prise en charge de l'amyotrophie spinale."
+      2: "Faible adherence aux protocoles therapeutiques de la maladie."
+      3: "Adherence convenable aux grands principes multidisciplinaires."
+      4: "Bonne coordination des avis specialistes conforme a la grille PNDS."
+      5: "Parfaite conformite clinique aux standards nationaux de prise en charge SMA."
+
+  structural_robustness:
+    name: "structural_robustness"
+    description: "Conformite stricte au schema Pydantic PatientMDTForm (SMA)."
+    scale: "1 a 5"
+    criteria:
+      1: "Erreur de validation JSON/Pydantic persistante."
+      2: "Schema valide apres de multiples retries."
+      3: "Schema valide mais formats de types limites."
+      4: "Validation sans retry avec cles anglaises conformes."
+      5: "Sortie JSON parfaitement conforme du 1er coup."
+
+  debate_consensus:
+    name: "debate_consensus"
+    description: "Synthese harmonieuse et priorisation entre aspects genetiques, moteurs et respiratoires."
+    scale: "1 a 5"
+    criteria:
+      1: "Aucune articulation entre les 5 specialistes de la RCP SMA."
+      2: "Contradiction forte non levee (ex: prise en charge respiratoire vs kinesitherapie)."
+      3: "Synthese simple sans priorisation des urgences de soins."
+      4: "Bonne integration des differents volets fonctionnels."
+      5: "Consensus pluridisciplinaire complet avec plan de soin coherent."

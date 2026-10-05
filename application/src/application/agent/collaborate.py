@@ -21,10 +21,11 @@ def collaborative_debate(
     logger: Any,
     coordinator_agent_cls: type["OncowflowAgent"] | None = None,
     callbacks: list | None = None,
+    session_id: str | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
         coordinator_agent_cls = Agents.Coordinator_agent
-    logger.info("Running collaborative debate mode...")
+    logger.info("Running collaborative debate mode (session: %s)...", session_id)
     # Step 0 : init agents, name them and assign resources to them
     agents = []
     for magent in agents_classes:
@@ -41,7 +42,12 @@ def collaborative_debate(
             f"analyze the patient file and provide your initial arguments regarding the following question:\n{question}"
         )
         try:
-            res = magent.ask(opinion_prompt, DebateTurn, callbacks=callbacks)
+            res = magent.ask(
+                opinion_prompt,
+                DebateTurn,
+                callbacks=callbacks,
+                session_id=session_id,
+            )
             opinions[magent.agent_name] = res.response
         except Exception as e:
             logger.error(f"Error getting opinion from {magent.agent_name}: {e}")
@@ -65,7 +71,12 @@ def collaborative_debate(
             f"Please review the opinions of the other experts. Provide your final refined clinical assessment, addressing points of agreement or disagreement, to help reach a collective consensus."
         )
         try:
-            res = magent.ask(debate_prompt, DebateTurn, callbacks=callbacks)
+            res = magent.ask(
+                debate_prompt,
+                DebateTurn,
+                callbacks=callbacks,
+                session_id=session_id,
+            )
             updated_opinions[magent.agent_name] = res.response
         except Exception as e:
             logger.error(f"Error getting updated opinion from {magent.agent_name}: {e}")
@@ -104,7 +115,10 @@ def collaborative_debate(
     try:
         datas = json.loads(
             coordinator.ask(
-                synthesis_prompt, output_format, callbacks=callbacks
+                synthesis_prompt,
+                output_format,
+                callbacks=callbacks,
+                session_id=session_id,
             ).model_dump_json()
         )
         if isinstance(datas, dict):

@@ -23,3 +23,9 @@ model_list:
       api_base: http://127.0.0.1:8081/v1
       api_key: not-needed
       drop_params: true
+
+litellm_settings:
+  telemetry: true
+  callbacks: ["otel", "mlflow"]
+  success_callback: ["otel", "mlflow"]
+  failure_callback: ["otel", "mlflow"]

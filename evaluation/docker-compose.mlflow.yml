@@ -1,0 +1,28 @@
+services:
+  mlflow-server:
+    image: ghcr.io/mlflow/mlflow:v3.13.0
+    container_name: oncoflow-mlflow-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_TRACKING_URI=http://0.0.0.0:5000
+    volumes:
+      - mlflow-data:/mlflow
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root /mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+    networks:
+      - search-community
+
+volumes:
+  mlflow-data:
+    name: oncoflow-mlflow-data
+
+networks:
+  search-community:
+    external: true
+    name: search-community

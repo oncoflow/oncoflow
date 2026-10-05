@@ -1,0 +1,34 @@
+{
+  "domain": "oncology",
+  "description": "Cas anonymises reels de RCP oncologie digestive situes dans application/ressources/PatientMDTForm",
+  "cases": [
+    {
+      "id": "onco-01",
+      "filename": "CHEVALIER-Emilie_anon.pdf",
+      "patient_label": "CHEVALIER Emilie (Anonymise)",
+      "target_organ_hint": "pancreas",
+      "suspected_pathology": "Adenocarcinome du pancreas"
+    },
+    {
+      "id": "onco-02",
+      "filename": "LEFEBVRE-Pauline_anon.pdf",
+      "patient_label": "LEFEBVRE Pauline (Anonymise)",
+      "target_organ_hint": "oesophagus",
+      "suspected_pathology": "Cancer de l'oesophage"
+    },
+    {
+      "id": "onco-03",
+      "filename": "ROUSSEL-Marion_anon.pdf",
+      "patient_label": "ROUSSEL Marion (Anonymise)",
+      "target_organ_hint": "hepatocellular",
+      "suspected_pathology": "Carcinome hepatocellulaire"
+    },
+    {
+      "id": "onco-04",
+      "filename": "PDF1.pdf",
+      "patient_label": "Patient Cas 04 (Anonymise)",
+      "target_organ_hint": "digestive",
+      "suspected_pathology": "Tumeur digestive"
+    }
+  ]
+}

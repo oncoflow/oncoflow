@@ -134,6 +134,12 @@ services:
      - 4000:4000
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
+    environment:
+      - MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+      - MLFLOW_EXPERIMENT_NAME=oncoflow-litellm-proxy
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:5000
+      - OTEL_SERVICE_NAME=litellm-proxy
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=litellm-proxy,service.namespace=clinical-oncology
     command: [ "--config", "/app/config.yaml", "--port", "4000" ]
     restart: unless-stopped
     #networks:

@@ -1,0 +1,32 @@
+# Configuration globale pour le module d'evaluation Oncoflow
+mlflow:
+  tracking_uri: "http://localhost:5000"
+  experiment_name: "oncoflow-agents-evaluation"
+
+judge:
+  # Route via le proxy LiteLLM existant d'Oncoflow (port 4000)
+  provider: "litellm"
+  base_url: "http://127.0.0.1:4000/v1"
+  api_key: "sk-litellm-oncoflow"
+  # Nom du modele utilise par LiteLLM pour le juge frontière
+  # (ex: claude-3-7-sonnet, gpt-4o, gemini-2.5-pro, ou un modele frontalier configure dans litellm-config.yaml)
+  model: "claude-3-7-sonnet"
+  temperature: 0.0
+  max_tokens: 4096
+  timeout: 120
+
+oncoflow:
+  # Domaine par defaut
+  default_domain: "oncology"
+  supported_domains:
+    - "oncology"
+    - "sma"
+  # Mode d'evaluation par defaut : "debate" (workflow RCP complet) ou "single_agent"
+  default_mode: "debate"
+  # Limite d'essais pour l'agent (retries Pydantic)
+  max_retries: 3
+
+evaluation:
+  batch_size: 1
+  save_prompt_suggestions: true
+  export_markdown_reports: true

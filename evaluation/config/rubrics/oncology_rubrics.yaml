@@ -1,0 +1,65 @@
+# Grille d'evaluation sans verite terrain - Domaine Oncologie Digestive (TNCD)
+domain: "oncology"
+guidelines_source: "Thesaurus National de Cancerologie Digestive (TNCD)"
+evaluated_specialties:
+  - "Pancreas expert (TNCDPANCREAS.pdf)"
+  - "Oesophagus expert (TNCDOESOPHAGE.pdf)"
+  - "Hepatocellular expert (TNCDCHC.pdf)"
+  - "Administrative"
+  - "MDT Coordinator"
+
+metrics:
+  clinical_faithfulness:
+    name: "clinical_faithfulness"
+    description: "Fidelite et ancrage strict sur le dossier patient (MTD). Absence d'extrapolations."
+    scale: "1 a 5"
+    criteria:
+      1: "Hallucinations majeures : le modele invente des diagnostics, antecedents ou stades non presents."
+      2: "Hallucinations partielles : melange de faits reels et de conclusions extrapolées sans justification."
+      3: "Ancrage acceptable : faits principaux exacts, mais quelques formulations extrapolent legèrement le texte."
+      4: "Tres bon ancrage : tous les elements cliniques sont verifiables dans le texte source."
+      5: "Fidelite absolue : ancrage chirurgical sur le MTD. Les elements non mentionnes sont exclus sans hesiter."
+
+  completeness_awareness:
+    name: "completeness_awareness"
+    description: "Detection rigoureuse des donnees absentes et remplissage exhaustif du champ what_missing."
+    scale: "1 a 5"
+    criteria:
+      1: "Le modele complete des valeurs au hasard ou ne renseigne jamais what_missing malgre des manques evidents."
+      2: "Le modele signale peu de manques et tente de deviner des valeurs cliniques critiques (ex: statut OMS, cTNM)."
+      3: "Detection partielle : les examens radiologiques manquants sont notes, mais les bilans biologiques omis sont ignores."
+      4: "Bonne detection : la majorite des donnees cliniques manquantes indispensables a la RCP sont dans what_missing."
+      5: "Excellence clinique : inventaire complet et precis de toutes les pieces manquantes pour la decision de RCP."
+
+  tncd_conformance:
+    name: "tncd_conformance"
+    description: "Pertinence du ciblage d'organe, respect du perimetre de chaque specialiste et adherence TNCD."
+    scale: "1 a 5"
+    criteria:
+      1: "Non-sens medical : un specialiste s'exprime sur un organe hors perimetre ou contredit les guides TNCD fondamentaux."
+      2: "Adherence faible : le specialiste n'utilise pas la terminologie TNCD appropriee (ex: cTNM, resecabilite)."
+      3: "Adherence moyenne : recommandations plausibles mais sans citation des referentiels applicables."
+      4: "Bonne adherence : conformite claire avec les arbres decisionnels TNCD selon le stade suspecte."
+      5: "Parfaite conformite : specialisation rigoureuse, conformite exacte avec les recommandations TNCD en vigueur."
+
+  structural_robustness:
+    name: "structural_robustness"
+    description: "Conformite stricte au schema Pydantic PatientMDTForm et proprete du format JSON."
+    scale: "1 a 5"
+    criteria:
+      1: "Crash JSON ou schema non valide malgre les 3 retries de rattrapage."
+      2: "Format JSON obtenu mais avec des cles traduites en francais ou des types errones (listes au lieu de chaines)."
+      3: "Schema valide mais necessite plusieurs retries pour corriger la syntaxe."
+      4: "Schema Pydantic parfaitement valide des le premier essai, formats de champs respectes."
+      5: "Sortie JSON immaculee du 1er coup, cles en anglais, valeurs medicales en francais naturel."
+
+  debate_consensus:
+    name: "debate_consensus"
+    description: "Qualite de la synthese collaborative du coordinateur RCP a partir des avis des specialistes."
+    scale: "1 a 5"
+    criteria:
+      1: "La synthese ignore completement les specialistes ou invente un avis exterieur non discute."
+      2: "Contradictions directes entre la synthese et les avis d'experts sans resolution explicite."
+      3: "Synthese juxtaposee sans veritable travail de consensus ni hierarchisation de l'urgence."
+      4: "Bonne synthese : les accords et desaccords sont bien arbitres au profit d'une proposition consensuelle."
+      5: "Consensus RCP exemplaire : prise en compte de chaque avis avec arbitrage clair et priorisation conforme."

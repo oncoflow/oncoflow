@@ -256,12 +256,16 @@ class OncowflowAgent:
         question: str | None = None,
         output_format: type[BaseModel] | str | None = None,
         callbacks: list | None = None,
+        session_id: str | None = None,
     ) -> Any:
         """
         Ask a question to the agent.
 
         Args:
             question (str, optional): The question to ask. Defaults to self.question.
+            output_format (type[BaseModel] | str | None, optional): Expected schema.
+            callbacks (list, optional): LangChain callbacks.
+            session_id (str, optional): Clinical / Evaluation session ID for trace grouping.
 
         Returns:
             dict: The parsed JSON response from the agent matching the output_format.
@@ -281,6 +285,17 @@ class OncowflowAgent:
         validation_error = None
         result = None
 
+        from src.infrastructure.telemetry.tracing import get_langchain_config
+
+        eff_session = session_id or getattr(
+            getattr(self.config, "telemetry", None), "session_id", None
+        )
+        invoke_config = get_langchain_config(
+            agent_name=self.agent_name,
+            session_id=eff_session,
+            callbacks=callbacks,
+        )
+
         for r in range(retry):
             # Invoke the agent with the user question and context (readers)
             result = self.agent.invoke(
@@ -290,12 +305,7 @@ class OncowflowAgent:
                     additionnal_readers=self.additionnal_readers,
                     logger=self.logger,
                 ),
-                config={
-                    "callbacks": callbacks,
-                    "tags": [self.agent_name] if self.agent_name else [],
-                }
-                if callbacks
-                else None,
+                config=invoke_config,
             )
             # Extract and store the thinking process from the execution history
             self.latest_thinking = self.extract_thinking(result.get("messages", []))

@@ -1,0 +1,76 @@
+Metadata-Version: 2.4
+Name: application
+Version: 0.1.0
+Summary: Add your description here
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+Requires-Dist: blinker>=1.9.0
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: chromadb>=1.3.5
+Requires-Dist: docling-core[chunking]>=2.77.0
+Requires-Dist: pydantic-settings>=2.9.0
+Requires-Dist: inquirer>=3.4.1
+Requires-Dist: langchain-chroma>=1.1.0
+Requires-Dist: langchain-community>=0.4.2
+Requires-Dist: langchain-core>=1.4.0
+Requires-Dist: langchain-docling>=2.0.0
+Requires-Dist: langchain-experimental>=0.4.2
+Requires-Dist: langchain-milvus==0.3.3
+Requires-Dist: langchain-mongodb>=0.11.0
+Requires-Dist: langchain-ollama>=1.1.0
+Requires-Dist: langchain-openai>=0.1.0
+Requires-Dist: langchain-litellm>=0.1.0
+Requires-Dist: openai>=1.0.0
+Requires-Dist: modelscope>=1.37.1
+Requires-Dist: docling>=2.112.0
+Requires-Dist: ollama-ocr>=0.1.6
+Requires-Dist: openparse>=0.7.0
+Requires-Dist: pandas>=2.2.0
+Requires-Dist: pdfminer-six>=20260107
+Requires-Dist: pymilvus==2.6.4
+Requires-Dist: pymongo>=4.17.0
+Requires-Dist: pymupdf>=1.27.2.3
+Requires-Dist: python-slugify>=8.0.4
+Requires-Dist: sentence-transformers>=5.5.1
+Requires-Dist: streamlit>=1.57.0
+Requires-Dist: streamlit-authenticator>=0.4.2
+Requires-Dist: streamlit-pdf-viewer>=0.0.29
+Requires-Dist: unstructured[pdf]>=0.22.30
+Requires-Dist: pytz>=2026.2
+Requires-Dist: protobuf<7.0.0
+Requires-Dist: langchain>=1.3.4
+Requires-Dist: pyaml>=26.7.0
+
+# 🖥️ Oncoflow — Frontend Application Dashboard
+
+Cette partie de l'application contient l'interface utilisateur développée en **Streamlit** ainsi que les configurations liées à l'exécution de l'application.
+
+## 🚀 Lancement de l'application
+Pour démarrer l'interface d'Oncoflow localement en mode développement, exécutez la commande suivante depuis ce dossier (`application/`) :
+```bash
+uv run streamlit run app-ui.py
+```
+
+---
+
+## 🔐 Système de Connexion (Authentification)
+L'application requiert une authentification pour accéder aux dossiers patients. Ce système fonctionne de manière sécurisée et entièrement locale.
+
+### Fichier de configuration `auth_config.yaml`
+Le fichier de configuration `application/auth_config.yaml` contient les identifiants et les paramètres de cookies de session de l'authentificateur.
+
+#### Identifiants de test par défaut :
+* **Username** : `admin`
+* **Password** : `admin`
+
+### Ajouter ou modifier un utilisateur
+Les mots de passe dans `auth_config.yaml` doivent être hachés avec Bcrypt. Un script interactif est fourni pour gérer l'ajout et la mise à jour des utilisateurs directement dans le fichier YAML :
+
+1. Lancez le script interactif de gestion des utilisateurs :
+   ```bash
+   uv run python scratch/add_user.py
+   ```
+2. Saisissez les informations demandées à l'écran (nom d'utilisateur, nom complet, e-mail et mot de passe).
+3. Le script génèrera automatiquement le hash Bcrypt sécurisé et l'écrira directement dans le fichier `auth_config.yaml`.

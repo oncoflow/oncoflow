@@ -1,0 +1,6 @@
+application
+domain
+infrastructure
+models
+routers
+ui

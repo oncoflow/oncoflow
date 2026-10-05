@@ -29,7 +29,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev eval-init eval-run eval-test eval-lint eval-format
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -44,6 +44,13 @@ help:
 	@echo -e "  $(YELLOW)make cloudrun-proxy$(RESET)      Lance le proxy Cloud Run en tâche de fond (port $(CLOUDRUN_PORT))"
 	@echo -e "  $(YELLOW)make cloudrun-proxy-stop$(RESET) Arrête le proxy Cloud Run"
 	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI, l'API et le proxy Cloud Run"
+	@echo ""
+	@echo -e "$(GREEN)Commandes d'évaluation (LLM-as-a-Judge & MLflow) :$(RESET)"
+	@echo -e "  $(YELLOW)make eval-init$(RESET)           Installe les dépendances et démarre MLflow"
+	@echo -e "  $(YELLOW)make eval-run$(RESET)            Lance l'évaluation (options: DOMAIN, MODE, CASE_ID, JUDGE_MODEL, AGENT)"
+	@echo -e "  $(YELLOW)make eval-test$(RESET)           Lance les tests unitaires du module d'évaluation"
+	@echo -e "  $(YELLOW)make eval-lint$(RESET)           Vérifie le code d'évaluation avec Ruff"
+	@echo -e "  $(YELLOW)make eval-format$(RESET)         Formate le code d'évaluation avec Ruff"
 	@echo ""
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
 	@echo -e "  $(YELLOW)make test$(RESET)             Exécute la suite de tests Pytest"
@@ -247,3 +254,49 @@ clean:
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	@echo -e "$(GREEN)Caches nettoyés avec succès.$(RESET)"
+
+# ==============================================================================
+# Commandes d'évaluation LLM-as-a-Judge & MLflow
+# ==============================================================================
+
+# Paramètres configurables pour eval-run
+DOMAIN ?= sma
+MODE ?= debate
+CASE_ID ?=
+JUDGE_MODEL ?=
+AGENT ?=
+
+## Initialise l'environnement d'évaluation (dépendances + Docker MLflow)
+eval-init:
+	@echo -e "$(CYAN)--> Installation des dépendances applicatives et d'évaluation...$(RESET)"
+	$(UV) pip install -e $(APP_DIR)
+	$(UV) pip install -r evaluation/requirements-eval.txt
+	@echo -e "$(CYAN)--> Démarrage du serveur MLflow via Docker Compose...$(RESET)"
+	docker compose -f evaluation/docker-compose.mlflow.yml up -d
+	@echo -e "$(GREEN)[OK] Environnement d'évaluation initialisé et MLflow actif sur http://localhost:5000$(RESET)"
+
+## Lance l'évaluation LLM-as-a-Judge avec options configurables
+## Usage : make eval-run [DOMAIN=oncology|sma] [MODE=debate|single_agent] [CASE_ID=onco-01] [JUDGE_MODEL=claude-3-7-sonnet] [AGENT="pancreas expert"]
+eval-run:
+	@echo -e "$(CYAN)--> Lancement de l'évaluation Oncoflow (Domaine: $(DOMAIN), Mode: $(MODE))...$(RESET)"
+	$(UV) run python evaluation/run_eval.py \
+		--domain $(DOMAIN) \
+		--mode $(MODE) \
+		$(if $(CASE_ID),--case-id $(CASE_ID)) \
+		$(if $(JUDGE_MODEL),--judge-model $(JUDGE_MODEL)) \
+		$(if $(AGENT),--agent "$(AGENT)")
+
+## Exécute les tests unitaires du module d'évaluation
+eval-test:
+	@echo -e "$(CYAN)--> Exécution des tests unitaires d'évaluation (pytest)...$(RESET)"
+	$(UV) run pytest evaluation/tests/ -v
+
+## Vérifie le code d'évaluation avec Ruff
+eval-lint:
+	@echo -e "$(CYAN)--> Vérification Ruff sur evaluation/...$(RESET)"
+	$(UV) run ruff check evaluation/
+
+## Formate le code d'évaluation avec Ruff
+eval-format:
+	@echo -e "$(CYAN)--> Formatage Ruff sur evaluation/...$(RESET)"
+	$(UV) run ruff format evaluation/

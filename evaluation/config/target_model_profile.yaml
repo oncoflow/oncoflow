@@ -1,0 +1,51 @@
+# Profil technique et limites cognitives des modeles cibles Oncoflow
+# Ce document est directement injecte dans le prompt du LLM Juge pour guider ses evaluations
+# et calibrer ses suggestions d'amelioration de prompt.
+
+target_model:
+  class: "Local SLM (Small / Medium Language Model)"
+  parameter_range: "7B - 14B parametres"
+  reference_models:
+    - name: "Qwen/Qwen3-14B-GGUF"
+      quantization: "Q4_K_M (quantification 4-bit)"
+      runtime: "llama.cpp server / vLLM"
+    - name: "mistral-nemo:12b"
+      quantization: "Q4_0 / Q4_K_M"
+      runtime: "Ollama"
+  hardware_and_runtime_envelope:
+    usable_context_limit: 8192      # Au-dela de 8k tokens, degradation nette de l'attention
+    optimal_system_prompt_tokens: 350 # Budget ideal pour le prompt systeme
+    reasoning_budget_tokens: 1024     # Budget alloue aux balises <think>
+
+  cognitive_limitations:
+    negative_prompting_fragility: >
+      Les SLM 14B Q4 echouent frequemment sur les consignes negatives multiples
+      (ex: "Ne pas inventer", "Sans mentionner la langue", "Ne formulez pas de conclusions").
+      Ces formulations agissent comme des attracteurs et augmentent paradoxalement le risque de deviation.
+    bilingual_drift: >
+      L'application demande des instructions cliniques en francais mais impose des cles de schema
+      JSON en anglais (Pydantic). Les modeles 14B ont tendance a traduire les cles du schema en francais
+      ou a injecter du francais dans des champs enum anglais.
+    deep_json_nesting_collapse: >
+      Au-dela de 2 a 3 niveaux d'imbrication dans les modeles Pydantic, le modele local
+      perd le suivi des fermetures d'accolades ou produit du JSON tronque/invalide.
+    instruction_drift_on_long_context: >
+      Lorsque le dossier medical depasse quelques pages, le modele "oublie" les consignes
+      situees au milieu du prompt et ne retient que le debut ou l'extreme fin.
+
+  prompt_optimization_rules_for_judge:
+    rule_1_affirmative_directives: >
+      Transformer TOUTE interdiction en directive affirmative claire et positive.
+      Exemple: Remplacer "Ne pas inventer d'information absente" par "Si l'information est absente du dossier, inscrire null et ajouter l'element dans le champ what_missing".
+    rule_2_strict_delimiters: >
+      Structurer le prompt avec des delimiteurs Markdown explicites et lisibles :
+      ### ROLE, ### CONTEXTE CLINIQUE, ### REGLES STRICTES, ### FORMAT ATTENDU.
+    rule_3_minimal_token_budget: >
+      Ne jamais proposer de prompts "verbeux" de plus de 500 tokens. Chaque token non essentiel
+      degrade la precision d'extraction d'un SLM local.
+    rule_4_anchored_few_shot: >
+      Privilegier 1 exemple minimaliste (few-shot) illustrant un cas difficile (ex: donnees manquantes)
+      plutot que 5 regles theoriques abstraites.
+    rule_5_schema_placement: >
+      Toujours placer l'exemple de schema JSON en TOUTE FIN de prompt, immediatement avant le declencheur
+      de generation, afin que la grammaire de sortie soit la plus proche possible de la generation.
