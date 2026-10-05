@@ -29,13 +29,16 @@ jobs:
           uv python install
           uv sync --frozen
 
+      # Utilise la version de ruff verrouillée dans application/uv.lock (et non la dernière via uvx)
       - name: Lint with ruff
         run: |
-          uvx ruff format application/ --check
+          cd application
+          uv run --frozen ruff format . --check
 
       - name: Ruff check
         run: |
-          uvx ruff check application/
+          cd application
+          uv run --frozen ruff check .
 
       - name: Run Tests
         run: |
