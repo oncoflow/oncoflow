@@ -12,10 +12,20 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+  - package-ecosystem: "pip"
+    directory: "/evaluation"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
 
-  # Maintain Docker dependencies in the docker directory
+  # Maintain Docker dependencies in the dist/docker directory
   - package-ecosystem: "docker"
-    directory: "/docker"
+    directory: "/dist/docker"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+  - package-ecosystem: "docker"
+    directory: "/evaluation"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
