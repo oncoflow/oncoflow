@@ -7,7 +7,7 @@ updates:
       interval: "weekly"
 
   # Maintain Python dependencies in the application directory
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/application"
     schedule:
       interval: "weekly"
