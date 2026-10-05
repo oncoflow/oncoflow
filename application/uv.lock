@@ -270,7 +270,7 @@ requires-dist = [
     { name = "langchain-experimental", specifier = ">=0.4.2" },
     { name = "langchain-litellm", specifier = ">=0.1.0" },
     { name = "langchain-milvus", specifier = "==0.3.3" },
-    { name = "langchain-mongodb", specifier = ">=0.11.0" },
+    { name = "langchain-mongodb", specifier = ">=0.12.1" },
     { name = "langchain-ollama", specifier = ">=1.1.0" },
     { name = "langchain-openai", specifier = ">=0.1.0" },
     { name = "modelscope", specifier = ">=1.40.1" },
@@ -2299,7 +2299,7 @@ wheels = [
 
 [[package]]
 name = "langchain-mongodb"
-version = "0.12.0"
+version = "0.12.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "langchain" },
@@ -2312,9 +2312,9 @@ dependencies = [
     { name = "pymongo" },
     { name = "pymongo-search-utils" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/c0/ae7c590b1415165c603d0fe692eed398f16bb2f9f35f28bfa266437e7335/langchain_mongodb-0.12.0.tar.gz", hash = "sha256:128acf526848035f7900b2b0957f63e5a3118002dc27831bd749b848ddab2bba", size = 322753, upload-time = "2026-08-24T23:13:38.661Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d1/c2/80514bf0d83bb06d48d12bd83dd8c360447b28dda5b161bdda3cee280bd4/langchain_mongodb-0.12.1.tar.gz", hash = "sha256:dd157ba1d1ca993dc8d34e8433869ae67bdc02249417ead0ce193be00baaca2a", size = 322356, upload-time = "2026-09-22T13:34:16.294Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/a4/3859562f62ba9ec22130bed7f152e2cf83b0271612d93d97d66ade8e4da3/langchain_mongodb-0.12.0-py3-none-any.whl", hash = "sha256:e8623fb2019fde9d8f0c7fc63000d14abfb399bd1b81a1fb6936862c1399651e", size = 66786, upload-time = "2026-08-24T23:13:37.536Z" },
+    { url = "https://files.pythonhosted.org/packages/89/16/388f4d4b2b261fa277eb95b68b8efb07198dc37c900d03f2b37a149177da/langchain_mongodb-0.12.1-py3-none-any.whl", hash = "sha256:d62500f465ddd6fc6df9790b72e7a3bc28a85db8d95b96c66ddbd1590b793024", size = 66785, upload-time = "2026-09-22T13:34:15.353Z" },
 ]
 
 [[package]]
@@ -4541,14 +4541,14 @@ wheels = [
 
 [[package]]
 name = "pymongo-search-utils"
-version = "0.3.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pymongo" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/aa/3eb266ffc74ec52bbf6dd92d311ab4fc3225c2ac8f1a2e6abe98f7288867/pymongo_search_utils-0.3.0.tar.gz", hash = "sha256:56148987ce9ff191eb1cd0f56c01d3dae497a3cb6d7b7db75ec894a9afcbe418", size = 13728, upload-time = "2026-02-03T22:18:24.481Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/69/91/b5eff1fd1e498225f53ec9e2ef3747dc8b1f938c02939e0fe1018e4dd29a/pymongo_search_utils-0.3.1.tar.gz", hash = "sha256:df59fcf3e2a7b2d84efc3f66f22da4a8cbb1a9419fd90616dddad5d69c9d341d", size = 14512, upload-time = "2026-09-22T12:35:01.133Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/ed/87d3ed0e45b9230bacb9edcb913d515e6756bc2df3384e5f192662c38ce8/pymongo_search_utils-0.3.0-py3-none-any.whl", hash = "sha256:9b9ef8dfbd57da530ce7c2bde10aec8f462605080a9ed4e9a41679170c8742bf", size = 19467, upload-time = "2026-02-03T22:18:23.398Z" },
+    { url = "https://files.pythonhosted.org/packages/72/ee/5d3f952a7fc8d0bc73706a92e08c3ba13a5fe2435456758d9c936a12541f/pymongo_search_utils-0.3.1-py3-none-any.whl", hash = "sha256:1865e5a0cc01c4b0c4a366e6f1142baa92c0dbfa4b7e7e91603fa83da92bf5b8", size = 20144, upload-time = "2026-09-22T12:34:59.797Z" },
 ]
 
 [[package]]
