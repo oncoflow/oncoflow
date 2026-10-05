@@ -7,15 +7,16 @@ updates:
       interval: "weekly"
 
   # Maintain Python dependencies in the application directory
-  - package-ecosystem: "pip"
+  - package-ecosystem: "uv"
     directory: "/application"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
 
-  # Maintain Docker dependencies in the docker directory
+
+  # Maintain Docker dependencies in the dist/docker directory
   - package-ecosystem: "docker"
-    directory: "/docker"
+    directory: "/dist/docker"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
