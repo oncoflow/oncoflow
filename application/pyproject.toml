@@ -19,7 +19,7 @@ dependencies = [
     "langchain-docling>=2.0.0",
     "langchain-experimental>=0.4.2",
     "langchain-milvus==0.3.3",
-    "langchain-mongodb>=0.11.0",
+    "langchain-mongodb>=0.12.1",
     "langchain-ollama>=1.1.0",
     "langchain-openai>=0.1.0",
     "langchain-litellm>=0.1.0",
