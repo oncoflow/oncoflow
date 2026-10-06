@@ -23,9 +23,15 @@ model_list:
       api_base: http://127.0.0.1:8081/v1
       api_key: not-needed
       drop_params: true
+  - model_name: gemini/gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-2.5-flash
+    litellm_params:
+      model: gemini/gemini-2.5-flash
+      api_key: os.environ/GEMINI_API_KEY
 
 litellm_settings:
   telemetry: true
-  callbacks: ["otel", "mlflow"]
-  success_callback: ["otel", "mlflow"]
-  failure_callback: ["otel", "mlflow"]
+  callbacks: ["otel"]

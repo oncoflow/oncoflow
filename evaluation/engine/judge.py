@@ -83,7 +83,7 @@ class LLMJudge:
             "LITELLM_API_KEY", judge_cfg.get("api_key", "sk-litellm-oncoflow")
         )
         self.model_name = os.getenv(
-            "LITELLM_JUDGE_MODEL", judge_cfg.get("model", "claude-3-7-sonnet")
+            "LITELLM_JUDGE_MODEL", judge_cfg.get("model", "gemini/gemini-2.5-flash")
         )
         self.temperature = judge_cfg.get("temperature", 0.0)
 
