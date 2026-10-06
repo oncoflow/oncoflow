@@ -30,9 +30,9 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(1, str(ROOT_DIR))
 
 os.environ["MLFLOW_TRACKING_URI"] = "http://localhost:5000"
-os.environ["LITELLM_BASE_URL"] = "http://localhost:4000/v1"
-os.environ["LITELLM_API_KEY"] = "test-key"
-os.environ["LITELLM_JUDGE_MODEL"] = "test-judge-model"
+os.environ["JUDGE_BASE_URL"] = "http://localhost:4000/v1"
+os.environ["JUDGE_API_KEY"] = "test-key"
+os.environ["JUDGE_MODEL"] = "test-judge-model"
 
 
 @pytest.fixture

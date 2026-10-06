@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -12,6 +11,8 @@ from typing import Any
 import yaml
 from openai import OpenAI
 from pydantic import BaseModel, Field
+
+from evaluation.config.settings import EvaluationSettings
 
 logger = logging.getLogger("OncoflowEval.Judge")
 
@@ -60,13 +61,21 @@ class JudgeEvaluation(BaseModel):
 class LLMJudge:
     """Juge frontière pilote via LiteLLM pour evaluer les agents Oncoflow."""
 
-    def __init__(self, config_path: Path | str | None = None):
+    def __init__(
+        self,
+        config_path: Path | str | None = None,
+        settings: EvaluationSettings | None = None,
+    ):
         base_eval_dir = Path(__file__).resolve().parent.parent
         if config_path is None:
             config_path = base_eval_dir / "config/eval_config.yaml"
 
-        with open(config_path, "r", encoding="utf-8") as f:
-            self.eval_config = yaml.safe_load(f)
+        self.settings = settings or EvaluationSettings.from_yaml(config_path)
+        self.eval_config = {
+            "judge": self.settings.judge.model_dump(),
+            "mlflow": self.settings.mlflow.model_dump(),
+            "execution": self.settings.execution.model_dump(),
+        }
 
         profile_path = base_eval_dir / "config/target_model_profile.yaml"
         with open(profile_path, "r", encoding="utf-8") as f:
@@ -74,23 +83,17 @@ class LLMJudge:
 
         self.rubrics_dir = base_eval_dir / "config/rubrics"
 
-        judge_cfg = self.eval_config.get("judge", {})
-        base_url = os.getenv(
-            "LITELLM_BASE_URL",
-            judge_cfg.get("base_url", "http://127.0.0.1:4000/v1"),
-        )
-        api_key = os.getenv(
-            "LITELLM_API_KEY", judge_cfg.get("api_key", "sk-litellm-oncoflow")
-        )
-        self.model_name = os.getenv(
-            "LITELLM_JUDGE_MODEL", judge_cfg.get("model", "gemini/gemini-2.5-flash")
-        )
-        self.temperature = judge_cfg.get("temperature", 0.0)
+        self.model_name = self.settings.judge.model
+        self.temperature = self.settings.judge.temperature
 
-        self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.client = OpenAI(
+            base_url=self.settings.judge.base_url,
+            api_key=self.settings.judge.api_key,
+            timeout=self.settings.judge.timeout,
+        )
         logger.info(
-            "LLM Judge initialise via LiteLLM (%s) avec modele : %s",
-            base_url,
+            "LLM Judge initialise via endpoint MLflow Gateway (%s) avec modele : %s",
+            self.settings.judge.base_url,
             self.model_name,
         )
 

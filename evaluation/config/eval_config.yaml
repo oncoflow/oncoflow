@@ -4,13 +4,12 @@ mlflow:
   experiment_name: "oncoflow-agents-evaluation"
 
 judge:
-  # Route via le proxy LiteLLM existant d'Oncoflow (port 4000)
-  provider: "litellm"
-  base_url: "http://127.0.0.1:4000/v1"
-  api_key: "sk-litellm-oncoflow"
-  # Nom du modele utilise par LiteLLM pour le juge frontière
-  # (ex: gemini/gemini-2.5-flash, gemini-2.5-pro, gpt-4o, claude-3-7-sonnet)
-  model: "gemini/gemini-2.5-flash"
+  # Route via le endpoint AI Gateway de MLflow (port 5000)
+  provider: "mlflow"
+  base_url: "http://127.0.0.1:5000/gateway/mlflow/v1"
+  api_key: "not-needed"
+  # Nom de l'endpoint configure dans MLflow Deployments / AI Gateway
+  model: "oncoflow-evaluation"
   temperature: 0.0
   max_tokens: 4096
   timeout: 120

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -38,6 +37,7 @@ if str(APP_DIR) not in sys.path:
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(1, str(ROOT_DIR))
 
+from evaluation.config.settings import EvaluationSettings  # noqa: E402
 from evaluation.engine.runner import EvaluationRunner  # noqa: E402
 from rich.console import Console  # noqa: E402
 from rich.panel import Panel  # noqa: E402
@@ -155,10 +155,11 @@ def main():
         )
     )
 
+    settings = EvaluationSettings.from_yaml(args.config)
     if args.judge_model:
-        os.environ["LITELLM_JUDGE_MODEL"] = args.judge_model
+        settings.judge.model = args.judge_model
 
-    runner = EvaluationRunner(config_path=args.config)
+    runner = EvaluationRunner(settings=settings)
 
     with console.status(
         "[bold green]Exécution de l'évaluation en cours (Inférence + Juge Frontière)..."

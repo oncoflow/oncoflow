@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import sys
 from pathlib import Path
@@ -11,6 +10,8 @@ from typing import Any
 
 import mlflow
 import yaml
+
+from evaluation.config.settings import EvaluationSettings
 
 # Injection des repertoires necessaires dans sys.path
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -59,25 +60,26 @@ class EvaluationRunner:
     4. Journalisation dans MLflow
     """
 
-    def __init__(self, config_path: Path | str | None = None):
+    def __init__(
+        self,
+        config_path: Path | str | None = None,
+        settings: EvaluationSettings | None = None,
+    ):
         base_eval_dir = Path(__file__).resolve().parent.parent
         if config_path is None:
             config_path = base_eval_dir / "config/eval_config.yaml"
 
-        with open(config_path, "r", encoding="utf-8") as f:
-            self.eval_config = yaml.safe_load(f)
-
-        self.judge = LLMJudge(config_path)
+        self.settings = settings or EvaluationSettings.from_yaml(config_path)
+        self.judge = LLMJudge(config_path=config_path, settings=self.settings)
+        self.eval_config = {
+            "mlflow": self.settings.mlflow.model_dump(),
+            "judge": self.settings.judge.model_dump(),
+            "execution": self.settings.execution.model_dump(),
+        }
 
         # MLflow setup
-        mlflow_cfg = self.eval_config.get("mlflow", {})
-        tracking_uri = os.getenv(
-            "MLFLOW_TRACKING_URI",
-            mlflow_cfg.get("tracking_uri", "http://localhost:5000"),
-        )
-        experiment_name = mlflow_cfg.get(
-            "experiment_name", "oncoflow-agents-evaluation"
-        )
+        tracking_uri = self.settings.mlflow.tracking_uri
+        experiment_name = self.settings.mlflow.experiment_name
 
         mlflow.set_tracking_uri(tracking_uri)
         try:

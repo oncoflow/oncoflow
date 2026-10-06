@@ -135,10 +135,8 @@ services:
     volumes:
       - ./litellm-config.yaml:/app/config.yaml:ro
     environment:
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:5000
       - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
-      - OTEL_EXPORTER_OTLP_HEADERS=x-mlflow-experiment-id=0
       - OTEL_SERVICE_NAME=litellm-proxy
       - OTEL_RESOURCE_ATTRIBUTES=service.name=litellm-proxy,service.namespace=clinical-oncology
     command: [ "--config", "/app/config.yaml", "--port", "4000" ]
