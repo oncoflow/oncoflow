@@ -109,6 +109,7 @@ class OncowflowAgent:
             mtd (DocumentReader): The main document reader for MTDs.
             output_format (any, optional): The Pydantic model defining the expected output structure.
         """
+        self.config = config
         if output_format is None:
             self.output_format = ChatResponse
         else:
@@ -288,7 +289,9 @@ class OncowflowAgent:
         from src.infrastructure.telemetry.tracing import get_langchain_config
 
         eff_session = session_id or getattr(
-            getattr(self.config, "telemetry", None), "session_id", None
+            getattr(getattr(self, "config", None), "telemetry", None),
+            "session_id",
+            None,
         )
         invoke_config = get_langchain_config(
             agent_name=self.agent_name,
