@@ -32,3 +32,44 @@ def test_log_judge_evaluation_to_mlflow(mock_mlflow, sample_judge_response, tmp_
     mock_mlflow.log_artifact.assert_called_once_with(
         str(artifact_file), artifact_path="prompt_optimizations"
     )
+
+
+@patch("evaluation.engine.metrics.mlflow")
+def test_log_judge_evaluation_with_prompt_registry(mock_mlflow, sample_judge_response):
+    """Verifie l'enregistrement d'un prompt dans le Prompt Registry MLflow 3 lors du log."""
+    from unittest.mock import MagicMock
+
+    mock_prompt_obj = MagicMock(version="2")
+    mock_mlflow.genai.register_prompt.return_value = mock_prompt_obj
+
+    judge_eval = JudgeEvaluation.model_validate(sample_judge_response)
+
+    metrics = log_judge_evaluation_to_mlflow(
+        judge_eval=judge_eval,
+        prompt_name="oncoflow_oncology_debate_prompt",
+        prompt_template="Question de test pour le Prompt Registry",
+        step=1,
+    )
+
+    assert "judge_overall_average" in metrics
+    mock_mlflow.genai.register_prompt.assert_called()
+    mock_mlflow.set_tag.assert_any_call(
+        "prompt.registry.name", "oncoflow_oncology_debate_prompt"
+    )
+    mock_mlflow.set_tag.assert_any_call("prompt.registry.version", "2")
+
+
+@patch("evaluation.engine.metrics.mlflow")
+def test_register_prompt_to_registry_fallback(mock_mlflow):
+    """Verifie le fallback gracieux si le Prompt Registry leve une exception."""
+    from evaluation.engine.metrics import register_prompt_to_registry
+
+    mock_mlflow.genai.register_prompt.side_effect = RuntimeError(
+        "Endpoint indisponible"
+    )
+
+    result = register_prompt_to_registry(
+        name="test_prompt",
+        template="Mon template de test",
+    )
+    assert result is None

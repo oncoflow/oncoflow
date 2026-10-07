@@ -23,6 +23,7 @@ import logging
 import json
 import warnings
 from pathlib import Path
+from typing import Any
 
 # --- Suppress noisy third-party warnings globally on module load ---
 # Hugging Face __path__ access deprecation
@@ -34,7 +35,7 @@ warnings.filterwarnings("ignore", message=".*ORM-style.*")
 # Streamlit PDF viewer compatibility warnings
 warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
-from pydantic import Field, field_validator  # noqa: E402
+from pydantic import Field, field_validator, model_validator  # noqa: E402
 from pydantic_settings import BaseSettings, SettingsConfigDict  # noqa: E402
 
 
@@ -239,12 +240,26 @@ class TelemetrySettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="APP_TELEMETRY_")
 
+    @model_validator(mode="before")
+    @classmethod
+    def populate_from_mlflow_env(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            import os
+
+            if "endpoint" not in data and os.environ.get("MLFLOW_TRACKING_URI"):
+                data["endpoint"] = os.environ["MLFLOW_TRACKING_URI"]
+            if "experiment_name" not in data and os.environ.get(
+                "MLFLOW_EXPERIMENT_NAME"
+            ):
+                data["experiment_name"] = os.environ["MLFLOW_EXPERIMENT_NAME"]
+        return data
+
     enabled: bool = Field(
         default=True,
         description="Enable OpenTelemetry and MLflow tracing.",
     )
     endpoint: str = Field(
-        default="http://127.0.0.1:5000",
+        default="http://localhost:5000",
         description="MLflow tracking server and OpenTelemetry collector endpoint.",
     )
     service_name: str = Field(
@@ -262,6 +277,10 @@ class TelemetrySettings(BaseSettings):
     session_id: str | None = Field(
         default=None,
         description="Current clinical or evaluation session ID for grouping traces.",
+    )
+    experiment_name: str = Field(
+        default="oncoflow-agents-evaluation",
+        description="Target MLflow experiment name for tracking runs and traces.",
     )
 
 

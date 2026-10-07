@@ -80,3 +80,85 @@ def test_judge_evaluate(mock_openai_cls, sample_judge_response):
         "Directives affirmatives"
         in result.prompt_optimization.slm_optimizations_applied
     )
+
+
+@patch("evaluation.engine.judge.time.sleep", return_value=None)
+@patch("evaluation.engine.judge.OpenAI")
+def test_judge_evaluate_retry_on_503(
+    mock_openai_cls, mock_sleep, sample_judge_response
+):
+    """Verifie que le juge effectue un retry avec backoff sur une erreur 503 et reussit."""
+    from openai import InternalServerError
+
+    mock_client = MagicMock()
+    mock_openai_cls.return_value = mock_client
+
+    mock_choice = MagicMock()
+    mock_choice.message.content = json.dumps(sample_judge_response)
+    mock_success = MagicMock(choices=[mock_choice])
+
+    err_response = MagicMock(status_code=503)
+    error_503 = InternalServerError(
+        message="503 Service Unavailable",
+        response=err_response,
+        body={"detail": "This model is currently experiencing high demand."},
+    )
+
+    # 1er appel: 503, 2eme appel: succes
+    mock_client.chat.completions.create.side_effect = [error_503, mock_success]
+
+    judge = LLMJudge()
+    judge.client = mock_client
+    judge.max_retries = 3
+    judge.retry_delay = 0.01
+
+    result = judge.evaluate(
+        domain="oncology",
+        agent_name="pancreas expert",
+        case_id="onco-01",
+        patient_mtd_text="Dossier patient...",
+        agent_output={"resecability": "resecable"},
+        current_prompt="Prompt...",
+    )
+
+    assert isinstance(result, JudgeEvaluation)
+    assert mock_client.chat.completions.create.call_count == 2
+    assert mock_sleep.call_count >= 1
+
+
+@patch("evaluation.engine.judge.time.sleep", return_value=None)
+@patch("evaluation.engine.judge.OpenAI")
+def test_judge_evaluate_exhausts_retries(mock_openai_cls, mock_sleep):
+    """Verifie que l'erreur 503 est levee si les tentatives de retry sont epuisees."""
+    import pytest
+    from openai import InternalServerError
+
+    mock_client = MagicMock()
+    mock_openai_cls.return_value = mock_client
+
+    err_response = MagicMock(status_code=503)
+    error_503 = InternalServerError(
+        message="503 Service Unavailable",
+        response=err_response,
+        body={"detail": "This model is currently experiencing high demand."},
+    )
+
+    mock_client.chat.completions.create.side_effect = error_503
+
+    judge = LLMJudge()
+    judge.client = mock_client
+    judge.max_retries = 3
+    judge.retry_delay = 0.01
+
+    with pytest.raises(InternalServerError):
+        judge.evaluate(
+            domain="oncology",
+            agent_name="pancreas expert",
+            case_id="onco-01",
+            patient_mtd_text="Dossier patient...",
+            agent_output={"resecability": "resecable"},
+            current_prompt="Prompt...",
+        )
+
+    assert mock_client.chat.completions.create.call_count == 3
+    assert mock_sleep.call_count >= 2

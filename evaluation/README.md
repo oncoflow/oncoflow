@@ -113,3 +113,21 @@ Ses propositions d'amélioration de prompt appliquent obligatoirement les règle
 5. **Positionnement du schéma JSON en toute fin de prompt**.
 
 Tous les diffs de prompts sont automatiquement enregistrés et consultables dans l'onglet **Artifacts** de chaque run sur MLflow.
+
+---
+
+## ⚡ Fonctionnalités Avancées MLflow 3
+
+### 1. Enregistrement Automatique dans le **Prompt Registry**
+Pour chaque question clinique et chaque agent évalué, les prompts initiaux ainsi que les prompts révisés/optimisés suggérés par le juge frontière sont automatiquement versionnés et archivés dans le **Prompt Registry de MLflow 3** (`mlflow.genai.register_prompt`). Chaque version est traçable avec ses métadonnées (cas ID, agent, domaine, gains attendus).
+
+### 2. Évaluation Progressive « Au fil de l'eau »
+L'exécution ne bloque plus jusqu'à la fin complète du banc d'évaluation :
+- Les résultats s'affichent en temps réel dans un tableau dynamique terminal grâce à `rich.live.Live`.
+- Dans MLflow, une session parente regroupe des runs enfants imbriqués (`nested=True`), finalisés et synchronisés question par question.
+
+### 3. Résilience et Retry Automatique (Erreurs 503 / Surcharge)
+Face aux pics de demande sur les modèles juges distants (`openai.InternalServerError: 503 - model experiencing high demand`), un mécanisme de **retry avec backoff exponentiel et gigue aléatoire** est intégré nativement dans `LLMJudge`.
+
+### 4. Traçabilité Complète (MLflow Tracing)
+Les appels du juge sont automatiquement instrumentés sous forme de spans `LLM` au sein d'OpenTelemetry et MLflow Tracing. Les erreurs ou exceptions sont capturées sur le span (`record_exception`) et les traces sont immédiatement purgées (`flush_trace_async_logging`) pour garantir une visibilité instantanée sur l'UI MLflow (`http://localhost:5000`).

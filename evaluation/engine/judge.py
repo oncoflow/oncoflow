@@ -4,12 +4,23 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import random
 import re
+import time
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
 import yaml
-from openai import OpenAI
+from openai import (
+    APIConnectionError,
+    APIStatusError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 from pydantic import BaseModel, Field
 
 from evaluation.config.settings import EvaluationSettings
@@ -86,15 +97,21 @@ class LLMJudge:
         self.model_name = self.settings.judge.model
         self.temperature = self.settings.judge.temperature
 
+        self.max_retries = getattr(self.settings.judge, "max_retries", 5)
+        self.retry_delay = getattr(self.settings.judge, "retry_delay", 2.0)
+        self.retry_backoff = getattr(self.settings.judge, "retry_backoff", 2.0)
+
         self.client = OpenAI(
             base_url=self.settings.judge.base_url,
             api_key=self.settings.judge.api_key,
             timeout=self.settings.judge.timeout,
+            max_retries=self.max_retries,
         )
         logger.info(
-            "LLM Judge initialise via endpoint MLflow Gateway (%s) avec modele : %s",
+            "LLM Judge initialise via endpoint MLflow Gateway (%s) avec modele : %s (max_retries=%d)",
             self.settings.judge.base_url,
             self.model_name,
+            self.max_retries,
         )
 
     def load_rubric(self, domain: str) -> dict[str, Any]:
@@ -141,12 +158,20 @@ DIRECTIVES CRITIQUES POUR L'EVALUATION :
         agent_output: dict[str, Any] | str,
         current_prompt: str,
         reference_guidelines_text: str = "",
+        session_id: str | None = None,
+        experiment_id: str | None = None,
     ) -> JudgeEvaluation:
-        """Evalue une sortie d'agent ou de debat multi-agents."""
+        """Evalue une sortie d'agent ou de debat multi-agents avec retry automatique et trace MLflow."""
+        import mlflow
+        from src.infrastructure.telemetry.tracing import ensure_tracing_destination
+
+        eff_exp_id = str(experiment_id or os.environ.get("MLFLOW_EXPERIMENT_ID") or "1")
+        ensure_tracing_destination(experiment_id=eff_exp_id)
+
         system_prompt = self.build_system_prompt(domain)
 
         agent_output_str = (
-            json.dumps(agent_output, indent=2, ensure_ascii=False)
+            json.dumps(agent_output, indent=2, ensure_ascii=False, default=str)
             if isinstance(agent_output, dict)
             else str(agent_output)
         )
@@ -194,21 +219,190 @@ Retourne ton evaluation au format JSON suivant :
             {"role": "user", "content": user_content},
         ]
 
-        logger.info(
-            "Envoi de l'evaluation au juge via LiteLLM (%s)...", self.model_name
-        )
-        response = self.client.chat.completions.create(
-            model=self.model_name,
-            messages=messages,
-            temperature=self.temperature,
-            response_format={"type": "json_object"},
+        span_kwargs: dict[str, Any] = {
+            "name": f"llm_judge_{agent_name}",
+            "span_type": "LLM",
+        }
+        try:
+            from mlflow.entities.trace_location import MlflowExperimentLocation
+
+            span_kwargs["trace_destination"] = MlflowExperimentLocation(eff_exp_id)
+        except Exception:
+            pass
+
+        span_ctx = (
+            mlflow.start_span(**span_kwargs)
+            if hasattr(mlflow, "start_span")
+            else nullcontext()
         )
 
-        raw_content = response.choices[0].message.content or "{}"
-        clean_content = self._extract_json(raw_content)
+        with span_ctx as span:
+            if span is not None and hasattr(span, "set_attributes"):
+                try:
+                    attrs = {
+                        "domain": domain,
+                        "agent_name": agent_name,
+                        "case_id": case_id,
+                        "judge_model": self.model_name,
+                        "experiment_id": eff_exp_id,
+                    }
+                    if session_id:
+                        attrs["session_id"] = session_id
+                        attrs["mlflow.trace.sessionId"] = session_id
+                    span.set_attributes(attrs)
+                    span.set_inputs(
+                        {
+                            "case_id": case_id,
+                            "agent_name": agent_name,
+                            "current_prompt_preview": current_prompt[:1000],
+                            "patient_mtd_preview": patient_mtd_text[:1000],
+                        }
+                    )
+                except Exception:
+                    pass
 
-        data = json.loads(clean_content)
-        return JudgeEvaluation.model_validate(data)
+            response = None
+            last_exception = None
+
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    logger.info(
+                        "Envoi de l'evaluation au juge via LiteLLM/Gateway (%s) [tentative %d/%d]...",
+                        self.model_name,
+                        attempt,
+                        self.max_retries,
+                    )
+                    response = self.client.chat.completions.create(
+                        model=self.model_name,
+                        messages=messages,
+                        temperature=self.temperature,
+                        response_format={"type": "json_object"},
+                    )
+                    break
+                except (
+                    InternalServerError,
+                    RateLimitError,
+                    APIConnectionError,
+                    APITimeoutError,
+                ) as exc:
+                    last_exception = exc
+                    if attempt >= self.max_retries:
+                        logger.error(
+                            "Echec definitif du juge apres %d tentatives suite a l'erreur: %s",
+                            attempt,
+                            exc,
+                        )
+                        if span is not None and hasattr(span, "record_exception"):
+                            try:
+                                span.record_exception(exc)
+                                span.set_status("ERROR")
+                            except Exception:
+                                pass
+                        raise
+                    delay = min(
+                        self.retry_delay * (self.retry_backoff ** (attempt - 1))
+                        + random.uniform(0.5, 1.5),
+                        60.0,
+                    )
+                    if (
+                        isinstance(exc, RateLimitError)
+                        or getattr(exc, "status_code", None) == 429
+                    ):
+                        delay = max(5.0, delay)
+                    logger.warning(
+                        "Erreur temporaire du juge (%s): %s. Surcharge ou 503/429 detecte. Reessai dans %.1fs (tentative %d/%d)...",
+                        self.model_name,
+                        exc,
+                        delay,
+                        attempt,
+                        self.max_retries,
+                    )
+                    time.sleep(delay)
+                except APIStatusError as exc:
+                    last_exception = exc
+                    status_code = getattr(exc, "status_code", 0)
+                    is_transient = status_code in (429, 500, 502, 503, 504)
+                    if is_transient and attempt < self.max_retries:
+                        delay = min(
+                            self.retry_delay * (self.retry_backoff ** (attempt - 1))
+                            + random.uniform(0.5, 1.5),
+                            60.0,
+                        )
+                        if status_code == 429:
+                            delay = max(5.0, delay)
+                        logger.warning(
+                            "Erreur de statut API temporaire (%s) du juge (%s). Reessai dans %.1fs (tentative %d/%d)...",
+                            status_code,
+                            exc,
+                            delay,
+                            attempt,
+                            self.max_retries,
+                        )
+                        time.sleep(delay)
+                    else:
+                        if span is not None and hasattr(span, "record_exception"):
+                            try:
+                                span.record_exception(exc)
+                                span.set_status("ERROR")
+                            except Exception:
+                                pass
+                        raise
+                except Exception as exc:
+                    if span is not None and hasattr(span, "record_exception"):
+                        try:
+                            span.record_exception(exc)
+                            span.set_status("ERROR")
+                        except Exception:
+                            pass
+                    raise
+
+            if response is None and last_exception:
+                raise last_exception
+
+            raw_content = response.choices[0].message.content or "{}"
+            clean_content = self._extract_json(raw_content)
+
+            try:
+                data = json.loads(clean_content, strict=False)
+            except json.JSONDecodeError as exc:
+                repaired = False
+                for fix in ['"', '"}', '"\n}', '"\n}\n}', '"\n}\n}\n}']:
+                    try:
+                        data = json.loads(clean_content + fix, strict=False)
+                        repaired = True
+                        break
+                    except Exception:
+                        continue
+                if not repaired:
+                    logger.warning(
+                        "Contenu brut du juge non analysable en JSON (%s) : %s",
+                        exc,
+                        raw_content[:500],
+                    )
+                    raise exc
+
+            judge_eval = JudgeEvaluation.model_validate(data)
+
+            if span is not None and hasattr(span, "set_outputs"):
+                try:
+                    span.set_outputs(
+                        {
+                            "overall_clinical_summary": judge_eval.overall_clinical_summary,
+                            "scores": {
+                                k: v.score for k, v in judge_eval.scores.items()
+                            },
+                            "hallucinations_count": len(
+                                judge_eval.identified_hallucinations
+                            ),
+                            "missing_data_errors_count": len(
+                                judge_eval.identified_missing_data_errors
+                            ),
+                        }
+                    )
+                except Exception:
+                    pass
+
+            return judge_eval
 
     def _extract_json(self, text: str) -> str:
         text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()

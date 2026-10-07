@@ -13,6 +13,9 @@ judge:
   temperature: 0.0
   max_tokens: 4096
   timeout: 120
+  max_retries: 5
+  retry_delay: 2.0
+  retry_backoff: 2.0
 
 oncoflow:
   # Domaine par defaut
@@ -20,8 +23,8 @@ oncoflow:
   supported_domains:
     - "oncology"
     - "sma"
-  # Mode d'evaluation par defaut : "debate" (workflow RCP complet) ou "single_agent"
-  default_mode: "debate"
+  # Mode d'evaluation par defaut : "auto" (aligne sur le formulaire de l'app : debat si collaborative=True, agent unitaire sinon), "debate" ou "single_agent"
+  default_mode: "auto"
   # Limite d'essais pour l'agent (retries Pydantic)
   max_retries: 3
 
@@ -29,3 +32,5 @@ evaluation:
   batch_size: 1
   save_prompt_suggestions: true
   export_markdown_reports: true
+  # Classe Pydantic specifique a evaluer (ex: PatientAdministrative, RadiologicExams, RadiologicExamType). Null par defaut (eval globale).
+  target_class: null

@@ -53,5 +53,34 @@ def test_init_telemetry(mock_mlflow):
     init_telemetry(app_config)
 
     mock_mlflow.set_tracking_uri.assert_called_with("http://localhost:5000")
+    mock_mlflow.set_experiment.assert_called_with("oncoflow-agents-evaluation")
     mock_mlflow.langchain.autolog.assert_called_once()
     mock_mlflow.openai.autolog.assert_called_once()
+
+
+@patch("src.infrastructure.telemetry.tracing.mlflow")
+def test_flush_telemetry_traces(mock_mlflow):
+    from unittest.mock import MagicMock
+    from src.infrastructure.telemetry.tracing import flush_telemetry_traces
+
+    mock_mlflow.flush_trace_async_logging = MagicMock()
+    flush_telemetry_traces(terminate=False)
+    mock_mlflow.flush_trace_async_logging.assert_called_once_with(terminate=False)
+
+
+@patch("src.infrastructure.telemetry.tracing.mlflow")
+def test_ensure_tracing_destination(mock_mlflow):
+    import os
+    from unittest.mock import MagicMock
+    from src.infrastructure.telemetry.tracing import ensure_tracing_destination
+
+    mock_exp = MagicMock()
+    mock_exp.experiment_id = "1"
+    mock_mlflow.set_experiment.return_value = mock_exp
+
+    exp_id = ensure_tracing_destination(experiment_name="oncoflow-agents-evaluation")
+
+    assert exp_id == "1"
+    assert os.environ.get("MLFLOW_EXPERIMENT_ID") == "1"
+    assert os.environ.get("MLFLOW_TRACING_DESTINATION") == "1"
+    mock_mlflow.tracing.set_destination.assert_called()

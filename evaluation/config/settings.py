@@ -100,6 +100,18 @@ class JudgeSettings(BaseEvalSettings):
         default=120,
         description="Timeout des requêtes en secondes",
     )
+    max_retries: int = Field(
+        default=5,
+        description="Nombre maximum de tentatives de réessai en cas d'erreur 503/429 ou surcharge temporaire",
+    )
+    retry_delay: float = Field(
+        default=2.0,
+        description="Délai initial de backoff en secondes pour les réessais du juge",
+    )
+    retry_backoff: float = Field(
+        default=2.0,
+        description="Facteur multiplicateur de backoff exponentiel pour les réessais",
+    )
 
 
 class EvalExecutionSettings(BaseEvalSettings):
@@ -124,8 +136,8 @@ class EvalExecutionSettings(BaseEvalSettings):
         description="Domaine médical par défaut (oncology, sma)",
     )
     default_mode: str = Field(
-        default="debate",
-        description="Mode d'exécution par défaut (debate, single_agent)",
+        default="auto",
+        description="Mode d'exécution par défaut (auto, debate, single_agent)",
     )
     max_retries: int = Field(
         default=3,
@@ -142,6 +154,10 @@ class EvalExecutionSettings(BaseEvalSettings):
     export_markdown_reports: bool = Field(
         default=True,
         description="Exporter les synthèses en Markdown",
+    )
+    target_class: str | None = Field(
+        default=None,
+        description="Nom de la classe de formulaire Pydantic à évaluer spécifiquement (ex: PatientAdministrative, RadiologicExams, RadiologicExamType)",
     )
 
 
