@@ -22,15 +22,15 @@ class PatientMDTForm(DocumentReader):
     This class contains all patient and oncological disease information for the report.
     """
 
-    mtd_datas: dict = {}
-    mtd_datas_json: dict = {}
-    db_client: Mongodb
+    db_client: Mongodb | None = None
 
     def __init__(
         self, config: AppConfig, document: str, force_reload: bool = False
     ) -> None:
         super(PatientMDTForm, self).__init__(config=config, document=document)
 
+        self.mtd_datas: dict = {}
+        self.mtd_datas_json: dict = {}
         self.mtd_datas["file"] = document
         self.mtd_datas["execution_times"] = {}
 

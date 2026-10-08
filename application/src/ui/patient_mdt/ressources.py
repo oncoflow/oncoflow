@@ -13,6 +13,31 @@ st.markdown(
 app_conf = AppConfig()
 ressources_manager = Ressources(app_conf)
 
+
+@st.cache_data(max_entries=3)
+def get_resource_preview(resource_name: str, doc_type: str):
+    """
+    Cached function to load and parse the resource document.
+    Prevents repeated slow document parsing on tab switches,
+    with max_entries=3 to bound RAM usage.
+    """
+    from src.application.reader import DocumentReader
+
+    config = AppConfig()
+    reader = DocumentReader(config, document=resource_name, document_type="ressource")
+    chunks = reader._load_document(reader.document_path)
+
+    markdown_content = None
+    if hasattr(reader, "markdown_exporter") and reader.markdown_exporter:
+        markdown_content = reader.markdown_exporter[0].page_content
+
+    serialized_chunks = [
+        {"page_content": doc.page_content, "metadata": doc.metadata} for doc in chunks
+    ]
+
+    return markdown_content, serialized_chunks
+
+
 # List resources
 available_resources = ressources_manager.list_ressources()
 
@@ -85,34 +110,7 @@ else:
     st.sidebar.markdown("---")
     if st.sidebar.button("◀ Retour aux agents", width="stretch"):
         st.query_params.clear()
-        st.switch_page("src/ui/patient_mdt_oncologic/agents.py")
-
-    @st.cache_data
-    def get_resource_preview(resource_name: str, doc_type: str):
-        """
-        Cached function to load and parse the resource document.
-        Prevents repeated slow document parsing on tab switches.
-        """
-        from src.application.reader import DocumentReader
-
-        # Use standard AppConfig to load reader
-        config = AppConfig()
-        reader = DocumentReader(
-            config, document=resource_name, document_type="ressource"
-        )
-        chunks = reader._load_document(reader.document_path)
-
-        # Extract markdown if generated
-        markdown_content = None
-        if hasattr(reader, "markdown_exporter") and reader.markdown_exporter:
-            markdown_content = reader.markdown_exporter[0].page_content
-
-        serialized_chunks = [
-            {"page_content": doc.page_content, "metadata": doc.metadata}
-            for doc in chunks
-        ]
-
-        return markdown_content, serialized_chunks
+        st.switch_page("src/ui/patient_mdt/agents.py")
 
     file_path = os.path.join(app_conf.rcp.additional_path, selected_resource)
 

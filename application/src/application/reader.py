@@ -29,8 +29,7 @@ print(answer)
 import hashlib
 import os
 
-from langchain_docling import DoclingLoader
-from langchain_docling.loader import ExportType
+from langchain_docling.loader import MetaExtractor
 
 from src.application.config import AppConfig
 from src.application.tools import timed
@@ -178,18 +177,32 @@ class DocumentReader:
             elif loader_type == "docling":
                 converter, chunker = self.get_docling_components()
 
-                self.markdown_exporter = DoclingLoader(
-                    file_path=document,
-                    export_type=ExportType.MARKDOWN,
-                    converter=converter,
-                    chunker=chunker,
-                ).load()
-                return DoclingLoader(
-                    file_path=document,
-                    export_type=ExportType.DOC_CHUNKS,
-                    converter=converter,
-                    chunker=chunker,
-                ).load()
+                conv_res = converter.convert(source=document)
+                dl_doc = conv_res.document
+                meta_extractor = MetaExtractor()
+
+                self.markdown_exporter = [
+                    Document(
+                        page_content=dl_doc.export_to_markdown(image_placeholder=""),
+                        metadata=meta_extractor.extract_dl_doc_meta(
+                            file_path=document, dl_doc=dl_doc
+                        ),
+                    )
+                ]
+
+                chunked_docs = [
+                    Document(
+                        page_content=chunker.contextualize(chunk=chunk),
+                        metadata=meta_extractor.extract_chunk_meta(
+                            file_path=document, chunk=chunk
+                        ),
+                    )
+                    for chunk in chunker.chunk(dl_doc)
+                ]
+
+                del conv_res, dl_doc
+
+                return chunked_docs
             elif loader_type == "ollamaOcr":
                 return OllamaOcrDocumentLoader(document, self.config).load()
             elif loader_type in ("unstructured", "UnstructuredPDFLoader"):
