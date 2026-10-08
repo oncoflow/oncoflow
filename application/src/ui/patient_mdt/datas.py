@@ -337,10 +337,6 @@ def form_chat():
 
     agents = Agents()
     available_agents = agents.list
-    if "run_button" in st.session_state and st.session_state.run_button:
-        st.session_state.running = True
-    else:
-        st.session_state.running = False
     agent_choice = st.selectbox(
         "Choisir l'agent",
         list(available_agents.keys()),
@@ -348,23 +344,19 @@ def form_chat():
         disabled=st.session_state["chat_active"],
     )
     if not st.session_state["chat_active"]:
-        if st.button(
-            "Démarrer le chat avec l'agent",
-            disabled=st.session_state.running,
-            key="run_button",
-        ):
-            st.session_state["chat_active"] = True
+        if st.button("Démarrer le chat avec l'agent"):
             with st.spinner("Démarrage du chat ..."):
                 reader = get_mtd_reader()
                 agent_cls = available_agents[agent_choice]
                 st.session_state["agent"] = agent_cls(config=app_conf, mtd=reader)
+                st.session_state["chat_active"] = True
             st.rerun()
     else:
         if st.button("Arrêter le chat"):
             st.session_state["chat_active"] = False
-            if st.session_state["agent"] is not None:
+            if "agent" in st.session_state:
                 del st.session_state["agent"]
-            del st.session_state["messages"]
+            st.session_state["messages"] = []
             try:
                 from src.application.app_functions import unload_active_models
 
@@ -375,7 +367,7 @@ def form_chat():
 
         messages = st.container(height=300)
 
-        for message in st.session_state["messages"]:
+        for message in st.session_state.get("messages", []):
             with messages.chat_message(message["role"]):
                 st.markdown(message["content"])
 
