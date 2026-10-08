@@ -111,7 +111,7 @@ flowchart TB
 
 ### Stack Technique Principale :
 * **Frontend Dashboard** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`)
-* **Orchestration RAG** : LangChain (`langchain-core`, `langchain-community`, `langchain-ollama`)
+* **Orchestration RAG** : LangChain (`langchain-core`, `langchain-ollama`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`)
 * **Indexation Vectorielle** : Milvus standalone (`pymilvus==2.6.14`, `langchain-milvus==0.3.3`) ou ChromaDB
 * **Base de données de Cache & Métadonnées** : MongoDB (`pymongo>=4.17.0`)
 * **Parsers de Documents** : Docling, MuPDF, OpenParse & Ollama OCR

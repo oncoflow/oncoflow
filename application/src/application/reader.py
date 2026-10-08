@@ -29,7 +29,6 @@ print(answer)
 import hashlib
 import os
 
-from langchain_community import document_loaders
 from langchain_docling import DoclingLoader
 from langchain_docling.loader import ExportType
 
@@ -38,6 +37,7 @@ from src.application.tools import timed
 
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
+from src.infrastructure.parsers.unstructured import UnstructuredDocumentLoader
 from src.infrastructure.vectorial.client import VectorialDataBaseClient
 from src.infrastructure.llm.base import LLMConnect
 from src.infrastructure.llm.factory import get_llm_client
@@ -174,7 +174,7 @@ class DocumentReader:
             if loader_type is None:
                 loader_type = self.default_loader
             if loader_type == "openparse":
-                cla = OpenParseDocumentLoader
+                return OpenParseDocumentLoader(document).load()
             elif loader_type == "docling":
                 converter, chunker = self.get_docling_components()
 
@@ -192,19 +192,15 @@ class DocumentReader:
                 ).load()
             elif loader_type == "ollamaOcr":
                 return OllamaOcrDocumentLoader(document, self.config).load()
+            elif loader_type in ("unstructured", "UnstructuredPDFLoader"):
+                return UnstructuredDocumentLoader(
+                    document,
+                    chunking_strategy="by_title",
+                    max_characters=1000000,
+                    include_orig_elements=False,
+                ).load()
             else:
-                cla = getattr(document_loaders, loader_type)
-
-                if isinstance(cla, document_loaders.UnstructuredPDFLoader):
-                    # pyrefly: ignore [not-callable]
-                    return cla(
-                        document,
-                        chunking_strategy="by_title",
-                        max_characters=1000000,
-                        include_orig_elements=False,
-                    ).load()
-
-            return cla(document).load()
+                raise ValueError(f"Unknown document loader type: {loader_type}")
             # return self.text_splitter.split_documents(docs)
         except Exception as e:
             self.logger.exception("Error in document load: %s", e)
