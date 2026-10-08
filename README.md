@@ -2,8 +2,8 @@
 
 <p align="left">
   <a href="https://github.com/oncoflow/oncoflow/actions/workflows/ci.yml"><img src="https://github.com/oncoflow/oncoflow/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI/CD Pipeline" /></a>
+  <a href="https://codecov.io/gh/oncoflow/oncoflow"><img src="https://codecov.io/gh/oncoflow/oncoflow/branch/main/graph/badge.svg" alt="Codecov Coverage" /></a>
   <a href="application/tests"><img src="https://img.shields.io/badge/Tests-Pytest%20Passing-brightgreen?style=flat-square&logo=pytest&logoColor=white" alt="Tests Status" /></a>
-  <a href="application/tests"><img src="https://img.shields.io/badge/Coverage-15%20Suites-blue?style=flat-square&logo=pytest&logoColor=white" alt="Test Coverage" /></a>
   <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square" alt="Ruff Linter" /></a>
   <a href="https://github.com/aquasecurity/trivy"><img src="https://img.shields.io/badge/Security-Trivy%20Scanned-2684FF?style=flat-square&logo=aquasecurity&logoColor=white" alt="Trivy Vulnerabilities" /></a>
 </p>
