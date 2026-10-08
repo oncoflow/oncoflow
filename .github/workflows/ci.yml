@@ -40,10 +40,18 @@ jobs:
           cd application
           uv run --frozen ruff check .
 
-      - name: Run Tests
+      - name: Run Tests with Coverage
         run: |
           cd application
-          PYTHONPATH=. uv run pytest tests/
+          PYTHONPATH=. uv run pytest --cov=src --cov-report=xml:coverage.xml tests/
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          file: ./application/coverage.xml
+          fail_ci_if_error: false
+          slug: oncoflow/oncoflow
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Detect CVEs (Trivy)
         uses: aquasecurity/trivy-action@v0.24.0

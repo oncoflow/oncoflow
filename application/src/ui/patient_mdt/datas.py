@@ -290,6 +290,11 @@ def power_mode(element):
                 app_conf.llm.models = nm
                 app_conf.rcp.doc_type = parser
                 with st.status("Rerun AI ..."):
+                    from src.infrastructure.documents.mongodb import Mongodb
+
+                    client = Mongodb(app_conf)
+                    client.delete_document_cache(file_name=st.query_params["file"])
+                    client.close()
                     full_read_mtd_agents(
                         app_conf=app_conf,
                         filename=st.query_params["file"],
@@ -298,6 +303,20 @@ def power_mode(element):
                     app_conf.llm.models = mm
                     app_conf.rcp.doc_type = mp
                     st.write("Succès")
+                st.rerun()
+            po.divider()
+            po.caption("Gestion du cache")
+            if po.button(
+                "🗑️ Vider le cache de ce document",
+                help="Supprimer le cache Markdown de ce document pour forcer une ré-extraction",
+                width="stretch",
+            ):
+                from src.infrastructure.documents.mongodb import Mongodb
+
+                client = Mongodb(app_conf)
+                client.delete_document_cache(file_name=st.query_params["file"])
+                client.close()
+                st.toast(f"Cache vidé pour {st.query_params['file']}", icon="🗑️")
                 st.rerun()
 
 
@@ -318,10 +337,6 @@ def form_chat():
 
     agents = Agents()
     available_agents = agents.list
-    if "run_button" in st.session_state and st.session_state.run_button:
-        st.session_state.running = True
-    else:
-        st.session_state.running = False
     agent_choice = st.selectbox(
         "Choisir l'agent",
         list(available_agents.keys()),
@@ -329,23 +344,19 @@ def form_chat():
         disabled=st.session_state["chat_active"],
     )
     if not st.session_state["chat_active"]:
-        if st.button(
-            "Démarrer le chat avec l'agent",
-            disabled=st.session_state.running,
-            key="run_button",
-        ):
-            st.session_state["chat_active"] = True
+        if st.button("Démarrer le chat avec l'agent"):
             with st.spinner("Démarrage du chat ..."):
                 reader = get_mtd_reader()
                 agent_cls = available_agents[agent_choice]
                 st.session_state["agent"] = agent_cls(config=app_conf, mtd=reader)
+                st.session_state["chat_active"] = True
             st.rerun()
     else:
         if st.button("Arrêter le chat"):
             st.session_state["chat_active"] = False
-            if st.session_state["agent"] is not None:
+            if "agent" in st.session_state:
                 del st.session_state["agent"]
-            del st.session_state["messages"]
+            st.session_state["messages"] = []
             try:
                 from src.application.app_functions import unload_active_models
 
@@ -356,7 +367,7 @@ def form_chat():
 
         messages = st.container(height=300)
 
-        for message in st.session_state["messages"]:
+        for message in st.session_state.get("messages", []):
             with messages.chat_message(message["role"]):
                 st.markdown(message["content"])
 
@@ -581,6 +592,35 @@ if st.session_state["power"]:
                         - **Parser**: {app_conf.rcp.doc_type}
                         """
     )
+    st.sidebar.divider()
+    st.sidebar.caption("⚡ Cache documents")
+    c_btn1, c_btn2 = st.sidebar.columns(2)
+    if c_btn1.button(
+        "🗑️ Ce doc",
+        help="Supprimer le cache du document courant",
+        width="stretch",
+    ):
+        from src.infrastructure.documents.mongodb import Mongodb
+
+        client = Mongodb(app_conf)
+        filename = st.query_params.get("file")
+        if filename:
+            client.delete_document_cache(file_name=filename)
+            st.toast(f"Cache vidé pour {filename}", icon="🗑️")
+        client.close()
+        st.rerun()
+    if c_btn2.button(
+        "🧹 Tout vider",
+        help="Vider tout le cache des documents",
+        width="stretch",
+    ):
+        from src.infrastructure.documents.mongodb import Mongodb
+
+        client = Mongodb(app_conf)
+        client.delete_document_cache()
+        client.close()
+        st.toast("Tout le cache document a été vidé", icon="🧹")
+        st.rerun()
 
 if "file" in st.query_params:
     form()

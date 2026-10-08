@@ -92,3 +92,45 @@ class Mongodb:
             collection = self.database[collection]
             collection.delete_many(filter)
         self.logger.debug("Success deleted documents")
+
+    def get_document_cache(self, file_hash: str) -> dict | None:
+        """
+        Retrieves a cached parsed document from the document_cache collection using its SHA-256 hash.
+        """
+        return self.get_document("document_cache", {"hash": file_hash})
+
+    def save_document_cache(
+        self,
+        file_hash: str,
+        file_name: str,
+        markdown: str,
+        document_type: str = "mtd",
+    ) -> None:
+        """
+        Saves or updates a document markdown parsing in the document_cache collection.
+        Ensures a unique index on 'hash' exists.
+        """
+        self.set_uniq_index("document_cache", "hash")
+        self.update_doc(
+            collection="document_cache",
+            filter={"hash": file_hash},
+            upsertable_data={
+                "hash": file_hash,
+                "file": file_name,
+                "document_type": document_type,
+                "markdown": markdown,
+            },
+        )
+
+    def delete_document_cache(
+        self, file_hash: str | None = None, file_name: str | None = None
+    ) -> None:
+        """
+        Deletes cached documents from document_cache by file_hash, file_name, or clears all if none specified.
+        """
+        filter_query = {}
+        if file_hash:
+            filter_query["hash"] = file_hash
+        elif file_name:
+            filter_query["file"] = file_name
+        self.delete_docs(["document_cache"], filter_query)

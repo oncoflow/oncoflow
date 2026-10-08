@@ -14,10 +14,8 @@ dependencies = [
     "pydantic-settings>=2.9.0",
     "inquirer>=3.4.1",
     "langchain-chroma>=1.1.0",
-    "langchain-community>=0.4.2",
     "langchain-core>=1.6.4",
     "langchain-docling>=2.0.0",
-    "langchain-experimental>=0.4.2",
     "langchain-milvus==0.3.3",
     "langchain-mongodb>=0.12.1",
     "langchain-ollama>=1.1.0",
@@ -48,6 +46,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest >=8.1.1,<9",
+  "pytest-cov>=5.0.0",
   "ruff>=0.15.14,<0.16",
   "pre-commit",
   "pyrefly"

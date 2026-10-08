@@ -32,18 +32,17 @@ spec:
           value: "/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
-        # Gemma 4 12B Q4_K_M — ~7.5 GB VRAM — ~38-42 T/s sur L4
-        # À tester : multimodal natif, function calling optimisé Google DeepMind
-        # Note: unsloth maintient les builds GGUF officiels de Gemma 4
+        # Google MedGemma-4B-IT Q4_K_M — ~2.6 GB VRAM — ~75-90 T/s sur L4
+        # Version 4B ultra-rapide optimisée pour les tâches cliniques et l'oncologie
+        # Permet un parallélisme élevé (4 slots) et une latence de réponse minime
         - "-hf"
-        - "unsloth/gemma-4-12b-it-GGUF:Q4_K_M"
+        - "unsloth/medgemma-4b-it-GGUF:Q4_K_M"
         - "--port"
         - "8080"
         - "--host"
         - "0.0.0.0"
         # ─── Context ───────────────────────────────────────────────────────────
-        # Gemma 4 supporte 128k tokens natif — on limite à 32k pour économiser
-        # le KV cache VRAM et permettre 3 slots parallèles confortables
+        # 32k tokens : largement suffisant pour dossiers RCP denses et contexte RAG
         - "-c"
         - "32768"
         - "-n"
@@ -55,48 +54,39 @@ spec:
         - "on"
         - "--load-mode"
         - "none"
-        # ─── Batch (12B: bonne quantité de VRAM libre) ──────────────────────────
-        # Batch prefill large pour exploiter la bande passante L4
+        # ─── Batch ─────────────────────────────────────────────────────────────
+        # Large prefill batch pour saturer la bande passante Tensor Core du L4
         - "-b"
         - "8192"
         - "-ub"
         - "2048"
-        # ─── Threading ─────────────────────────────────────────────────────────
+        # ─── Threading & Parallel slots ────────────────────────────────────────
         - "-t"
         - "4"
-        # 3 slots parallèles — 12B + contexte 32k laisse de la marge
+        # 4 slots parallèles : le modèle 4B ne pesant que 2.6 Go, il reste >15 Go
+        # pour servir 4 requêtes simultanées confortablement
         - "-np"
-        - "3"
+        - "4"
         # ─── KV Cache ──────────────────────────────────────────────────────────
         - "--cache-type-k"
         - "q4_0"
         - "--cache-type-v"
         - "q4_0"
-        # ─── Sampling (paramètres recommandés par Google DeepMind pour Gemma 4) ─
+        # ─── Sampling (optimisé synthèse médicale Gemma) ───────────────────────
         - "--temp"
-        - "1.0"
-        # Gemma 4: top-k 64 recommandé officiellement (vs 40 pour Qwen)
+        - "0.7"
         - "--top-k"
         - "64"
         - "--top-p"
         - "0.95"
         - "--min-p"
         - "0"
-        # Gemma 4 génère nativement du contenu structuré — penalties plus légères
         - "--presence-penalty"
         - "0.0"
         - "--repeat-penalty"
         - "1.0"
         # ─── Chat Template ─────────────────────────────────────────────────────
-        # Jinja requis pour le format natif Gemma 4 (function calling, thinking)
         - "--jinja"
-        # Note: Gemma 4 utilise son propre format de thinking natif,
-        # pas --reasoning-format deepseek (spécifique Qwen3/DeepSeek)
-        # Pas de --reasoning-budget non plus (géré par le template Gemma)
-        # ─── Multimodal ────────────────────────────────────────────────────────
-        # Oncoflow n'envoie que du texte → désactiver le mmproj (projecteur vision)
-        # Le mmproj-BF16.gguf pèse ~2-3 GB VRAM et ralentit l'inférence text-only
-        # car llama.cpp le charge automatiquement avec les GGUF unsloth/gemma-4
         - "--no-mmproj"
         - "--no-context-shift"
         - "--no-warmup"
@@ -108,11 +98,11 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
-          failureThreshold: 120
+          failureThreshold: 60
         resources:
           limits:
             cpu: "4"
-            memory: "16Gi"      # 7.5 GB modèle + 3 KV caches + overhead OS
+            memory: "16Gi"      # 2.6 GB modèle + 4 KV caches
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache

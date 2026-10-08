@@ -18,13 +18,18 @@ spec:
       timeoutSeconds: 300
       containers:
       - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "rm -rf /usr/local/cuda*/compat && ldconfig && if [ -x /app/llama-server ]; then exec /app/llama-server \"$@\"; else exec llama-server \"$@\"; fi"
+        - "--"
         env:
         - name: GGML_CUDA_PDL
           value: "0"
         - name: GGML_CUDA_DISABLE_GRAPHS
           value: "0"
         - name: LD_LIBRARY_PATH
-          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+          value: "/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
         # Qwen3.6-35B-A3B — Mixture of Experts — UD-IQ4_NL — ~80-160 T/s sur L4
@@ -66,7 +71,8 @@ spec:
         - "99"
         - "--flash-attn"
         - "on"
-        - "--no-mmap"
+        - "--load-mode"
+        - "none"
         # ─── MTP — Multi-Token Prediction ──────────────────────────────────────
         # Le repo unsloth/Qwen3.6-35B-A3B-MTP-GGUF inclut la draft head MTP
         # --draft-mtp n'est PAS encore supporté par l'image llama.cpp:server-cuda12

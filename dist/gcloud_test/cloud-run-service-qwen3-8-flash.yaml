@@ -32,20 +32,26 @@ spec:
           value: "/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
-        # Qwen3-14B Q4_K_M — ~8.5 GB VRAM — ~20 T/s on L4
-        # Usage: qualité maximale, raisonnement clinique profond
+        # Qwen3.8-Flash-Next — MoE 125B (6B actifs / token) — Preview Qwen 4
+        # HuggingFace : unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL (ou UD-Q2_K_XL)
+        #
+        # ⚠️ ATTENTION CONTRAINTE MÉMOIRE SUR 1x L4 (24 GB) :
+        # Qwen3.8-Flash-Next possède 125B paramètres au total + table n-gram 51B.
+        # En UD-Q4_K_XL, le fichier pèse ~111 GB (et ~79 GB en UD-Q2_K_XL).
+        # Un seul L4 Cloud Run dispose de 24 GB VRAM et 32 GB RAM hôte max.
+        # Sur un L4 unique, ce modèle provoquera un OOM s'il n'est pas distribué.
+        # Pour une alternative rapide qui tient sur 1x L4, privilégier Qwen3.6 MoE (~18.5 GB, 80-120 T/s).
         - "-hf"
-        - "Qwen/Qwen3-14B-GGUF:Q4_K_M"
+        - "unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL"
         - "--port"
         - "8080"
         - "--host"
         - "0.0.0.0"
         # ─── Context ───────────────────────────────────────────────────────────
-        # 40k: couvre les longs dossiers MTD + chunks RAG TNCD
         - "-c"
-        - "40960"
-        - "-n"
         - "32768"
+        - "-n"
+        - "8192"
         # ─── GPU ───────────────────────────────────────────────────────────────
         - "-ngl"
         - "99"
@@ -53,22 +59,16 @@ spec:
         - "on"
         - "--load-mode"
         - "none"
-        # ─── Batch (14B: taille modérée, VRAM partielle occupée) ───────────────
+        # ─── Batch ─────────────────────────────────────────────────────────────
         - "-b"
         - "4096"
         - "-ub"
         - "1024"
-        # ─── Threading ─────────────────────────────────────────────────────────
+        # ─── Threading & Parallel slots ────────────────────────────────────────
         - "-t"
-        - "4"
-        # 2 slots parallèles — 14B laisse ~15 GB libres pour 2 KV caches
+        - "6"
         - "-np"
-        - "2"
-        # ─── KV Cache ──────────────────────────────────────────────────────────
-        - "--cache-type-k"
-        - "q4_0"
-        - "--cache-type-v"
-        - "q4_0"
+        - "1"
         # ─── Sampling ──────────────────────────────────────────────────────────
         - "--temp"
         - "1.0"
@@ -82,30 +82,34 @@ spec:
         - "2.0"
         - "--repeat-penalty"
         - "1.0"
-        # ─── Qwen3 Thinking ────────────────────────────────────────────────────
+        # ─── Qwen Thinking ─────────────────────────────────────────────────────
         - "--jinja"
         - "--reasoning-format"
         - "deepseek"
-        # 16k tokens de réflexion — raisonnement maximal pour cas complexes
         - "--reasoning-budget"
-        - "16384"
+        - "8192"
         - "--reasoning-budget-message"
         - "\nOkay, I have enough information to answer."
         - "--no-context-shift"
         - "--no-warmup"
+        # ─── KV Cache ──────────────────────────────────────────────────────────
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
         ports:
         - containerPort: 8080
         startupProbe:
           httpGet:
             path: /health
             port: 8080
-          initialDelaySeconds: 10
+          initialDelaySeconds: 15
           periodSeconds: 10
-          failureThreshold: 120
+          failureThreshold: 360
         resources:
           limits:
-            cpu: "4"
-            memory: "16Gi"      # 8.5 GB modèle + 2 KV caches + overhead OS
+            cpu: "8"
+            memory: "32Gi"
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache

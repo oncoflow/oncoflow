@@ -1,5 +1,13 @@
 # 🖥️ Oncoflow — Frontend Application Dashboard
 
+<p align="left">
+  <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-%3E%3D%203.13-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Version" /></a>
+  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Frontend-Streamlit%201.57+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit" /></a>
+  <a href="tests"><img src="https://img.shields.io/badge/Tests-Pytest%20Passing-brightgreen?style=flat-square&logo=pytest&logoColor=white" alt="Tests Status" /></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json&style=flat-square" alt="Ruff Linter" /></a>
+  <a href="../README.md#-souveraineté--sécurité-locale"><img src="https://img.shields.io/badge/Privacy-100%25%20Local%20First-2ea44f?style=flat-square&logo=shield&logoColor=white" alt="Local First" /></a>
+</p>
+
 Cette partie de l'application contient l'interface utilisateur développée en **Streamlit** ainsi que les configurations liées à l'exécution de l'application.
 
 ## 🚀 Lancement de l'application
