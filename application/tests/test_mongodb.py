@@ -96,3 +96,64 @@ class TestMongodbDocumentStore(unittest.TestCase):
         db.delete_docs(["rcp_info", "rcp_metadata"], {"file": "PDF1.pdf"})
         mock_collection1.delete_many.assert_called_once_with({"file": "PDF1.pdf"})
         mock_collection2.delete_many.assert_called_once_with({"file": "PDF1.pdf"})
+
+    @patch("src.infrastructure.documents.mongodb.MongoClient")
+    def test_get_document_cache(self, mock_mongo_client_cls):
+        db = Mongodb(self.mock_config)
+        mock_collection = MagicMock()
+        db.database.__getitem__.return_value = mock_collection
+        mock_collection.find_one.return_value = {
+            "hash": "abc123hash",
+            "file": "patient.pdf",
+            "markdown": "# Patient Report",
+        }
+
+        result = db.get_document_cache("abc123hash")
+        mock_collection.find_one.assert_called_once_with({"hash": "abc123hash"})
+        self.assertEqual(result["file"], "patient.pdf")
+        self.assertEqual(result["markdown"], "# Patient Report")
+
+    @patch("src.infrastructure.documents.mongodb.MongoClient")
+    def test_save_document_cache(self, mock_mongo_client_cls):
+        db = Mongodb(self.mock_config)
+        mock_collection = MagicMock()
+        db.database.__getitem__.return_value = mock_collection
+
+        db.save_document_cache(
+            file_hash="abc123hash",
+            file_name="patient.pdf",
+            markdown="# Patient Report",
+            document_type="mtd",
+        )
+
+        mock_collection.create_index.assert_called_once_with("hash", unique=True)
+        mock_collection.update_one.assert_called_once_with(
+            {"hash": "abc123hash"},
+            {
+                "$set": {
+                    "hash": "abc123hash",
+                    "file": "patient.pdf",
+                    "document_type": "mtd",
+                    "markdown": "# Patient Report",
+                }
+            },
+            upsert=True,
+        )
+
+    @patch("src.infrastructure.documents.mongodb.MongoClient")
+    def test_delete_document_cache(self, mock_mongo_client_cls):
+        db = Mongodb(self.mock_config)
+        mock_collection = MagicMock()
+        db.database.__getitem__.return_value = mock_collection
+
+        # Delete by file name
+        db.delete_document_cache(file_name="patient.pdf")
+        mock_collection.delete_many.assert_called_with({"file": "patient.pdf"})
+
+        # Delete by file hash
+        db.delete_document_cache(file_hash="abc123hash")
+        mock_collection.delete_many.assert_called_with({"hash": "abc123hash"})
+
+        # Delete all
+        db.delete_document_cache()
+        mock_collection.delete_many.assert_called_with({})

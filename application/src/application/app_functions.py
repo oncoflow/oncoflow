@@ -14,7 +14,8 @@ def delete_document(app_conf, filename, delete_file: bool = True):
     if app_conf.rcp.display_type == "mongodb":
         client = Mongodb(app_conf)
         client.delete_docs(
-            collections=["rcp_info", "rcp_metadata"], filter={"file": filename}
+            collections=["rcp_info", "rcp_metadata", "document_cache"],
+            filter={"file": filename},
         )
         if delete_file:
             if os.path.exists(f"{app_conf.rcp.path}/{filename}"):

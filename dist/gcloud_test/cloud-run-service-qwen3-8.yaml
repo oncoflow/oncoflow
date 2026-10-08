@@ -27,27 +27,31 @@ spec:
         - name: GGML_CUDA_PDL
           value: "0"
         - name: GGML_CUDA_DISABLE_GRAPHS
-          value: "1"
+          value: "0"
         - name: LD_LIBRARY_PATH
           value: "/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
-        # Gemma 4 12B Q4_K_M — ~7.5 GB VRAM — ~38-42 T/s sur L4
-        # À tester : multimodal natif, function calling optimisé Google DeepMind
-        # Note: unsloth maintient les builds GGUF officiels de Gemma 4
+        # Qwen3.8-27B Q4_K_M — ~17.0 GB VRAM — ~16-18 T/s sur L4 (Dense)
+        # ⚠️ ATTENTION DÉBIT MÉMOIRE SUR L4 :
+        # Contrairement à Qwen 3.6 MoE (qui n'active que 3B paramètres et atteint ~100 T/s),
+        # Qwen3.8-27B est un modèle DENSE : les 27B paramètres sont lus à CHAQUE token.
+        # Bande passante L4 = 300 Go/s. Débit théorique max = 300 Go/s / 17 Go = ~17.6 T/s.
+        # Si vous cherchez la VITESSE, utilisez :
+        #   - Qwen3-8B (cloud-run-service-qwen3-8b.yaml) : ~45-55 T/s, 4 slots
+        #   - Qwen3.6 MoE (cloud-run-service-qwen3-6-moe.yaml) : ~80-120 T/s, 1 slot
         - "-hf"
-        - "unsloth/gemma-4-12b-it-GGUF:Q4_K_M"
+        - "unsloth/Qwen3.8-27B-GGUF:Q4_K_M"
         - "--port"
         - "8080"
         - "--host"
         - "0.0.0.0"
         # ─── Context ───────────────────────────────────────────────────────────
-        # Gemma 4 supporte 128k tokens natif — on limite à 32k pour économiser
-        # le KV cache VRAM et permettre 3 slots parallèles confortables
+        # 40k tokens : grâce au DeltaNet, le KV cache est extrêmement léger (~1.8 GB à 40k)
         - "-c"
-        - "32768"
+        - "40960"
         - "-n"
-        - "16384"
+        - "32768"
         # ─── GPU ───────────────────────────────────────────────────────────────
         - "-ngl"
         - "99"
@@ -55,49 +59,44 @@ spec:
         - "on"
         - "--load-mode"
         - "none"
-        # ─── Batch (12B: bonne quantité de VRAM libre) ──────────────────────────
-        # Batch prefill large pour exploiter la bande passante L4
+        # ─── Batch ─────────────────────────────────────────────────────────────
         - "-b"
-        - "8192"
+        - "4096"
         - "-ub"
-        - "2048"
-        # ─── Threading ─────────────────────────────────────────────────────────
+        - "1024"
+        # ─── Threading & Parallel slots ────────────────────────────────────────
         - "-t"
-        - "4"
-        # 3 slots parallèles — 12B + contexte 32k laisse de la marge
+        - "6"
+        # 1 slot parallèle : modèle de 17 GB + KV cache 40k ~2 GB = ~19 GB (marge de ~3.5 GB sur L4)
         - "-np"
-        - "3"
+        - "1"
         # ─── KV Cache ──────────────────────────────────────────────────────────
         - "--cache-type-k"
         - "q4_0"
         - "--cache-type-v"
         - "q4_0"
-        # ─── Sampling (paramètres recommandés par Google DeepMind pour Gemma 4) ─
+        # ─── Sampling ──────────────────────────────────────────────────────────
         - "--temp"
         - "1.0"
-        # Gemma 4: top-k 64 recommandé officiellement (vs 40 pour Qwen)
-        - "--top-k"
-        - "64"
         - "--top-p"
         - "0.95"
+        - "--top-k"
+        - "40"
         - "--min-p"
         - "0"
-        # Gemma 4 génère nativement du contenu structuré — penalties plus légères
         - "--presence-penalty"
-        - "0.0"
+        - "2.0"
         - "--repeat-penalty"
         - "1.0"
-        # ─── Chat Template ─────────────────────────────────────────────────────
-        # Jinja requis pour le format natif Gemma 4 (function calling, thinking)
+        # ─── Qwen3.8 Thinking ──────────────────────────────────────────────────
         - "--jinja"
-        # Note: Gemma 4 utilise son propre format de thinking natif,
-        # pas --reasoning-format deepseek (spécifique Qwen3/DeepSeek)
-        # Pas de --reasoning-budget non plus (géré par le template Gemma)
-        # ─── Multimodal ────────────────────────────────────────────────────────
-        # Oncoflow n'envoie que du texte → désactiver le mmproj (projecteur vision)
-        # Le mmproj-BF16.gguf pèse ~2-3 GB VRAM et ralentit l'inférence text-only
-        # car llama.cpp le charge automatiquement avec les GGUF unsloth/gemma-4
-        - "--no-mmproj"
+        - "--reasoning-format"
+        - "deepseek"
+        # Budget de 8k tokens de réflexion : suffisant pour l'analyse approfondie de RCP et dossiers
+        - "--reasoning-budget"
+        - "8192"
+        - "--reasoning-budget-message"
+        - "\nOkay, I have enough information to answer."
         - "--no-context-shift"
         - "--no-warmup"
         ports:
@@ -108,11 +107,11 @@ spec:
             port: 8080
           initialDelaySeconds: 10
           periodSeconds: 10
-          failureThreshold: 120
+          failureThreshold: 240
         resources:
           limits:
-            cpu: "4"
-            memory: "16Gi"      # 7.5 GB modèle + 3 KV caches + overhead OS
+            cpu: "8"
+            memory: "32Gi"      # 17 GB modèle + buffers RAM
             nvidia.com/gpu: "1"
         volumeMounts:
         - name: gcs-hf-cache
