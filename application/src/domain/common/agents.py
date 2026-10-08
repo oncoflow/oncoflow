@@ -78,14 +78,10 @@ class Agents:
         expert_type: ClassVar[str] = ""
         system_prompt: ClassVar[str] = ""
 
-        def __init__(
-            self,
-            config: AppConfig,
-            mtd: DocumentReader | None = None,
-            output_format: Any = None,
-        ) -> None:
-            self.__class__.system_prompt = f"""
-                You are a distinguished medical expert specializing in {self.expert_type}.
+        @classmethod
+        def get_system_prompt(cls) -> str:
+            return f"""
+                You are a distinguished medical expert specializing in {cls.expert_type}.
                 Your task is to answer user questions by synthesizing patient data with scientific informations.
 
                 Instructions:
@@ -97,10 +93,18 @@ class Agents:
 
                 Rules:
                 - **Patient Record**: Use the patient record as the sole source of truth for the patient's status.
-                - **Scope**: Focus strictly on {self.expert_type}. Do not provide advice outside this specialty.
+                - **Scope**: Focus strictly on {cls.expert_type}. Do not provide advice outside this specialty.
                 - **No Interaction**: Do not ask the user for additional information. If data is missing, note it in your response.
                 - If a value is not found, set it to null in the JSON.
                 """
+
+        def __init__(
+            self,
+            config: AppConfig,
+            mtd: DocumentReader | None = None,
+            output_format: Any = None,
+        ) -> None:
+            self.__class__.system_prompt = self.get_system_prompt()
             super(Agents.Expert_model, self).__init__(
                 config=config, mtd=mtd, output_format=output_format
             )
