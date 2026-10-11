@@ -1,4 +1,5 @@
 import json
+import gc
 
 from typing import Any
 from pydantic import BaseModel
@@ -75,6 +76,8 @@ def collaborative_debate(
 
     for a in agents:
         del a
+    del agents
+    gc.collect()
 
     # Step 3: Synthesis & Final Structured Consensus
     final_compiled_opinions = "\n".join(
@@ -115,3 +118,4 @@ def collaborative_debate(
         raise e
     finally:
         del coordinator
+        gc.collect()

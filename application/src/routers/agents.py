@@ -10,32 +10,38 @@ app_conf = AppConfig()
 router = APIRouter(prefix="/agents", tags=["agents"])
 
 
+def _extract_agent_metadata(name: str, a_cls: type, config: AppConfig) -> dict:
+    system_prompt = (
+        a_cls.get_system_prompt()
+        if hasattr(a_cls, "get_system_prompt")
+        else getattr(a_cls, "system_prompt", "")
+    )
+    models = (
+        a_cls.get_models(config)
+        if hasattr(a_cls, "get_models")
+        else (
+            getattr(a_cls, "models", None)
+            or [m.strip() for m in config.llm.models.split(",") if m.strip()]
+        )
+    )
+    ressources = getattr(a_cls, "ressources", [])
+
+    return {
+        "name": name,
+        "system_prompt": system_prompt,
+        "models": models,
+        "resources": ressources,
+    }
+
+
 @router.get("", response_model=List[AgentDetailResponse])
 def list_agents():
     """Liste tous les agents configurés et leurs caractéristiques."""
     agents = Agents()
-    result = []
-
-    for name, a_cls in agents.list.items():
-        try:
-            ag = a_cls(app_conf)
-            system_prompt = ag.system_prompt
-            models = ag.models
-            ressources = getattr(ag, "ressources", [])
-        except Exception:
-            system_prompt = getattr(a_cls, "system_prompt", "")
-            models = []
-            ressources = getattr(a_cls, "ressources", [])
-
-        result.append(
-            {
-                "name": name,
-                "system_prompt": system_prompt,
-                "models": models,
-                "resources": ressources,
-            }
-        )
-    return result
+    return [
+        _extract_agent_metadata(name, a_cls, app_conf)
+        for name, a_cls in agents.list.items()
+    ]
 
 
 @router.get("/{agent_name}", response_model=AgentDetailResponse)
@@ -51,19 +57,4 @@ def get_agent_detail(agent_name: str):
         )
 
     a_cls = available_agents[agent_name]
-    try:
-        ag = a_cls(app_conf)
-        system_prompt = ag.system_prompt
-        models = ag.models
-        ressources = getattr(ag, "ressources", [])
-    except Exception:
-        system_prompt = getattr(a_cls, "system_prompt", "")
-        models = []
-        ressources = getattr(a_cls, "ressources", [])
-
-    return {
-        "name": agent_name,
-        "system_prompt": system_prompt,
-        "models": models,
-        "resources": ressources,
-    }
+    return _extract_agent_metadata(agent_name, a_cls, app_conf)

@@ -1,4 +1,5 @@
 import os
+import gc
 from src.infrastructure.documents.mongodb import Mongodb
 from src.domain.patient_mdt_form import PatientMDTForm
 
@@ -8,6 +9,12 @@ def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
     fiche_rcp = PatientMDTForm(config=app_conf, document=filename)
     fiche_rcp.read_all_models()
     fiche_rcp.insert_datas_in_db()
+    del fiche_rcp
+    gc.collect()
+    try:
+        unload_active_models(app_conf)
+    except Exception as e:
+        logger.warning(f"Error unloading models after full read: {e}")
 
 
 def delete_document(app_conf, filename, delete_file: bool = True):

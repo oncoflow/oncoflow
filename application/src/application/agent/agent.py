@@ -91,6 +91,18 @@ class OncowflowAgent:
     additionnal_readers: list[DocumentReader] = []
     reasoning_budget: int | None = 1024
 
+    @classmethod
+    def get_system_prompt(cls) -> str:
+        """Retourne le prompt système de la classe sans instanciation."""
+        return cls.system_prompt
+
+    @classmethod
+    def get_models(cls, config: AppConfig) -> list[str]:
+        """Retourne les modèles configurés pour la classe sans instanciation."""
+        if cls.models is not None:
+            return cls.models
+        return [m.strip() for m in config.llm.models.split(",") if m.strip()]
+
     def __init__(
         self,
         config: AppConfig,

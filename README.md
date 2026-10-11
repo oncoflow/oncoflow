@@ -42,7 +42,7 @@ Pour répondre au mieux aux besoins de chacun de nos utilisateurs, la documentat
  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   • Bénéfices cliniques & RCP                   • Clean Onion Architecture
   • Détection d'anomalies                       • Milvus & MongoDB Docker
-  • Aide au triage des dossiers                 • Modèles Ollama locaux
+  • Aide au triage des dossiers                 • LiteLLM & Modèles locaux
   • Référentiel TNCD                            • Variables d'environnement
                 │                                             │
       [Lire le Guide Clinique]                      [Lire le Guide Technique]
@@ -84,7 +84,7 @@ flowchart TB
     subgraph APP [Orchestrateur Applicatif]
         Agent[Multi-Expert Agent LangChain]
         Reader[Document Reader & RAG]
-        Config[AppConfig - environ-config]
+        Config[AppConfig - pydantic-settings]
     end
 
     subgraph DB [Stockage Local & Vecteurs]
@@ -94,9 +94,10 @@ flowchart TB
     end
 
     subgraph AI [Moteur d'Inférence Local]
-        Ollama[Ollama Server]
-        Mistral[mistral-nemo - Raisonnement]
-        Granite[granite3.2-vision - OCR]
+        LiteLLM[LiteLLM Proxy - Port 4000]
+        Agents[openai/agents - Raisonnement]
+        Embeddings[openai/embeddings - Embeddings]
+        Backends[Backends : llama.cpp / Ollama / vLLM]
     end
 
     Streamlit <--> Agent
@@ -104,14 +105,17 @@ flowchart TB
     Reader <--> Config
     Reader <--> Milvus
     Reader <--> Mongo
-    Agent <--> Ollama
-    Ollama <--> Mistral
-    Ollama <--> Granite
+    Reader <--> LiteLLM
+    Agent <--> LiteLLM
+    LiteLLM <--> Agents
+    LiteLLM <--> Embeddings
+    LiteLLM <--> Backends
 ```
 
 ### Stack Technique Principale :
 * **Frontend Dashboard** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`)
-* **Orchestration RAG** : LangChain (`langchain-core`, `langchain-ollama`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`)
+* **Moteur d'Inférence & Modèles** : LiteLLM Proxy (`langchain-litellm`, port 4000 par défaut avec `openai/agents` & `openai/embeddings`), compatible multi-moteurs (Ollama, llama.cpp, vLLM, OpenAI)
+* **Orchestration RAG** : LangChain (`langchain-core`, `langchain-litellm`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`)
 * **Indexation Vectorielle** : Milvus standalone (`pymilvus==2.6.14`, `langchain-milvus==0.3.3`) ou ChromaDB
 * **Base de données de Cache & Métadonnées** : MongoDB (`pymongo>=4.17.0`)
 * **Parsers de Documents** : Docling, MuPDF, OpenParse & Ollama OCR

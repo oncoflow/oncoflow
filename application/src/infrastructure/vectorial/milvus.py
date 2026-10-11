@@ -24,33 +24,29 @@ from src.infrastructure.vectorial.database import VectorialDataBase  # noqa: E40
 from src.application.config import AppConfig  # noqa: E402
 
 
-from pymilvus import MilvusException, connections, db, utility  # noqa: E402
-from pymilvus.exceptions import ConnectionNotExistException  # noqa: E402
+from pymilvus import MilvusClient, MilvusException, connections, db, utility  # noqa: E402
 
 import logging  # noqa: E402
 
 logging.getLogger("pymilvus").setLevel(logging.ERROR)
 
-# Monkeypatch PyMilvus connection manager to seamlessly route generated MilvusClient connections
-# to the ORM 'default' connection. This is necessary because MilvusClient in Milvus v2.5+
-# generates unique connection aliases that are not registered in the legacy ORM connections manager,
-# causing ConnectionNotExistException and database context mismatches (SchemaNotReadyException)
-# when used alongside legacy ORM Collection objects.
-original_fetch_handler = connections._fetch_handler
+# Auto-register every MilvusClient in PyMilvus's connections pool.
+# MilvusClient stores its connection alias in `self._using = f"cm-{id(self._handler)}"`,
+# but does not register it in legacy ORM `connections`. This simple hook registers
+# the handler and target db_name under `self._using` so that legacy ORM constructs
+# like langchain_milvus's Collection(..., using=self.alias) work 100% natively.
+_orig_milvus_client_init = MilvusClient.__init__
 
 
-def patched_fetch_handler(alias=None):
-    if alias is None:
-        alias = "default"
-    try:
-        return original_fetch_handler(alias)
-    except ConnectionNotExistException:
-        if "default" in connections._alias_handlers:
-            return connections._alias_handlers["default"]
-        raise
+def _patched_milvus_client_init(self, *args, **kwargs):
+    _orig_milvus_client_init(self, *args, **kwargs)
+    if hasattr(self, "_using") and hasattr(self, "_handler"):
+        connections._alias_handlers[self._using] = self._handler
+        db_name = getattr(getattr(self, "_config", None), "db_name", "")
+        connections._alias_config[self._using] = {"db_name": db_name}
 
 
-connections._fetch_handler = patched_fetch_handler
+MilvusClient.__init__ = _patched_milvus_client_init
 
 
 # Monkeypatch Milvus.drop to prevent unawaited coroutine warning in AsyncMilvusClient._get_connection
@@ -108,7 +104,10 @@ class MilvusDB(VectorialDataBase):
                     existing_databases = db.list_database()
                     if config.milvus.database not in existing_databases:
                         db.create_database(self.database)
-                    db.using_database(self.database, using="default")
+                    try:
+                        db.using_database(self.database, using="default")
+                    except Exception:
+                        pass
                     break
 
                 except MilvusException as e:
@@ -124,6 +123,7 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
+
         if flush:
             # Drop the collection manually before recreating the client
             # to avoid a race condition where the Milvus() constructor

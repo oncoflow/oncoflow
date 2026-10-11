@@ -41,7 +41,15 @@ def get_rcp_data():
     if db_client is None or not hasattr(db_client, "database"):
         return []
 
-    db_datas = list(db_client.database["rcp_info"].find())
+    projection = {
+        "file": 1,
+        "ui_date": 1,
+        "PatientAdministrative": 1,
+        "ExpertAnswer": 1,
+        "MTDCompleted": 1,
+        "isInterventionRequiered": 1,
+    }
+    db_datas = list(db_client.database["rcp_info"].find({}, projection))
 
     cards_data = []
     for d in db_datas:

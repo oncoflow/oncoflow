@@ -1,0 +1,3 @@
+# Trivy ignore file
+# CVE-2025-64513: Milvus Proxy authentication bypass (server-side vulnerability in Milvus proxy; local Docker runs patched v2.6.19)
+CVE-2025-64513
