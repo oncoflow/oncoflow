@@ -1,5 +1,8 @@
 venv
 venv*
+.venv
+.venv*
+*/.venv*
 __pycache__
 chromadb
 */__pycache__*

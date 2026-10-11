@@ -54,13 +54,17 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Detect CVEs (Trivy)
-        uses: aquasecurity/trivy-action@v0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
           format: "table"
           exit-code: "1" # Fait échouer le job si des vulnérabilités CRITICAL/HIGH sont trouvées
           severity: "CRITICAL,HIGH"
+          scanners: "vuln"
+          ignore-unfixed: true
+          skip-dirs: "**/venv,**/.venv,**/dist,**/.cache,**/.pytest_cache"
+          trivyignores: ".trivyignore"
 
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push'
