@@ -18,13 +18,18 @@ spec:
       timeoutSeconds: 300
       containers:
       - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "rm -rf /usr/local/cuda*/compat && ldconfig && if [ -x /app/llama-server ]; then exec /app/llama-server \"$@\"; else exec llama-server \"$@\"; fi"
+        - "--"
         env:
         - name: GGML_CUDA_PDL
           value: "0"
         - name: GGML_CUDA_DISABLE_GRAPHS
           value: "1"
         - name: LD_LIBRARY_PATH
-          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+          value: "/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
         # Gemma 4 12B Q4_K_M — ~7.5 GB VRAM — ~38-42 T/s sur L4
@@ -48,7 +53,8 @@ spec:
         - "99"
         - "--flash-attn"
         - "on"
-        - "--no-mmap"
+        - "--load-mode"
+        - "none"
         # ─── Batch (12B: bonne quantité de VRAM libre) ──────────────────────────
         # Batch prefill large pour exploiter la bande passante L4
         - "-b"

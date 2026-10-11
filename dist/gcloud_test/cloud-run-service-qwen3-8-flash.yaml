@@ -1,0 +1,122 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llama-cpp-chat
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/minScale: "0"
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-type: nvidia-l4
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "rm -rf /usr/local/cuda*/compat && ldconfig && if [ -x /app/llama-server ]; then exec /app/llama-server \"$@\"; else exec llama-server \"$@\"; fi"
+        - "--"
+        env:
+        - name: GGML_CUDA_PDL
+          value: "0"
+        - name: GGML_CUDA_DISABLE_GRAPHS
+          value: "0"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/nvidia/lib64"
+        args:
+        # ─── Model ─────────────────────────────────────────────────────────────
+        # Qwen3.8-Flash-Next — MoE 125B (6B actifs / token) — Preview Qwen 4
+        # HuggingFace : unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL (ou UD-Q2_K_XL)
+        #
+        # ⚠️ ATTENTION CONTRAINTE MÉMOIRE SUR 1x L4 (24 GB) :
+        # Qwen3.8-Flash-Next possède 125B paramètres au total + table n-gram 51B.
+        # En UD-Q4_K_XL, le fichier pèse ~111 GB (et ~79 GB en UD-Q2_K_XL).
+        # Un seul L4 Cloud Run dispose de 24 GB VRAM et 32 GB RAM hôte max.
+        # Sur un L4 unique, ce modèle provoquera un OOM s'il n'est pas distribué.
+        # Pour une alternative rapide qui tient sur 1x L4, privilégier Qwen3.6 MoE (~18.5 GB, 80-120 T/s).
+        - "-hf"
+        - "unsloth/Qwen3.8-Flash-Next-GGUF:UD-Q4_K_XL"
+        - "--port"
+        - "8080"
+        - "--host"
+        - "0.0.0.0"
+        # ─── Context ───────────────────────────────────────────────────────────
+        - "-c"
+        - "32768"
+        - "-n"
+        - "8192"
+        # ─── GPU ───────────────────────────────────────────────────────────────
+        - "-ngl"
+        - "99"
+        - "--flash-attn"
+        - "on"
+        - "--load-mode"
+        - "none"
+        # ─── Batch ─────────────────────────────────────────────────────────────
+        - "-b"
+        - "4096"
+        - "-ub"
+        - "1024"
+        # ─── Threading & Parallel slots ────────────────────────────────────────
+        - "-t"
+        - "6"
+        - "-np"
+        - "1"
+        # ─── Sampling ──────────────────────────────────────────────────────────
+        - "--temp"
+        - "1.0"
+        - "--top-p"
+        - "0.95"
+        - "--top-k"
+        - "40"
+        - "--min-p"
+        - "0"
+        - "--presence-penalty"
+        - "2.0"
+        - "--repeat-penalty"
+        - "1.0"
+        # ─── Qwen Thinking ─────────────────────────────────────────────────────
+        - "--jinja"
+        - "--reasoning-format"
+        - "deepseek"
+        - "--reasoning-budget"
+        - "8192"
+        - "--reasoning-budget-message"
+        - "\nOkay, I have enough information to answer."
+        - "--no-context-shift"
+        - "--no-warmup"
+        # ─── KV Cache ──────────────────────────────────────────────────────────
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          failureThreshold: 360
+        resources:
+          limits:
+            cpu: "8"
+            memory: "32Gi"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: gcs-hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: gcs-hf-cache
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: oncoflow-models-cache

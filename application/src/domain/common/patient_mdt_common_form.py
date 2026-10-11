@@ -26,7 +26,9 @@ class PatientMDTForm(DocumentReader):
     mtd_datas_json: dict = {}
     db_client: Mongodb
 
-    def __init__(self, config: AppConfig, document: str) -> None:
+    def __init__(
+        self, config: AppConfig, document: str, force_reload: bool = False
+    ) -> None:
         super(PatientMDTForm, self).__init__(config=config, document=document)
 
         self.mtd_datas["file"] = document
@@ -40,7 +42,7 @@ class PatientMDTForm(DocumentReader):
             and cls_attribute.__name__ != "default_model"
         ]
 
-        self.read_document()
+        self.read_document(force_reload=force_reload)
 
         self.db_client = None
         if config.rcp.display_type == "mongodb":
@@ -180,7 +182,7 @@ class PatientMDTForm(DocumentReader):
     def delete(self):
         if self.db_client is not None:
             self.db_client.delete_docs(
-                collections=["rcp_info", "rcp_metadata"],
+                collections=["rcp_info", "rcp_metadata", "document_cache"],
                 filter={"file": self.mtd_datas["file"]},
             )
         if os.path.exists(self.document_path):

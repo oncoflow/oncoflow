@@ -29,7 +29,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -46,9 +46,10 @@ help:
 	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI, l'API et le proxy Cloud Run"
 	@echo ""
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
-	@echo -e "  $(YELLOW)make test$(RESET)             Exécute la suite de tests Pytest"
-	@echo -e "  $(YELLOW)make lint$(RESET)             Vérifie le code avec Ruff"
-	@echo -e "  $(YELLOW)make format$(RESET)           Formate le code avec Ruff"
+	@echo -e "  $(YELLOW)make test$(RESET)                Exécute la suite de tests Pytest"
+	@echo -e "  $(YELLOW)make coverage$(RESET)            Mesure le pourcentage de couverture de test"
+	@echo -e "  $(YELLOW)make lint$(RESET)                Vérifie le code avec Ruff"
+	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
 	@echo ""
 	@echo -e "$(GREEN)Commandes d'infrastructure & Ollama :$(RESET)"
 	@echo -e "  $(YELLOW)make docker-up$(RESET)        Démarre Milvus et MongoDB via Docker Compose"
@@ -170,6 +171,12 @@ stop: cloudrun-proxy-stop docker-down
 test:
 	@echo -e "$(CYAN)--> Exécution des tests Pytest...$(RESET)"
 	cd $(APP_DIR) && $(UV) run pytest
+
+## Mesure le pourcentage de couverture de test du code source
+coverage:
+	@echo -e "$(CYAN)--> Calcul de la couverture de tests (pytest-cov)...$(RESET)"
+	cd $(APP_DIR) && PYTHONPATH=. $(UV) run pytest --cov=src --cov-report=term-missing tests/
+
 
 ## Analyse la qualité et le style du code avec Ruff
 lint:

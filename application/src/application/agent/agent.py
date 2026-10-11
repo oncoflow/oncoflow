@@ -184,7 +184,7 @@ class OncowflowAgent:
                 reasoning=reasoning,
                 reasoning_budget=self.reasoning_budget,
                 output=self.output_format,
-                # tools=[search_on_mtd, search_on_ressources, get_mtd_markdown],
+                tools=tools,
             ),
             tools=tools,
             middleware=[
