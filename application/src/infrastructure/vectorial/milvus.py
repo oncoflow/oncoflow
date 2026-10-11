@@ -52,6 +52,25 @@ def patched_fetch_handler(alias=None):
 
 connections._fetch_handler = patched_fetch_handler
 
+# Also monkeypatch _generate_call_context to route generated MilvusClient connection aliases
+# to the 'default' connection call context so that Collection objects use the correct database name (db_name)
+# rather than defaulting to empty string ("") which causes SchemaNotReadyException.
+original_generate_call_context = getattr(connections, "_generate_call_context", None)
+if original_generate_call_context is not None:
+
+    def patched_generate_call_context(alias=None, **kwargs):
+        alias_config = getattr(connections, "_alias_config", {})
+        if (
+            alias is None
+            or alias not in alias_config
+            or not alias_config.get(alias, {}).get("db_name")
+        ):
+            if "default" in alias_config and alias_config["default"].get("db_name"):
+                alias = "default"
+        return original_generate_call_context(alias, **kwargs)
+
+    connections._generate_call_context = patched_generate_call_context
+
 
 # Monkeypatch Milvus.drop to prevent unawaited coroutine warning in AsyncMilvusClient._get_connection
 original_drop = Milvus.drop
@@ -105,10 +124,17 @@ class MilvusDB(VectorialDataBase):
                 self.database = config.milvus.database
 
                 try:
+                    if hasattr(connections, "_alias_config"):
+                        connections._alias_config.setdefault("default", {})[
+                            "db_name"
+                        ] = self.database
                     existing_databases = db.list_database()
                     if config.milvus.database not in existing_databases:
                         db.create_database(self.database)
-                    db.using_database(self.database, using="default")
+                    try:
+                        db.using_database(self.database, using="default")
+                    except Exception:
+                        pass
                     break
 
                 except MilvusException as e:
@@ -124,6 +150,11 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
+        if hasattr(connections, "_alias_config") and hasattr(self, "database"):
+            connections._alias_config.setdefault("default", {})["db_name"] = (
+                self.database
+            )
+
         if flush:
             # Drop the collection manually before recreating the client
             # to avoid a race condition where the Milvus() constructor
