@@ -18,13 +18,18 @@ spec:
       timeoutSeconds: 300
       containers:
       - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "rm -rf /usr/local/cuda*/compat && ldconfig && if [ -x /app/llama-server ]; then exec /app/llama-server \"$@\"; else exec llama-server \"$@\"; fi"
+        - "--"
         env:
         - name: GGML_CUDA_PDL
           value: "0"
         - name: GGML_CUDA_DISABLE_GRAPHS
           value: "0"
         - name: LD_LIBRARY_PATH
-          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+          value: "/usr/local/nvidia/lib64"
         args:
         # ─── Model ─────────────────────────────────────────────────────────────
         # Qwen3-8B Q4_K_M — ~5.0 GB VRAM — ~40 T/s on L4
@@ -46,7 +51,8 @@ spec:
         - "99"
         - "--flash-attn"
         - "on"
-        - "--no-mmap"
+        - "--load-mode"
+        - "none"
         # ─── Batch (8B: plus de VRAM libre → batchs plus larges) ───────────────
         # Batch prefill plus grand → TTFT réduit, meilleure utilisation L4
         - "-b"

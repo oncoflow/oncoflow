@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from src.infrastructure.parsers.ollama_ocr import OllamaOcrDocumentLoader
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
+from src.infrastructure.parsers.unstructured import UnstructuredDocumentLoader
 
 
 class TestParsers(unittest.TestCase):
@@ -68,4 +69,30 @@ class TestParsers(unittest.TestCase):
         self.assertEqual(docs[0].page_content, "Node 1 text")
         self.assertEqual(docs[0].metadata["tokens"], 5)
         self.assertEqual(docs[0].metadata["node_id"], 101)
+        self.assertEqual(docs[0].metadata["source"], "/path/to/doc.pdf")
+
+    @patch("unstructured.partition.pdf.partition_pdf")
+    def test_unstructured_loader_lazy_load(self, mock_partition_pdf):
+        mock_element = MagicMock()
+        mock_element.__str__.return_value = "Unstructured element text"
+        mock_element.metadata.to_dict.return_value = {"page_number": 1}
+        mock_partition_pdf.return_value = [mock_element]
+
+        loader = UnstructuredDocumentLoader(
+            "/path/to/doc.pdf",
+            chunking_strategy="by_title",
+            max_characters=1000000,
+            include_orig_elements=False,
+        )
+        docs = list(loader.lazy_load())
+
+        mock_partition_pdf.assert_called_once_with(
+            filename="/path/to/doc.pdf",
+            chunking_strategy="by_title",
+            max_characters=1000000,
+            include_orig_elements=False,
+        )
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0].page_content, "Unstructured element text")
+        self.assertEqual(docs[0].metadata["page_number"], 1)
         self.assertEqual(docs[0].metadata["source"], "/path/to/doc.pdf")

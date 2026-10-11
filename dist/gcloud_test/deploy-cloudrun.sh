@@ -8,14 +8,18 @@ usage() {
     echo ""
     echo "Available models:"
     echo "  qwen3-14b   Qwen3-14B Q4_K_M  — ~20 T/s — Qualité maximale (référence)"
-    echo "  qwen3-8b    Qwen3-8B  Q4_K_M  — ~40 T/s — ✅ Recommandé vitesse/qualité"
+    echo "  qwen3-8b    Qwen3-8B  Q4_K_M  — ~40-50 T/s — ✅ Recommandé vitesse/qualité (dense 8B)"
     echo "  gemma4-12b  Gemma4-12B Q4_K_M — ~26 T/s — ⚠️  Limité par SWA (pas recommandé)"
-    echo "  qwen3-6-moe Qwen3.6-35B-A3B IQ4_NL — ~80-120 T/s — 🧪 Expérimental MoE (vérifier repo HF)"
+    echo "  qwen3-6-moe Qwen3.6-35B-A3B IQ4_NL — ~80-120 T/s — 🚀 MoE rapide (35B total, 3B actifs)"
+    echo "  medgemma    MedGemma-4B-IT Q4_K_M — ~75-90 T/s — 🩺 Spécialisé médecine & oncologie (ultra-rapide)"
+    echo "  qwen3-8-27b Qwen3.8-27B Q4_K_M  — ~16-18 T/s — ⚠️  Dense 27B (limité par les 300 Go/s du L4)"
+    echo "  qwen3-8-flash Qwen3.8-Flash-Next UD-Q4_K_XL — ⚠️  MoE 125B (~111 Go, dépasse quota 1x L4)"
     echo ""
     echo "Examples:"
     echo "  $0 qwen3-8b"
-    echo "  $0 gemma4-12b"
+    echo "  $0 medgemma"
     echo "  $0 qwen3-6-moe"
+    echo "  $0 qwen3-8-flash"
     echo ""
     exit 1
 }
@@ -33,7 +37,7 @@ case "$MODEL" in
         MODEL_LABEL="Qwen3-14B Q4_K_M"
         LITELLM_MODEL="openai/Qwen3-14B-GGUF"
         ;;
-    qwen3-8b)
+    qwen3-8b|qwen3-8)
         SERVICE_YAML="cloud-run-service-qwen3-8b.yaml"
         MODEL_LABEL="Qwen3-8B Q4_K_M"
         LITELLM_MODEL="openai/Qwen3-8B-GGUF"
@@ -47,6 +51,21 @@ case "$MODEL" in
         SERVICE_YAML="cloud-run-service-qwen3-6-moe.yaml"
         MODEL_LABEL="Qwen3.6-35B-A3B UD-IQ4_NL + MTP (MoE)"
         LITELLM_MODEL="openai/Qwen3.6-35B-A3B-MTP-GGUF"
+        ;;
+    medgemma|medgemma-4b)
+        SERVICE_YAML="cloud-run-service-medgemma.yaml"
+        MODEL_LABEL="MedGemma-4B-IT Q4_K_M"
+        LITELLM_MODEL="openai/unsloth_medgemma-4b-it-GGUF"
+        ;;
+    qwen3-8-27b|qwen3.8)
+        SERVICE_YAML="cloud-run-service-qwen3-8.yaml"
+        MODEL_LABEL="Qwen3.8-27B Q4_K_M (Dense)"
+        LITELLM_MODEL="openai/Qwen3.8-27B-GGUF"
+        ;;
+    qwen3-8-flash|qwen3.8-flash)
+        SERVICE_YAML="cloud-run-service-qwen3-8-flash.yaml"
+        MODEL_LABEL="Qwen3.8-Flash-Next UD-Q4_K_XL (MoE)"
+        LITELLM_MODEL="openai/Qwen3.8-Flash-Next-GGUF"
         ;;
     *)
         echo "❌ Error: unknown model '$MODEL'."

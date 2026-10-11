@@ -22,6 +22,11 @@ spec:
       timeoutSeconds: 300
       containers:
       - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "rm -rf /usr/local/cuda*/compat && ldconfig && if [ -x /app/llama-server ]; then exec /app/llama-server \"$@\"; else exec llama-server \"$@\"; fi"
+        - "--"
         env:
         # PDL (Programmatic Dependent Launch) requires Compute Capability >= 9.0
         # The L4 is Ada Lovelace (CC 8.9) and does NOT support PDL — keep disabled
@@ -31,7 +36,7 @@ spec:
         - name: GGML_CUDA_DISABLE_GRAPHS
           value: "1"
         - name: LD_LIBRARY_PATH
-          value: "/usr/local/cuda/compat:/usr/local/nvidia/lib64"
+          value: "/usr/local/nvidia/lib64"
         args:
         - "-hf"
         - "Qwen/Qwen3-14B-GGUF:Q4_K_M"
@@ -48,7 +53,8 @@ spec:
         - "--flash-attn"
         - "on"
         # Disable mmap: prevents slow lazy-loads and page faults over GCS FUSE
-        - "--no-mmap"
+        - "--load-mode"
+        - "none"
         # Optimize prompt processing batch size for L4 Tensor Cores
         - "-b"
         - "4096"

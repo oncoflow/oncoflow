@@ -1,0 +1,115 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: llama-cpp-chat
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+    run.googleapis.com/minScale: "0"
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/gpu-type: nvidia-l4
+        run.googleapis.com/cpu-throttling: "false"
+        run.googleapis.com/gpu-zonal-redundancy-disabled: "true"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+      - image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+        command:
+        - "/bin/sh"
+        - "-c"
+        - "rm -rf /usr/local/cuda*/compat && ldconfig && if [ -x /app/llama-server ]; then exec /app/llama-server \"$@\"; else exec llama-server \"$@\"; fi"
+        - "--"
+        env:
+        - name: GGML_CUDA_PDL
+          value: "0"
+        - name: GGML_CUDA_DISABLE_GRAPHS
+          value: "1"
+        - name: LD_LIBRARY_PATH
+          value: "/usr/local/nvidia/lib64"
+        args:
+        # ─── Model ─────────────────────────────────────────────────────────────
+        # Google MedGemma-4B-IT Q4_K_M — ~2.6 GB VRAM — ~75-90 T/s sur L4
+        # Version 4B ultra-rapide optimisée pour les tâches cliniques et l'oncologie
+        # Permet un parallélisme élevé (4 slots) et une latence de réponse minime
+        - "-hf"
+        - "unsloth/medgemma-4b-it-GGUF:Q4_K_M"
+        - "--port"
+        - "8080"
+        - "--host"
+        - "0.0.0.0"
+        # ─── Context ───────────────────────────────────────────────────────────
+        # 32k tokens : largement suffisant pour dossiers RCP denses et contexte RAG
+        - "-c"
+        - "32768"
+        - "-n"
+        - "16384"
+        # ─── GPU ───────────────────────────────────────────────────────────────
+        - "-ngl"
+        - "99"
+        - "--flash-attn"
+        - "on"
+        - "--load-mode"
+        - "none"
+        # ─── Batch ─────────────────────────────────────────────────────────────
+        # Large prefill batch pour saturer la bande passante Tensor Core du L4
+        - "-b"
+        - "8192"
+        - "-ub"
+        - "2048"
+        # ─── Threading & Parallel slots ────────────────────────────────────────
+        - "-t"
+        - "4"
+        # 4 slots parallèles : le modèle 4B ne pesant que 2.6 Go, il reste >15 Go
+        # pour servir 4 requêtes simultanées confortablement
+        - "-np"
+        - "4"
+        # ─── KV Cache ──────────────────────────────────────────────────────────
+        - "--cache-type-k"
+        - "q4_0"
+        - "--cache-type-v"
+        - "q4_0"
+        # ─── Sampling (optimisé synthèse médicale Gemma) ───────────────────────
+        - "--temp"
+        - "0.7"
+        - "--top-k"
+        - "64"
+        - "--top-p"
+        - "0.95"
+        - "--min-p"
+        - "0"
+        - "--presence-penalty"
+        - "0.0"
+        - "--repeat-penalty"
+        - "1.0"
+        # ─── Chat Template ─────────────────────────────────────────────────────
+        - "--jinja"
+        - "--no-mmproj"
+        - "--no-context-shift"
+        - "--no-warmup"
+        ports:
+        - containerPort: 8080
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 60
+        resources:
+          limits:
+            cpu: "4"
+            memory: "16Gi"      # 2.6 GB modèle + 4 KV caches
+            nvidia.com/gpu: "1"
+        volumeMounts:
+        - name: gcs-hf-cache
+          mountPath: /root/.cache/huggingface
+      volumes:
+      - name: gcs-hf-cache
+        csi:
+          driver: gcsfuse.run.googleapis.com
+          volumeAttributes:
+            bucketName: oncoflow-models-cache
