@@ -102,29 +102,32 @@ class TestMilvusVectorialDB(unittest.TestCase):
         self.assertEqual(mock_connections.connect.call_count, 2)
         mock_sleep.assert_called_once_with(5)
 
-    def test_monkeypatch_fetch_handler_fallback(self):
-        mock_handler = MagicMock()
-        connections._alias_handlers["default"] = mock_handler
+    def test_milvus_client_auto_registers_in_connections(self):
+        from pymilvus import MilvusClient
 
-        # Unknown alias should fall back to default
-        result = connections._fetch_handler("cm-unknown-client-alias")
-        self.assertEqual(result, mock_handler)
+        # Create a mock MilvusClient with dedicated handler mock
+        with patch(
+            "pymilvus.milvus_client.milvus_client.ConnectionManager"
+        ) as mock_cm_cls:
+            mock_cm = mock_cm_cls.get_instance.return_value
+            mock_handler = MagicMock()
+            mock_cm.get_or_create.return_value = mock_handler
 
-        # None alias should fall back to default
-        result_none = connections._fetch_handler(None)
-        self.assertEqual(result_none, mock_handler)
+            client = MilvusClient(
+                uri="http://localhost:19530",
+                token="root:Milvus",
+                db_name="oncowflow",
+            )
 
-    def test_monkeypatch_generate_call_context_fallback(self):
-        connections._alias_config["default"] = {
-            "address": "localhost:19530",
-            "db_name": "oncowflow",
-        }
-
-        # Unknown alias (e.g. from MilvusClient) should fall back to default db_name
-        ctx = connections._generate_call_context("cm-unknown-alias")
-        self.assertEqual(ctx.get_db_name(), "oncowflow")
-        grpc_metadata = dict(ctx.to_grpc_metadata())
-        self.assertEqual(grpc_metadata.get("dbname"), "oncowflow")
+            # Handler and db_name should be registered under client._using
+            self.assertIn(client._using, connections._alias_handlers)
+            self.assertEqual(connections._alias_handlers[client._using], mock_handler)
+            self.assertEqual(
+                connections._alias_config[client._using], {"db_name": "oncowflow"}
+            )
+            self.assertEqual(connections._fetch_handler(client._using), mock_handler)
+            ctx = connections._generate_call_context(client._using)
+            self.assertEqual(ctx.get_db_name(), "oncowflow")
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.milvus.Milvus")

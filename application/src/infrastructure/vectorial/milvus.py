@@ -24,52 +24,29 @@ from src.infrastructure.vectorial.database import VectorialDataBase  # noqa: E40
 from src.application.config import AppConfig  # noqa: E402
 
 
-from pymilvus import MilvusException, connections, db, utility  # noqa: E402
-from pymilvus.exceptions import ConnectionNotExistException  # noqa: E402
+from pymilvus import MilvusClient, MilvusException, connections, db, utility  # noqa: E402
 
 import logging  # noqa: E402
 
 logging.getLogger("pymilvus").setLevel(logging.ERROR)
 
-# Monkeypatch PyMilvus connection manager to seamlessly route generated MilvusClient connections
-# to the ORM 'default' connection. This is necessary because MilvusClient in Milvus v2.5+
-# generates unique connection aliases that are not registered in the legacy ORM connections manager,
-# causing ConnectionNotExistException and database context mismatches (SchemaNotReadyException)
-# when used alongside legacy ORM Collection objects.
-original_fetch_handler = connections._fetch_handler
+# Auto-register every MilvusClient in PyMilvus's connections pool.
+# MilvusClient stores its connection alias in `self._using = f"cm-{id(self._handler)}"`,
+# but does not register it in legacy ORM `connections`. This simple hook registers
+# the handler and target db_name under `self._using` so that legacy ORM constructs
+# like langchain_milvus's Collection(..., using=self.alias) work 100% natively.
+_orig_milvus_client_init = MilvusClient.__init__
 
 
-def patched_fetch_handler(alias=None):
-    if alias is None:
-        alias = "default"
-    try:
-        return original_fetch_handler(alias)
-    except ConnectionNotExistException:
-        if "default" in connections._alias_handlers:
-            return connections._alias_handlers["default"]
-        raise
+def _patched_milvus_client_init(self, *args, **kwargs):
+    _orig_milvus_client_init(self, *args, **kwargs)
+    if hasattr(self, "_using") and hasattr(self, "_handler"):
+        connections._alias_handlers[self._using] = self._handler
+        db_name = getattr(getattr(self, "_config", None), "db_name", "")
+        connections._alias_config[self._using] = {"db_name": db_name}
 
 
-connections._fetch_handler = patched_fetch_handler
-
-# Also monkeypatch _generate_call_context to route generated MilvusClient connection aliases
-# to the 'default' connection call context so that Collection objects use the correct database name (db_name)
-# rather than defaulting to empty string ("") which causes SchemaNotReadyException.
-original_generate_call_context = getattr(connections, "_generate_call_context", None)
-if original_generate_call_context is not None:
-
-    def patched_generate_call_context(alias=None, **kwargs):
-        alias_config = getattr(connections, "_alias_config", {})
-        if (
-            alias is None
-            or alias not in alias_config
-            or not alias_config.get(alias, {}).get("db_name")
-        ):
-            if "default" in alias_config and alias_config["default"].get("db_name"):
-                alias = "default"
-        return original_generate_call_context(alias, **kwargs)
-
-    connections._generate_call_context = patched_generate_call_context
+MilvusClient.__init__ = _patched_milvus_client_init
 
 
 # Monkeypatch Milvus.drop to prevent unawaited coroutine warning in AsyncMilvusClient._get_connection
@@ -124,10 +101,6 @@ class MilvusDB(VectorialDataBase):
                 self.database = config.milvus.database
 
                 try:
-                    if hasattr(connections, "_alias_config"):
-                        connections._alias_config.setdefault("default", {})[
-                            "db_name"
-                        ] = self.database
                     existing_databases = db.list_database()
                     if config.milvus.database not in existing_databases:
                         db.create_database(self.database)
@@ -150,10 +123,6 @@ class MilvusDB(VectorialDataBase):
         self,
         flush=False,
     ):
-        if hasattr(connections, "_alias_config") and hasattr(self, "database"):
-            connections._alias_config.setdefault("default", {})["db_name"] = (
-                self.database
-            )
 
         if flush:
             # Drop the collection manually before recreating the client
