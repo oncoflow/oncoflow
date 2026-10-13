@@ -14,7 +14,7 @@ WATCHED='\.(pdf|docx?|odt|rtf|xlsx?|ods|csv|hl7|dcm|sqlite3?|db|bbox)$'
 # Emplacements autorisés (expressions régulières étendues)
 ALLOWED=(
   '^application/ressources/documents/'   # référentiels publics (TNCD...)
-  '\.sample\.pdf$'                       # documents explicitement fictifs
+  '\.sample\.(pdf|docx)$'                # documents explicitement fictifs
   '^application/tests/fixtures/'         # jeux de test fictifs
   '^experiment/rcp_parser/test_final(_2)?\.pdf$'  # gabarits de fiche vides
   '^experiment/test_precedent/test\.pdf$'         # gabarit de fiche vide

@@ -294,10 +294,12 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "faker" },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "python-docx" },
     { name = "ruff" },
 ]
 
@@ -343,10 +345,12 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "faker", specifier = ">=40.43.0" },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest", specifier = ">=8.1.1,<9" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "python-docx", specifier = ">=1.2.0" },
     { name = "ruff", specifier = ">=0.15.14,<0.16" },
 ]
 

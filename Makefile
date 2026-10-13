@@ -29,7 +29,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev fake-rcp
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -47,6 +47,7 @@ help:
 	@echo ""
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
 	@echo -e "  $(YELLOW)make test$(RESET)                Exécute la suite de tests Pytest"
+	@echo -e "  $(YELLOW)make fake-rcp$(RESET)            Génère des fiches RCP fictives Word + PDF (N=10 SEED=0)"
 	@echo -e "  $(YELLOW)make coverage$(RESET)            Mesure le pourcentage de couverture de test"
 	@echo -e "  $(YELLOW)make lint$(RESET)                Vérifie le code avec Ruff"
 	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
@@ -177,6 +178,11 @@ coverage:
 	@echo -e "$(CYAN)--> Calcul de la couverture de tests (pytest-cov)...$(RESET)"
 	cd $(APP_DIR) && PYTHONPATH=. $(UV) run pytest --cov=src --cov-report=term-missing tests/
 
+
+## Génère des fiches RCP fictives (Word + PDF) : make fake-rcp N=20 SEED=1
+fake-rcp:
+	@echo -e "$(CYAN)--> Génération de fiches RCP fictives...$(RESET)"
+	cd $(APP_DIR) && $(UV) run python -m scripts.fake_rcp -n $(or $(N),10) --seed $(or $(SEED),0)
 
 ## Analyse la qualité et le style du code avec Ruff
 lint:
