@@ -64,10 +64,14 @@ PATHOLOGIES: dict[str, PathologySpec] = {
             sexes="FM",
             age_range=(52, 86),
             history=(
-                "Ictère cutanéo-muqueux sans douleur révélateur, apparu il y a {weeks} semaines. "
-                "Drainage biliaire par prothèse endoscopique réalisé.",
-                "Douleurs épigastriques transfixiantes et amaigrissement depuis {weeks} semaines, "
-                "découverte d'un diabète récent.",
+                (
+                    "Ictère cutanéo-muqueux sans douleur révélateur, apparu il y a {weeks} semaines. "
+                    "Drainage biliaire par prothèse endoscopique réalisé."
+                ),
+                (
+                    "Douleurs épigastriques transfixiantes et amaigrissement depuis {weeks} semaines, "
+                    "découverte d'un diabète récent."
+                ),
             ),
             items=(
                 ItemSpec(

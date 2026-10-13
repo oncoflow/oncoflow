@@ -26,8 +26,19 @@ from .model import (
 from .pathologies import PATHOLOGIES
 
 MONTHS = (
-    "janvier février mars avril mai juin juillet août septembre octobre novembre décembre"
-).split()
+    "janvier",
+    "février",
+    "mars",
+    "avril",
+    "mai",
+    "juin",
+    "juillet",
+    "août",
+    "septembre",
+    "octobre",
+    "novembre",
+    "décembre",
+)
 
 
 def d_num(d: date) -> str:
