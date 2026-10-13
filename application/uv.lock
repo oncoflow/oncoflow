@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -337,7 +337,7 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.57.0" },
     { name = "streamlit-authenticator", specifier = ">=0.4.2" },
     { name = "streamlit-pdf-viewer", specifier = ">=0.0.29" },
-    { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.8" },
+    { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.22" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
@@ -6639,7 +6639,7 @@ wheels = [
 
 [[package]]
 name = "unstructured"
-version = "0.27.25"
+version = "0.27.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -6667,9 +6667,9 @@ dependencies = [
     { name = "unstructured-client" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/33/9085c9eac069ac7c723910998b1a8e93adee3d51f01acbcbf1fcefd24028/unstructured-0.27.25.tar.gz", hash = "sha256:1197a4c3b99adfff3b77754cb3b9f77db0581af39f190856cf44785461c22012", size = 1591055, upload-time = "2026-10-10T00:56:46.522Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/5e/d5ef85aa6c82a0d72d42737b4b73831a11a4d69337ba6b755bf9e4d8efed/unstructured-0.27.22.tar.gz", hash = "sha256:c7942951941b2fac6c9f535937b71e099db52f23c02e6d7db2db51a7f98aac83", size = 1590860, upload-time = "2026-10-08T14:44:15.684Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8f/32/a6f3307805a84f8a6f08eadbb33d0d72cc1bc44f29e65181ec2a881fbda9/unstructured-0.27.25-py3-none-any.whl", hash = "sha256:c0ed21d41466e602a749d54061b191e64ca0d2bc2e1c47cdcf7aa38a5770be21", size = 1652238, upload-time = "2026-10-10T00:56:44.301Z" },
+    { url = "https://files.pythonhosted.org/packages/7f/f4/4ac0da8b518f9487c2f18f3418e54358be4ea1630aa68525b205ed8dde84/unstructured-0.27.22-py3-none-any.whl", hash = "sha256:a3fc78e036f497bfc86185ea232daf103dc6435f264fb3d8ee5bb418f866f169", size = 1652026, upload-time = "2026-10-08T14:44:13.513Z" },
 ]
 
 [package.optional-dependencies]
