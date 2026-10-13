@@ -47,6 +47,9 @@ All development operations must follow these exact shell commands. Standard pref
 > [!CAUTION] **Patient Data Privacy (Local-Only Execution)**
 > Oncoflow deals with highly confidential medical data. **Never use public APIs or remote cloud services** (like OpenAI, Anthropic, or external embedding servers) for parsing or model invocation. All operations must run locally via local Docker services (Milvus, MongoDB) or local Ollama instances to guarantee hospital data compliance.
 
+> [!CAUTION] **No Patient Data in the Repository (Public Repo)**
+> Never commit real patient documents (RCP forms, reports, exports, local databases or caches built from them), even "anonymised". Only public reference guidelines (`application/ressources/documents/`) and fully fictitious documents (`*.sample.pdf`, `application/tests/fixtures/`) are allowed. Uploaded files go to `application/ressources/PatientMDTForm/`, which is git-ignored. CI and pre-commit enforce this with `.github/scripts/check_no_patient_files.sh`.
+
 > [!WARNING] **Dependency Synchronization**
 > Always respect `pyproject.toml` dependencies. Do not use ad-hoc versions. Use `uv.lock` to pin dependencies.
 

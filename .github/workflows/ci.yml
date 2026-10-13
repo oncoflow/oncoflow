@@ -16,6 +16,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      - name: Refuse patient files (public repository)
+        run: .github/scripts/check_no_patient_files.sh
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
