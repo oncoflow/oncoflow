@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'win32'",
@@ -294,10 +294,12 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "faker" },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "python-docx" },
     { name = "ruff" },
 ]
 
@@ -343,10 +345,12 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "faker", specifier = ">=40.43.0" },
     { name = "pre-commit" },
     { name = "pyrefly" },
     { name = "pytest", specifier = ">=9.1.1,<10" },
     { name = "pytest-cov", specifier = ">=5.0.0" },
+    { name = "python-docx", specifier = ">=1.2.0" },
     { name = "ruff", specifier = ">=0.16.10,<0.17" },
 ]
 
