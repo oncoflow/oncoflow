@@ -56,6 +56,9 @@ dev = [
 autoSearchPaths = false
 extraPaths = ["."]
 
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
+
 [tool.ruff.lint.per-file-ignores]
 "app-ui.py" = ["E402"]
 "app.py" = ["E402"]

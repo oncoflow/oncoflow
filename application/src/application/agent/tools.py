@@ -7,10 +7,20 @@ from src.application.reader import DocumentReader
 
 class Context(TypedDict):
     """
-    Type definition for the context passed to tools at runtime.
+    Type definition for the context passed to single-document RCP tools at runtime.
     """
 
     reader: Optional[DocumentReader]
+    additionnal_readers: List[DocumentReader]
+    logger: Any
+
+
+class PatientContext(TypedDict):
+    """
+    Type definition for the context passed to multi-document patient dossier tools at runtime.
+    """
+
+    patient_readers: List[DocumentReader]
     additionnal_readers: List[DocumentReader]
     logger: Any
 
@@ -19,11 +29,38 @@ class Context(TypedDict):
 def get_mtd_markdown(runtime: ToolRuntime[Context]):
     """Get the Medical Technical Documents (MTD) / Patient Records in Markdown format."""
     runtime.context["logger"].info("tool get_mtd_markdown called")
-
-    reader = runtime.context["reader"]
-    if reader is None:
+    if runtime.context["reader"] is None:
         raise ValueError("No main document reader (mtd) provided in Context.")
-    return reader.markdown_exporter[0].page_content
+    return runtime.context["reader"].markdown_exporter[0].page_content
+
+
+@tool(response_format="content")
+def get_patient_mtds_markdown(runtime: ToolRuntime[PatientContext]):
+    """Get all Medical Technical Documents (MTD) / RCP records of the patient dossier in Markdown format."""
+    runtime.context["logger"].info("tool get_patient_mtds_markdown called")
+    patient_readers = runtime.context.get("patient_readers")
+    if not patient_readers:
+        raise ValueError(
+            "No patient document readers (patient_readers) provided in PatientContext."
+        )
+    return "\n\n".join(
+        f"=== FICHE RCP : {r.document} ===\n{r.markdown_exporter[0].page_content}"
+        for r in patient_readers
+    )
+
+
+@tool(response_format="content")
+def get_patient_ai_history(runtime: ToolRuntime[PatientContext]):
+    """Get the chronological history of all AI-extracted clinical, administrative, and expert data across all RCP records of the patient dossier."""
+    runtime.context["logger"].info("tool get_patient_ai_history called")
+    patient_readers = runtime.context.get("patient_readers")
+    if not patient_readers:
+        raise ValueError(
+            "No patient document readers (patient_readers) provided in PatientContext."
+        )
+    from src.application.patient import format_patient_ai_history
+
+    return format_patient_ai_history(patient_readers)
 
 
 @tool(response_format="content_and_artifact")
@@ -64,11 +101,12 @@ def search_on_mtd(
     runtime.context["logger"].debug(
         f"tool search_on_mtd called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
     )
-    reader = runtime.context["reader"]
-    if reader is None:
+    if runtime.context["reader"] is None:
         raise ValueError("No main document reader (mtd) provided in Context.")
 
-    retrieved_docs = reader.vecdb.clientdb.max_marginal_relevance_search(
+    retrieved_docs = runtime.context[
+        "reader"
+    ].vecdb.clientdb.max_marginal_relevance_search(
         query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
     )
     # Serialize documents for the LLM context
@@ -83,8 +121,65 @@ def search_on_mtd(
 
 
 @tool(response_format="content_and_artifact")
+def search_on_patient_mtds(
+    runtime: ToolRuntime[PatientContext],
+    query: str,
+    k: int = 4,
+    param: Optional[dict | list[dict]] = None,
+    expr: Optional[str] = None,
+    timeout: Optional[float] = None,
+):
+    """Search within all Medical Technical Documents (MTD) / RCP records of the patient dossier.
+    This tool uses VectorStore similarity_search options across all RCPs of the patient.
+
+    Args:
+        runtime (ToolRuntime): The runtime context containing the patient document readers.
+        query (str): The search query to vectorstore.
+        k (int, optional): How many results to return per document. Defaults to 4.
+        param (dict | list[dict], optional): The search params for the index type.
+            Defaults to None.
+        expr (str, optional): Filtering expression. Defaults to None.
+        timeout (int, optional): How long to wait before timeout error.
+            Defaults to None.
+
+    Returns:
+        tuple: A tuple containing the serialized string of results and the raw artifacts (documents).
+    """
+    if isinstance(expr, str) and expr.strip().lower() in ("none", "null", ""):
+        expr = None
+    if isinstance(param, str) and param.strip().lower() in ("none", "null", "{}", ""):
+        param = None
+    elif isinstance(param, dict) and not param:
+        param = None
+    if isinstance(timeout, str) and timeout.strip().lower() in ("none", "null", ""):
+        timeout = None
+
+    runtime.context["logger"].debug(
+        f"tool search_on_patient_mtds called with query : {query} with params :{param}, k: {k}, expr: {expr}, timeout: {timeout}"
+    )
+    patient_readers = runtime.context.get("patient_readers")
+    if not patient_readers:
+        raise ValueError(
+            "No patient document readers (patient_readers) provided in PatientContext."
+        )
+
+    retrieved_docs = []
+    for r in patient_readers:
+        docs = r.vecdb.clientdb.max_marginal_relevance_search(
+            query, k=k, fetch_k=20, param=param, expr=expr, timeout=timeout
+        )
+        retrieved_docs.extend(docs)
+
+    serialized = "\n\n".join(
+        (f"Source: {doc.metadata}\nContent: {doc.page_content}")
+        for doc in retrieved_docs
+    )
+    return serialized, retrieved_docs
+
+
+@tool(response_format="content_and_artifact")
 def search_on_ressources(
-    runtime: ToolRuntime[Context],
+    runtime: ToolRuntime[Context | PatientContext],
     query: str,
     k: int = 3,
     param: Optional[dict | list[dict]] = None,

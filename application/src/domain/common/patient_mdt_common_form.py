@@ -8,6 +8,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field, PastDatetime, model_validator
 
 from src.domain.common.common_ressources import *  # noqa: F403
+from src.domain.patient import Patient
 
 from src.application.config import AppConfig
 from src.application.agent.agent import OncowflowAgent
@@ -23,6 +24,7 @@ class PatientMDTForm(DocumentReader):
     """
 
     db_client: Mongodb | None = None
+    patient: Patient | None = None
 
     def __init__(
         self, config: AppConfig, document: str, force_reload: bool = False
@@ -33,6 +35,7 @@ class PatientMDTForm(DocumentReader):
         self.mtd_datas_json: dict = {}
         self.mtd_datas["file"] = document
         self.mtd_datas["execution_times"] = {}
+        self.patient = None
 
         self.basemodel_list = [
             cls_attribute
@@ -61,7 +64,15 @@ class PatientMDTForm(DocumentReader):
                 self.mtd_datas["id"] = db_document.get("_id")
                 if "execution_times" in db_document:
                     self.mtd_datas["execution_times"] = db_document["execution_times"]
+                if "patient_id" in db_document:
+                    self.mtd_datas["patient_id"] = db_document["patient_id"]
+                if "ui_date" in db_document:
+                    self.mtd_datas["ui_date"] = db_document["ui_date"]
                 self.dict_to_models(db_document)
+                if self.mtd_datas.get("patient_id"):
+                    p_doc = self.db_client.get_patient(self.mtd_datas["patient_id"])
+                    if p_doc:
+                        self.patient = Patient.model_validate(p_doc)
             else:
                 self.logger.warning(
                     "No database document found or created for %s", document
@@ -96,6 +107,36 @@ class PatientMDTForm(DocumentReader):
                                         value = value[a.agent_name]
                                         break
                         self.mtd_datas[key] = m.model_validate(value)
+
+    def _sync_patient_from_admin(
+        self,
+        db_client: Mongodb | None,
+        target_patient_id: str | None = None,
+    ) -> Patient:
+        from src.application.patient import sync_patient_from_admin
+
+        patient_obj = sync_patient_from_admin(
+            mtd_datas=self.mtd_datas,
+            db_client=db_client,
+            target_patient_id=target_patient_id,
+        )
+        self.patient = patient_obj
+        return patient_obj
+
+    def process_patient_association(
+        self,
+        target_patient_id: str | None = None,
+        run_admin_ai: bool = True,
+        callbacks: list | None = None,
+    ) -> Patient:
+        from src.application.patient import process_patient_association
+
+        return process_patient_association(
+            form=self,
+            target_patient_id=target_patient_id,
+            run_admin_ai=run_admin_ai,
+            callbacks=callbacks,
+        )
 
     def read_all_models(self) -> dict:
         for model in self.basemodel_list:
@@ -164,23 +205,33 @@ class PatientMDTForm(DocumentReader):
             self.mtd_datas["execution_times"] = {}
         self.mtd_datas["execution_times"][model.__name__] = duration
 
+        if model.__name__ == "PatientAdministrative":
+            self._sync_patient_from_admin(
+                db_client=self.db_client,
+                target_patient_id=None,
+            )
+
         if upsert and self.db_client is not None:
             self.logger.debug(
                 f"Document final inserted: {json.dumps(self.mtd_datas, default=str)}"
             )
+            upsertable_data = {
+                model.__name__: self.mtd_datas[model.__name__],
+                "execution_times": self.mtd_datas["execution_times"],
+            }
+            if "patient_id" in self.mtd_datas:
+                upsertable_data["patient_id"] = self.mtd_datas["patient_id"]
             self.db_client.update_doc(
                 collection="rcp_info",
                 filter={"file": self.mtd_datas["file"]},
-                upsertable_data={
-                    model.__name__: self.mtd_datas[model.__name__],
-                    "execution_times": self.mtd_datas["execution_times"],
-                },
+                upsertable_data=upsertable_data,
             )
             self.db_client.close()
             self.db_client = None
 
     def delete(self):
         if self.db_client is not None:
+            self.db_client.remove_file_from_patient(self.mtd_datas["file"])
             self.db_client.delete_docs(
                 collections=["rcp_info", "rcp_metadata", "document_cache"],
                 filter={"file": self.mtd_datas["file"]},
@@ -192,7 +243,11 @@ class PatientMDTForm(DocumentReader):
             self.db_client = None
 
     def insert_datas_in_db(self, replace: bool = True):
+        if self.db_client is None and self.config.rcp.display_type == "mongodb":
+            self.db_client = Mongodb(self.config)
         if self.db_client is not None:
+            if "PatientAdministrative" in self.mtd_datas:
+                self._sync_patient_from_admin(db_client=self.db_client)
             if replace:
                 self.db_client.delete_docs(
                     collections=["rcp_info", "rcp_metadata"],

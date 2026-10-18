@@ -40,6 +40,7 @@ class TestLiteLLMConnection(unittest.TestCase):
             api_base="http://localhost:4000/v1",
             api_key="test-api-key",
             model="bge-m3",
+            encoding_format="float",
         )
         self.mock_logger.info.assert_called_with(
             "Succesfully connected to LiteLLM proxy"

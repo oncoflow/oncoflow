@@ -30,6 +30,7 @@ TRANSLATIONS = {
     # Field Descriptions
     "First name of the patient": "Prénom du patient",
     "Last name of the patient": "Nom de famille du patient",
+    "Maiden or birth name of the patient if different from last name": "Nom de naissance du patient (si différent du nom d'usage)",
     "Age of the patient": "Âge du patient",
     "Date of birth of the patient (Format: YYYY-MM-DD)": "Date de naissance du patient (Format : AAAA-MM-JJ)",
     "Date of the MTD (Format: YYYY-MM-DD)": "Date de la RCP (Format : AAAA-MM-JJ)",
@@ -97,6 +98,7 @@ TRANSLATIONS = {
     # Field Name translations
     "first_name": "Prénom",
     "last_name": "Nom",
+    "born_name": "Nom de naissance",
     "age": "Âge",
     "date_birth": "Date de naissance",
     "date_rcp": "Date de la RCP",

@@ -236,3 +236,37 @@ class TestOncowflowAgent(unittest.TestCase):
 
         # Assert
         self.assertEqual(result, self.output_format(**expected_dict))
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.PatientContext")
+    def test_init_and_ask_with_patient_readers(
+        self, mock_patient_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+
+        reader1 = MagicMock(spec=DocumentReader)
+        reader2 = MagicMock(spec=DocumentReader)
+
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            patient_readers=[reader1, reader2],
+            output_format=self.output_format,
+        )
+
+        self.assertEqual(agent.patient_readers, [reader1, reader2])
+        passed_tools = mock_create_agent.call_args.kwargs.get("tools", [])
+        tool_names = [getattr(t, "name", str(t)) for t in passed_tools]
+        self.assertIn("get_patient_mtds_markdown", tool_names)
+        self.assertIn("get_patient_ai_history", tool_names)
+        self.assertNotIn("get_mtd_markdown", tool_names)
+
+        expected_dict = {"response": "Full dossier response"}
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("question"), AIMessage(json.dumps(expected_dict))]
+        }
+
+        result = agent.ask("Summarize patient history")
+        self.assertEqual(result, self.output_format(**expected_dict))
+        mock_patient_context_cls.assert_called_once()
