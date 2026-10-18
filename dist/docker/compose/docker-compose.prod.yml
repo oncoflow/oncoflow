@@ -1,0 +1,307 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-20m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-5}"
+    compress: "true"
+
+services:
+
+  mongod:
+    image: mongodb/mongodb-community-server:latest
+    container_name: oncoflow-mongod
+    restart: unless-stopped
+    logging: *default-logging
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ ! -f /data/configdb/keyfile ]; then
+          openssl rand -base64 756 > /data/configdb/keyfile
+        fi
+        cp /data/configdb/keyfile /tmp/keyfile && chmod 600 /tmp/keyfile ;
+        exec python3 -c "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())" "$$@"
+    command: >-
+      mongod
+      --config /etc/mongod.conf
+      --replSet rs0
+    ports:
+      - "127.0.0.1:27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+      GLIBC_TUNABLES: glibc.pthread.rseq=1
+    volumes:
+      - ./mongod.conf:/etc/mongod.conf:ro
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongodb:/data/db
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongodb_config:/data/configdb
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - search-community
+
+  # ─── LLM Raisonnement sur GPU NVIDIA L4 (24 Go VRAM) ─────────────────────────
+  # Modèle : Qwen3.6-35B-A3B-UD-IQ4_NL (~18.5 Go poids + ~1.5 Go KV cache q4_0)
+  llama-cpp-chat:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+    container_name: llama-cpp-chat-server
+    restart: unless-stopped
+    logging: *default-logging
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - GGML_CUDA_PDL=0
+      - GGML_CUDA_DISABLE_GRAPHS=0
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/models:/models
+      - ./model-config:/models-config:ro
+    ipc: host
+    devices:
+      - nvidia.com/gpu=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        rm -rf /usr/local/cuda*/compat && ldconfig 2>/dev/null || true
+        SERVER_BIN="/app/llama-server"
+        [ -x "$$SERVER_BIN" ] || SERVER_BIN="llama-server"
+        if [ -f "/models/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf" ]; then
+          MODEL_ARGS="-m /models/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf"
+        else
+          MODEL_ARGS="-hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-IQ4_NL"
+        fi
+        exec $$SERVER_BIN $$MODEL_ARGS "$$@"
+      - --
+    command:
+      - "--port"
+      - "8080"
+      - "--host"
+      - "0.0.0.0"
+      - "-c"
+      - "${LLM_CTX_SIZE:-64000}"
+      - "-n"
+      - "8192"
+      - "-ngl"
+      - "99"
+      - "--flash-attn"
+      - "on"
+      - "--load-mode"
+      - "none"
+      - "-b"
+      - "4096"
+      - "-ub"
+      - "1024"
+      - "-t"
+      - "6"
+      - "-np"
+      - "1"
+      - "--temp"
+      - "1.0"
+      - "--top-p"
+      - "0.95"
+      - "--top-k"
+      - "40"
+      - "--min-p"
+      - "0"
+      - "--presence-penalty"
+      - "2.0"
+      - "--repeat-penalty"
+      - "1.0"
+      - "--jinja"
+      - "--reasoning-format"
+      - "deepseek"
+      - "--reasoning-budget"
+      - "6144"
+      - "--reasoning-budget-message"
+      - "\nOkay, I have enough information to answer."
+      - "--no-context-shift"
+      - "--no-warmup"
+      - "--cache-type-k"
+      - "q4_0"
+      - "--cache-type-v"
+      - "q4_0"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 60s
+    networks:
+      - search-community
+
+  # ─── Serveur d'Embeddings (bge-m3 sur CPU pour préserver les 24 Go VRAM L4) ──
+  llama-cpp-embeddings:
+    image: ghcr.io/ggml-org/llama.cpp:server
+    container_name: llama-cpp-embeddings-server
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:8081:8080"
+    volumes:
+      - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/models:/models
+    ipc: host
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        SERVER_BIN="/app/llama-server"
+        [ -x "$$SERVER_BIN" ] || SERVER_BIN="llama-server"
+        if [ -f "/models/bge-m3-Q4_K_M.gguf" ]; then
+          MODEL_ARGS="-m /models/bge-m3-Q4_K_M.gguf"
+        else
+          MODEL_ARGS="--hf-repo gpustack/bge-m3-GGUF --hf-file bge-m3-Q4_K_M.gguf"
+        fi
+        exec $$SERVER_BIN $$MODEL_ARGS "$$@"
+      - --
+    command:
+      - "--port"
+      - "8080"
+      - "--host"
+      - "0.0.0.0"
+      - "--embedding"
+      - "-c"
+      - "8192"
+      - "-b"
+      - "8192"
+      - "-ub"
+      - "8192"
+      - "-ngl"
+      - "0"
+      - "-t"
+      - "4"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - search-community
+
+  # ─── Proxy LiteLLM unifié (Chat + Embeddings) ───────────────────────────────
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: litellm-proxy
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:4000:4000"
+    volumes:
+      - ./litellm-config.prod.yaml:/app/config.yaml:ro
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    depends_on:
+      - llama-cpp-chat
+      - llama-cpp-embeddings
+    networks:
+      - search-community
+
+  # ─── Application Oncoflow UI (Image GHCR buildée par GitHub Actions) ────────
+  oncoflow-ui:
+    image: ${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:${ONCOFLOW_TAG:-latest}
+    container_name: oncoflow-ui
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      APP_DEV_MODE: "false"
+      APP_AUTH_MODE: "oauth_proxy"
+      APP_DOMAIN: ${APP_DOMAIN:-oncology}
+      APP_LANGUAGE: ${APP_LANGUAGE:-french}
+      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+      APP_LOG_TYPE: ${APP_LOG_TYPE:-json}
+      APP_LOG_FILE: "/var/log/oncoflow/oncoflow.log"
+      APP_LOG_MAX_BYTES: ${APP_LOG_MAX_BYTES:-10485760}
+      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+      APP_CONFIGLLM_TYPE: "LiteLLM"
+      APP_CONFIGLLM_URL: "http://litellm"
+      APP_CONFIGLLM_PORT: "4000"
+      APP_CONFIGLLM_EMBEDDINGS_PORT: "4000"
+      APP_CONFIGLLM_MODELS: "openai/agents"
+      APP_CONFIGLLM_EMBEDDINGS: "openai/embeddings"
+      APP_MONGODB_HOST: "mongod"
+      APP_MONGODB_PORT: "27017/?directConnection=true"
+      APP_MONGODB_USER: ${APP_MONGODB_USER:-root}
+      APP_MONGODB_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+      APP_MILVUSDB_HOST: "milvus-standalone"
+      APP_MILVUSDB_PORT: "19530"
+    volumes:
+      - ../../../application/ressources/PatientMDTForm:/app/application/ressources/PatientMDTForm
+      - ../../../application/ressources/documents:/app/application/ressources/documents
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/logs:/var/log/oncoflow
+    depends_on:
+      - mongod
+      - litellm
+    networks:
+      - search-community
+      - milvus
+
+  # ─── OAuth2 Proxy (Authentification GitHub devant Streamlit UI) ──────────────
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+    container_name: oncoflow-oauth2-proxy
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "127.0.0.1:4180:4180"
+    environment:
+      OAUTH2_PROXY_PROVIDER: "github"
+      OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
+      OAUTH2_PROXY_UPSTREAMS: "http://oncoflow-ui:8501"
+      OAUTH2_PROXY_REDIRECT_URL: "https://${PROD_DOMAIN:-oncoflow.bricks-it.fr}/oauth2/callback"
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_EMAIL_DOMAINS: ${OAUTH2_PROXY_EMAIL_DOMAINS:-*}
+      OAUTH2_PROXY_GITHUB_ORG: ${OAUTH2_PROXY_GITHUB_ORG:-}
+      OAUTH2_PROXY_GITHUB_TEAM: ${OAUTH2_PROXY_GITHUB_TEAM:-}
+      OAUTH2_PROXY_GITHUB_USERS: ${OAUTH2_PROXY_GITHUB_USERS:-}
+      OAUTH2_PROXY_PASS_USER_HEADERS: "true"
+      OAUTH2_PROXY_SET_XAUTHREQUEST: "true"
+      OAUTH2_PROXY_PASS_HOST_HEADER: "true"
+      OAUTH2_PROXY_REVERSE_PROXY: "true"
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
+      OAUTH2_PROXY_SILENCE_PING_LOGGING: "true"
+    depends_on:
+      - oncoflow-ui
+    networks:
+      - search-community
+
+  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncoflow.bricks-it.fr)
+  caddy:
+    image: caddy:2-alpine
+    container_name: oncoflow-caddy
+    restart: unless-stopped
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      PROD_DOMAIN: ${PROD_DOMAIN:-oncoflow.bricks-it.fr}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/caddy_data:/data
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/caddy_config:/config
+    depends_on:
+      - oauth2-proxy
+    networks:
+      - search-community
+
+networks:
+  search-community:
+    name: search-community
+  milvus:
+    name: milvus
+    external: true

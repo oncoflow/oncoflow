@@ -6,8 +6,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 ENV UV_PYTHON_DOWNLOADS=never
+ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 
 WORKDIR /app
 
@@ -26,5 +28,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app/application
 
+EXPOSE 8501
+
 # Lancement de l'application
-CMD ["uv", "run", "streamlit", "run", "app-ui.py"]
+CMD ["uv", "run", "--no-sync", "streamlit", "run", "app-ui.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

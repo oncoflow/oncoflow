@@ -1,0 +1,18 @@
+# Configuration logrotate pour Oncoflow
+# Installée automatiquement dans /etc/logrotate.d/oncoflow via :
+#   make logrotate-prod (ou make init-prod)
+
+__ONCOFLOW_LOG_DIR__/*.log
+/tmp/oncoflow-*.log
+{
+    daily
+    rotate 14
+    size 20M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    dateext
+    dateformat -%Y%m%d
+}

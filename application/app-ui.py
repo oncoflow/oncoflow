@@ -55,18 +55,45 @@ if app_config.dev_mode:
         + "\n"
     )
 
-auth_config_path = app_config.auth_config_path
-try:
-    with open(auth_config_path, "r", encoding="utf-8") as file:
-        config = yaml.load(file, Loader=SafeLoader)
-    authenticator = stauth.Authenticate(
-        config["credentials"],
-        config["cookie"]["name"],
-        config["cookie"]["key"],
-        config["cookie"]["expiry_days"],
+auth_mode = app_config.auth_mode.lower()
+authenticator = None
+
+if auth_mode == "oauth_proxy":
+    headers = (
+        st.context.headers
+        if hasattr(st, "context") and hasattr(st.context, "headers")
+        else {}
     )
-except Exception as e:
-    st.error(f"Erreur lors du chargement de la configuration d'authentification : {e}")
+    oauth_user = (
+        headers.get("X-Forwarded-Preferred-Username")
+        or headers.get("X-Auth-Request-Preferred-Username")
+        or headers.get("X-Forwarded-User")
+        or headers.get("X-Auth-Request-User")
+    )
+    oauth_email = headers.get("X-Forwarded-Email") or headers.get(
+        "X-Auth-Request-Email"
+    )
+    if oauth_user or oauth_email:
+        st.session_state["authentication_status"] = True
+        st.session_state["username"] = oauth_user or oauth_email
+        st.session_state["name"] = oauth_email or oauth_user
+    else:
+        st.session_state["authentication_status"] = False
+else:
+    auth_config_path = app_config.auth_config_path
+    try:
+        with open(auth_config_path, "r", encoding="utf-8") as file:
+            config = yaml.load(file, Loader=SafeLoader)
+        authenticator = stauth.Authenticate(
+            config["credentials"],
+            config["cookie"]["name"],
+            config["cookie"]["key"],
+            config["cookie"]["expiry_days"],
+        )
+    except Exception as e:
+        st.error(
+            f"Erreur lors du chargement de la configuration d'authentification : {e}"
+        )
 
 
 st.logo(
@@ -131,12 +158,25 @@ pages["Reports"] = [
 
 if st.session_state.get("authentication_status"):
     with st.sidebar:
-        if st.button("Se déconnecter", key="logout_btn", icon="🚪"):
-            try:
-                authenticator.logout(location="unrendered")
-            except KeyError:
-                pass
-            st.rerun()
+        if auth_mode == "oauth_proxy":
+            user_display = st.session_state.get("username") or st.session_state.get(
+                "name"
+            )
+            if user_display:
+                st.caption(f"👤 Connecté : **{user_display}**")
+            st.link_button(
+                "Se déconnecter",
+                "/oauth2/sign_out",
+                icon="🚪",
+                use_container_width=True,
+            )
+        elif authenticator is not None:
+            if st.button("Se déconnecter", key="logout_btn", icon="🚪"):
+                try:
+                    authenticator.logout(location="unrendered")
+                except KeyError:
+                    pass
+                st.rerun()
 
     pg = st.navigation(pages)
 
@@ -156,12 +196,19 @@ if st.session_state.get("authentication_status"):
 
     pg.run()
 else:
-    try:
-        authenticator.login(location="main")
-    except Exception as e:
-        st.error(f"Erreur d'initialisation de l'authentification : {e}")
+    if auth_mode == "oauth_proxy":
+        st.error(
+            "Accès refusé : en-têtes d'authentification OAuth2 Proxy absents. "
+            "Veuillez accéder à l'application via le portail sécurisé."
+        )
+    else:
+        try:
+            if authenticator is not None:
+                authenticator.login(location="main")
+        except Exception as e:
+            st.error(f"Erreur d'initialisation de l'authentification : {e}")
 
-    if st.session_state.get("authentication_status") is False:
-        st.error("Identifiant ou mot de passe incorrect")
-    elif st.session_state.get("authentication_status") is None:
-        st.warning("Veuillez saisir votre identifiant et votre mot de passe")
+        if st.session_state.get("authentication_status") is False:
+            st.error("Identifiant ou mot de passe incorrect")
+        elif st.session_state.get("authentication_status") is None:
+            st.warning("Veuillez saisir votre identifiant et votre mot de passe")

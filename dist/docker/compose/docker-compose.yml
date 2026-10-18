@@ -7,20 +7,25 @@ services:
       - sh
       - -c
       - |
-        openssl rand -base64 756 > /tmp/keyfile  && chmod 600 /tmp/keyfile ;
+        if [ ! -f /data/configdb/keyfile ]; then
+          openssl rand -base64 756 > /data/configdb/keyfile
+        fi
+        cp /data/configdb/keyfile /tmp/keyfile && chmod 600 /tmp/keyfile ;
         exec python3 -c "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())" "$$@"
     command: >-
          mongod
          --config /etc/mongod.conf
          --replSet rs0
     ports:
-     - 27017:27017
+     - 127.0.0.1:27017:27017
     environment:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
       - ./mongod.conf:/etc/mongod.conf:ro
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongodb:/data/db
+      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongodb_config:/data/configdb
     extra_hosts:
          - "host.docker.internal:host-gateway"
     networks:
