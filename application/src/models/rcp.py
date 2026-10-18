@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
 
@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
 
 class RCPCardResponse(BaseModel):
     file: str
+    patient_id: Optional[str] = None
     patient: str
     date_refresh: Optional[datetime]
     date: Optional[datetime]
@@ -28,6 +29,30 @@ class RCPCardResponse(BaseModel):
     urgency_score: int
     intervention_required: Optional[bool]
     intervention_type: Optional[str]
+
+
+class PatientCardResponse(BaseModel):
+    patient_id: str
+    patient: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_birth: Optional[datetime] = None
+    rcp_count: int = 1
+    latest_file: str
+    date_refresh: Optional[datetime] = None
+    date: Optional[datetime] = None
+    experts: List[str]
+    missing: List[str]
+    urgency: str
+    urgency_score: int
+    intervention_required: Optional[bool] = None
+    intervention_type: Optional[str] = None
+
+
+class PatientDetailResponse(BaseModel):
+    patient: dict[str, Any]
+    latest_file: Optional[str] = None
+    rcps: List[dict[str, Any]]
 
 
 class ChatResponse(BaseModel):

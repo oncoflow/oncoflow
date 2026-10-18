@@ -58,18 +58,23 @@ Oncoflow intègre nativement le **Thésaurus National de Cancérologie Digestive
 
 L'interface est structurée pour être simple et intuitive, accessible depuis n'importe quel navigateur interne à l'hôpital.
 
-### 📇 1. Liste RCP (Cards)
-* **Votre tableau de bord central** : affiche tous les patients programmés pour la prochaine RCP.
-* Chaque patient est présenté sous forme de carte résumée indiquant son niveau d'urgence, son statut d'exhaustivité (complet/incomplet) et la synthèse de sa situation.
+### 📇 1. Dossiers Patients (Cards)
+* **Votre tableau de bord central** : structuré en deux sections complémentaires :
+  * **📁 Dossiers Patients (en haut)** : affiche une carte par patient, synthétisée à partir de sa **dernière fiche RCP analysée** (urgence, statut d'exhaustivité, intervention conseillée, experts pertinents et nombre total de RCP du patient).
+  * **📄 Dernières RCP scannées (en dessous)** : présente les dernières fiches RCP individuelles par ordre chronologique de numérisation/import.
 
-### 📇 2. Fiche RCP (Datas)
-* Vue détaillée d'un patient sélectionné.
-* Présentation claire de la **frise chronologique** des soins, des antécédents, et du rapport d'anomalie.
-* Permet d'interroger directement l'assistant IA sur un point précis du dossier ou sur une recommandation TNCD liée au cas.
+### 📝 2. Dossier Patient (Datas)
+* Vue détaillée unifiée du **Dossier Patient**, organisée en **3 onglets principaux** en haut de page :
+  * **👤 Données patient** : affiche le bandeau d'identité administrative du patient ainsi que la **dernière fiche RCP analysée** (PDF à gauche et onglets *Données Cliniques*, *Assistant IA sur la fiche* et *Aperçu du document* à droite).
+  * **🕰️ Historique des fiches RCP** : permet de remonter dans le temps sur toutes les fiches RCP du patient via un sélecteur chronologique, avec la même vue détaillée par fiche (PDF + *Données Cliniques*, *Assistant IA sur la fiche* isolé sur la fiche courante, et *Aperçu du document*).
+  * **💬 Assistant IA sur le dossier** : onglet de chat interrogeant l'agent expert sur **l'intégralité du dossier patient** (toutes ses fiches RCP passées et présentes, l'historique complet des informations IA extraites via le tool `get_patient_ai_history`, et les référentiels TNCD).
+  * **🔄 Relance IA (Rerun) fiche par fiche** : la relance de l'analyse IA (`🔄 Relancer cette RCP`, `:material/robot: AI exec` par rubrique, ou `:repeat: AI process` en Power mode) est sélectionnable et exécutée **exclusivement RCP par RCP** (jamais sur l'ensemble du dossier simultanément).
 
 ### 🚀 3. Charger le/les fichier(s) (Upload)
-* Espace de dépôt sécurisé par glisser-déposer.
-* Glissez simplement le dossier patient sous format PDF (scanné ou numérique). L'OCR local s'occupe de le déchiffrer instantanément.
+* Espace de dépôt sécurisé supportant l'import **unitaire ou par lot (batch)** de plusieurs fiches PDF RCP.
+* **Association à un patient** :
+  * **Mode Automatique (par défaut)** : lance l'indexation RAG et l'extraction administrative par l'IA (`Prénom`, `Nom`, `Date de naissance`) pour créer automatiquement le patient ou rattacher la fiche à un dossier patient existant.
+  * **Association manuelle** : permet de sélectionner un patient existant (globalement pour le lot ou fichier par fichier avant de lancer l'import).
 
 ### 🤖 4. Agents and Ressources
 * Vue transparente sur l'activité des "agents" IA spécialisés à l'œuvre. Vous pouvez voir quel agent (le "Docteur virtuel" ou le "Spécialiste TNCD") a extrait et validé les données.

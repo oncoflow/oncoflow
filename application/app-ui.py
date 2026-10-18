@@ -97,11 +97,13 @@ pages = {}
 pages["Patient mdt Oncologic"] = [
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/cards.py",
-        title="Liste RCP",
+        title="Dossiers Patients",
         icon="📇",
         default=True,
     ),
-    st.Page(f"{PAGES_DIR_SRC}/patient_mdt/datas.py", title="RCP", icon="📝"),
+    st.Page(
+        f"{PAGES_DIR_SRC}/patient_mdt/datas.py", title="Dossier Patient", icon="📝"
+    ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/upload.py",
         title="Charger le/les fichier(s)",
@@ -138,11 +140,18 @@ if st.session_state.get("authentication_status"):
 
     pg = st.navigation(pages)
 
-    # Redirection automatique vers la fiche patient si spécifiée dans l'URL
-    if "file" in st.query_params and pg.title != "RCP":
+    # Redirection automatique vers le dossier patient si spécifié dans l'URL
+    if (
+        "patient_id" in st.query_params or "file" in st.query_params
+    ) and pg.title != "Dossier Patient":
+        redirect_params = {}
+        if "patient_id" in st.query_params:
+            redirect_params["patient_id"] = st.query_params["patient_id"]
+        if "file" in st.query_params:
+            redirect_params["file"] = st.query_params["file"]
         st.switch_page(
             f"{PAGES_DIR_SRC}/patient_mdt/datas.py",
-            query_params={"file": st.query_params["file"]},
+            query_params=redirect_params,
         )
 
     pg.run()

@@ -4,7 +4,10 @@ from langchain_core.documents import Document
 
 from src.application.agent.tools import (
     get_mtd_markdown,
+    get_patient_ai_history,
+    get_patient_mtds_markdown,
     search_on_mtd,
+    search_on_patient_mtds,
     search_on_ressources,
 )
 
@@ -16,20 +19,52 @@ class TestAgentTools(unittest.TestCase):
 
         # Create a mock reader
         self.mock_reader = MagicMock()
+        self.mock_reader.document = "rcp1.pdf"
+        self.mock_reader.mtd_datas = {
+            "file": "rcp1.pdf",
+            "PatientAdministrative": {
+                "first_name": "Jean",
+                "last_name": "Dupont",
+                "date_rcp": "2025-01-15T00:00:00",
+            },
+            "TumorLocation": {"tumor_location": "Pancreas"},
+        }
         self.mock_exporter_doc = MagicMock()
         self.mock_exporter_doc.page_content = "# Mock Markdown Patient Record"
         self.mock_reader.markdown_exporter = [self.mock_exporter_doc]
 
+        # Create a second mock reader for patient dossier tests
+        self.mock_reader2 = MagicMock()
+        self.mock_reader2.document = "rcp2.pdf"
+        self.mock_reader2.mtd_datas = {
+            "file": "rcp2.pdf",
+            "PatientAdministrative": {
+                "first_name": "Jean",
+                "last_name": "Dupont",
+                "date_rcp": "2026-03-18T00:00:00",
+            },
+            "isInterventionRequiered": {
+                "intervention_required": True,
+                "intervention_type": "Chirurgie",
+            },
+        }
+        self.mock_exporter_doc2 = MagicMock()
+        self.mock_exporter_doc2.page_content = "# Follow-up Patient Record"
+        self.mock_reader2.markdown_exporter = [self.mock_exporter_doc2]
+
         # Create mock vector database client for search
         self.mock_clientdb = MagicMock()
         self.mock_reader.vecdb.clientdb = self.mock_clientdb
+
+        self.mock_clientdb2 = MagicMock()
+        self.mock_reader2.vecdb.clientdb = self.mock_clientdb2
 
         # Create a mock additional reader
         self.mock_add_reader = MagicMock()
         self.mock_add_clientdb = MagicMock()
         self.mock_add_reader.vecdb.clientdb = self.mock_add_clientdb
 
-        # Configure ToolRuntime context
+        # Configure ToolRuntime context for single RCP
         self.mock_runtime = MagicMock()
         self.mock_runtime.context = {
             "logger": self.mock_logger,
@@ -37,10 +72,43 @@ class TestAgentTools(unittest.TestCase):
             "additionnal_readers": [self.mock_add_reader],
         }
 
+        # Configure ToolRuntime context for PatientContext
+        self.mock_patient_runtime = MagicMock()
+        self.mock_patient_runtime.context = {
+            "logger": self.mock_logger,
+            "patient_readers": [self.mock_reader, self.mock_reader2],
+            "additionnal_readers": [self.mock_add_reader],
+        }
+
     def test_get_mtd_markdown_success(self):
         result = get_mtd_markdown.func(self.mock_runtime)
         self.assertEqual(result, "# Mock Markdown Patient Record")
         self.mock_logger.info.assert_called_with("tool get_mtd_markdown called")
+
+    def test_get_patient_mtds_markdown_success(self):
+        result = get_patient_mtds_markdown.func(self.mock_patient_runtime)
+        expected = (
+            "=== FICHE RCP : rcp1.pdf ===\n# Mock Markdown Patient Record\n\n"
+            "=== FICHE RCP : rcp2.pdf ===\n# Follow-up Patient Record"
+        )
+        self.assertEqual(result, expected)
+        self.mock_logger.info.assert_called_with(
+            "tool get_patient_mtds_markdown called"
+        )
+
+    def test_get_patient_ai_history_success(self):
+        result = get_patient_ai_history.func(self.mock_patient_runtime)
+        self.assertIn(
+            "=== HISTORIQUE IA — FICHE RCP : rcp1.pdf (Date RCP : 2025-01-15) ===",
+            result,
+        )
+        self.assertIn('"tumor_location": "Pancreas"', result)
+        self.assertIn(
+            "=== HISTORIQUE IA — FICHE RCP : rcp2.pdf (Date RCP : 2026-03-18) ===",
+            result,
+        )
+        self.assertIn('"intervention_type": "Chirurgie"', result)
+        self.mock_logger.info.assert_called_with("tool get_patient_ai_history called")
 
     def test_search_on_mtd_success(self):
         # Setup mock documents returned by search
@@ -71,6 +139,22 @@ class TestAgentTools(unittest.TestCase):
             "Source: {'page': 2}\nContent: Metastatic disease"
         )
         self.assertEqual(serialized, expected_serialized)
+
+    def test_search_on_patient_mtds_success(self):
+        doc1 = Document(page_content="Initial diagnosis", metadata={"file": "rcp1.pdf"})
+        doc2 = Document(page_content="Second line chemo", metadata={"file": "rcp2.pdf"})
+        self.mock_clientdb.max_marginal_relevance_search.return_value = [doc1]
+        self.mock_clientdb2.max_marginal_relevance_search.return_value = [doc2]
+
+        serialized, docs = search_on_patient_mtds.func(
+            self.mock_patient_runtime,
+            query="chemotherapy",
+            k=1,
+        )
+
+        self.assertEqual(len(docs), 2)
+        self.assertIn("Initial diagnosis", serialized)
+        self.assertIn("Second line chemo", serialized)
 
     def test_search_on_ressources_success(self):
         # Setup mock documents from additional reader

@@ -19,7 +19,9 @@ class OllamaCompatibleOpenAIEmbeddings(OpenAIEmbeddings):
         # This fixes compatibility with local OpenAI-compatible embedding servers (like Ollama)
         # that only accept standard string lists as input.
         model_name = self.model if self.model else engine
-        params = {"model": model_name} | kwargs
+        params = {"model": model_name, "encoding_format": "float"} | {
+            k: v for k, v in kwargs.items() if v is not None
+        }
         response = self.client.create(input=texts, **params)
         if not isinstance(response, dict):
             response = response.model_dump()

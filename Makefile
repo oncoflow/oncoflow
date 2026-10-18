@@ -29,7 +29,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui ui-dev proxy proxy-stop dev
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -50,6 +50,7 @@ help:
 	@echo -e "  $(YELLOW)make coverage$(RESET)            Mesure le pourcentage de couverture de test"
 	@echo -e "  $(YELLOW)make lint$(RESET)                Vérifie le code avec Ruff"
 	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
+	@echo -e "  $(YELLOW)make get-bugs$(RESET)            Récupère et affiche les rapports de bugs depuis MongoDB"
 	@echo ""
 	@echo -e "$(GREEN)Commandes d'infrastructure & Ollama :$(RESET)"
 	@echo -e "  $(YELLOW)make docker-up$(RESET)        Démarre Milvus et MongoDB via Docker Compose"
@@ -187,6 +188,12 @@ lint:
 format:
 	@echo -e "$(CYAN)--> Formatage Ruff sur src/...$(RESET)"
 	cd $(APP_DIR) && $(UV) run ruff format src/
+
+## Récupère et affiche les rapports de bugs stockés dans MongoDB
+get-bugs:
+	@echo -e "$(CYAN)--> Récupération des rapports de bugs depuis MongoDB...$(RESET)"
+	@cd $(APP_DIR) && $(UV) run python scripts/get_bugs.py
+
 
 ## Initialise le replica set MongoDB (rs0) si nécessaire
 mongo-init:
