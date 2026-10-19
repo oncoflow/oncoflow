@@ -36,7 +36,7 @@ dependencies = [
     "streamlit>=1.57.0",
     "streamlit-authenticator>=0.4.2",
     "streamlit-pdf-viewer>=0.0.29",
-    "unstructured[pdf]>=0.27.22",
+    "unstructured[pdf]>=0.27.27",
     "pytz>=2026.4",
     "protobuf<8.0.0",
     "langchain>=1.3.4",
