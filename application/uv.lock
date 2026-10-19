@@ -337,7 +337,7 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.57.0" },
     { name = "streamlit-authenticator", specifier = ">=0.4.2" },
     { name = "streamlit-pdf-viewer", specifier = ">=0.0.29" },
-    { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.22" },
+    { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.27" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
@@ -6639,7 +6639,7 @@ wheels = [
 
 [[package]]
 name = "unstructured"
-version = "0.27.22"
+version = "0.27.27"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "beautifulsoup4" },
@@ -6667,9 +6667,9 @@ dependencies = [
     { name = "unstructured-client" },
     { name = "wrapt" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/5e/d5ef85aa6c82a0d72d42737b4b73831a11a4d69337ba6b755bf9e4d8efed/unstructured-0.27.22.tar.gz", hash = "sha256:c7942951941b2fac6c9f535937b71e099db52f23c02e6d7db2db51a7f98aac83", size = 1590860, upload-time = "2026-10-08T14:44:15.684Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/69/7a766b5b14fa99c2a34d6b4a4661692d79252e0db84809aba417fa2f57ca/unstructured-0.27.27.tar.gz", hash = "sha256:1a7b87db4bc70e574b8495e8fc8538d1bac501ce1405c63a2fd1675b043733c6", size = 1595012, upload-time = "2026-10-15T00:46:33.304Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/f4/4ac0da8b518f9487c2f18f3418e54358be4ea1630aa68525b205ed8dde84/unstructured-0.27.22-py3-none-any.whl", hash = "sha256:a3fc78e036f497bfc86185ea232daf103dc6435f264fb3d8ee5bb418f866f169", size = 1652026, upload-time = "2026-10-08T14:44:13.513Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/a7/1c34b1953384fe545b3beb95bf6d9adbd45e8eceac93d4973b86987f0c01/unstructured-0.27.27-py3-none-any.whl", hash = "sha256:0cacd0cf26cb965608d7a69385dfff57daba8a510fe88b1406ce2f2be357046f", size = 1656749, upload-time = "2026-10-15T00:46:30.483Z" },
 ]
 
 [package.optional-dependencies]
