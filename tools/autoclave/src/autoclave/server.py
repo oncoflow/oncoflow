@@ -1,4 +1,4 @@
-"""Interface web locale de vérification (FastAPI + page statique sans dépendance externe)."""
+"""Autoclave : interface web locale de vérification (FastAPI + page statique sans dépendance externe)."""
 
 import json
 import tempfile
@@ -17,7 +17,7 @@ from .workspace import STATUSES, Annotations, Workspace
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 ALLOWED_SUFFIXES = {".pdf", ".docx"}
-STATIC = files("pseudonymizer") / "static"
+STATIC = files("autoclave") / "static"
 
 
 class SpanIn(BaseModel):
@@ -40,7 +40,7 @@ class LexiconIn(BaseModel):
 
 
 def create_app(workspace: Workspace) -> FastAPI:
-    app = FastAPI(title="Pseudonymiseur", docs_url=None, redoc_url=None, openapi_url=None)
+    app = FastAPI(title="Autoclave", docs_url=None, redoc_url=None, openapi_url=None)
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
     def doc_or_404(doc_id: str) -> str:
@@ -62,7 +62,7 @@ def create_app(workspace: Workspace) -> FastAPI:
 
     @app.get("/favicon.ico")
     def favicon():
-        svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect width="16" height="16" rx="4" fill="#2f5bea"/><rect x="3" y="6" width="10" height="4" rx="1" fill="#fff"/></svg>'
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect x="3" y="5" width="26" height="22" rx="6" fill="none" stroke="#2f5bea" stroke-width="2.4"/><circle cx="16" cy="16" r="6.2" fill="none" stroke="#2f5bea" stroke-width="2.4"/><path d="M16 12.6v6.8M12.6 16h6.8" stroke="#2f5bea" stroke-width="2.4" stroke-linecap="round"/><circle cx="24.5" cy="9.5" r="1.4" fill="#2f5bea"/></svg>'
         return Response(svg, media_type="image/svg+xml")
 
     @app.get("/api/config")

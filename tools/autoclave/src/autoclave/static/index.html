@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pseudonymiseur</title>
+  <title>Autoclave · stérilisation de documents médicaux</title>
+  <link rel="icon" href="/favicon.ico" type="image/svg+xml">
   <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
   <header class="topbar">
     <button class="icon-btn" id="toggle-sidebar" title="Afficher / masquer les documents">☰</button>
-    <div class="brand">Pseudonymiseur <span class="brand-sub">vérification locale</span></div>
+    <div class="brand"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="5" width="26" height="22" rx="6" fill="none" stroke="currentColor" stroke-width="2.4"/><circle cx="16" cy="16" r="6.2" fill="none" stroke="currentColor" stroke-width="2.4"/><path d="M16 12.6v6.8M12.6 16h6.8" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="24.5" cy="9.5" r="1.4" fill="currentColor"/></svg><span>Autoclave</span> <span class="brand-sub">stérilisation de documents médicaux</span></div>
     <div class="doc-title" id="doc-title"></div>
     <div class="spacer"></div>
     <div class="segmented" role="tablist">
@@ -22,7 +23,7 @@
     </select>
     <span class="save-state" id="save-state"></span>
     <button class="btn" id="btn-download" title="Télécharger le Markdown pseudonymisé">Télécharger</button>
-    <button class="btn primary" id="btn-validate" title="Marquer le document comme vérifié (V)">Valider le document</button>
+    <button class="btn primary" id="btn-validate" title="Marquer le document comme vérifié (V)">Déclarer stérile</button>
     <button class="icon-btn" id="btn-help" title="Raccourcis clavier (?)">?</button>
   </header>
 
@@ -43,8 +44,8 @@
 
     <main class="workspace" id="workspace">
       <div class="empty" id="empty">
-        <h2>Aucun document ouvert</h2>
-        <p>Déposez une fiche (PDF ou DOCX) : elle est convertie en Markdown par Docling, puis les identifiants sont repérés par eds-pseudo et des règles complémentaires.</p>
+        <h2>Autoclave prêt</h2>
+        <p>Déposez une fiche (PDF ou DOCX) pour lancer un cycle : elle est convertie en Markdown par Docling, puis les identifiants sont repérés par eds-pseudo et des règles complémentaires.</p>
         <p>Vous corrigez ensuite à la souris : <b>sélectionnez</b> un passage encore identifiant pour le masquer, <b>cliquez</b> sur une détection pour la corriger. Chaque correction enrichit le lexique local et améliore les documents suivants.</p>
       </div>
 
@@ -90,7 +91,7 @@
         <tr><td><kbd>J</kbd> / <kbd>K</kbd></td><td>entité suivante / précédente</td></tr>
         <tr><td><kbd>X</kbd></td><td>« pas identifiant » ou rétablir l'entité courante</td></tr>
         <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>annuler</td></tr>
-        <tr><td><kbd>V</kbd></td><td>valider le document</td></tr>
+        <tr><td><kbd>V</kbd></td><td>déclarer le document stérile (validé)</td></tr>
         <tr><td><kbd>Échap</kbd></td><td>fermer</td></tr>
       </table>
     </div>

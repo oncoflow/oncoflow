@@ -96,13 +96,13 @@ jobs:
             echo "::warning title=GHCR Push Failed::Failed to push Docker image to ghcr.io ($IMAGE_ID:$VERSION). Check GitHub Packages permissions in organization/repository settings."
           fi
 
-  pseudonymizer:
+  autoclave:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     defaults:
       run:
-        working-directory: tools/pseudonymizer
+        working-directory: tools/autoclave
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -111,7 +111,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-          cache-dependency-glob: "tools/pseudonymizer/uv.lock"
+          cache-dependency-glob: "tools/autoclave/uv.lock"
 
       - name: Install dependencies
         run: uv sync --frozen

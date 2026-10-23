@@ -1,4 +1,4 @@
-"""Ligne de commande : ``pseudonymizer --help``."""
+"""Ligne de commande : ``autoclave --help``."""
 
 import argparse
 import json
@@ -6,8 +6,8 @@ import logging
 import sys
 from pathlib import Path
 
-DEFAULT_WORKSPACE = Path("~/.pseudonymizer").expanduser()
-logger = logging.getLogger("pseudonymizer")
+DEFAULT_WORKSPACE = Path("~/.autoclave").expanduser()
+logger = logging.getLogger("autoclave")
 
 
 def _detector(args):
@@ -71,7 +71,7 @@ def cmd_evaluate(args):
 
     configs = {
         "eds-pseudo (règles seules)": DetectorConfig.eds_only(),
-        "pseudonymizer": DetectorConfig(eds_model=args.model),
+        "autoclave (complet)": DetectorConfig(eds_model=args.model),
     }
     for name, config in configs.items():
         for suffix in args.formats:
@@ -98,7 +98,7 @@ def _write(path: Path | None, text: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="pseudonymizer", description="Pseudonymisation locale de documents médicaux.")
+    parser = argparse.ArgumentParser(prog="autoclave", description="Pseudonymisation locale de documents médicaux.")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -111,7 +111,7 @@ def main(argv: list[str] | None = None) -> None:
                 "--workspace",
                 type=Path,
                 default=DEFAULT_WORKSPACE,
-                help="espace de travail (défaut : ~/.pseudonymizer)",
+                help="espace de travail (défaut : ~/.autoclave)",
             )
 
     p = sub.add_parser("convert", help="convertir un PDF/DOCX en Markdown")

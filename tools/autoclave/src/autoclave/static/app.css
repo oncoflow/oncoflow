@@ -52,7 +52,8 @@ button, select, input { font: inherit; color: inherit; }
 
 /* Barre du haut */
 .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line); min-height: 52px; }
-.brand { font-weight: 700; letter-spacing: .2px; white-space: nowrap; }
+.brand { font-weight: 700; letter-spacing: .3px; white-space: nowrap; display: inline-flex; align-items: center; gap: 8px; }
+.brand .logo { width: 24px; height: 24px; color: var(--accent); }
 .brand-sub { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
 .doc-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .btn { border: 1px solid var(--line); background: var(--panel); padding: 6px 12px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; transition: background .15s, border-color .15s; }

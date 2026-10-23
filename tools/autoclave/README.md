@@ -1,6 +1,16 @@
-# Pseudonymiseur
+# Autoclave
 
-Outil **autonome et 100 % local** de pseudonymisation de documents médicaux (fiches de RCP, comptes rendus, courriers), avec une **interface web de vérification humaine**. Il ne dépend pas d'Oncoflow et peut être réutilisé dans d'autres projets.
+> *Stérilisation de documents médicaux.* Au bloc, l'autoclave stérilise les instruments ; ici, il retire des documents ce qui permet d'identifier un patient, avant qu'ils ne quittent le service.
+
+**Autoclave** est un outil **autonome et 100 % local** de pseudonymisation de documents médicaux (fiches de RCP, comptes rendus, courriers), avec une **interface web de vérification humaine**. Il ne dépend pas d'Oncoflow et peut être réutilisé dans d'autres projets.
+
+Un document passe par trois états dans l'interface :
+
+| État | Signification |
+| :-- | :-- |
+| **Contaminé** | Importé et analysé, pas encore relu |
+| **En cycle** | En cours de vérification |
+| **Stérile** | Validé par un humain ; inclus dans l'export d'entraînement |
 
 Chaîne de traitement :
 
@@ -14,7 +24,7 @@ Chaîne de traitement :
 ## Installation
 
 ```bash
-cd tools/pseudonymizer
+cd tools/autoclave
 uv sync
 ```
 
@@ -39,21 +49,21 @@ Le modèle public [AP-HP/eds-pseudo-public](https://hf.co/AP-HP/eds-pseudo-publi
 
 ```bash
 # Interface de vérification (http://127.0.0.1:8765)
-uv run pseudonymizer serve
+uv run autoclave serve
 
 # Importer des documents dans l'espace de travail
-uv run pseudonymizer add fiche1.pdf fiche2.docx
+uv run autoclave add fiche1.pdf fiche2.docx
 
 # En ligne de commande, sans vérification
-uv run pseudonymizer convert fiche.pdf -o fiche.md
-uv run pseudonymizer pseudonymize fiche.pdf -o fiche.pseudo.md                       # [NOM], [DATE]...
-uv run pseudonymizer pseudonymize fiche.pdf --strategy surrogate --mapping table.json # valeurs fictives
+uv run autoclave convert fiche.pdf -o fiche.md
+uv run autoclave pseudonymize fiche.pdf -o fiche.pseudo.md                       # [NOM], [DATE]...
+uv run autoclave pseudonymize fiche.pdf --strategy surrogate --mapping table.json # valeurs fictives
 
 # Exporter les documents validés pour entraîner eds-pseudo (scripts/train.py)
-uv run pseudonymizer export -o annotations.jsonl
+uv run autoclave export -o annotations.jsonl
 ```
 
-L'espace de travail est `~/.pseudonymizer` par défaut (option `-w`). Il est **hors du dépôt** et contient des données réelles : documents, lexique et table de correspondance. Protégez-le comme le dossier patient.
+L'espace de travail est `~/.autoclave` par défaut (option `-w`). Il est **hors du dépôt** et contient des données réelles : documents, lexique et table de correspondance. Protégez-le comme le dossier patient.
 
 ### Méthodes de remplacement
 
@@ -66,6 +76,8 @@ La table de correspondance (`--mapping`) permet de ré-identifier le document : 
 
 ## Interface de vérification
 
+Lancement : `uv run autoclave serve` (ou `make autoclave` depuis la racine d'Oncoflow).
+
 | Action | Geste |
 | :-- | :-- |
 | Masquer un passage oublié | Le sélectionner à la souris (la sélection s'ajuste aux mots entiers), puis choisir l'étiquette : clic, touches `1`…`0`, ou `Entrée` pour la dernière étiquette utilisée |
@@ -73,7 +85,7 @@ La table de correspondance (`--mapping`) permet de ré-identifier le document : 
 | Parcourir les entités | `J` / `K` ; l'entité courante est encadrée dans le PDF |
 | Annuler | `Ctrl+Z`, ou le bouton « Annuler » de la notification |
 | Vérifier le résultat | Onglet « Aperçu pseudonymisé » |
-| Terminer | « Valider le document » (`V`) : le document entre dans l'export d'entraînement |
+| Terminer | « Déclarer stérile » (`V`) : le document entre dans l'export d'entraînement |
 
 Côté PDF, chaque entité est encadrée de sa couleur. Survoler une entité d'un côté la met en évidence de l'autre ; cliquer sur un cadre du PDF ouvre l'entité correspondante dans le texte. Pendant une sélection, le passage est recherché dans le PDF (cadre pointillé orange) pour vérifier le parallèle.
 
@@ -104,17 +116,17 @@ eds-pseudo est conçu pour des comptes rendus rédigés de l'AP-HP. Sur des fich
 
 ### Mesure
 
-`pseudonymizer evaluate` mesure les fuites sur un jeu fictif dont on connaît les identifiants : patient, médecins, adresse, IPP, date de naissance. Le jeu est généré par `application/scripts/fake_rcp` d'Oncoflow : 5 centres aux mises en page différentes, PDF et DOCX.
+`autoclave evaluate` mesure les fuites sur un jeu fictif dont on connaît les identifiants : patient, médecins, adresse, IPP, date de naissance. Le jeu est généré par `application/scripts/fake_rcp` d'Oncoflow : 5 centres aux mises en page différentes, PDF et DOCX.
 
 ```bash
 cd application && uv run python -m scripts.fake_rcp -n 20 --seed 11 -o /tmp/fake
-cd ../tools/pseudonymizer && uv run pseudonymizer evaluate /tmp/fake
+cd ../tools/autoclave && uv run autoclave evaluate /tmp/fake
 ```
 
 | Détection | DOCX | PDF (repli PyMuPDF) |
 | :-- | :-- | :-- |
 | Règles eds-pseudo seules | 74,0 % des identifiants masqués (81 fuites / 312) | 74,0 % |
-| Pseudonymiseur | **99,7 %** (1 fuite / 312) | **99,7 %** |
+| Autoclave | **99,7 %** (1 fuite / 312) | **99,7 %** |
 
 La fuite restante est une ville fictive homonyme d'un mot clinique (« Masse »). Ces chiffres portent sur des documents synthétiques : ils ne remplacent pas une vérification humaine sur de vrais documents, qui est précisément le rôle de l'interface.
 
@@ -125,7 +137,7 @@ uv run pytest
 uv run ruff check . && uv run ruff format --check .
 ```
 
-Organisation de `src/pseudonymizer/` :
+Organisation de `src/autoclave/` :
 
 | Module | Rôle |
 | :-- | :-- |

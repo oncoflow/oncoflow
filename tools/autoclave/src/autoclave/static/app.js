@@ -49,7 +49,7 @@ function toast(message, { error = false, action = null, timeout = 3500 } = {}) {
 
 // --- Documents -----------------------------------------------------------------------
 
-const STATUS_TEXT = { a_verifier: "À vérifier", en_cours: "En cours", valide: "Validé" };
+const STATUS_TEXT = { a_verifier: "Contaminé", en_cours: "En cycle", valide: "Stérile" };
 
 async function loadDocs() {
   state.docs = await api("/api/documents");
@@ -96,7 +96,7 @@ async function upload(files) {
   for (const file of files) {
     const form = new FormData();
     form.append("file", file);
-    toast(`Conversion et analyse de « ${file.name} »…`, { timeout: 2500 });
+    toast(`Cycle lancé pour « ${file.name} » : conversion et détection…`, { timeout: 2500 });
     try {
       lastId = (await api("/api/documents", { method: "POST", body: form })).id;
     } catch (error) {
@@ -464,7 +464,7 @@ async function validate() {
   updateValidateButton();
   loadDocs();
   if (status === "valide") {
-    toast("Document validé : ses annotations seront incluses dans l'export d'entraînement");
+    toast("Document stérile : ses annotations entrent dans l'export d'entraînement");
     const next = state.docs.find((d) => d.status !== "valide" && d.id !== state.doc.id);
     if (next) toast(`Document suivant : ${next.name}`, { action: { label: "Ouvrir", run: () => openDoc(next.id) } });
   }
@@ -473,7 +473,7 @@ async function validate() {
 function updateValidateButton() {
   const button = $("#btn-validate");
   const done = state.doc?.status === "valide";
-  button.textContent = done ? "Validé ✓" : "Valider le document";
+  button.textContent = done ? "Stérile ✓" : "Déclarer stérile";
   button.classList.toggle("done", done);
 }
 

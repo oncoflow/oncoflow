@@ -7,14 +7,14 @@ import pytest
 from docx import Document as DocxDocument
 from fastapi.testclient import TestClient
 
-from pseudonymizer.convert import convert
-from pseudonymizer.detect import Detector, DetectorConfig
-from pseudonymizer.entities import Span, resolve
-from pseudonymizer.lexicon import Lexicon, preceding_cue
-from pseudonymizer.pseudonymize import _shift_date, pseudonymize
-from pseudonymizer.rules import cue_spans, normalize_cue, pattern_spans
-from pseudonymizer.server import create_app
-from pseudonymizer.workspace import Workspace
+from autoclave.convert import convert
+from autoclave.detect import Detector, DetectorConfig
+from autoclave.entities import Span, resolve
+from autoclave.lexicon import Lexicon, preceding_cue
+from autoclave.pseudonymize import _shift_date, pseudonymize
+from autoclave.rules import cue_spans, normalize_cue, pattern_spans
+from autoclave.server import create_app
+from autoclave.workspace import Workspace
 
 # Document entièrement fictif.
 FORM = """\
@@ -205,7 +205,7 @@ def test_convert_docx_with_docling(sample_docx):
 def test_workspace_and_api(tmp_path, sample_pdf):
     workspace = Workspace(tmp_path / "ws")
     client = TestClient(create_app(workspace))
-    assert "Pseudonymiseur" in client.get("/").text
+    assert "Autoclave" in client.get("/").text
 
     with sample_pdf.open("rb") as f:
         doc_id = client.post("/api/documents", files={"file": ("fiche.pdf", f, "application/pdf")}).json()["id"]
