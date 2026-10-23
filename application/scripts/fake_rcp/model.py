@@ -112,6 +112,29 @@ class FakeCase:
         present = {specialty for specialty, _ in self.participants}
         return [s for s in self.required_specialties if s not in present]
 
+    def identifiers(self) -> list[dict[str, str]]:
+        """Valeurs identifiantes présentes dans le document (pour évaluer une pseudonymisation)."""
+        p = self.patient
+        people = [
+            p,
+            self.gp,
+            self.requester,
+            self.presenter,
+            *(person for _, person in self.participants),
+        ]
+        values = [("PRENOM", x.first_name) for x in people] + [
+            ("NOM", x.last_name) for x in people
+        ]
+        values += [
+            ("DATE_NAISSANCE", p.birth_date.isoformat()),
+            ("ADRESSE", p.address),
+            ("ZIP", p.postcode),
+            ("VILLE", p.city),
+            ("IPP", p.ipp),
+        ]
+        unique = dict.fromkeys(values)
+        return [{"label": label, "value": value} for label, value in unique]
+
     def ground_truth(self) -> dict:
         return {
             "case_id": self.case_id,
@@ -128,6 +151,7 @@ class FakeCase:
                 "ecog": self.patient.ecog,
                 "weight_loss_pct": self.patient.weight_loss_pct,
             },
+            "identifiers": self.identifiers(),
             "icd10": self.icd10,
             "diagnosis": self.diagnosis,
             "tnm": self.tnm,

@@ -29,7 +29,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev fake-rcp
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev fake-rcp pseudonymizer
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -48,6 +48,7 @@ help:
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
 	@echo -e "  $(YELLOW)make test$(RESET)                Exécute la suite de tests Pytest"
 	@echo -e "  $(YELLOW)make fake-rcp$(RESET)            Génère des fiches RCP fictives Word + PDF (N=10 SEED=0)"
+	@echo -e "  $(YELLOW)make pseudonymizer$(RESET)       Interface locale de pseudonymisation et de vérification"
 	@echo -e "  $(YELLOW)make coverage$(RESET)            Mesure le pourcentage de couverture de test"
 	@echo -e "  $(YELLOW)make lint$(RESET)                Vérifie le code avec Ruff"
 	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
@@ -183,6 +184,11 @@ coverage:
 fake-rcp:
 	@echo -e "$(CYAN)--> Génération de fiches RCP fictives...$(RESET)"
 	cd $(APP_DIR) && $(UV) run python -m scripts.fake_rcp -n $(or $(N),10) --seed $(or $(SEED),0)
+
+## Lance l'interface locale de pseudonymisation (tools/pseudonymizer)
+pseudonymizer:
+	@echo -e "$(CYAN)--> Pseudonymiseur : http://127.0.0.1:8765$(RESET)"
+	cd tools/pseudonymizer && $(UV) run pseudonymizer serve
 
 ## Analyse la qualité et le style du code avec Ruff
 lint:

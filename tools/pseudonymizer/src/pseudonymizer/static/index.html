@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pseudonymiseur</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <button class="icon-btn" id="toggle-sidebar" title="Afficher / masquer les documents">☰</button>
+    <div class="brand">Pseudonymiseur <span class="brand-sub">vérification locale</span></div>
+    <div class="doc-title" id="doc-title"></div>
+    <div class="spacer"></div>
+    <div class="segmented" role="tablist">
+      <button role="tab" data-view="annotate" class="active">Annoter</button>
+      <button role="tab" data-view="preview">Aperçu pseudonymisé</button>
+    </div>
+    <select id="strategy" title="Méthode de remplacement" hidden>
+      <option value="placeholder">Étiquettes [NOM]</option>
+      <option value="surrogate">Valeurs fictives cohérentes</option>
+    </select>
+    <span class="save-state" id="save-state"></span>
+    <button class="btn" id="btn-download" title="Télécharger le Markdown pseudonymisé">Télécharger</button>
+    <button class="btn primary" id="btn-validate" title="Marquer le document comme vérifié (V)">Valider le document</button>
+    <button class="icon-btn" id="btn-help" title="Raccourcis clavier (?)">?</button>
+  </header>
+
+  <div class="layout">
+    <aside class="sidebar" id="sidebar">
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="file-input" accept=".pdf,.docx" multiple hidden>
+        <strong>Déposer des PDF ou DOCX</strong>
+        <span>ou cliquer pour choisir — traitement 100 % local</span>
+      </label>
+      <div class="doc-list" id="doc-list"></div>
+      <div class="sidebar-footer">
+        <button class="btn ghost" id="btn-lexicon">Lexique appris</button>
+        <button class="btn ghost" id="btn-redetect-all" title="Relancer la détection sur tous les documents avec le lexique appris">Ré-analyser tout</button>
+        <a class="btn ghost" id="btn-export" href="/api/export/training.jsonl" download="annotations.jsonl" title="Documents validés au format d'entraînement d'eds-pseudo">Exporter les annotations</a>
+      </div>
+    </aside>
+
+    <main class="workspace" id="workspace">
+      <div class="empty" id="empty">
+        <h2>Aucun document ouvert</h2>
+        <p>Déposez une fiche (PDF ou DOCX) : elle est convertie en Markdown par Docling, puis les identifiants sont repérés par eds-pseudo et des règles complémentaires.</p>
+        <p>Vous corrigez ensuite à la souris : <b>sélectionnez</b> un passage encore identifiant pour le masquer, <b>cliquez</b> sur une détection pour la corriger. Chaque correction enrichit le lexique local et améliore les documents suivants.</p>
+      </div>
+
+      <section class="pane text-pane" id="text-pane" hidden>
+        <div class="legend" id="legend"></div>
+        <div class="text-scroll" id="text-scroll">
+          <div class="md" id="md" tabindex="0"></div>
+          <pre class="preview" id="preview" hidden></pre>
+        </div>
+      </section>
+      <div class="splitter" id="splitter" hidden></div>
+      <section class="pane pdf-pane" id="pdf-pane" hidden>
+        <div class="pdf-toolbar">
+          <span>Document d'origine</span>
+          <div class="spacer"></div>
+          <label class="check"><input type="checkbox" id="follow" checked> Suivre la sélection</label>
+          <button class="icon-btn" id="zoom-out" title="Réduire">−</button>
+          <button class="icon-btn" id="zoom-in" title="Agrandir">+</button>
+        </div>
+        <div class="pdf-scroll" id="pdf-scroll"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="popover" id="popover" hidden></div>
+
+  <div class="drawer" id="lexicon-drawer" hidden>
+    <div class="drawer-head">
+      <h3>Lexique appris</h3>
+      <button class="icon-btn" data-close>×</button>
+    </div>
+    <p class="muted">Construit à partir de vos corrections. Il contient des identifiants réels : il reste dans l'espace de travail local.</p>
+    <div id="lexicon-body"></div>
+  </div>
+
+  <div class="modal" id="help" hidden>
+    <div class="modal-card">
+      <div class="drawer-head"><h3>Raccourcis</h3><button class="icon-btn" data-close>×</button></div>
+      <table class="shortcuts">
+        <tr><td><kbd>Sélection</kbd></td><td>ouvrir le choix d'étiquette (s'ajuste aux mots entiers)</td></tr>
+        <tr><td><kbd>1</kbd>…<kbd>9</kbd>, <kbd>0</kbd></td><td>choisir l'étiquette dans la fenêtre ouverte</td></tr>
+        <tr><td><kbd>Entrée</kbd></td><td>appliquer la dernière étiquette utilisée</td></tr>
+        <tr><td><kbd>J</kbd> / <kbd>K</kbd></td><td>entité suivante / précédente</td></tr>
+        <tr><td><kbd>X</kbd></td><td>« pas identifiant » ou rétablir l'entité courante</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Z</kbd></td><td>annuler</td></tr>
+        <tr><td><kbd>V</kbd></td><td>valider le document</td></tr>
+        <tr><td><kbd>Échap</kbd></td><td>fermer</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
