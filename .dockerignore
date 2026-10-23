@@ -4,3 +4,8 @@
 */chroma/
 */.rcp/
 */rcp/
+# Données patients : jamais dans l'image
+application/ressources/PatientMDTForm/
+experiment/
+**/*.bbox
+**/.env

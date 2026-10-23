@@ -16,6 +16,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
+      - name: Refuse patient files (public repository)
+        run: .github/scripts/check_no_patient_files.sh
+
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
@@ -92,3 +95,31 @@ jobs:
           if ! docker push $IMAGE_ID:$VERSION; then
             echo "::warning title=GHCR Push Failed::Failed to push Docker image to ghcr.io ($IMAGE_ID:$VERSION). Check GitHub Packages permissions in organization/repository settings."
           fi
+
+  autoclave:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: tools/autoclave
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: "tools/autoclave/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint (Ruff)
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+
+      - name: Tests
+        run: uv run --frozen pytest -q

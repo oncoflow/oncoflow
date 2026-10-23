@@ -11,3 +11,10 @@ repos:
     hooks:
     - id: ruff
     - id: ruff-format
+-   repo: local
+    hooks:
+    - id: no-patient-files
+      name: Refuse les fichiers patients (dépôt public)
+      entry: .github/scripts/check_no_patient_files.sh
+      language: script
+      files: '(?i)\.(pdf|docx?|odt|rtf|xlsx?|ods|csv|hl7|dcm|sqlite3?|db|bbox)$'
