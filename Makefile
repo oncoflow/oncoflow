@@ -396,11 +396,11 @@ docker-up-prod:
 	@if grep -q "votre_github_client_id" "$(ENV_PROD)"; then \
 		echo -e "  [$(YELLOW)ATTENTION$(RESET)] OAUTH2_PROXY_CLIENT_ID contient encore la valeur par défaut dans $(ENV_PROD) !"; \
 	fi
-	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config}
-	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
-	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
+	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,logs} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
-	docker compose -f $(COMPOSE_MILVUS) up -d
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + UIs Oncology & SMA + OAuth2 Proxy + Caddy)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --remove-orphans
 	@$(MAKE) mongo-init-prod
@@ -437,7 +437,7 @@ start-prod: docker-up-prod
 stop-prod:
 	@echo -e "$(YELLOW)--> Arrêt de la stack de production MedDataSyntis...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) down --remove-orphans
-	docker compose -f $(COMPOSE_MILVUS) down --remove-orphans
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) down --remove-orphans
 	@echo -e "$(GREEN)--> Stack de production arrêtée.$(RESET)"
 
 docker-down-prod: stop-prod
@@ -470,7 +470,7 @@ prod-update-all:
 	git pull --ff-only
 	docker compose -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull
-	docker compose -f $(COMPOSE_MILVUS) up -d
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
 	@$(MAKE) mongo-init-prod
 	@docker image prune -f >/dev/null 2>&1 || true

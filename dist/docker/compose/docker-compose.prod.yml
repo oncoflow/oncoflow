@@ -31,9 +31,7 @@ x-ui-common: &ui-common
   restart: unless-stopped
   logging: *default-logging
   volumes:
-    - ../../../application/ressources/PatientMDTForm:/app/application/ressources/PatientMDTForm
-    - ../../../application/ressources/documents:/app/application/ressources/documents
-    - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/logs:/var/log/meddatasyntis
+    - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/logs:/var/log/meddatasyntis
   depends_on:
     - mongod
     - litellm
@@ -69,8 +67,8 @@ services:
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
       - ./mongod.conf:/etc/mongod.conf:ro
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongodb:/data/db
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/mongodb_config:/data/configdb
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb:/data/db
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb_config:/data/configdb
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -91,7 +89,7 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/models:/models
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/models:/models
       - ./model-config:/models-config:ro
     ipc: host
     # devices:
@@ -184,7 +182,7 @@ services:
       - "127.0.0.1:8081:8080"
     volumes:
       - ${HOME:-~}/.cache/huggingface:/root/.cache/huggingface
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/models:/models
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/models:/models
     ipc: host
     entrypoint:
       - /bin/sh
@@ -251,6 +249,10 @@ services:
       <<: *ui-env
       APP_DOMAIN: "oncology"
       APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-oncology.log"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
+      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
+      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/documents:/app/application/ressources/documents/oncology
 
   oncoflow-ui-sma:
     <<: *ui-common
@@ -261,6 +263,10 @@ services:
       <<: *ui-env
       APP_DOMAIN: "sma"
       APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-sma.log"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
+      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
+      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
 
   # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.meddatasyntis.bricks-it.fr)
   oauth2-proxy:
@@ -311,8 +317,8 @@ services:
       PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/caddy_data:/data
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/caddy_config:/config
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/caddy_data:/data
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/caddy_config:/config
     depends_on:
       - oauth2-proxy
       - oncoflow-ui-oncology

@@ -8,6 +8,7 @@ chromadb
 */__pycache__*
 */chroma
 documents_parser_llm/rcp
+dist/docker/compose/volumes
 dist/docker/compose/volumes/*
 .ruff_cache/
 .pytest_cache/
