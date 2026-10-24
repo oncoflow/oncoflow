@@ -58,8 +58,8 @@ services:
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/models:/models
       - ./model-config:/models-config:ro
     ipc: host
-    devices:
-      - nvidia.com/gpu=all
+    # devices:
+    #   - nvidia.com/gpu=all
     deploy:
       resources:
         reservations:
