@@ -15,33 +15,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Création d'un utilisateur non-root pour l'exécution
+# Création d'un utilisateur non-root pour l'exécution et du répertoire /app
 RUN groupadd -g 1002 appuser && \
-    useradd -u 1002 -g appuser -m -d /home/appuser -s /bin/bash appuser
+    useradd -u 1002 -g appuser -m -d /home/appuser -s /bin/bash appuser && \
+    mkdir -p /app && chown -R appuser:appuser /app /home/appuser
 
 ENV UV_PYTHON_DOWNLOADS=never
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+ENV UV_CACHE_DIR=/tmp/.uv-cache
 ENV HOME=/home/appuser
 
 WORKDIR /app
+USER appuser
 
 # Copie des fichiers de définition de projet
-COPY application/pyproject.toml application/uv.lock ./
+COPY --chown=appuser:appuser application/pyproject.toml application/uv.lock ./
 
-# Installation des dépendances (sans les outils de dev)
-RUN uv sync --frozen --no-dev --no-install-project
+# Installation des dépendances (sans les outils de dev) avec purge du cache de téléchargement
+RUN uv sync --frozen --no-dev --no-install-project && rm -rf /tmp/.uv-cache
 
 # Copie du code de l'application
-COPY application application
+COPY --chown=appuser:appuser application application
 
 # Installation du projet et configuration du PATH pour utiliser le venv créé par uv
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev && rm -rf /tmp/.uv-cache
 ENV PATH="/app/.venv/bin:$PATH"
-
-# Attribution des droits à l'utilisateur non-root
-RUN chown -R appuser:appuser /app /home/appuser
-
-USER appuser
 
 WORKDIR /app/application
 

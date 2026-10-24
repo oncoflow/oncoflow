@@ -31,6 +31,8 @@ x-ui-common: &ui-common
   restart: unless-stopped
   logging: *default-logging
   userns_mode: "keep-id"
+  cap_drop:
+    - ALL
   volumes:
     - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/logs:/var/log/meddatasyntis
   depends_on:
