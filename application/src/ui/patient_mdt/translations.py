@@ -202,7 +202,61 @@ TRANSLATIONS = {
     "Good": "Bonne",
     "Medium": "Moyenne",
     "Poor": "Mauvaise",
+    # Domains
+    "oncology": "Oncologie",
+    "sma": "Amyotrophie spinale",
 }
+
+DOMAIN_FR_LABELS: dict[str, str] = {
+    "oncology": "Oncologie",
+    "sma": "Amyotrophie spinale",
+}
+
+
+def translate_domain_fr(domain: str) -> str:
+    """Retourne le libellé en français du domaine médical configuré."""
+    if not domain:
+        return ""
+    clean = domain.strip().lower()
+    return DOMAIN_FR_LABELS.get(clean, domain.strip().capitalize())
+
+
+def get_logo_svg(domain: str) -> str:
+    """Génère le logo SVG MedDataSyntis intégrant dynamiquement le domaine en français."""
+    domain_fr = translate_domain_fr(domain)
+    subtitle_line = (
+        f"  <text x=\"118\" y=\"93\" font-family=\"'Open Sans', 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif\" "
+        f'font-size="30" font-weight="600" fill="#0EA5E9">- {domain_fr}</text>\n'
+        if domain_fr
+        else ""
+    )
+    brand_y = "54" if domain_fr else "72"
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 468 110" width="468" height="110">\n'
+        "  <defs>\n"
+        '    <linearGradient id="medBlue" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#0EA5E9" />\n'
+        '      <stop offset="100%" stop-color="#0284C7" />\n'
+        "    </linearGradient>\n"
+        '    <linearGradient id="medTeal" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#14B8A6" />\n'
+        '      <stop offset="100%" stop-color="#0D9488" />\n'
+        "    </linearGradient>\n"
+        "  </defs>\n"
+        '  <g transform="translate(4, 5)">\n'
+        '    <circle cx="50" cy="50" r="46" fill="none" stroke="url(#medBlue)" stroke-width="5.5" />\n'
+        '    <rect x="37" y="18" width="26" height="64" rx="6.5" fill="url(#medBlue)" />\n'
+        '    <rect x="18" y="37" width="64" height="26" rx="6.5" fill="url(#medTeal)" opacity="0.93" />\n'
+        '    <polyline points="27,50 40,50 46,37 54,63 60,50 73,50" fill="none" stroke="#FFFFFF" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />\n'
+        '    <circle cx="27" cy="50" r="3.8" fill="#FFFFFF" />\n'
+        '    <circle cx="73" cy="50" r="3.8" fill="#FFFFFF" />\n'
+        "  </g>\n"
+        f'  <text x="116" y="{brand_y}" font-family="\'Open Sans\', \'DejaVu Sans\', \'Liberation Sans\', Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="-0.5">\n'
+        '    <tspan fill="#0EA5E9">MedData</tspan><tspan fill="#14B8A6">Syntis</tspan>\n'
+        "  </text>\n"
+        f"{subtitle_line}"
+        "</svg>"
+    )
 
 
 def translate(text: Any) -> Any:

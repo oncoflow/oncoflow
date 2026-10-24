@@ -1,4 +1,4 @@
-# 🖥️ Oncoflow — Frontend Application Dashboard
+# 🖥️ MedDataSyntis — Frontend Application Dashboard
 
 <p align="left">
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-%3E%3D%203.13-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Version" /></a>
@@ -11,7 +11,7 @@
 Cette partie de l'application contient l'interface utilisateur développée en **Streamlit** ainsi que les configurations liées à l'exécution de l'application.
 
 ## 🚀 Lancement de l'application
-Pour démarrer l'interface d'Oncoflow localement en mode développement, exécutez la commande suivante depuis ce dossier (`application/`) :
+Pour démarrer l'interface de MedDataSyntis localement en mode développement, exécutez la commande suivante depuis ce dossier (`application/`) :
 ```bash
 uv run streamlit run app-ui.py
 ```

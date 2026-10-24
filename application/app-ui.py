@@ -36,12 +36,20 @@ import streamlit_authenticator as stauth
 
 PAGES_DIR_SRC = "src/ui"
 navigation = {}
-st.set_page_config(layout="wide")
 
 # Configuration de l'authentification
 from src.application.config import AppConfig
+from src.ui.patient_mdt.translations import get_logo_svg, translate_domain_fr
 
 app_config = AppConfig()
+domain_fr = translate_domain_fr(app_config.domain)
+app_title = f"MedDataSyntis - {domain_fr}" if domain_fr else "MedDataSyntis"
+
+st.set_page_config(
+    page_title=app_title,
+    page_icon="static/icon.png",
+    layout="wide",
+)
 
 if app_config.dev_mode:
     logger = app_config.set_logger("oncoflow.ui")
@@ -49,7 +57,7 @@ if app_config.dev_mode:
         "\n"
         + "=" * 60
         + "\n"
-        + "⚠️  ONCOFLOW EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
+        + "⚠️  MEDDATASYNTIS EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
         + "\n"
         + "=" * 60
         + "\n"
@@ -97,7 +105,8 @@ else:
 
 
 st.logo(
-    "static/logo.png",
+    get_logo_svg(app_config.domain),
+    size="large",
     icon_image="static/icon.png",
 )
 
@@ -121,7 +130,7 @@ else:
 
 pages = {}
 
-pages["Patient mdt Oncologic"] = [
+pages[app_title] = [
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/cards.py",
         title="Dossiers Patients",
@@ -168,7 +177,7 @@ if st.session_state.get("authentication_status"):
                 "Se déconnecter",
                 "/oauth2/sign_out",
                 icon="🚪",
-                use_container_width=True,
+                width="stretch",
             )
         elif authenticator is not None:
             if st.button("Se déconnecter", key="logout_btn", icon="🚪"):

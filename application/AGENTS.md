@@ -1,12 +1,12 @@
-# Oncoflow AI Agent Guidelines (`AGENTS.md`)
+# MedDataSyntis AI Agent Guidelines (`AGENTS.md`)
 
-Welcome to the **Oncoflow** development guidelines for AI agents and coding assistants. This document acts as a "README for machines," providing explicit instructions, operational workflows, and domain expert guidelines to build, test, and maintain the Oncoflow platform safely and efficiently.
+Welcome to the **MedDataSyntis** development guidelines for AI agents and coding assistants. This document acts as a "README for machines," providing explicit instructions, operational workflows, and domain expert guidelines to build, test, and maintain the MedDataSyntis platform safely and efficiently.
 
 ---
 
 ## 📖 Project Overview & Tech Stack
 
-Oncoflow is a secure, open-source, local-first web application designed for oncology clinical professionals (surgeons, doctors, and oncologists) in France. It leverages local Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) to:
+MedDataSyntis is a secure, open-source, local-first web application designed for clinical professionals (surgeons, doctors, oncologists, and rare disease specialists) in France. It leverages local Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG) to:
 1. **Analyze Patient Records (MTDs)** to extract clinical and administrative info.
 2. **Detect Missing Records** to flag incomplete patient files.
 3. **Assess Case Urgency** and recommend an optimized MDT/RCP meeting order.
@@ -45,7 +45,7 @@ All development operations must follow these exact shell commands. Standard pref
 ## 🛡️ Critical Boundaries & Rules (MUST NEVER VIOLATE)
 
 > [!CAUTION] **Patient Data Privacy (Local-Only Execution)**
-> Oncoflow deals with highly confidential medical data. **Never use public APIs or remote cloud services** (like OpenAI, Anthropic, or external embedding servers) for parsing or model invocation. All operations must run locally via local Docker services (Milvus, MongoDB) or local Ollama instances to guarantee hospital data compliance.
+> MedDataSyntis deals with highly confidential medical data. **Never use public APIs or remote cloud services** (like OpenAI, Anthropic, or external embedding servers) for parsing or model invocation. All operations must run locally via local Docker services (Milvus, MongoDB) or local Ollama instances to guarantee hospital data compliance.
 
 > [!WARNING] **Dependency Synchronization**
 > Always respect `pyproject.toml` dependencies. Do not use ad-hoc versions. Use `uv.lock` to pin dependencies.
@@ -57,7 +57,7 @@ All development operations must follow these exact shell commands. Standard pref
 
 ## 🤝 Multi-Agent Expert Skills
 
-Oncoflow defines custom agent skills in the `skills/` folder to capture specific domain expertise. These skills are automatically discoverable by Google Antigravity SDK agents.
+MedDataSyntis defines custom agent skills in the `skills/` folder to capture specific domain expertise. These skills are automatically discoverable by Google Antigravity SDK agents.
 
 ```mermaid
 graph TD

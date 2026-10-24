@@ -1,6 +1,6 @@
-# Spécification de l'API REST versionnée (v1) — Oncoflow
+# Spécification de l'API REST versionnée (v1) — MedDataSyntis
 
-Cette documentation détaille l'ensemble des points d'entrée de l'API REST d'Oncoflow versionnée sous `/api/v1`.
+Cette documentation détaille l'ensemble des points d'entrée de l'API REST de MedDataSyntis versionnée sous `/api/v1`.
 
 L'API permet de gérer les dossiers RCP (Réunions de Concertation Pluridisciplinaire) des patients, de piloter les agents experts d'intelligence artificielle, d'interroger les guides scientifiques (TNCD) de référence et de discuter avec les agents.
 

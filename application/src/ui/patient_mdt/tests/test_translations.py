@@ -1,5 +1,9 @@
 import streamlit as st
-from src.ui.patient_mdt.translations import translate
+from src.ui.patient_mdt.translations import (
+    get_logo_svg,
+    translate,
+    translate_domain_fr,
+)
 from src.domain.common.common_ressources import PatientPriority, WHOPerformanceStatus
 
 
@@ -34,6 +38,20 @@ def test_translation_french():
 
     # Test fallback
     assert translate("Some Unknown Label") == "Some Unknown Label"
+
+    # Test domain translations
+    assert translate("oncology") == "Oncologie"
+    assert translate("sma") == "Amyotrophie spinale"
+    assert translate_domain_fr("oncology") == "Oncologie"
+    assert translate_domain_fr("sma") == "Amyotrophie spinale"
+
+    svg_onco = get_logo_svg("oncology")
+    assert "MedData" in svg_onco
+    assert "Syntis" in svg_onco
+    assert "- Oncologie" in svg_onco
+
+    svg_sma = get_logo_svg("sma")
+    assert "- Amyotrophie spinale" in svg_sma
 
 
 def test_translation_english():
