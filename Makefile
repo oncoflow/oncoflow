@@ -42,7 +42,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -386,6 +386,12 @@ mongo-init-prod:
 		rs.initiate({_id: "rs0", members: [{_id: 0, host: "127.0.0.1:27017"}]}); \
 		print("  [OK] MongoDB Replica Set (rs0) initialisé."); \
 	' 2>/dev/null || echo -e "  [$(GREEN)OK$(RESET)] MongoDB Replica Set prêt."
+
+## Construit l'image Docker applicative de production (non-root, librairies XCB/GL/système)
+build-prod:
+	@echo -e "$(CYAN)--> Construction de l'image Docker de production ($${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(GREEN)--> Image Docker construite avec succès !$(RESET)"
 
 ## Démarre les conteneurs Docker de production (Multi-Domaines Oncology & SMA)
 docker-up-prod:

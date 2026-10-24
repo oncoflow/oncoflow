@@ -1,15 +1,27 @@
 # Utilisation d'une image Python (version alignée avec votre projet)
 FROM python:3.14-slim
 
-# Installation de uv et des outils de compilation
+# Installation de uv et des outils de compilation / librairies graphiques et système
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     curl \
+    libxcb1 \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
+
+# Création d'un utilisateur non-root pour l'exécution
+RUN groupadd -g 1002 appuser && \
+    useradd -u 1002 -g appuser -m -d /home/appuser -s /bin/bash appuser
+
 ENV UV_PYTHON_DOWNLOADS=never
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+ENV HOME=/home/appuser
 
 WORKDIR /app
 
@@ -25,6 +37,11 @@ COPY application application
 # Installation du projet et configuration du PATH pour utiliser le venv créé par uv
 RUN uv sync --frozen --no-dev
 ENV PATH="/app/.venv/bin:$PATH"
+
+# Attribution des droits à l'utilisateur non-root
+RUN chown -R appuser:appuser /app /home/appuser
+
+USER appuser
 
 WORKDIR /app/application
 
