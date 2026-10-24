@@ -2,36 +2,43 @@ import os
 import inspect
 import shutil
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
-import pytz
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.application.config import AppConfig
-from src.application.app_functions import delete_document, full_read_mtd_agents
+from src.application.app_functions import (
+    delete_document,
+    delete_patient_dossier,
+    full_read_mtd_agents,
+    ingest_and_associate_rcp,
+)
+from src.application.patient import (
+    extract_card_metrics as extract_rcp_card_dict,
+    select_latest_analyzed_rcp as select_latest_rcp_doc,
+    to_naive,
+)
 from src.infrastructure.documents.mongodb import Mongodb
 from src.infrastructure.documents.db_interface import get_db
-from src.domain.common.common_ressources import PatientPriority
+from src.domain.patient import Patient
 from src.domain.patient_mdt_form import PatientMDTForm
 from src.domain.agents import Agents
-from src.models.rcp import ProcessRequest, ChatRequest, RCPCardResponse, ChatResponse
+from src.models.rcp import (
+    ProcessRequest,
+    ChatRequest,
+    RCPCardResponse,
+    PatientCardResponse,
+    PatientDetailResponse,
+    ChatResponse,
+)
 
 app_conf = AppConfig()
 
 router = APIRouter(prefix="/rcp", tags=["rcp"])
 
 # --- Helpers ---
-
-
-def to_naive(dt: datetime | None) -> datetime | None:
-    """Convertit un datetime (aware ou naive) en datetime naive (Europe/Paris)."""
-    if dt is None:
-        return None
-    if dt.tzinfo is not None:
-        return dt.astimezone(pytz.timezone("Europe/Paris")).replace(tzinfo=None)
-    return dt
 
 
 def serialize_mongo_doc(doc: dict) -> dict:
@@ -42,7 +49,6 @@ def serialize_mongo_doc(doc: dict) -> dict:
     if "_id" in doc:
         doc["id"] = str(doc.pop("_id"))
 
-    # Recursively convert ObjectId and other non-serializable fields if any
     for k, v in doc.items():
         if isinstance(v, dict):
             doc[k] = serialize_mongo_doc(v)
@@ -80,112 +86,192 @@ def get_rcp_cards(db=Depends(get_db)):
         )
 
     db_datas = list(db.database["rcp_info"].find())
-    cards_data = []
+    cards_data = [extract_rcp_card_dict(d) for d in db_datas]
+    cards_data.sort(
+        key=lambda x: x.get("date_refresh") or datetime.min,
+        reverse=True,
+    )
+    return cards_data
 
-    for d in db_datas:
-        patient_name = "Inconnu"
-        if "PatientAdministrative" in d:
-            p = d["PatientAdministrative"]
-            patient_name = f"{p.get('first_name', '')} {p.get('last_name', '')}"
 
-        date_refresh = d.get(
-            "ui_date",
-            datetime.now(pytz.timezone("Europe/Paris")).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            ),
+@router.get("/patients", response_model=List[PatientCardResponse])
+def get_patient_cards(db=Depends(get_db)):
+    """Récupère la liste des dossiers patients synthétisés sur leur dernière RCP analysée."""
+    if db is None or not hasattr(db, "database"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="La base de données MongoDB n'est pas configurée ou accessible.",
         )
-        date_refresh = to_naive(date_refresh)
 
-        date_mcp = (
-            d["PatientAdministrative"]["date_rcp"]
-            if "PatientAdministrative" in d and "date_rcp" in d["PatientAdministrative"]
-            else None
-        )
-        if isinstance(date_mcp, str):
-            try:
-                date_mcp = datetime.fromisoformat(date_mcp)
-            except ValueError:
-                date_mcp = None
-        date_mcp = to_naive(date_mcp)
+    all_rcps = list(db.database["rcp_info"].find())
+    rcps_by_file = {d["file"]: d for d in all_rcps if "file" in d}
+    raw_patients = db.get_all_patients() if hasattr(db, "get_all_patients") else []
 
-        relevant_experts = []
-        urgency_level = "Indéfini"
-        urgency_score = 0
+    patient_cards: list[dict] = []
+    for raw_p in raw_patients:
+        try:
+            patient = Patient.model_validate(raw_p)
+        except Exception:
+            continue
 
-        if "ExpertAnswer" in d and isinstance(d["ExpertAnswer"], dict):
-            for agent_name, agent_data in d["ExpertAnswer"].items():
-                if isinstance(agent_data, dict):
-                    if agent_data.get("expert_relevant"):
-                        relevant_experts.append(agent_name)
+        patient_rcps_map: dict[str, dict] = {}
+        for f in patient.files:
+            if f in rcps_by_file:
+                patient_rcps_map[f] = rcps_by_file[f]
+        for d in all_rcps:
+            if d.get("patient_id") == patient.patient_id and "file" in d:
+                patient_rcps_map[d["file"]] = d
 
-                    p_prio = str(agent_data.get("patient_priority", "")).lower()
-                    for urgency in list(PatientPriority):
-                        if p_prio == urgency.value.lower():
-                            if urgency.name == "urgent":
-                                if urgency_score < 2:
-                                    urgency_score = 2
-                                    urgency_level = "Urgent"
-                            elif urgency.name == "medium":
-                                if urgency_score < 1:
-                                    urgency_score = 1
-                                    urgency_level = "Semi-urgent"
-                            elif urgency.name == "low":
-                                urgency_level = "Standard"
+        patient_rcps = list(patient_rcps_map.values())
+        if not patient_rcps:
+            continue
 
-        missing_data = []
-        if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
-            if "mtd_complete" in d["MTDCompleted"]:
-                mtd_comp = d["MTDCompleted"].get("mtd_complete")
-                if isinstance(mtd_comp, dict):
-                    m = mtd_comp.get("what_missing", [])
-                    if isinstance(m, list):
-                        missing_data.extend(m)
-            else:
-                for agent_name, agent_data in d["MTDCompleted"].items():
-                    if isinstance(agent_data, dict):
-                        mtd_comp = agent_data.get("mtd_complete")
-                        if isinstance(mtd_comp, dict):
-                            m = mtd_comp.get("what_missing", [])
-                            if isinstance(m, list):
-                                missing_data.extend(m)
-        else:
-            missing_data.extend(["no data"])
+        latest_doc = select_latest_rcp_doc(patient_rcps)
+        if latest_doc is None:
+            continue
 
-        intervention_required = None
-        intervention_type = None
-        if "isInterventionRequiered" in d and isinstance(
-            d["isInterventionRequiered"], dict
-        ):
-            int_data = d["isInterventionRequiered"]
-            if "intervention_required" in int_data:
-                intervention_required = int_data.get("intervention_required")
-                intervention_type = int_data.get("intervention_type")
-            else:
-                for agent_data in int_data.values():
-                    if (
-                        isinstance(agent_data, dict)
-                        and "intervention_required" in agent_data
-                    ):
-                        intervention_required = agent_data.get("intervention_required")
-                        intervention_type = agent_data.get("intervention_type")
-                        break
-
-        cards_data.append(
+        card = extract_rcp_card_dict(latest_doc)
+        patient_cards.append(
             {
-                "file": d["file"],
-                "patient": patient_name,
-                "date_refresh": date_refresh,
-                "date": date_mcp,
-                "experts": relevant_experts,
-                "missing": list(set(missing_data)),
-                "urgency": urgency_level,
-                "urgency_score": urgency_score,
-                "intervention_required": intervention_required,
-                "intervention_type": intervention_type,
+                "patient_id": patient.patient_id,
+                "patient": patient.full_name,
+                "first_name": patient.first_name,
+                "last_name": patient.last_name,
+                "date_birth": to_naive(patient.date_birth),
+                "rcp_count": len(patient_rcps),
+                "latest_file": latest_doc["file"],
+                "date_refresh": card["date_refresh"],
+                "date": card["date"],
+                "experts": card["experts"],
+                "missing": card["missing"],
+                "urgency": card["urgency"],
+                "urgency_score": card["urgency_score"],
+                "intervention_required": card["intervention_required"],
+                "intervention_type": card["intervention_type"],
             }
         )
 
-    return cards_data
+    return patient_cards
+
+
+@router.get("/patients/{patient_id}", response_model=PatientDetailResponse)
+def get_patient_detail(patient_id: str, db=Depends(get_db)):
+    """Récupère un dossier patient et l'historique chronologique de toutes ses fiches RCP."""
+    if db is None or not hasattr(db, "database"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="La base de données MongoDB n'est pas configurée ou accessible.",
+        )
+
+    raw_patient = db.get_patient(patient_id)
+    if not raw_patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        )
+
+    patient = Patient.model_validate(raw_patient)
+    rcps_map: dict[str, dict] = {}
+    for f in patient.files:
+        doc = db.database["rcp_info"].find_one({"file": f})
+        if doc:
+            rcps_map[f] = doc
+    for doc in db.database["rcp_info"].find({"patient_id": patient_id}):
+        if "file" in doc:
+            rcps_map[doc["file"]] = doc
+
+    rcps_list = list(rcps_map.values())
+    rcps_list.sort(
+        key=lambda d: (
+            extract_rcp_card_dict(d).get("date")
+            or extract_rcp_card_dict(d).get("date_refresh")
+            or datetime.min
+        ),
+        reverse=True,
+    )
+    latest_doc = select_latest_rcp_doc(rcps_list)
+
+    return {
+        "patient": serialize_mongo_doc(raw_patient),
+        "latest_file": latest_doc["file"] if latest_doc else None,
+        "rcps": [serialize_mongo_doc(d) for d in rcps_list],
+    }
+
+
+@router.delete("/patients/{patient_id}")
+def delete_patient(patient_id: str, db=Depends(get_db)):
+    """Supprime un dossier patient et l'ensemble de ses fiches RCP."""
+    if db is None or not hasattr(db, "database"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="La base de données MongoDB n'est pas configurée ou accessible.",
+        )
+
+    raw_patient = db.get_patient(patient_id)
+    if not raw_patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'existe pas.",
+        )
+
+    delete_patient_dossier(app_conf, patient_id)
+    return {"message": f"Dossier patient '{patient_id}' supprimé avec succès."}
+
+
+@router.post("/patients/{patient_id}/chat", response_model=ChatResponse)
+def chat_with_patient_dossier(
+    patient_id: str, request: ChatRequest, db=Depends(get_db)
+):
+    """Dialogue avec un agent expert sur l'intégralité du dossier patient (toutes ses fiches RCP)."""
+    if db is None or not hasattr(db, "database"):
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="La base de données MongoDB n'est pas configurée ou accessible.",
+        )
+
+    raw_patient = db.get_patient(patient_id)
+    if not raw_patient:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'existe pas.",
+        )
+
+    patient = Patient.model_validate(raw_patient)
+    files = list(patient.files)
+    for doc in db.database["rcp_info"].find({"patient_id": patient_id}):
+        if "file" in doc and doc["file"] not in files:
+            files.append(doc["file"])
+
+    existing_files = [
+        f for f in files if os.path.exists(os.path.join(app_conf.rcp.path, f))
+    ]
+    if not existing_files:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Aucun fichier PDF RCP trouvé sur le disque pour le patient '{patient_id}'.",
+        )
+
+    agents = Agents()
+    available_agents = agents.list
+    if request.agent_name not in available_agents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Agent '{request.agent_name}' non reconnu. Agents valides : {list(available_agents.keys())}",
+        )
+
+    try:
+        patient_readers = [
+            PatientMDTForm(config=app_conf, document=f) for f in existing_files
+        ]
+        agent_cls = available_agents[request.agent_name]
+        agent = agent_cls(config=app_conf, patient_readers=patient_readers)
+        resp = agent.ask(request.message)
+        return ChatResponse(response=resp.response)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Erreur de communication avec l'agent : {e}",
+        )
 
 
 @router.get("/{filename}")
@@ -226,9 +312,15 @@ def delete_rcp(filename: str):
 
 
 @router.post("/upload")
-def upload_rcp_file(file: UploadFile = File(...)):
-    """Upload un fichier PDF RCP et initialise le formulaire associé."""
-    if not file.filename.lower().endswith(".pdf"):
+def upload_rcp_file(
+    file: UploadFile = File(...),
+    patient_id: Optional[str] = Form(default=None),
+):
+    """
+    Upload un fichier PDF RCP, exécute l'indexation RAG + l'extraction administrative IA,
+    et associe la fiche au dossier patient (automatique si patient_id est omis, ou rattaché au patient_id fourni).
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Seuls les fichiers PDF sont acceptés.",
@@ -243,11 +335,19 @@ def upload_rcp_file(file: UploadFile = File(...)):
         with open(target_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        PatientMDTForm(config=app_conf, document=filename)
+        _, patient_dict = ingest_and_associate_rcp(
+            app_conf=app_conf,
+            filename=filename,
+            patient_id=patient_id,
+        )
 
         return {
             "filename": filename,
-            "message": "Fichier téléversé et initialisé avec succès.",
+            "patient_id": patient_dict.get("patient_id")
+            if patient_dict
+            else patient_id,
+            "patient": patient_dict,
+            "message": "Fichier téléversé, indexé et associé au patient avec succès.",
         }
     except Exception as e:
         raise HTTPException(

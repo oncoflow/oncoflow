@@ -17,9 +17,50 @@ def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
         logger.warning(f"Error unloading models after full read: {e}")
 
 
+def ingest_and_associate_rcp(
+    app_conf,
+    filename: str,
+    patient_id: str | None = None,
+    logger=None,
+    run_admin_ai: bool = True,
+    callbacks: list | None = None,
+    unload_models: bool = True,
+) -> tuple[dict, dict]:
+    """
+    Indexes the RCP document in RAG, runs the PatientAdministrative AI extraction,
+    and associates or creates the corresponding Patient in MongoDB.
+    """
+    from src.application.patient import process_patient_association
+
+    if logger is None:
+        logger = app_conf.set_logger("oncoflow.patient")
+
+    logger.info(
+        f"Ingesting and associating RCP {filename} (target_patient_id={patient_id})..."
+    )
+    fiche_rcp = PatientMDTForm(config=app_conf, document=filename)
+    patient = process_patient_association(
+        form=fiche_rcp,
+        target_patient_id=patient_id,
+        run_admin_ai=run_admin_ai,
+        callbacks=callbacks,
+    )
+    mtd_datas = dict(fiche_rcp.mtd_datas)
+    patient_dict = patient.model_dump()
+    del fiche_rcp
+    gc.collect()
+    if unload_models:
+        try:
+            unload_active_models(app_conf)
+        except Exception as e:
+            logger.warning(f"Error unloading models after ingest: {e}")
+    return mtd_datas, patient_dict
+
+
 def delete_document(app_conf, filename, delete_file: bool = True):
     if app_conf.rcp.display_type == "mongodb":
         client = Mongodb(app_conf)
+        client.remove_file_from_patient(filename)
         client.delete_docs(
             collections=["rcp_info", "rcp_metadata", "document_cache"],
             filter={"file": filename},
@@ -27,6 +68,38 @@ def delete_document(app_conf, filename, delete_file: bool = True):
         if delete_file:
             if os.path.exists(f"{app_conf.rcp.path}/{filename}"):
                 os.remove(f"{app_conf.rcp.path}/{filename}")
+        client.close()
+
+
+def delete_patient_dossier(
+    app_conf, patient_id: str, delete_files: bool = True
+) -> None:
+    """
+    Deletes a patient dossier and all its associated RCP documents from MongoDB and disk.
+    """
+    if app_conf.rcp.display_type == "mongodb":
+        client = Mongodb(app_conf)
+        patient_doc = client.get_patient(patient_id)
+        files_to_delete = set()
+        if patient_doc and isinstance(patient_doc.get("files"), list):
+            files_to_delete.update(patient_doc["files"])
+
+        rcp_docs = list(
+            client.database["rcp_info"].find({"patient_id": patient_id}, {"file": 1})
+        )
+        for doc in rcp_docs:
+            if doc.get("file"):
+                files_to_delete.add(doc["file"])
+
+        for fname in files_to_delete:
+            client.delete_docs(
+                collections=["rcp_info", "rcp_metadata", "document_cache"],
+                filter={"file": fname},
+            )
+            if delete_files and os.path.exists(f"{app_conf.rcp.path}/{fname}"):
+                os.remove(f"{app_conf.rcp.path}/{fname}")
+
+        client.delete_docs(collections=["patients"], filter={"patient_id": patient_id})
         client.close()
 
 

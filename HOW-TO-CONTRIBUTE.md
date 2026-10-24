@@ -1,9 +1,9 @@
-# 🤝 Guide de Contribution — Oncoflow
+# 🤝 Guide de Contribution — MedDataSyntis
 
-Merci de l'intérêt que vous portez à **Oncoflow** ! C'est un projet open-source et gratuit conçu pour aider les chirurgiens et oncologues français spécialisés en cancérologie digestive.
+Merci de l'intérêt que vous portez à **MedDataSyntis** ! C'est un projet open-source et gratuit conçu pour aider les professionnels de santé (chirurgiens, oncologues, spécialistes) dans l'analyse et la synthèse de dossiers patients en RCP.
 
 Pour rejoindre la communauté et commencer à contribuer :
-1. Rejoignez notre serveur Discord officiel : [Rejoindre le Discord Oncoflow](https://discord.gg/C2RPhyn9x8)
+1. Rejoignez notre serveur Discord officiel : [Rejoindre le Discord MedDataSyntis](https://discord.gg/C2RPhyn9x8)
 2. Laissez un court message de salutation dans le salon `#ask-to-join` afin que nous vous donnions les droits d'écriture ! 😊
 
 ---
@@ -42,7 +42,7 @@ Pour rejoindre la communauté et commencer à contribuer :
 
 ### 1. Démarrage des Services de l'Infrastructure (Docker Compose)
 
-Les services d'infrastructure d'Oncoflow sont divisés en deux fichiers Docker Compose situés dans `dist/docker/compose/`. Lancez-les depuis la **racine du dépôt** :
+Les services d'infrastructure de MedDataSyntis sont divisés en deux fichiers Docker Compose situés dans `dist/docker/compose/`. Lancez-les depuis la **racine du dépôt** :
 
 #### A. Base de Données Vectorielle (Milvus Standalone)
 Milvus est notre base de données de similarité principale. Elle utilise trois conteneurs locaux (milvus-standalone, etcd, minio) :
@@ -75,7 +75,7 @@ Les ports locaux indispensables pour l'application sont :
 
 ### 2. Configuration des Modèles IA locaux (Ollama)
 
-Oncoflow nécessite trois types de modèles locaux pour fonctionner. Vous devez les récupérer via le client Ollama avant de démarrer l'application.
+MedDataSyntis nécessite trois types de modèles locaux pour fonctionner. Vous devez les récupérer via le client Ollama avant de démarrer l'application.
 
 Voici les correspondances avec les variables de configuration (`AppConfig`) :
 

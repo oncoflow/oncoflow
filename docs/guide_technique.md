@@ -1,12 +1,12 @@
-# 💻 Oncoflow — Technical Reference Guide
+# 💻 MedDataSyntis — Technical Reference Guide
 
-This document provides a comprehensive technical overview of the **Oncoflow** platform. It describes the clean onion architecture, infrastructure dependencies, data flows, and full environment variable configurations.
+This document provides a comprehensive technical overview of the **MedDataSyntis** platform. It describes the clean onion architecture, infrastructure dependencies, data flows, and full environment variable configurations.
 
 ---
 
 ## 🏗️ Clean Onion Architecture
 
-The backend of Oncoflow is built in Python (strictly requiring `>=3.13`) using Clean Architecture principles to keep the business rules independent of database systems, frameworks, and user interfaces.
+The backend of MedDataSyntis is built in Python (strictly requiring `>=3.13`) using Clean Architecture principles to keep the business rules independent of database systems, frameworks, and user interfaces.
 
 ```
                   ┌─────────────────────────────────────┐
@@ -30,22 +30,23 @@ The backend of Oncoflow is built in Python (strictly requiring `>=3.13`) using C
 ```
 
 ### Module breakdown under `application/src/`:
-* **`domain/`**: Contains the core patient structures, validation boundaries, and abstract interface contracts. Zero external framework dependencies.
+* **`domain/`**: Contains the core domain schemas (`patient.py` with `Patient(BaseModel)`, `common/common_ressources.py`, `patient_mdt_form.py`, `agents.py`), validation boundaries, and abstract interface contracts.
 * **`application/`**:
-  * **`agent/`**: The core multi-expert LangChain agent coordinator.
+  * **`patient.py`**: Patient business logic (deterministic `patient_id` generation from normalized `last_name + first_name + date_birth`, automatic/manual patient association during RCP upload, card metrics extraction, latest analyzed RCP selection, dossier resolution, and chronological AI history formatting via `format_patient_ai_history`).
+  * **`agent/`**: The core multi-expert LangChain agent coordinator (`agent.py`) and context-separated tools (`tools.py` with `Context` for single-RCP extraction/chat using `get_mtd_markdown`, and `PatientContext` for full-dossier patient chat using `get_patient_mtds_markdown` and `get_patient_ai_history`).
   * **`reader.py`**: The RAG (Retrieval-Augmented Generation) ingestion and matching pipeline.
   * **`config.py`**: Reads environmental configurations and exposes them statically via the `AppConfig` class.
 * **`infrastructure/`**:
   * **`vectorial/`**: Database wrappers for Milvus and Chroma vector databases.
-  * **`database.py`**: Repositories handling MongoDB integrations for cache and MTD/RCP history.
+  * **`documents/mongodb.py`**: Repositories handling MongoDB integrations for `patients`, `rcp_info`, and `document_cache`.
   * **`parsers/`**: Ingestion layer leveraging **Docling**, **MuPDF**, **OpenParse**, or **Ollama OCR** for reading patient folders.
-* **`ui/`**: Streamlit pages (`patient_mdt_oncologic/` cards, data sheets, uploading, and active agent visualizations).
+* **`ui/`**: Streamlit pages (`patient_mdt/` cards with top Dossiers Patients and bottom Dernières RCP scannées, unified patient dossier view with 3 top-level tabs (`Données patient`, `Historique des fiches RCP`, `Assistant IA sur le dossier`), batch upload with patient association, and active agent visualizations).
 
 ---
 
 ## 🗄️ Database & Storage Layer
 
-Oncoflow employs dual storage paradigms to ensure ultra-low latency and scalable local lookups:
+MedDataSyntis employs dual storage paradigms to ensure ultra-low latency and scalable local lookups:
 
 ### 1. Vector Search Engines (Similarity Store)
 * **Milvus (Production Default)**: Run as a local docker container (`milvus-standalone`). Used to index dense embeddings of patient records and TNCD clinical thésaurus guidelines for similarity semantic queries. Uses `pymilvus==2.6.14` and `langchain-milvus==0.3.3`.
@@ -53,9 +54,9 @@ Oncoflow employs dual storage paradigms to ensure ultra-low latency and scalable
 
 ### 2. Relational / Document Store
 * **MongoDB**: Standard persistent storage database. It maintains:
-  * Extracted structural metadata of patient files (such as age, TNM classifications, markers).
-  * Meeting schedules (RCP/MDT order configurations).
-  * System cache of parsed documents to prevent redundant processing.
+  * **`patients` collection**: Patient dossiers (`patient_id`, `first_name`, `last_name`, `born_name`, `date_birth`, `gender`, `files`, `updated_at`).
+  * **`rcp_info` collection**: Extracted structural metadata of each RCP file (`file`, `patient_id`, `ui_date`, `PatientAdministrative`, `ExpertAnswer`, `MTDCompleted`, etc.).
+  * **`document_cache` collection**: System cache of parsed Markdown documents to prevent redundant OCR/parsing.
 
 ---
 
@@ -71,7 +72,7 @@ All machine learning models run strictly inside the local network boundary via *
 
 ## ⚙️ Comprehensive Environment Variables
 
-Oncoflow is highly customizable through environment variables parsed transparently by `environ-config` under `AppConfig` (prefixed with `APP_`).
+MedDataSyntis is highly customizable through environment variables parsed transparently by `environ-config` under `AppConfig` (prefixed with `APP_`).
 
 | Variable Name | Type | Default Value | Description |
 | :--- | :--- | :--- | :--- |

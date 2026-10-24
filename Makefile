@@ -6,9 +6,10 @@
 SHELL := /bin/bash
 export PATH := $(HOME)/.local/bin:$(HOME)/google-cloud-sdk/bin:$(PATH)
 
-# Détection de l'exécutable uv et gcloud
+# Détection de l'exécutable uv, gcloud et de l'utilisateur courant (membre du groupe docker)
 UV := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
 GCLOUD := $(shell command -v gcloud 2>/dev/null || echo $(HOME)/google-cloud-sdk/bin/gcloud)
+DEPLOY_USER ?= $(shell id -un)
 
 # Dossier de l'application
 APP_DIR := application
@@ -20,6 +21,18 @@ HOST_API ?= 127.0.0.1
 CLOUDRUN_SERVICE ?= llama-cpp-chat
 CLOUDRUN_PORT ?= 8080
 
+# Configuration Production (Scaleway L4 24G - Multi-Domaines oncologic & sma)
+ENV_PROD ?= $(CURDIR)/.env.prod
+PROD_BASE_DOMAIN ?= meddatasyntis.bricks-it.fr
+COMPOSE_MILVUS := dist/docker/compose/milvus-standalone-docker-compose.yml
+COMPOSE_DEV := dist/docker/compose/docker-compose.yml
+COMPOSE_PROD := dist/docker/compose/docker-compose.prod.yml
+MODELS_DIR := dist/docker/compose/volumes/models
+CHAT_MODEL_URL := https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf
+CHAT_MODEL_FILE := $(MODELS_DIR)/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf
+EMBED_MODEL_URL := https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q4_K_M.gguf
+EMBED_MODEL_FILE := $(MODELS_DIR)/bge-m3-Q4_K_M.gguf
+
 # Couleurs pour le terminal
 CYAN  := \033[36m
 GREEN := \033[32m
@@ -29,13 +42,13 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status api ui ui-dev proxy proxy-stop dev
+.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
 	@echo -e "$(CYAN)Usage: make <commande>$(RESET)"
 	@echo ""
-	@echo -e "$(GREEN)Commandes principales :$(RESET)"
+	@echo -e "$(GREEN)Commandes principales (Développement) :$(RESET)"
 	@echo -e "  $(YELLOW)make install$(RESET)             Installe les dépendances via uv sync"
 	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances (uv lock --upgrade && uv sync)"
 	@echo -e "  $(YELLOW)make start-api$(RESET)           Démarre l'API FastAPI (port $(PORT_API))"
@@ -45,11 +58,25 @@ help:
 	@echo -e "  $(YELLOW)make cloudrun-proxy-stop$(RESET) Arrête le proxy Cloud Run"
 	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI, l'API et le proxy Cloud Run"
 	@echo ""
+	@echo -e "$(GREEN)Commandes de Production (Scaleway L4 24G + OAuth2 Proxy GitHub + Multi-Domaines) :$(RESET)"
+	@echo -e "  $(YELLOW)make init-prod$(RESET)           Initialise l'environnement prod (sudoers, .env.prod, volumes, logrotate, modèles)"
+	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
+	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/meddatasyntis)"
+	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Qwen3.6-35B-A3B (IQ4_NL) et bge-m3 (Q4_K_M)"
+	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre toute la stack prod (Milvus, Mongo, LLM L4, UIs Oncology & SMA, OAuth2, Caddy)"
+	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Arrête tous les conteneurs de la stack prod"
+	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre UIs (Oncology & SMA) + OAuth2 Proxy + Caddy (sans décharger le LLM)"
+	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + pull de l'image UI GHCR + redémarrage sans coupure GPU"
+	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Mise à jour complète de toute la stack Docker prod (y compris LLM/infra)"
+	@echo -e "  $(YELLOW)make status-prod$(RESET)         Affiche l'état des services prod, santé LLM et VRAM GPU (nvidia-smi)"
+	@echo -e "  $(YELLOW)make logs-prod$(RESET)           Affiche les logs en continu de la stack de production"
+	@echo ""
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
 	@echo -e "  $(YELLOW)make test$(RESET)                Exécute la suite de tests Pytest"
 	@echo -e "  $(YELLOW)make coverage$(RESET)            Mesure le pourcentage de couverture de test"
 	@echo -e "  $(YELLOW)make lint$(RESET)                Vérifie le code avec Ruff"
 	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
+	@echo -e "  $(YELLOW)make get-bugs$(RESET)            Récupère et affiche les rapports de bugs depuis MongoDB"
 	@echo ""
 	@echo -e "$(GREEN)Commandes d'infrastructure & Ollama :$(RESET)"
 	@echo -e "  $(YELLOW)make docker-up$(RESET)        Démarre Milvus et MongoDB via Docker Compose"
@@ -188,6 +215,12 @@ format:
 	@echo -e "$(CYAN)--> Formatage Ruff sur src/...$(RESET)"
 	cd $(APP_DIR) && $(UV) run ruff format src/
 
+## Récupère et affiche les rapports de bugs stockés dans MongoDB
+get-bugs:
+	@echo -e "$(CYAN)--> Récupération des rapports de bugs depuis MongoDB...$(RESET)"
+	@cd $(APP_DIR) && $(UV) run python scripts/get_bugs.py
+
+
 ## Initialise le replica set MongoDB (rs0) si nécessaire
 mongo-init:
 	@echo -e "$(CYAN)--> Initialisation / vérification du Replica Set MongoDB (rs0)...$(RESET)"
@@ -200,6 +233,8 @@ print('  [OK] MongoDB Replica Set (rs0) initialisé avec succès')" 2>/dev/null 
 
 ## Démarre les services d'infrastructure Docker (Milvus & MongoDB)
 docker-up:
+	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
 	@echo -e "$(CYAN)--> Démarrage des services communs (MongoDB)...$(RESET)"
@@ -208,6 +243,8 @@ docker-up:
 
 ## Démarre les conteneurs en mode proxy (Milvus, MongoDB, embeddings - sans chat local)
 docker-up-proxy:
+	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
 	@echo -e "$(CYAN)--> Démarrage des services en mode proxy (MongoDB + embeddings, sans chat local)...$(RESET)"
@@ -254,3 +291,236 @@ clean:
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	@echo -e "$(GREEN)Caches nettoyés avec succès.$(RESET)"
+
+# ==============================================================================
+# Cibles de Production (Scaleway L4 24G + OAuth2 Proxy GitHub + Caddy TLS)
+# ==============================================================================
+
+## Initialise l'environnement de production (droits docker/sudoers, .env.prod, dossiers de volumes, logrotate et modèles GGUF)
+init-prod:
+	@echo -e "$(CYAN)--> Vérification des prérequis de production (Scaleway L4)...$(RESET)"
+	@command -v docker >/dev/null 2>&1 || { echo -e "  [$(RED)ERREUR$(RESET)] Docker n'est pas installé."; exit 1; }
+	@$(MAKE) sudoers-prod
+	@if command -v nvidia-smi >/dev/null 2>&1; then \
+		echo -e "  [$(GREEN)OK$(RESET)] GPU NVIDIA détecté : $$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | head -n1)"; \
+	else \
+		echo -e "  [$(YELLOW)ATTENTION$(RESET)] nvidia-smi non détecté. Vérifiez les drivers NVIDIA et nvidia-container-toolkit."; \
+	fi
+	@echo -e "$(CYAN)--> Création des répertoires de volumes persistants et des dossiers de domaines (oncology & sma)...$(RESET)"
+	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config}
+	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
+	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@if [ ! -f "$(ENV_PROD)" ]; then \
+		echo -e "$(CYAN)--> Génération de $(ENV_PROD) depuis .env.prod.example...$(RESET)"; \
+		cp .env.prod.example "$(ENV_PROD)"; \
+		COOKIE_SEC=$$(openssl rand -base64 32 | tr -- '+/' '-_'); \
+		sed -i "s|OAUTH2_PROXY_COOKIE_SECRET=.*|OAUTH2_PROXY_COOKIE_SECRET=$${COOKIE_SEC}|" "$(ENV_PROD)"; \
+		echo -e "  [$(YELLOW)ACTION REQUISE$(RESET)] Renseignez OAUTH2_PROXY_CLIENT_ID et OAUTH2_PROXY_CLIENT_SECRET dans $(ENV_PROD)"; \
+	else \
+		echo -e "  [$(GREEN)OK$(RESET)] Fichier $(ENV_PROD) déjà présent."; \
+	fi
+	@$(MAKE) logrotate-prod
+	@$(MAKE) pull-models-prod
+	@echo -e "$(GREEN)--> Initialisation de production terminée.$(RESET)"
+
+## Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour l'utilisateur courant
+sudoers-prod:
+	@echo -e "$(CYAN)--> Configuration sudoers (Ubuntu 24.04+) pour l'utilisateur '$(DEPLOY_USER)'...$(RESET)"
+	@mkdir -p dist/docker/compose/volumes/logs
+	@sed "s|__DEPLOY_USER__|$(DEPLOY_USER)|g" dist/sudoers/meddatasyntis > dist/docker/compose/volumes/logs/meddatasyntis.sudoers
+	@if sudo visudo -cf dist/docker/compose/volumes/logs/meddatasyntis.sudoers >/dev/null 2>&1; then \
+		sudo cp dist/docker/compose/volumes/logs/meddatasyntis.sudoers /etc/sudoers.d/meddatasyntis && \
+		sudo chown root:root /etc/sudoers.d/meddatasyntis && \
+		sudo chmod 0440 /etc/sudoers.d/meddatasyntis && \
+		echo -e "  [$(GREEN)OK$(RESET)] Règle sudoers installée et validée dans /etc/sudoers.d/meddatasyntis (mode 0440)."; \
+	else \
+		echo -e "  [$(YELLOW)INFO$(RESET)] Fichier généré : dist/docker/compose/volumes/logs/meddatasyntis.sudoers"; \
+		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'installer : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/meddatasyntis.sudoers /etc/sudoers.d/meddatasyntis && sudo chmod 0440 /etc/sudoers.d/meddatasyntis"; \
+	fi
+
+## Génère et installe la configuration logrotate pour les logs applicatifs MedDataSyntis
+logrotate-prod:
+	@echo -e "$(CYAN)--> Configuration de logrotate pour MedDataSyntis...$(RESET)"
+	@mkdir -p dist/docker/compose/volumes/logs
+	@chmod 777 dist/docker/compose/volumes/logs 2>/dev/null || true
+	@sed "s|__MEDDATASYNTIS_LOG_DIR__|$(CURDIR)/dist/docker/compose/volumes/logs|g" dist/logrotate/meddatasyntis > dist/docker/compose/volumes/logs/meddatasyntis.logrotate
+	@if sudo cp dist/docker/compose/volumes/logs/meddatasyntis.logrotate /etc/logrotate.d/meddatasyntis 2>/dev/null && sudo chown root:root /etc/logrotate.d/meddatasyntis 2>/dev/null && sudo chmod 644 /etc/logrotate.d/meddatasyntis 2>/dev/null; then \
+		echo -e "  [$(GREEN)OK$(RESET)] Configuration installée dans /etc/logrotate.d/meddatasyntis"; \
+	else \
+		echo -e "  [$(GREEN)OK$(RESET)] Fichier généré : dist/docker/compose/volumes/logs/meddatasyntis.logrotate"; \
+		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'activer au niveau système : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/meddatasyntis.logrotate /etc/logrotate.d/meddatasyntis && sudo chmod 644 /etc/logrotate.d/meddatasyntis"; \
+	fi
+
+## Télécharge les modèles GGUF de production (Qwen3.6-35B-A3B IQ4_NL & bge-m3 Q4_K_M)
+pull-models-prod:
+	@mkdir -p "$(MODELS_DIR)"
+	@echo -e "$(CYAN)--> Vérification / téléchargement du modèle d'embeddings (bge-m3-Q4_K_M.gguf)...$(RESET)"
+	@if [ -f "$(EMBED_MODEL_FILE)" ]; then \
+		echo -e "  [$(GREEN)OK$(RESET)] $(EMBED_MODEL_FILE) déjà présent."; \
+	else \
+		curl -fL -C - -o "$(EMBED_MODEL_FILE).part" "$(EMBED_MODEL_URL)" && mv "$(EMBED_MODEL_FILE).part" "$(EMBED_MODEL_FILE)"; \
+		echo -e "  [$(GREEN)OK$(RESET)] Modèle d'embeddings téléchargé."; \
+	fi
+	@echo -e "$(CYAN)--> Vérification / téléchargement du modèle LLM L4 (Qwen3.6-35B-A3B-UD-IQ4_NL.gguf ~18.5 Go)...$(RESET)"
+	@if [ -f "$(CHAT_MODEL_FILE)" ]; then \
+		echo -e "  [$(GREEN)OK$(RESET)] $(CHAT_MODEL_FILE) déjà présent."; \
+	else \
+		curl -fL -C - -o "$(CHAT_MODEL_FILE).part" "$(CHAT_MODEL_URL)" && mv "$(CHAT_MODEL_FILE).part" "$(CHAT_MODEL_FILE)"; \
+		echo -e "  [$(GREEN)OK$(RESET)] Modèle Qwen3.6-35B-A3B téléchargé."; \
+	fi
+
+## Initialise le Replica Set MongoDB (rs0) directement dans le conteneur mongod
+mongo-init-prod:
+	@echo -e "$(CYAN)--> Initialisation / vérification du Replica Set MongoDB (rs0) en prod...$(RESET)"
+	@for i in {1..15}; do \
+		if docker exec oncoflow-mongod mongosh --quiet --eval "db.runCommand({ ping: 1 })" >/dev/null 2>&1; then \
+			break; \
+		fi; \
+		sleep 1; \
+	done
+	@docker exec oncoflow-mongod mongosh --quiet -u "$${APP_MONGODB_USER:-root}" -p "$${APP_MONGODB_PASSWORD:-root}" --authenticationDatabase admin --eval ' \
+		try { \
+			var s = rs.status(); \
+			if (s.ok === 1) { print("  [OK] MongoDB Replica Set (rs0) déjà actif."); quit(0); } \
+		} catch (e) {} \
+		rs.initiate({_id: "rs0", members: [{_id: 0, host: "127.0.0.1:27017"}]}); \
+		print("  [OK] MongoDB Replica Set (rs0) initialisé."); \
+	' 2>/dev/null || echo -e "  [$(GREEN)OK$(RESET)] MongoDB Replica Set prêt."
+
+## Construit l'image Docker applicative de production (non-root, librairies XCB/GL/système)
+build-prod:
+	@echo -e "$(CYAN)--> Construction de l'image Docker de production ($${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(GREEN)--> Image Docker construite avec succès !$(RESET)"
+
+## Démarre les conteneurs Docker de production (Multi-Domaines Oncology & SMA)
+docker-up-prod:
+	@if [ ! -f "$(ENV_PROD)" ]; then \
+		echo -e "  [$(RED)ERREUR$(RESET)] Fichier $(ENV_PROD) introuvable. Lancez d'abord 'make init-prod' et configurez vos identifiants GitHub OAuth."; \
+		exit 1; \
+	fi
+	@if grep -q "votre_github_client_id" "$(ENV_PROD)"; then \
+		echo -e "  [$(YELLOW)ATTENTION$(RESET)] OAUTH2_PROXY_CLIENT_ID contient encore la valeur par défaut dans $(ENV_PROD) !"; \
+	fi
+	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
+	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
+	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + UIs Oncology & SMA + OAuth2 Proxy + Caddy)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --remove-orphans
+	@$(MAKE) mongo-init-prod
+
+## Démarre toute la stack de production et attend la disponibilité des modèles LLM
+start-prod: docker-up-prod
+	@echo -e "$(CYAN)--> Vérification du chargement de Qwen3.6-35B-A3B sur le GPU L4 (port 8080)...$(RESET)"
+	@READY=0; \
+	for i in {1..60}; do \
+		if curl -s -m 2 http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status":"ok"'; then \
+			READY=1; \
+			echo -e "\n  [$(GREEN)PRÊT$(RESET)] Serveur llama.cpp Chat (Qwen3.6-35B-A3B) opérationnel sur L4."; \
+			break; \
+		fi; \
+		if [ $$i -eq 1 ]; then \
+			echo -n "  Chargement du modèle en VRAM (peut prendre 20 à 60s)"; \
+		else \
+			echo -n "."; \
+		fi; \
+		sleep 2; \
+	done; \
+	if [ $$READY -eq 0 ]; then \
+		echo -e "\n  [$(YELLOW)INFO$(RESET)] Le chargement du modèle se poursuit en arrière-plan (voir 'make logs-prod')."; \
+	fi
+	@BASE_DOM=$$(grep -E '^PROD_BASE_DOMAIN=' "$(ENV_PROD)" 2>/dev/null | cut -d= -f2 || echo "$(PROD_BASE_DOMAIN)"); \
+	BASE_DOM=$${BASE_DOM:-$(PROD_BASE_DOMAIN)}; \
+	echo -e "$(GREEN)======================================================================$(RESET)"; \
+	echo -e "  🚀 MedDataSyntis Production actif sur :"; \
+	echo -e "     • Oncologie           : $(CYAN)https://oncologic.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Amyotrophie spinale : $(CYAN)https://sma.$${BASE_DOM}$(RESET)"; \
+	echo -e "$(GREEN)======================================================================$(RESET)"
+
+## Arrête tous les conteneurs de la stack de production (conserve les volumes de données)
+stop-prod:
+	@echo -e "$(YELLOW)--> Arrêt de la stack de production MedDataSyntis...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) down --remove-orphans
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) down --remove-orphans
+	@echo -e "$(GREEN)--> Stack de production arrêtée.$(RESET)"
+
+docker-down-prod: stop-prod
+up-prod: start-prod
+down-prod: stop-prod
+
+## Redémarre uniquement les services applicatifs et proxy (sans décharger le LLM de la VRAM L4)
+restart-prod:
+	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs Oncology & SMA, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy
+	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
+
+## Met à jour le dépôt git et l'image Docker UI depuis GHCR sans décharger le modèle LLM du GPU
+prod-update:
+	@echo -e "$(CYAN)--> [1/4] Mise à jour du code source (git pull --ff-only)...$(RESET)"
+	git pull --ff-only
+	@echo -e "$(CYAN)--> [2/4] Téléchargement des dernières images applicatives (UIs Oncology & SMA, oauth2-proxy, caddy, litellm)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy litellm
+	@echo -e "$(CYAN)--> [3/4] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy litellm
+	@$(MAKE) mongo-init-prod
+	@echo -e "$(CYAN)--> [4/4] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
+	@docker image prune -f >/dev/null 2>&1 || true
+	@$(MAKE) status-prod
+	@echo -e "$(GREEN)--> Mise à jour de production (prod-update) terminée avec succès !$(RESET)"
+
+## Met à jour l'intégralité de la stack de production (y compris les images LLM, Milvus et MongoDB)
+prod-update-all:
+	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + UIs)...$(RESET)"
+	git pull --ff-only
+	docker compose -f $(COMPOSE_MILVUS) pull
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
+	@$(MAKE) mongo-init-prod
+	@docker image prune -f >/dev/null 2>&1 || true
+	@$(MAKE) status-prod
+
+## Affiche l'état complet des services de production et de la VRAM GPU L4
+status-prod:
+	@echo -e "$(CYAN)=== État des services MedDataSyntis (PRODUCTION) ===$(RESET)"
+	@echo -n "Caddy HTTPS (port 443)            : "
+	@ss -tlnp 2>/dev/null | grep -q ":443 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "OAuth2 Proxy GitHub SSO (4180)    : "
+	@ss -tlnp 2>/dev/null | grep -q ":4180 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "UI Oncology GHCR (port 8501)      : "
+	@ss -tlnp 2>/dev/null | grep -q ":8501 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "UI SMA GHCR (port 8502)           : "
+	@ss -tlnp 2>/dev/null | grep -q ":8502 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "LiteLLM Proxy (port 4000)         : "
+	@ss -tlnp 2>/dev/null | grep -q ":4000 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "llama.cpp Chat L4 (port 8080)     : "
+	@if curl -s -m 2 http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status":"ok"'; then \
+		echo -e "$(GREEN)PRÊT (Modèle chargé en VRAM)$(RESET)"; \
+	elif ss -tlnp 2>/dev/null | grep -q ":8080 "; then \
+		echo -e "$(YELLOW)CHARGEMENT EN COURS...$(RESET)"; \
+	else \
+		echo -e "$(RED)INACTIF$(RESET)"; \
+	fi
+	@echo -n "llama.cpp Embed (port 8081)       : "
+	@if curl -s -m 2 http://127.0.0.1:8081/health 2>/dev/null | grep -q '"status":"ok"'; then \
+		echo -e "$(GREEN)PRÊT$(RESET)"; \
+	elif ss -tlnp 2>/dev/null | grep -q ":8081 "; then \
+		echo -e "$(YELLOW)CHARGEMENT EN COURS...$(RESET)"; \
+	else \
+		echo -e "$(RED)INACTIF$(RESET)"; \
+	fi
+	@echo -n "Milvus Vector DB (port 19530)     : "
+	@ss -tlnp 2>/dev/null | grep -q ":19530 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "MongoDB ReplicaSet (27017)        : "
+	@ss -tlnp 2>/dev/null | grep -q ":27017 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@if command -v nvidia-smi >/dev/null 2>&1; then \
+		echo ""; \
+		echo -e "$(CYAN)=== Utilisation GPU NVIDIA L4 ===$(RESET)"; \
+		nvidia-smi --query-gpu=name,memory.used,memory.total,utilization.gpu,temperature.gpu --format=table; \
+	fi
+
+## Affiche les journaux en temps réel de la stack de production
+logs-prod:
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) logs -f --tail=100

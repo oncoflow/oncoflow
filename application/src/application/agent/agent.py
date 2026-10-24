@@ -14,7 +14,10 @@ from src.application.reader import DocumentReader
 from src.application.agent.tools import (
     search_on_ressources,
     get_mtd_markdown,
+    get_patient_mtds_markdown,
+    get_patient_ai_history,
     Context,
+    PatientContext,
 )
 from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
 
@@ -89,6 +92,7 @@ class OncowflowAgent:
     agent: Any = None
     agent_name: str = ""
     additionnal_readers: list[DocumentReader] = []
+    patient_readers: list[DocumentReader] = []
     reasoning_budget: int | None = 1024
 
     @classmethod
@@ -112,6 +116,7 @@ class OncowflowAgent:
         reasoning_budget: int | None = None,
         reader: DocumentReader | None = None,
         additionnal_readers: list[DocumentReader] = [],
+        patient_readers: list[DocumentReader] | None = None,
     ):
         """
         Initialize the OncowflowAgent.
@@ -120,6 +125,7 @@ class OncowflowAgent:
             config (AppConfig): Application configuration.
             mtd (DocumentReader): The main document reader for MTDs.
             output_format (any, optional): The Pydantic model defining the expected output structure.
+            patient_readers (list[DocumentReader], optional): Readers for all RCP documents of a patient dossier.
         """
         if output_format is None:
             self.output_format = ChatResponse
@@ -144,13 +150,23 @@ class OncowflowAgent:
         if reasoning_budget is not None:
             self.reasoning_budget = reasoning_budget
 
+        self.patient_readers = list(patient_readers) if patient_readers else []
+        mtd_tool_name = (
+            "get_patient_mtds_markdown" if self.patient_readers else "get_mtd_markdown"
+        )
+        history_tool_instruction = (
+            "\n        - Call `get_patient_ai_history` to retrieve the chronological history of AI-extracted clinical and expert information across all RCPs of the patient dossier."
+            if self.patient_readers
+            else ""
+        )
+
         system_prompt = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
         You are a clinical data extraction assistant operating in a live production environment.
         {self.system_prompt}
 
         ## STEP 1 — Gather information (use tools)
         If the required information is NOT already in your context, call the appropriate tools FIRST:
-        - Call `get_mtd_markdown` to retrieve the full patient record text.
+        - Call `{mtd_tool_name}` to retrieve the full patient record text.{history_tool_instruction}
         - Call `search_on_ressources` to search reference guidelines if needed.
         - You MAY call tools multiple times to find all required fields.
         - Do NOT guess, mock, or fabricate any clinical information.
@@ -177,7 +193,10 @@ class OncowflowAgent:
         # Set up readers for the main document and additional resources
         self.reader = mtd
         tools = []
-        if mtd is not None:
+        if self.patient_readers:
+            tools.append(get_patient_mtds_markdown)
+            tools.append(get_patient_ai_history)
+        elif mtd is not None:
             tools.append(get_mtd_markdown)
 
         self.additionnal_readers = [
@@ -188,6 +207,10 @@ class OncowflowAgent:
         self.additionnal_readers.extend(additionnal_readers)
         if len(self.additionnal_readers) > 0:
             tools.append(search_on_ressources)
+
+        active_context_schema = (
+            cast(Any, PatientContext) if self.patient_readers else cast(Any, Context)
+        )
 
         # Create the LangChain agent with specific tools and context
         self.agent = create_agent(
@@ -214,7 +237,7 @@ class OncowflowAgent:
             # response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
             # response_format=self.output_format,
             response_format=None,
-            context_schema=cast(Any, Context),
+            context_schema=active_context_schema,
             system_prompt=system_prompt,
         )
 
@@ -295,13 +318,22 @@ class OncowflowAgent:
 
         for r in range(retry):
             # Invoke the agent with the user question and context (readers)
-            result = self.agent.invoke(
-                {"messages": [{"role": "user", "content": question}]},
-                context=Context(
+            runtime_context = (
+                PatientContext(
+                    patient_readers=self.patient_readers,
+                    additionnal_readers=self.additionnal_readers,
+                    logger=self.logger,
+                )
+                if self.patient_readers
+                else Context(
                     reader=self.reader,
                     additionnal_readers=self.additionnal_readers,
                     logger=self.logger,
-                ),
+                )
+            )
+            result = self.agent.invoke(
+                {"messages": [{"role": "user", "content": question}]},
+                context=runtime_context,
                 config={
                     "callbacks": callbacks,
                     "tags": [self.agent_name] if self.agent_name else [],

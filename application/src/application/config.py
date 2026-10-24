@@ -20,6 +20,7 @@ Functions:
 
 import os
 import logging
+from logging.handlers import RotatingFileHandler
 import json
 import warnings
 from pathlib import Path
@@ -42,7 +43,8 @@ class LogSettings(BaseSettings):
     """
     Configuration for logging settings.
 
-    Environment variables: APP_LOG_LEVEL, APP_LOG_LANGCHAINDEBUG, APP_LOG_TYPE
+    Environment variables: APP_LOG_LEVEL, APP_LOG_LANGCHAINDEBUG, APP_LOG_TYPE,
+    APP_LOG_FILE, APP_LOG_MAX_BYTES, APP_LOG_BACKUP_COUNT
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_LOG_")
@@ -58,6 +60,18 @@ class LogSettings(BaseSettings):
     type: str = Field(
         default="text",
         description="Log output format. 'text' for human-readable logs, 'json' for structured JSON logs.",
+    )
+    file: str | None = Field(
+        default=None,
+        description="Optional path to a log file (e.g. /var/log/oncoflow/oncoflow.log). Enables RotatingFileHandler.",
+    )
+    max_bytes: int = Field(
+        default=10 * 1024 * 1024,
+        description="Maximum size in bytes before rotating the log file (default: 10 MB).",
+    )
+    backup_count: int = Field(
+        default=5,
+        description="Number of rotated log files to retain (default: 5).",
     )
 
     @field_validator("level")
@@ -316,6 +330,11 @@ class AppConfig(BaseSettings):
         description="Enable development mode. When True, uses development configurations.",
     )
 
+    auth_mode: str = Field(
+        default="local",
+        description="Authentication mode for the UI. Valid values: 'local' (streamlit-authenticator) or 'oauth_proxy' (HTTP headers injected by oauth2-proxy).",
+    )
+
     llm: ConfigllmSettings = Field(
         default_factory=ConfigllmSettings,
         description="LLM system configuration (model, URL, port, temperature, embeddings).",
@@ -347,13 +366,24 @@ class AppConfig(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         super().model_post_init(__context)
-        # Dynamically append the domain (e.g., oncology, sma) to the additional_path
+        # Dynamically isolate paths, databases, and collections by domain (e.g., oncology, sma)
         if self.domain:
             self.rcp.additional_path = self.rcp.additional_path / self.domain
             try:
                 self.rcp.additional_path.mkdir(parents=True, exist_ok=True)
             except Exception:
                 pass
+
+            self.rcp.path = self.rcp.path / self.domain
+            try:
+                self.rcp.path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+
+            self.mongodb.database = f"{self.mongodb.database}_{self.domain}"
+            self.mongodb.vectordatabase = f"{self.mongodb.vectordatabase}_{self.domain}"
+            self.dbvec.collection = f"{self.dbvec.collection}_{self.domain}"
+            self.milvus.database = f"{self.milvus.database}_{self.domain}"
 
     @property
     def auth_config_path(self) -> Path:
@@ -426,5 +456,23 @@ class AppConfig(BaseSettings):
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)
         logger.addHandler(ch)
+
+        if self.logs.file:
+            try:
+                log_path = Path(self.logs.file)
+                log_path.parent.mkdir(parents=True, exist_ok=True)
+                fh = RotatingFileHandler(
+                    log_path,
+                    maxBytes=self.logs.max_bytes,
+                    backupCount=self.logs.backup_count,
+                    encoding="utf-8",
+                )
+                fh.setLevel(level=self.logs.level)
+                fh.setFormatter(formatter)
+                logger.addHandler(fh)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize file log handler ({self.logs.file}): {e}"
+                )
 
         return logger

@@ -80,7 +80,7 @@ jobs:
           # Conversion en minuscules pour respecter le format docker
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           VERSION=${{ github.sha }}
-          docker build -f dist/docker/Dockerfile -t $IMAGE_ID:$VERSION .
+          docker build -f dist/docker/Dockerfile -t $IMAGE_ID:$VERSION -t $IMAGE_ID:latest .
 
       - name: Push Docker image
         if: github.event_name == 'push'
@@ -89,6 +89,6 @@ jobs:
           IMAGE_ID=ghcr.io/${{ github.repository }}
           IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
           VERSION=${{ github.sha }}
-          if ! docker push $IMAGE_ID:$VERSION; then
-            echo "::warning title=GHCR Push Failed::Failed to push Docker image to ghcr.io ($IMAGE_ID:$VERSION). Check GitHub Packages permissions in organization/repository settings."
+          if ! (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest); then
+            echo "::warning title=GHCR Push Failed::Failed to push Docker image to ghcr.io ($IMAGE_ID:$VERSION / latest). Check GitHub Packages permissions in organization/repository settings."
           fi
