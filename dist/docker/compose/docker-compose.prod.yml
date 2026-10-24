@@ -5,6 +5,42 @@ x-logging: &default-logging
     max-file: "${DOCKER_LOG_MAX_FILE:-5}"
     compress: "true"
 
+x-ui-env: &ui-env
+  APP_DEV_MODE: "false"
+  APP_AUTH_MODE: "oauth_proxy"
+  APP_LANGUAGE: ${APP_LANGUAGE:-french}
+  APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
+  APP_LOG_TYPE: ${APP_LOG_TYPE:-json}
+  APP_LOG_MAX_BYTES: ${APP_LOG_MAX_BYTES:-10485760}
+  APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
+  APP_CONFIGLLM_TYPE: "LiteLLM"
+  APP_CONFIGLLM_URL: "http://litellm"
+  APP_CONFIGLLM_PORT: "4000"
+  APP_CONFIGLLM_EMBEDDINGS_PORT: "4000"
+  APP_CONFIGLLM_MODELS: "openai/agents"
+  APP_CONFIGLLM_EMBEDDINGS: "openai/embeddings"
+  APP_MONGODB_HOST: "mongod"
+  APP_MONGODB_PORT: "27017"
+  APP_MONGODB_USER: ${APP_MONGODB_USER:-root}
+  APP_MONGODB_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+  APP_MILVUSDB_HOST: "milvus-standalone"
+  APP_MILVUSDB_PORT: "19530"
+
+x-ui-common: &ui-common
+  image: ${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:${ONCOFLOW_TAG:-latest}
+  restart: unless-stopped
+  logging: *default-logging
+  volumes:
+    - ../../../application/ressources/PatientMDTForm:/app/application/ressources/PatientMDTForm
+    - ../../../application/ressources/documents:/app/application/ressources/documents
+    - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/logs:/var/log/meddatasyntis
+  depends_on:
+    - mongod
+    - litellm
+  networks:
+    - search-community
+    - milvus
+
 services:
 
   mongod:
@@ -205,48 +241,28 @@ services:
     networks:
       - search-community
 
-  # ─── Application Oncoflow UI (Image GHCR buildée par GitHub Actions) ────────
-  oncoflow-ui:
-    image: ${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:${ONCOFLOW_TAG:-latest}
-    container_name: oncoflow-ui
-    restart: unless-stopped
-    logging: *default-logging
+  # ─── Applications MedDataSyntis UI en parallèle (Oncology & SMA) ────────────
+  oncoflow-ui-oncology:
+    <<: *ui-common
+    container_name: oncoflow-ui-oncology
     ports:
       - "127.0.0.1:8501:8501"
     environment:
-      APP_DEV_MODE: "false"
-      APP_AUTH_MODE: "oauth_proxy"
-      APP_DOMAIN: ${APP_DOMAIN:-oncology}
-      APP_LANGUAGE: ${APP_LANGUAGE:-french}
-      APP_LOG_LEVEL: ${APP_LOG_LEVEL:-INFO}
-      APP_LOG_TYPE: ${APP_LOG_TYPE:-json}
-      APP_LOG_FILE: "/var/log/oncoflow/oncoflow.log"
-      APP_LOG_MAX_BYTES: ${APP_LOG_MAX_BYTES:-10485760}
-      APP_LOG_BACKUP_COUNT: ${APP_LOG_BACKUP_COUNT:-5}
-      APP_CONFIGLLM_TYPE: "LiteLLM"
-      APP_CONFIGLLM_URL: "http://litellm"
-      APP_CONFIGLLM_PORT: "4000"
-      APP_CONFIGLLM_EMBEDDINGS_PORT: "4000"
-      APP_CONFIGLLM_MODELS: "openai/agents"
-      APP_CONFIGLLM_EMBEDDINGS: "openai/embeddings"
-      APP_MONGODB_HOST: "mongod"
-      APP_MONGODB_PORT: "27017/?directConnection=true"
-      APP_MONGODB_USER: ${APP_MONGODB_USER:-root}
-      APP_MONGODB_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
-      APP_MILVUSDB_HOST: "milvus-standalone"
-      APP_MILVUSDB_PORT: "19530"
-    volumes:
-      - ../../../application/ressources/PatientMDTForm:/app/application/ressources/PatientMDTForm
-      - ../../../application/ressources/documents:/app/application/ressources/documents
-      - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/logs:/var/log/oncoflow
-    depends_on:
-      - mongod
-      - litellm
-    networks:
-      - search-community
-      - milvus
+      <<: *ui-env
+      APP_DOMAIN: "oncology"
+      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-oncology.log"
 
-  # ─── OAuth2 Proxy (Authentification GitHub devant Streamlit UI) ──────────────
+  oncoflow-ui-sma:
+    <<: *ui-common
+    container_name: oncoflow-ui-sma
+    ports:
+      - "127.0.0.1:8502:8501"
+    environment:
+      <<: *ui-env
+      APP_DOMAIN: "sma"
+      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-sma.log"
+
+  # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.meddatasyntis.bricks-it.fr)
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
     container_name: oncoflow-oauth2-proxy
@@ -257,8 +273,10 @@ services:
     environment:
       OAUTH2_PROXY_PROVIDER: "github"
       OAUTH2_PROXY_HTTP_ADDRESS: "0.0.0.0:4180"
-      OAUTH2_PROXY_UPSTREAMS: "http://oncoflow-ui:8501"
-      OAUTH2_PROXY_REDIRECT_URL: "https://${PROD_DOMAIN:-oncoflow.bricks-it.fr}/oauth2/callback"
+      OAUTH2_PROXY_UPSTREAMS: "static://202"
+      OAUTH2_PROXY_REDIRECT_URL: "${OAUTH2_PROXY_REDIRECT_URL:-https://oncologic.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}/oauth2/callback}"
+      OAUTH2_PROXY_COOKIE_DOMAINS: ".${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}"
+      OAUTH2_PROXY_WHITELIST_DOMAINS: ".${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}"
       OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
       OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
@@ -274,11 +292,12 @@ services:
       OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
       OAUTH2_PROXY_SILENCE_PING_LOGGING: "true"
     depends_on:
-      - oncoflow-ui
+      - oncoflow-ui-oncology
+      - oncoflow-ui-sma
     networks:
       - search-community
 
-  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncoflow.bricks-it.fr)
+  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.* et sma.*)
   caddy:
     image: caddy:2-alpine
     container_name: oncoflow-caddy
@@ -289,13 +308,15 @@ services:
       - "443:443"
       - "443:443/udp"
     environment:
-      PROD_DOMAIN: ${PROD_DOMAIN:-oncoflow.bricks-it.fr}
+      PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/caddy_data:/data
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/caddy_config:/config
     depends_on:
       - oauth2-proxy
+      - oncoflow-ui-oncology
+      - oncoflow-ui-sma
     networks:
       - search-community
 

@@ -1,9 +1,9 @@
-# Configuration logrotate pour Oncoflow
-# Installée automatiquement dans /etc/logrotate.d/oncoflow via :
+# Configuration logrotate pour MedDataSyntis
+# Installée automatiquement dans /etc/logrotate.d/meddatasyntis via :
 #   make logrotate-prod (ou make init-prod)
 
-__ONCOFLOW_LOG_DIR__/*.log
-/tmp/oncoflow-*.log
+__MEDDATASYNTIS_LOG_DIR__/*.log
+/tmp/meddatasyntis-*.log
 {
     daily
     rotate 14

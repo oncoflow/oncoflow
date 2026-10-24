@@ -366,13 +366,24 @@ class AppConfig(BaseSettings):
 
     def model_post_init(self, __context) -> None:
         super().model_post_init(__context)
-        # Dynamically append the domain (e.g., oncology, sma) to the additional_path
+        # Dynamically isolate paths, databases, and collections by domain (e.g., oncology, sma)
         if self.domain:
             self.rcp.additional_path = self.rcp.additional_path / self.domain
             try:
                 self.rcp.additional_path.mkdir(parents=True, exist_ok=True)
             except Exception:
                 pass
+
+            self.rcp.path = self.rcp.path / self.domain
+            try:
+                self.rcp.path.mkdir(parents=True, exist_ok=True)
+            except Exception:
+                pass
+
+            self.mongodb.database = f"{self.mongodb.database}_{self.domain}"
+            self.mongodb.vectordatabase = f"{self.mongodb.vectordatabase}_{self.domain}"
+            self.dbvec.collection = f"{self.dbvec.collection}_{self.domain}"
+            self.milvus.database = f"{self.milvus.database}_{self.domain}"
 
     @property
     def auth_config_path(self) -> Path:

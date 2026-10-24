@@ -1,11 +1,62 @@
-{$PROD_DOMAIN:oncoflow.bricks-it.fr} {
-    encode zstd gzip
+(oauth_guard) {
+    handle /oauth2/* {
+        reverse_proxy oauth2-proxy:4180 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Uri {uri}
+        }
+    }
+}
 
-    reverse_proxy oauth2-proxy:4180 {
+(oauth_forward) {
+    forward_auth oauth2-proxy:4180 {
+        uri /oauth2/auth
         header_up Host {host}
         header_up X-Real-IP {remote_host}
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
         header_up X-Forwarded-Uri {uri}
+        copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Preferred-Username
+
+        @unauthorized status 401
+        handle_response @unauthorized {
+            redir * /oauth2/start?rd={scheme}://{host}{uri}
+        }
+    }
+}
+
+oncologic.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
+    encode zstd gzip
+    import oauth_guard
+
+    handle {
+        import oauth_forward
+        reverse_proxy oncoflow-ui-oncology:8501 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Uri {uri}
+        }
+    }
+}
+
+sma.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
+    encode zstd gzip
+    import oauth_guard
+
+    handle {
+        import oauth_forward
+        reverse_proxy oncoflow-ui-sma:8501 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Uri {uri}
+        }
     }
 }
