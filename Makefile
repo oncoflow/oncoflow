@@ -402,7 +402,7 @@ docker-up-prod:
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + UIs Oncology & SMA + OAuth2 Proxy + Caddy)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --remove-orphans
 	@$(MAKE) mongo-init-prod
 
 ## Démarre toute la stack de production et attend la disponibilité des modèles LLM

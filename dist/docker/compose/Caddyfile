@@ -24,8 +24,17 @@
 
         @unauthorized status 401
         handle_response @unauthorized {
-            redir * /oauth2/start?rd={scheme}://{host}{uri}
+            redir * https://sso.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr}/oauth2/start?rd={scheme}://{host}{uri}
         }
+    }
+}
+
+sso.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
+    encode zstd gzip
+    import oauth_guard
+
+    handle {
+        redir * https://oncologic.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr}{uri}
     }
 }
 
