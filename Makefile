@@ -43,7 +43,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
+.PHONY: help install upgrade start-api start-ui start-worker start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui worker ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -109,6 +109,11 @@ start-ui:
 	@echo -e "$(CYAN)--> Démarrage de Streamlit UI sur http://localhost:$(PORT_UI)...$(RESET)"
 	cd $(APP_DIR) && $(UV) run streamlit run app-ui.py --server.port=$(PORT_UI)
 
+## Démarre le worker de la file de traitement
+start-worker:
+	@echo -e "$(CYAN)--> Démarrage du Worker de la file de traitement...$(RESET)"
+	cd $(APP_DIR) && $(UV) run python app-worker.py
+
 ## Démarre Streamlit UI connecté au proxy GCP Cloud Run avec l'infrastructure Docker en mode proxy (sans chat local)
 start-ui-dev: docker-up-proxy cloudrun-proxy
 	@echo -e "$(CYAN)--> Vérification de la disponibilité du serveur llama.cpp (Cloud Run)...$(RESET)"
@@ -166,27 +171,35 @@ cloudrun-proxy-stop:
 # Raccourcis et alias
 api: start-api
 ui: start-ui
+worker: start-worker
 ui-dev: start-ui-dev
 start: start-ui
 proxy: cloudrun-proxy
 proxy-stop: cloudrun-proxy-stop
 
-## Démarre l'API en arrière-plan puis Streamlit au premier plan
+## Démarre l'API et le Worker en arrière-plan puis Streamlit au premier plan
 dev:
-	@echo -e "$(CYAN)--> Démarrage du mode développement complet (API + UI)...$(RESET)"
+	@echo -e "$(CYAN)--> Démarrage du mode développement complet (API + Worker + UI)...$(RESET)"
 	@$(MAKE) stop >/dev/null 2>&1
 	@echo -e "  Démarrage de l'API en tâche de fond..."
 	@nohup bash -c "cd $(APP_DIR) && $(UV) run python app-api.py" > /tmp/oncoflow-api.log 2>&1 &
+	@echo -e "  Démarrage du Worker en tâche de fond..."
+	@nohup bash -c "cd $(APP_DIR) && $(UV) run python app-worker.py" > /tmp/oncoflow-worker.log 2>&1 &
 	@sleep 2
 	@$(MAKE) start-ui
 
-## Arrête les processus actifs (Streamlit, API FastAPI, proxy Cloud Run)
+## Arrête les processus actifs (Streamlit, Worker, API FastAPI, proxy Cloud Run)
 stop: cloudrun-proxy-stop docker-down
 	@echo -e "$(YELLOW)--> Arrêt des processus applicatifs...$(RESET)"
 	@if pgrep -f "[s]treamlit run app-ui.py" >/dev/null 2>&1; then \
 		pkill -f "[s]treamlit run app-ui.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Streamlit UI"; \
 	else \
 		echo -e "  [$(GREEN)OK$(RESET)] Streamlit UI n'est pas actif"; \
+	fi
+	@if pgrep -f "[p]ython.*app-worker.py" >/dev/null 2>&1; then \
+		pkill -f "[p]ython.*app-worker.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Queue Worker"; \
+	else \
+		echo -e "  [$(GREEN)OK$(RESET)] Queue Worker n'est pas actif"; \
 	fi
 	@if pgrep -f "[p]ython.*app-api.py" >/dev/null 2>&1; then \
 		pkill -f "[p]ython.*app-api.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] FastAPI App"; \
@@ -403,9 +416,9 @@ docker-up-prod:
 	@if grep -q "votre_github_client_id" "$(ENV_PROD)"; then \
 		echo -e "  [$(YELLOW)ATTENTION$(RESET)] OAUTH2_PROXY_CLIENT_ID contient encore la valeur par défaut dans $(ENV_PROD) !"; \
 	fi
-	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
 	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
-	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
+	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + UIs Oncology & SMA + OAuth2 Proxy + Caddy)...$(RESET)"
@@ -452,18 +465,18 @@ down-prod: stop-prod
 
 ## Redémarre uniquement les services applicatifs et proxy (sans décharger le LLM de la VRAM L4)
 restart-prod:
-	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs Oncology & SMA, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy
+	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs & Workers Oncology & SMA, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-worker-oncology oncoflow-worker-sma oauth2-proxy caddy
 	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
 
 ## Met à jour le dépôt git et l'image Docker UI depuis GHCR sans décharger le modèle LLM du GPU
 prod-update:
 	@echo -e "$(CYAN)--> [1/4] Mise à jour du code source (git pull --ff-only)...$(RESET)"
 	git pull --ff-only
-	@echo -e "$(CYAN)--> [2/4] Téléchargement des dernières images applicatives (UIs Oncology & SMA, oauth2-proxy, caddy, litellm)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy litellm
+	@echo -e "$(CYAN)--> [2/4] Téléchargement des dernières images applicatives (UIs & Workers Oncology & SMA, oauth2-proxy, caddy, litellm)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oncoflow-worker-oncology oncoflow-worker-sma oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [3/4] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy litellm
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-worker-oncology oncoflow-worker-sma oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [4/4] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod

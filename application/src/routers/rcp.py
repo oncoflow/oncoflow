@@ -11,12 +11,15 @@ from src.application.config import AppConfig
 from src.application.app_functions import (
     delete_document,
     delete_patient_dossier,
+    enqueue_rcp_batch,
+    enqueue_rcp_rerun,
     full_read_mtd_agents,
     ingest_and_associate_rcp,
     resolve_rcp_upload,
 )
 from src.application.patient import (
     extract_card_metrics as extract_rcp_card_dict,
+    is_rcp_visible_in_cards,
     select_latest_analyzed_rcp as select_latest_rcp_doc,
     to_naive,
 )
@@ -85,7 +88,7 @@ def get_rcp_cards(db=Depends(get_db)):
             detail="La base de données MongoDB n'est pas configurée ou accessible.",
         )
 
-    db_datas = list(db.database["rcp_info"].find())
+    db_datas = [d for d in db.database["rcp_info"].find() if is_rcp_visible_in_cards(d)]
     cards_data = [extract_rcp_card_dict(d) for d in db_datas]
     cards_data.sort(
         key=lambda x: x.get("date_refresh") or datetime.min,
@@ -315,11 +318,12 @@ def delete_rcp(filename: str):
 def upload_rcp_file(
     file: UploadFile = File(...),
     patient_id: Optional[str] = Form(default=None),
+    run_full_ai: bool = Form(default=True),
 ):
     """
     Upload un fichier PDF RCP, vérifie l'absence de doublon par empreinte SHA-256,
-    renomme systématiquement les nouveaux fichiers, exécute l'indexation RAG + l'extraction administrative IA,
-    et associe la fiche au dossier patient.
+    renomme systématiquement les nouveaux fichiers, et l'ajoute à la file de traitement
+    (ou l'exécute directement si la file est désactivée).
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
@@ -343,6 +347,22 @@ def upload_rcp_file(
         os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as buffer:
             buffer.write(file_bytes)
+
+        if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
+            enqueue_res = enqueue_rcp_batch(
+                app_conf=app_conf,
+                files_payload=[{"filename": filename, "patient_id": patient_id}],
+                run_full_ai=run_full_ai,
+            )
+            return {
+                "filename": filename,
+                "patient_id": patient_id,
+                "batch_id": enqueue_res["batch_id"],
+                "enqueued_count": enqueue_res["enqueued_count"],
+                "already_queued_count": enqueue_res["already_queued_count"],
+                "results": [serialize_mongo_doc(r) for r in enqueue_res["results"]],
+                "message": "Fichier téléversé et ajouté à la file de traitement.",
+            }
 
         _, patient_dict = ingest_and_associate_rcp(
             app_conf=app_conf,
@@ -368,7 +388,7 @@ def upload_rcp_file(
 
 @router.post("/{filename}/process")
 def process_rcp(filename: str, request: ProcessRequest):
-    """Lance ou relance le traitement IA pour un modèle spécifique ou tout le dossier."""
+    """Ajoute un retraitement de modèle spécifique ou de fiche complète dans la file de traitement."""
     file_path = os.path.join(app_conf.rcp.path, filename)
     if not os.path.exists(file_path):
         raise HTTPException(
@@ -377,6 +397,7 @@ def process_rcp(filename: str, request: ProcessRequest):
         )
 
     try:
+        matched_model_name = None
         if request.model_name:
             models = get_form_models()
             matched_model = None
@@ -390,11 +411,32 @@ def process_rcp(filename: str, request: ProcessRequest):
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Modèle '{request.model_name}' non reconnu. Modèles valides : {[m.__name__ for m in models]}",
                 )
+            matched_model_name = matched_model.__name__
 
+        if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
+            res = enqueue_rcp_rerun(
+                app_conf=app_conf,
+                filename=filename,
+                model_name=matched_model_name,
+            )
+            return {
+                "filename": filename,
+                "model_name": matched_model_name,
+                "queued": not res.get("already_queued"),
+                "already_queued": res["already_queued"],
+                "jobs": [serialize_mongo_doc(j) for j in res.get("jobs", [])],
+                "message": (
+                    "Tâche ajoutée à la file de traitement."
+                    if not res.get("already_queued")
+                    else "Une tâche est déjà active dans la file de traitement."
+                ),
+            }
+
+        if matched_model_name:
             reader = PatientMDTForm(config=app_conf, document=filename)
             reader.read_model(matched_model, upsert=True)
             return {
-                "message": f"Modèle '{matched_model.__name__}' retraité avec succès pour '{filename}'."
+                "message": f"Modèle '{matched_model_name}' retraité avec succès pour '{filename}'."
             }
         else:
             full_read_mtd_agents(
@@ -403,10 +445,12 @@ def process_rcp(filename: str, request: ProcessRequest):
                 logger=app_conf.set_logger("oncoflow.api"),
             )
             return {"message": f"Dossier complet '{filename}' retraité avec succès."}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erreur lors de l'exécution de l'IA : {e}",
+            detail=f"Erreur lors du traitement : {e}",
         )
 
 

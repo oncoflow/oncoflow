@@ -161,7 +161,12 @@ pages["Reports"] = [
         f"{PAGES_DIR_SRC}/reports/bugs.py",
         title="Bug reports",
         icon="🐛",
-    )
+    ),
+    st.Page(
+        f"{PAGES_DIR_SRC}/reports/queue_admin.py",
+        title="File de traitement & Verrous",
+        icon="⚙️",
+    ),
 ]
 
 

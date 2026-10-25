@@ -7,8 +7,10 @@ from src.application.app_functions import delete_document, delete_patient_dossie
 from src.application.patient import (
     build_patients_cards_data,
     extract_card_metrics,
+    is_rcp_visible_in_cards,
 )
 from src.infrastructure.documents.mongodb import Mongodb
+from src.infrastructure.queue import SqliteQueueBroker
 
 # Configuration de l'application
 app_conf = AppConfig()
@@ -56,8 +58,15 @@ def get_rcp_data() -> list[dict]:
         "ExpertAnswer": 1,
         "MTDCompleted": 1,
         "isInterventionRequiered": 1,
+        "processing_status": 1,
+        "processing_step": 1,
+        "processing_progress_pct": 1,
     }
-    db_datas = list(db_client.database["rcp_info"].find({}, projection))
+    db_datas = [
+        d
+        for d in db_client.database["rcp_info"].find({}, projection)
+        if is_rcp_visible_in_cards(d)
+    ]
     cards_data = [extract_card_metrics(d) for d in db_datas]
     # Par défaut, trier les dernières RCP scannées par date de scan (ui_date / date_refresh) décroissante
     cards_data.sort(
@@ -65,6 +74,43 @@ def get_rcp_data() -> list[dict]:
         reverse=True,
     )
     return cards_data
+
+
+@st.fragment(run_every="4s")
+def render_queue_status_banner():
+    """
+    Affiche un bandeau métier discret uniquement lorsque des fiches sont en cours
+    ou en attente dans la file de traitement.
+    """
+    if not app_conf.queue.enabled:
+        return
+    try:
+        broker = SqliteQueueBroker(app_conf)
+        try:
+            stats = broker.get_queue_stats()
+        finally:
+            broker.close()
+    except Exception:
+        return
+
+    pending = stats.get("pending", 0)
+    processing = stats.get("processing", 0)
+    if pending + processing <= 0:
+        return
+
+    c_info, c_btn = st.columns([5, 1], vertical_alignment="center")
+    with c_info:
+        st.info(
+            f"⏳ **File de traitement :** {processing} fiche(s) en cours de traitement, "
+            f"{pending} tâche(s) en attente."
+        )
+    with c_btn:
+        if st.button(
+            "🔄 Actualiser",
+            key="btn_refresh_cards_queue",
+            width="stretch",
+        ):
+            st.rerun(scope="app")
 
 
 def get_patients_cards_data() -> list[dict]:
@@ -193,7 +239,14 @@ def display_as_list(
 
         # Colonne Statut
         with row_cols[3]:
-            if item["missing"]:
+            proc_status = item.get("processing_status")
+            if proc_status == "PENDING_CLINICAL":
+                st.markdown("⏳ **Analyse clinique en attente**")
+            elif proc_status == "PROCESSING_CLINICAL":
+                st.markdown("🔄 **Analyse clinique en cours**")
+            elif proc_status == "FAILED":
+                st.markdown("❌ **Échec du traitement**")
+            elif item["missing"]:
                 with st.expander(f"⚠️ Incomplet ({len(item['missing'])})"):
                     for m in item["missing"]:
                         st.markdown(f"- {m}")
@@ -283,6 +336,15 @@ def display_as_cards(
                 if is_patient_section and item.get("rcp_count"):
                     badge_rcp_count = f":blue-badge[🗂️ {item['rcp_count']} RCP]"
 
+                badge_processing = ""
+                proc_status = item.get("processing_status")
+                if proc_status == "PENDING_CLINICAL":
+                    badge_processing = ":blue-badge[⏳ Analyse clinique en attente]"
+                elif proc_status == "PROCESSING_CLINICAL":
+                    badge_processing = ":blue-badge[🔄 Analyse clinique en cours]"
+                elif proc_status == "FAILED":
+                    badge_processing = ":red-badge[❌ Échec du traitement]"
+
                 refresh_str = (
                     item["date_refresh"].strftime("%d-%m-%Y")
                     if item.get("date_refresh")
@@ -296,6 +358,7 @@ def display_as_cards(
                 # Combine badges
                 badges = [
                     badge_rcp_count,
+                    badge_processing,
                     badge_urgent,
                     badge_missing,
                     badge_intervention,
@@ -413,6 +476,8 @@ def _sort_cards(items: list[dict], sort_option: str | None) -> list[dict]:
 
 def cards_view():
     st.title("📇 Tableau de bord Patients & RCP")
+
+    render_queue_status_banner()
 
     rcp_data = get_rcp_data()
     patient_data = get_patients_cards_data()

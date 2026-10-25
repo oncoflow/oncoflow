@@ -242,6 +242,55 @@ class MongoDBSettings(BaseSettings):
     )
 
 
+class QueueSettings(BaseSettings):
+    """
+    Configuration for the background task queue and hardware batch sizing.
+
+    Environment variables: APP_QUEUE_ENABLED, APP_QUEUE_HARDWARE_PROFILE,
+    APP_QUEUE_BATCH_SIZE, APP_QUEUE_GLOBAL_GPU_LOCK, APP_QUEUE_POLL_INTERVAL,
+    APP_QUEUE_LEASE_TTL_SECONDS, APP_QUEUE_MAX_RETRIES, APP_QUEUE_DB_PATH
+    """
+
+    model_config = SettingsConfigDict(env_prefix="APP_QUEUE_")
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable asynchronous processing queue via SQLite WAL.",
+    )
+    hardware_profile: str = Field(
+        default="l4_24gb",
+        description="Hardware profile preset (l4_24gb -> 1, a100_80gb -> 4, cpu_only -> 1, custom).",
+    )
+    batch_size: int = Field(
+        default=1,
+        ge=1,
+        description="Maximum number of RCP files processed concurrently by the worker pool (e.g. 1 for NVIDIA L4 24GB).",
+    )
+    global_gpu_lock: bool = Field(
+        default=True,
+        description="Synchronize active batch_size across all domains (oncology, sma) using the shared SQLite WAL database.",
+    )
+    poll_interval: float = Field(
+        default=2.0,
+        gt=0.1,
+        description="Worker polling interval in seconds.",
+    )
+    lease_ttl_seconds: int = Field(
+        default=300,
+        ge=30,
+        description="TTL in seconds for a worker GPU lease before it is considered stale and recoverable.",
+    )
+    max_retries: int = Field(
+        default=2,
+        ge=0,
+        description="Maximum automatic retry attempts when a queued task fails.",
+    )
+    db_path: str = Field(
+        default="./ressources/queue/oncoflow_queue.db",
+        description="Path to the shared SQLite WAL database file storing queue jobs and hardware leases.",
+    )
+
+
 class RCPSettings(BaseSettings):
     """
     Configuration for the RCP (Réunion de Concertation Pluridisciplinaire) pipeline.
@@ -362,6 +411,10 @@ class AppConfig(BaseSettings):
     milvus: MilvusDBSettings = Field(
         default_factory=MilvusDBSettings,
         description="Milvus vector database connection settings.",
+    )
+    queue: QueueSettings = Field(
+        default_factory=QueueSettings,
+        description="Background processing queue and hardware batching settings.",
     )
 
     def model_post_init(self, __context) -> None:

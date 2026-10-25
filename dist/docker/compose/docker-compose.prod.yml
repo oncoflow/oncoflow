@@ -26,6 +26,11 @@ x-ui-env: &ui-env
   APP_MONGODB_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
   APP_MILVUSDB_HOST: "milvus-standalone"
   APP_MILVUSDB_PORT: "19530"
+  APP_QUEUE_ENABLED: ${APP_QUEUE_ENABLED:-true}
+  APP_QUEUE_HARDWARE_PROFILE: ${APP_QUEUE_HARDWARE_PROFILE:-l4_24gb}
+  APP_QUEUE_BATCH_SIZE: ${APP_QUEUE_BATCH_SIZE:-1}
+  APP_QUEUE_GLOBAL_GPU_LOCK: ${APP_QUEUE_GLOBAL_GPU_LOCK:-true}
+  APP_QUEUE_DB_PATH: ${APP_QUEUE_DB_PATH:-/var/lib/meddatasyntis/queue/oncoflow_queue.db}
 
 x-ui-common: &ui-common
   image: ${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:${ONCOFLOW_TAG:-latest}
@@ -261,6 +266,7 @@ services:
       APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-oncology.log"
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/queue:/var/lib/meddatasyntis/queue
       - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
       - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/documents:/app/application/ressources/documents/oncology
 
@@ -275,6 +281,36 @@ services:
       APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-sma.log"
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/queue:/var/lib/meddatasyntis/queue
+      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
+      - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
+
+  # ─── Workers dédiés à la File de Traitement par domaine (synchronisés via SQLite WAL)
+  oncoflow-worker-oncology:
+    <<: *ui-common
+    container_name: oncoflow-worker-oncology
+    command: ["uv", "run", "--no-sync", "python", "app-worker.py"]
+    environment:
+      <<: *ui-env
+      APP_DOMAIN: "oncology"
+      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-worker-oncology.log"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/queue:/var/lib/meddatasyntis/queue
+      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
+      - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/documents:/app/application/ressources/documents/oncology
+
+  oncoflow-worker-sma:
+    <<: *ui-common
+    container_name: oncoflow-worker-sma
+    command: ["uv", "run", "--no-sync", "python", "app-worker.py"]
+    environment:
+      <<: *ui-env
+      APP_DOMAIN: "sma"
+      APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-worker-sma.log"
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/queue:/var/lib/meddatasyntis/queue
       - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
       - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
 

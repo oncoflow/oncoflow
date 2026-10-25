@@ -11,6 +11,7 @@ from src.application.config import AppConfig
 from src.routers.rcp import router as rcp_router
 from src.routers.agents import router as agents_router
 from src.routers.resources import router as resources_router
+from src.routers.queue import router as queue_router
 
 app_conf = AppConfig()
 logger = app_conf.set_logger("oncoflow.api")
@@ -49,6 +50,7 @@ def get_openapi_json():
 app.include_router(rcp_router, prefix="/api/v1")
 app.include_router(agents_router, prefix="/api/v1")
 app.include_router(resources_router, prefix="/api/v1")
+app.include_router(queue_router, prefix="/api/v1")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000, reload=False)

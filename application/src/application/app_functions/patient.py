@@ -1,6 +1,7 @@
 import os
 
 from src.infrastructure.documents.mongodb import Mongodb
+from src.infrastructure.queue import SqliteQueueBroker
 
 
 def delete_patient_dossier(
@@ -23,13 +24,21 @@ def delete_patient_dossier(
             if doc.get("file"):
                 files_to_delete.add(doc["file"])
 
-        for fname in files_to_delete:
-            client.delete_docs(
-                collections=["rcp_info", "rcp_metadata", "document_cache"],
-                filter={"file": fname},
-            )
-            if delete_files and os.path.exists(f"{app_conf.rcp.path}/{fname}"):
-                os.remove(f"{app_conf.rcp.path}/{fname}")
+        broker = SqliteQueueBroker(app_conf)
+        try:
+            for fname in files_to_delete:
+                try:
+                    broker.delete_jobs_for_file(fname)
+                except Exception:
+                    pass
+                client.delete_docs(
+                    collections=["rcp_info", "rcp_metadata", "document_cache"],
+                    filter={"file": fname},
+                )
+                if delete_files and os.path.exists(f"{app_conf.rcp.path}/{fname}"):
+                    os.remove(f"{app_conf.rcp.path}/{fname}")
+        finally:
+            broker.close()
 
         client.delete_docs(collections=["patients"], filter={"patient_id": patient_id})
         client.close()

@@ -250,8 +250,32 @@ def process_patient_association(
             form.db_client = None
 
 
+def is_rcp_visible_in_cards(d: dict) -> bool:
+    """
+    Détermine si une fiche RCP est prête à être affichée dans le tableau de bord de consultation.
+    Une fiche apparaît dès que l'identité du patient (Étape 1) est extraite (ou pour toute fiche historique).
+    Les fiches venant d'être déposées et encore en attente d'identification (PENDING_ADMIN / PROCESSING_ADMIN
+    sans PatientAdministrative) restent uniquement dans la file de traitement.
+    """
+    status = d.get("processing_status")
+    if status in ("PENDING_ADMIN", "PROCESSING_ADMIN") and not d.get(
+        "PatientAdministrative"
+    ):
+        return False
+    return True
+
+
 def extract_card_metrics(d: dict) -> dict:
     """Extrait les métriques d'affichage d'une carte à partir d'un document rcp_info."""
+    processing_status = d.get("processing_status")
+    if not processing_status:
+        processing_status = "COMPLETED"
+
+    is_clinical_pending = processing_status in (
+        "PENDING_CLINICAL",
+        "PROCESSING_CLINICAL",
+    )
+
     patient_name = "Inconnu"
     if "PatientAdministrative" in d and isinstance(d["PatientAdministrative"], dict):
         p = d["PatientAdministrative"]
@@ -329,7 +353,7 @@ def extract_card_metrics(d: dict) -> dict:
                         m = mtd_comp.get("what_missing", [])
                         if isinstance(m, list):
                             missing_data.extend(m)
-    else:
+    elif not is_clinical_pending:
         missing_data.extend(["no data"])
 
     # Intervention requise
@@ -372,6 +396,9 @@ def extract_card_metrics(d: dict) -> dict:
         "link": link,
         "intervention_required": intervention_required,
         "intervention_type": intervention_type,
+        "processing_status": processing_status,
+        "processing_step": d.get("processing_step"),
+        "processing_progress_pct": d.get("processing_progress_pct", 0.0),
     }
 
 
@@ -511,8 +538,15 @@ def build_patients_cards_data(db_client: Mongodb | None) -> list[dict]:
         "ExpertAnswer": 1,
         "MTDCompleted": 1,
         "isInterventionRequiered": 1,
+        "processing_status": 1,
+        "processing_step": 1,
+        "processing_progress_pct": 1,
     }
-    all_rcps = list(db_client.database["rcp_info"].find({}, projection))
+    all_rcps = [
+        d
+        for d in db_client.database["rcp_info"].find({}, projection)
+        if is_rcp_visible_in_cards(d)
+    ]
     if not all_rcps:
         return []
 
@@ -759,6 +793,9 @@ def format_patient_ai_history(patient_readers: list[Any]) -> str:
         "patient_id",
         "ui_date",
         "execution_times",
+        "processing_status",
+        "processing_step",
+        "processing_progress_pct",
     }
 
     for reader in patient_readers:

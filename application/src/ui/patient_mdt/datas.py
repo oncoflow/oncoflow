@@ -13,7 +13,12 @@ from pandas import DataFrame
 from pydantic import BaseModel
 from src.infrastructure.llm.factory import get_llm_client
 from src.application.config import AppConfig
-from src.application.app_functions import delete_document, full_read_mtd_agents
+from src.application.app_functions import (
+    delete_document,
+    enqueue_rcp_rerun,
+    full_read_mtd_agents,
+    get_rcp_active_jobs_state,
+)
 from src.application.patient import (
     extract_rcp_date,
     resolve_patient_dossier,
@@ -442,27 +447,53 @@ def power_mode(
                 placeholder="Select parser",
                 key=f"pow_parser_{key_prefix}_{active_file}",
             )
+            target_active_state = (
+                get_rcp_active_jobs_state(app_conf, target_rcp_file)
+                if app_conf.queue.enabled
+                and app_conf.rcp.display_type == "mongodb"
+                and target_rcp_file
+                else {"has_any_job": False}
+            )
             if po.button(
                 "🔄 Relancer cette RCP",
                 key=f"pow_rerun_{key_prefix}_{active_file}",
                 width="stretch",
+                disabled=target_active_state.get("has_any_job", False),
             ):
-                app_conf.llm.models = nm
-                app_conf.rcp.doc_type = parser
-                with st.status(f"Relance IA sur {target_rcp_file} ..."):
+                if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
                     from src.infrastructure.documents.mongodb import Mongodb
 
                     client = Mongodb(app_conf)
                     client.delete_document_cache(file_name=target_rcp_file)
                     client.close()
-                    full_read_mtd_agents(
-                        app_conf=app_conf,
-                        filename=target_rcp_file,
-                        logger=logger,
-                    )
-                    app_conf.llm.models = mm
-                    app_conf.rcp.doc_type = mp
-                    st.write("Succès")
+                    res = enqueue_rcp_rerun(app_conf, target_rcp_file, model_name=None)
+                    if not res.get("already_queued"):
+                        st.toast(
+                            "⏳ Fiche ajoutée à la file de traitement",
+                            icon="⏳",
+                        )
+                    else:
+                        st.toast(
+                            "ℹ️ Cette fiche est déjà dans la file de traitement",
+                            icon="ℹ️",
+                        )
+                else:
+                    app_conf.llm.models = nm
+                    app_conf.rcp.doc_type = parser
+                    with st.status(f"Relance IA sur {target_rcp_file} ..."):
+                        from src.infrastructure.documents.mongodb import Mongodb
+
+                        client = Mongodb(app_conf)
+                        client.delete_document_cache(file_name=target_rcp_file)
+                        client.close()
+                        full_read_mtd_agents(
+                            app_conf=app_conf,
+                            filename=target_rcp_file,
+                            logger=logger,
+                        )
+                        app_conf.llm.models = mm
+                        app_conf.rcp.doc_type = mp
+                        st.write("Succès")
                 st.rerun()
             po.divider()
             po.caption("Gestion du cache (fiche RCP uniquement)")
@@ -670,15 +701,60 @@ def render_rcp_detail_view(
     - Colonne gauche : Téléchargement et lecteur PDF
     - Colonne droite : Onglets (Données Cliniques, Assistant IA sur la fiche, Aperçu du document)
     """
+    active_state = (
+        get_rcp_active_jobs_state(app_conf, target_filename)
+        if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb"
+        else {
+            "has_any_job": False,
+            "has_full_job": False,
+            "active_models": [],
+            "current_step": None,
+        }
+    )
+
+    if active_state["has_any_job"]:
+        b_col1, b_col2 = st.columns([5, 1], vertical_alignment="center")
+        step_text = (
+            f" ({active_state['current_step']})"
+            if active_state.get("current_step")
+            else ""
+        )
+        b_col1.info(
+            f"⏳ **Cette fiche est dans la file de traitement{step_text}.** "
+            "Les rubriques s'affichent automatiquement au fur et à mesure de leur avancement."
+        )
+        if b_col2.button(
+            "🔄 Actualiser",
+            key=f"btn_refresh_detail_{section_key}_{target_filename}",
+            width="stretch",
+        ):
+            st.rerun()
+
     bar_c1, bar_c2, bar_c3 = st.columns([5, 1, 1], vertical_alignment="center")
     bar_c1.markdown(f"**📄 Fiche RCP active :** `{target_filename}`")
     if bar_c2.button(
         "🔄 Relancer cette RCP",
-        help=f"Relancer l'analyse IA complète uniquement sur la fiche {target_filename} (ne relance jamais tout le dossier)",
+        help=(
+            "Cette fiche est déjà dans la file de traitement"
+            if active_state["has_any_job"]
+            else f"Ajouter la fiche {target_filename} à la file de traitement"
+        ),
         width="stretch",
         key=f"btn_rerun_rcp_{section_key}_{target_filename}",
+        disabled=active_state["has_any_job"],
     ):
-        rerun_all_models(target_filename, section_key=section_key)
+        if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
+            res = enqueue_rcp_rerun(app_conf, target_filename, model_name=None)
+            if not res.get("already_queued"):
+                st.toast("⏳ Fiche ajoutée à la file de traitement", icon="⏳")
+            else:
+                st.toast(
+                    "ℹ️ Cette fiche est déjà dans la file de traitement",
+                    icon="ℹ️",
+                )
+            st.rerun()
+        else:
+            rerun_all_models(target_filename, section_key=section_key)
     power_mode(
         bar_c3,
         filename=target_filename,
@@ -736,6 +812,9 @@ def render_rcp_detail_view(
                 title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
                 pill_key = f"pills_{section_key}_{target_filename}_{title}"
                 run_key = f"run_ai_{section_key}_{target_filename}_{title}"
+                is_section_queued = active_state["has_full_job"] or (
+                    model_name in active_state["active_models"]
+                )
                 with st.expander(f"📌 {translate(title)}", expanded=True):
                     st.pills(
                         "Retry ai",
@@ -745,23 +824,45 @@ def render_rcp_detail_view(
                         key=pill_key,
                         on_change=trigger_ai,
                         args=(pill_key, run_key),
+                        disabled=is_section_queued,
                     )
                     if st.session_state.get(run_key):
                         st.session_state[run_key] = False
-                        try:
-                            with st.status(
-                                f"Relance de l'IA pour {model_name} ({target_filename}) ..."
-                            ) as status:
-                                st_callback = ThreadSafeStreamlitCallbackHandler(status)
-                                reader = get_mtd_reader(target_filename)
-                                reader.read_model(
-                                    model_cls, upsert=True, callbacks=[st_callback]
+                        if (
+                            app_conf.queue.enabled
+                            and app_conf.rcp.display_type == "mongodb"
+                        ):
+                            res = enqueue_rcp_rerun(
+                                app_conf, target_filename, model_name=model_name
+                            )
+                            if not res.get("already_queued"):
+                                st.toast(
+                                    "⏳ Rubrique ajoutée à la file de traitement",
+                                    icon="⏳",
                                 )
-                        except Exception as e:
-                            logger.error(f"Erreur lors de la relance de l'IA : {e}")
-                            st.error(f"Erreur lors de l'exécution de l'IA : {e}")
-                        finally:
+                            else:
+                                st.toast(
+                                    "ℹ️ Cette rubrique est déjà dans la file de traitement",
+                                    icon="ℹ️",
+                                )
                             st.rerun()
+                        else:
+                            try:
+                                with st.status(
+                                    f"Relance de l'IA pour {model_name} ({target_filename}) ..."
+                                ) as status:
+                                    st_callback = ThreadSafeStreamlitCallbackHandler(
+                                        status
+                                    )
+                                    reader = get_mtd_reader(target_filename)
+                                    reader.read_model(
+                                        model_cls, upsert=True, callbacks=[st_callback]
+                                    )
+                            except Exception as e:
+                                logger.error(f"Erreur lors de la relance de l'IA : {e}")
+                                st.error(f"Erreur lors de l'exécution de l'IA : {e}")
+                            finally:
+                                st.rerun()
 
                     if model_name in data:
                         model_data = data[model_name]
@@ -823,7 +924,17 @@ def render_rcp_detail_view(
                             )
                             st.caption(f"⏱️ {label} : {exec_time:.2f} s")
                     else:
-                        st.warning("Données non trouvées.")
+                        if is_section_queued or data.get("processing_status") in (
+                            "PENDING_CLINICAL",
+                            "PROCESSING_CLINICAL",
+                            "PENDING_ADMIN",
+                            "PROCESSING_ADMIN",
+                        ):
+                            st.info(
+                                "⏳ Rubrique en attente dans la file de traitement..."
+                            )
+                        else:
+                            st.warning("Données non trouvées.")
 
         with tab_chat:
             form_rcp_chat(target_filename, section_key=section_key)
