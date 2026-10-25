@@ -104,17 +104,24 @@ start-api:
 	@echo -e "$(CYAN)--> Démarrage de l'API FastAPI sur http://$(HOST_API):$(PORT_API)...$(RESET)"
 	cd $(APP_DIR) && $(UV) run python app-api.py
 
-## Démarre l'interface utilisateur Streamlit
+## Démarre l'interface utilisateur Streamlit et le Worker IA (logs partagés sur stdout)
 start-ui:
-	@echo -e "$(CYAN)--> Démarrage de Streamlit UI sur http://localhost:$(PORT_UI)...$(RESET)"
-	cd $(APP_DIR) && $(UV) run streamlit run app-ui.py --server.port=$(PORT_UI)
+	@echo -e "$(CYAN)--> Démarrage du Worker IA et de Streamlit UI sur http://localhost:$(PORT_UI) (sortie unifiée sur stdout)...$(RESET)"
+	@pkill -f "[p]ython.*app-worker.py" 2>/dev/null || true
+	@cd $(APP_DIR); \
+	unset VIRTUAL_ENV; \
+	export PYTHONUNBUFFERED=1; \
+	$(UV) run python -u app-worker.py & \
+	WORKER_PID=$$!; \
+	trap "kill $$WORKER_PID 2>/dev/null || true" INT TERM EXIT; \
+	$(UV) run streamlit run app-ui.py --server.port=$(PORT_UI)
 
-## Démarre le worker de la file de traitement
+## Démarre le worker de la file de traitement seul au premier plan
 start-worker:
 	@echo -e "$(CYAN)--> Démarrage du Worker de la file de traitement...$(RESET)"
-	cd $(APP_DIR) && $(UV) run python app-worker.py
+	cd $(APP_DIR) && PYTHONUNBUFFERED=1 $(UV) run python -u app-worker.py
 
-## Démarre Streamlit UI connecté au proxy GCP Cloud Run avec l'infrastructure Docker en mode proxy (sans chat local)
+## Démarre Streamlit UI et le Worker IA connectés au proxy GCP Cloud Run avec l'infrastructure Docker en mode proxy
 start-ui-dev: docker-up-proxy cloudrun-proxy
 	@echo -e "$(CYAN)--> Vérification de la disponibilité du serveur llama.cpp (Cloud Run)...$(RESET)"
 	@READY=0; \
@@ -177,14 +184,12 @@ start: start-ui
 proxy: cloudrun-proxy
 proxy-stop: cloudrun-proxy-stop
 
-## Démarre l'API et le Worker en arrière-plan puis Streamlit au premier plan
+## Démarre l'API en arrière-plan puis le Worker IA et Streamlit au premier plan (sortie partagée sur stdout)
 dev:
 	@echo -e "$(CYAN)--> Démarrage du mode développement complet (API + Worker + UI)...$(RESET)"
 	@$(MAKE) stop >/dev/null 2>&1
 	@echo -e "  Démarrage de l'API en tâche de fond..."
 	@nohup bash -c "cd $(APP_DIR) && $(UV) run python app-api.py" > /tmp/oncoflow-api.log 2>&1 &
-	@echo -e "  Démarrage du Worker en tâche de fond..."
-	@nohup bash -c "cd $(APP_DIR) && $(UV) run python app-worker.py" > /tmp/oncoflow-worker.log 2>&1 &
 	@sleep 2
 	@$(MAKE) start-ui
 
@@ -287,6 +292,8 @@ status:
 	@ss -tlnp 2>/dev/null | grep -q ":$(PORT_API) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Streamlit (port $(PORT_UI)) : "
 	@ss -tlnp 2>/dev/null | grep -q ":$(PORT_UI) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "Queue Worker (app-worker.py) : "
+	@pgrep -f "[p]ython.*app-worker.py" >/dev/null 2>&1 && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Cloud Run Proxy (port $(CLOUDRUN_PORT)) : "
 	@ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Milvus (port 19530) : "
