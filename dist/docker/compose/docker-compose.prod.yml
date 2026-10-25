@@ -48,7 +48,7 @@ x-ui-common: &ui-common
 services:
 
   mongod:
-    image: mongodb/mongodb-community-server:latest
+    image: mongodb/mongodb-community-server:latest@sha256:00b3908e369ab3169dfe13aa205467255910a39af135d69e1537c31ccb3cad11
     container_name: oncoflow-mongod
     restart: unless-stopped
     logging: *default-logging
@@ -85,7 +85,7 @@ services:
   # ─── LLM Raisonnement sur GPU NVIDIA L4 (24 Go VRAM) ─────────────────────────
   # Modèle : Qwen3.6-35B-A3B-UD-IQ4_NL (~18.5 Go poids + ~1.5 Go KV cache q4_0)
   llama-cpp-chat:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda12
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda12@sha256:fff6185edd2fbc4093aa5970bf6db53ed11c283e3a1c52a3e244cf27047264f4
     container_name: llama-cpp-chat-server
     restart: unless-stopped
     logging: *default-logging
@@ -182,7 +182,7 @@ services:
 
   # ─── Serveur d'Embeddings (bge-m3 sur CPU pour préserver les 24 Go VRAM L4) ──
   llama-cpp-embeddings:
-    image: ghcr.io/ggml-org/llama.cpp:server
+    image: ghcr.io/ggml-org/llama.cpp:server@sha256:df320e983b2871d31fcb88165eedfcbd5156841d3d7dbd2b7ea3e85a1e1286a1
     container_name: llama-cpp-embeddings-server
     restart: unless-stopped
     logging: *default-logging
@@ -232,7 +232,7 @@ services:
 
   # ─── Proxy LiteLLM unifié (Chat + Embeddings) ───────────────────────────────
   litellm:
-    image: ghcr.io/berriai/litellm:main-latest
+    image: ghcr.io/berriai/litellm:main-latest@sha256:7c311546c25e7bb6e8cafede9fcd3d0d622ac636b5c9418befaa32e85dfb0186
     container_name: litellm-proxy
     restart: unless-stopped
     logging: *default-logging
@@ -315,7 +315,7 @@ services:
 
   # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.* et sma.*)
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.10.2-alpine
     container_name: oncoflow-caddy
     restart: unless-stopped
     logging: *default-logging

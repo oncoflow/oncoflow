@@ -27,6 +27,7 @@ PROD_BASE_DOMAIN ?= meddatasyntis.bricks-it.fr
 COMPOSE_MILVUS := dist/docker/compose/milvus-standalone-docker-compose.yml
 COMPOSE_DEV := dist/docker/compose/docker-compose.yml
 COMPOSE_PROD := dist/docker/compose/docker-compose.prod.yml
+DEV_VOLUME_DIR ?= $(CURDIR)/dist/docker/compose/volumes
 MODELS_DIR := dist/docker/compose/volumes/models
 CHAT_MODEL_URL := https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf
 CHAT_MODEL_FILE := $(MODELS_DIR)/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf
@@ -233,29 +234,27 @@ print('  [OK] MongoDB Replica Set (rs0) initialisé avec succès')" 2>/dev/null 
 
 ## Démarre les services d'infrastructure Docker (Milvus & MongoDB)
 docker-up:
-	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,logs}
-	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@mkdir -p $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+	@chmod 777 $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
-	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Démarrage des services communs (MongoDB)...$(RESET)"
-	docker compose -f dist/docker/compose/docker-compose.yml up -d
-	@$(MAKE) mongo-init
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) up -d
 
 ## Démarre les conteneurs en mode proxy (Milvus, MongoDB, embeddings - sans chat local)
 docker-up-proxy:
-	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,logs}
-	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@mkdir -p $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+	@chmod 777 $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
-	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml up -d
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Démarrage des services en mode proxy (MongoDB + embeddings, sans chat local)...$(RESET)"
-	docker compose -f dist/docker/compose/docker-compose.yml --profile llamacpp up -d
-	@$(MAKE) mongo-init
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) --profile llamacpp up -d
 
 ## Arrête les services d'infrastructure Docker
 docker-down:
 	@echo -e "$(YELLOW)--> Arrêt des conteneurs Docker...$(RESET)"
-	docker compose -f dist/docker/compose/milvus-standalone-docker-compose.yml down --remove-orphans
-	docker compose -f dist/docker/compose/docker-compose.yml down --remove-orphans
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) down --remove-orphans
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) down --remove-orphans
 
 ## Vérifie l'état des conteneurs Docker de la plateforme
 docker-status:
