@@ -217,3 +217,36 @@ class TestPatientDomainAndLogic(unittest.TestCase):
         self.assertEqual(patient_obj.patient_id, "roussel_marion_1970_05_12")
         self.assertEqual(len(patient_rcps), 2)
         self.assertEqual(selected_file, "rcp_latest.pdf")
+
+    def test_resolve_rcp_upload_hash_and_duplicate_detection(self):
+        import os
+        import tempfile
+        from src.application.app_functions import resolve_rcp_upload
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            mock_conf = MagicMock()
+            mock_conf.rcp.path = tmpdir
+            mock_conf.rcp.display_type = "stdout"
+
+            bytes_a = b"%PDF-1.4 Patient A RCP Content"
+            bytes_b = b"%PDF-1.4 Patient B Different RCP Content"
+
+            # 1. Premier import de "fiche_rcp.pdf" -> renommé avec le hash, pas un doublon
+            fname1, is_dup1 = resolve_rcp_upload(mock_conf, bytes_a, "fiche_rcp.pdf")
+            self.assertFalse(is_dup1)
+            self.assertTrue(fname1.startswith("fiche_rcp_"))
+            self.assertTrue(fname1.endswith(".pdf"))
+
+            # On simule l'écriture du fichier sur le disque
+            with open(os.path.join(tmpdir, fname1), "wb") as f:
+                f.write(bytes_a)
+
+            # 2. Import d'un autre contenu avec le MÊME nom "fiche_rcp.pdf" -> hash différent, pas d'écrasement
+            fname2, is_dup2 = resolve_rcp_upload(mock_conf, bytes_b, "fiche_rcp.pdf")
+            self.assertFalse(is_dup2)
+            self.assertNotEqual(fname1, fname2)
+
+            # 3. Ré-import du même contenu bytes_a -> détecté comme doublon
+            fname3, is_dup3 = resolve_rcp_upload(mock_conf, bytes_a, "fiche_rcp.pdf")
+            self.assertTrue(is_dup3)
+            self.assertEqual(fname3, fname1)

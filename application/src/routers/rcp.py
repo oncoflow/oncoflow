@@ -1,6 +1,5 @@
 import os
 import inspect
-import shutil
 from datetime import datetime
 from typing import List, Optional
 
@@ -14,6 +13,7 @@ from src.application.app_functions import (
     delete_patient_dossier,
     full_read_mtd_agents,
     ingest_and_associate_rcp,
+    resolve_rcp_upload,
 )
 from src.application.patient import (
     extract_card_metrics as extract_rcp_card_dict,
@@ -317,8 +317,9 @@ def upload_rcp_file(
     patient_id: Optional[str] = Form(default=None),
 ):
     """
-    Upload un fichier PDF RCP, exécute l'indexation RAG + l'extraction administrative IA,
-    et associe la fiche au dossier patient (automatique si patient_id est omis, ou rattaché au patient_id fourni).
+    Upload un fichier PDF RCP, vérifie l'absence de doublon par empreinte SHA-256,
+    renomme systématiquement les nouveaux fichiers, exécute l'indexation RAG + l'extraction administrative IA,
+    et associe la fiche au dossier patient.
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(
@@ -326,14 +327,22 @@ def upload_rcp_file(
             detail="Seuls les fichiers PDF sont acceptés.",
         )
 
-    filename = file.filename
-    target_path = os.path.join(app_conf.rcp.path, filename)
-
-    os.makedirs(os.path.dirname(target_path), exist_ok=True)
-
     try:
+        file_bytes = file.file.read()
+        filename, is_duplicate = resolve_rcp_upload(app_conf, file_bytes, file.filename)
+
+        if is_duplicate:
+            return {
+                "filename": filename,
+                "is_duplicate": True,
+                "link": f"datas?file={filename}",
+                "message": f"Attention : ce fichier existe déjà ('{filename}').",
+            }
+
+        target_path = os.path.join(app_conf.rcp.path, filename)
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
         with open(target_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            buffer.write(file_bytes)
 
         _, patient_dict = ingest_and_associate_rcp(
             app_conf=app_conf,
@@ -343,6 +352,7 @@ def upload_rcp_file(
 
         return {
             "filename": filename,
+            "is_duplicate": False,
             "patient_id": patient_dict.get("patient_id")
             if patient_dict
             else patient_id,

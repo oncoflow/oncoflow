@@ -3,8 +3,9 @@ import streamlit as st
 
 from src.application.config import AppConfig
 from src.application.app_functions import (
-    ingest_and_associate_rcp,
     full_read_mtd_agents,
+    ingest_and_associate_rcp,
+    resolve_rcp_upload,
 )
 from src.domain.patient import Patient
 from src.infrastructure.documents.mongodb import Mongodb
@@ -77,7 +78,7 @@ def upload_view():
             help="Si décoché (par défaut), seuls le RAG et l'extraction administrative du patient sont exécutés à l'import.",
         )
 
-    per_file_patient_ids: dict[str, str | None] = {}
+    per_file_patient_ids: dict[int, str | None] = {}
 
     if len(uploaded_files) > 1:
         st.markdown("##### 📋 Attribution par fichier")
@@ -102,12 +103,11 @@ def upload_view():
                 label_visibility="collapsed",
             )
             if file_choice == follow_global_label:
-                per_file_patient_ids[uf.name] = global_patient_id
+                per_file_patient_ids[idx] = global_patient_id
             else:
-                per_file_patient_ids[uf.name] = patient_options_map[file_choice]
+                per_file_patient_ids[idx] = patient_options_map[file_choice]
     else:
-        single_file = uploaded_files[0]
-        per_file_patient_ids[single_file.name] = global_patient_id
+        per_file_patient_ids[0] = global_patient_id
 
     st.divider()
     btn_label = (
@@ -123,8 +123,8 @@ def upload_view():
         batch_results: list[dict] = []
 
         for idx, uploaded_file in enumerate(uploaded_files):
-            filename = uploaded_file.name
-            target_patient_id = per_file_patient_ids.get(filename, global_patient_id)
+            original_name = uploaded_file.name
+            target_patient_id = per_file_patient_ids.get(idx, global_patient_id)
             mode_label = (
                 "Auto (IA Administrative)"
                 if target_patient_id is None
@@ -133,15 +133,42 @@ def upload_view():
 
             progress_bar.progress(
                 idx / total,
-                text=f"Traitement de {filename} ({idx + 1}/{total}) — {mode_label}...",
+                text=f"Traitement de {original_name} ({idx + 1}/{total}) — {mode_label}...",
             )
 
             with st.status(
-                f"📄 [{idx + 1}/{total}] {filename} — {mode_label}",
+                f"📄 [{idx + 1}/{total}] {original_name} — {mode_label}",
                 expanded=(total == 1),
             ) as status:
                 try:
                     bytes_data = uploaded_file.getvalue()
+                    filename, is_duplicate = resolve_rcp_upload(
+                        app_conf, bytes_data, original_name
+                    )
+
+                    if is_duplicate:
+                        st.warning(
+                            f"⚠️ Ce fichier existe déjà sous le nom `{filename}`."
+                        )
+                        st.link_button(
+                            "👁️ Voir la fiche existante",
+                            f"datas?file={filename}",
+                        )
+                        status.update(
+                            label=f"⚠️ [{idx + 1}/{total}] {original_name} — Déjà existant ({filename})",
+                            state="complete",
+                            expanded=True,
+                        )
+                        batch_results.append(
+                            {
+                                "file": filename,
+                                "patient_id": "",
+                                "patient_label": "Déjà existant",
+                                "status": "⚠️ Doublon",
+                            }
+                        )
+                        continue
+
                     target_path = os.path.join(app_conf.rcp.path, filename)
                     st.write(f"💾 Enregistrement du PDF `{filename}`...")
                     with open(target_path, "wb") as pdf:
@@ -192,16 +219,16 @@ def upload_view():
                         }
                     )
                 except Exception as e:
-                    logger.error(f"Erreur lors de l'import de {filename}: {e}")
+                    logger.error(f"Erreur lors de l'import de {original_name}: {e}")
                     status.update(
-                        label=f"❌ [{idx + 1}/{total}] {filename} — Erreur",
+                        label=f"❌ [{idx + 1}/{total}] {original_name} — Erreur",
                         state="error",
                         expanded=True,
                     )
-                    st.error(f"Erreur sur `{filename}` : {e}")
+                    st.error(f"Erreur sur `{original_name}` : {e}")
                     batch_results.append(
                         {
-                            "file": filename,
+                            "file": original_name,
                             "patient_id": target_patient_id or "",
                             "patient_label": "Erreur",
                             "status": f"❌ {e}",
