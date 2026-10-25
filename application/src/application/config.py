@@ -451,7 +451,7 @@ class AppConfig(BaseSettings):
                 "message": "%(message)s",
                 "context": default_context | {k: f"%({k})s" for k in context},
             }
-            formatter = logging.Formatter(json.dumps(formatlog))
+            formatter = logging.Formatter(json.dumps(formatlog, default=str))
         else:
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)

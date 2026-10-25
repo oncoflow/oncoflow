@@ -314,7 +314,9 @@ init-prod:
 		echo -e "$(CYAN)--> Génération de $(ENV_PROD) depuis .env.prod.example...$(RESET)"; \
 		cp .env.prod.example "$(ENV_PROD)"; \
 		COOKIE_SEC=$$(openssl rand -base64 32 | tr -- '+/' '-_'); \
+		LITELLM_KEY="sk-$$(openssl rand -hex 32)"; \
 		sed -i "s|OAUTH2_PROXY_COOKIE_SECRET=.*|OAUTH2_PROXY_COOKIE_SECRET=$${COOKIE_SEC}|" "$(ENV_PROD)"; \
+		sed -i "s|LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=$${LITELLM_KEY}|" "$(ENV_PROD)"; \
 		echo -e "  [$(YELLOW)ACTION REQUISE$(RESET)] Renseignez OAUTH2_PROXY_CLIENT_ID et OAUTH2_PROXY_CLIENT_SECRET dans $(ENV_PROD)"; \
 	else \
 		echo -e "  [$(GREEN)OK$(RESET)] Fichier $(ENV_PROD) déjà présent."; \
@@ -404,12 +406,11 @@ docker-up-prod:
 	fi
 	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config} 2>/dev/null || true
 	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
-	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + UIs Oncology & SMA + OAuth2 Proxy + Caddy)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --remove-orphans
-	@$(MAKE) mongo-init-prod
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
 
 ## Démarre toute la stack de production et attend la disponibilité des modèles LLM
 start-prod: docker-up-prod
@@ -464,7 +465,6 @@ prod-update:
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [3/4] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oauth2-proxy caddy litellm
-	@$(MAKE) mongo-init-prod
 	@echo -e "$(CYAN)--> [4/4] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
@@ -478,7 +478,6 @@ prod-update-all:
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
-	@$(MAKE) mongo-init-prod
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
 

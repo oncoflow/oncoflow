@@ -186,7 +186,9 @@ class OncowflowAgent:
             "OncowAgent",
             default_context={
                 "model": models_list[0],
-                "output_format": self.output_format,
+                "output_format": getattr(
+                    self.output_format, "__name__", str(self.output_format)
+                ),
             },
         )
 

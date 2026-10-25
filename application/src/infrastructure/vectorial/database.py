@@ -41,7 +41,7 @@ class VectorialDataBase:
             "vectorial_db",
             default_context={
                 "collection": self.coll_name,
-                "embeddings": self.embeddings,
+                "embeddings": config.llm.embeddings,
                 "db_type": config.dbvec.type.lower(),
             },
         )

@@ -19,6 +19,7 @@ x-ui-env: &ui-env
   APP_CONFIGLLM_EMBEDDINGS_PORT: "4000"
   APP_CONFIGLLM_MODELS: "openai/agents"
   APP_CONFIGLLM_EMBEDDINGS: "openai/embeddings"
+  APP_CONFIGLLM_API_KEY: ${LITELLM_MASTER_KEY}
   APP_MONGODB_HOST: "mongod"
   APP_MONGODB_PORT: "27017"
   APP_MONGODB_USER: ${APP_MONGODB_USER:-root}
@@ -36,8 +37,10 @@ x-ui-common: &ui-common
   volumes:
     - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/logs:/var/log/meddatasyntis
   depends_on:
-    - mongod
-    - litellm
+    mongod:
+      condition: service_healthy
+    litellm:
+      condition: service_started
   networks:
     - search-community
     - milvus
@@ -50,28 +53,30 @@ services:
     restart: unless-stopped
     logging: *default-logging
     entrypoint:
-      - sh
+      - python3
       - -c
-      - |
-        if [ ! -f /data/configdb/keyfile ]; then
-          openssl rand -base64 756 > /data/configdb/keyfile
-        fi
-        cp /data/configdb/keyfile /tmp/keyfile && chmod 600 /tmp/keyfile ;
-        exec python3 -c "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())" "$$@"
-    command: >-
-      mongod
-      --config /etc/mongod.conf
-      --replSet rs0
+      - "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())"
+    command:
+      - "mongod"
+      - "--bind_ip_all"
     ports:
       - "127.0.0.1:27017:27017"
     environment:
+      HOME: "/tmp"
       MONGO_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
       MONGO_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+      MONGODB_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
+      MONGODB_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
-      - ./mongod.conf:/etc/mongod.conf:ro
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb:/data/db
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -231,6 +236,8 @@ services:
     container_name: litellm-proxy
     restart: unless-stopped
     logging: *default-logging
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
     ports:
       - "127.0.0.1:4000:4000"
     volumes:
