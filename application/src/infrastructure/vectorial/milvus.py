@@ -88,6 +88,9 @@ Milvus.drop = patched_drop
 
 class MilvusDB(VectorialDataBase):
     def init_client(self, config: AppConfig):
+        self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
+        self.token = config.milvus.token
+        self.database = config.milvus.database
         retry = 3
         for r in range(retry):
             try:
@@ -96,9 +99,6 @@ class MilvusDB(VectorialDataBase):
                     port=config.milvus.port,
                     token=config.milvus.token,
                 )
-                self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
-                self.token = config.milvus.token
-                self.database = config.milvus.database
 
                 try:
                     existing_databases = db.list_database()
@@ -112,8 +112,10 @@ class MilvusDB(VectorialDataBase):
 
                 except MilvusException as e:
                     self.logger.error(f"An error occurred: {e}")
-            except MilvusException:
-                self.logger.info("Milvus still start, wait")
+            except MilvusException as e:
+                self.logger.info(
+                    f"Milvus still starting ({config.milvus.host}:{config.milvus.port}), waiting... ({r + 1}/{retry}): {e}"
+                )
                 time.sleep(5)
 
     def get_embedding(self):

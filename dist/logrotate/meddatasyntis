@@ -1,0 +1,18 @@
+# Configuration logrotate pour MedDataSyntis
+# Installée automatiquement dans /etc/logrotate.d/meddatasyntis via :
+#   make logrotate-prod (ou make init-prod)
+
+__MEDDATASYNTIS_LOG_DIR__/*.log
+/tmp/meddatasyntis-*.log
+{
+    daily
+    rotate 14
+    size 20M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    dateext
+    dateformat -%Y%m%d
+}

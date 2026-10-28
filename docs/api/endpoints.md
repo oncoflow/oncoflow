@@ -1,6 +1,6 @@
-# Spécification de l'API REST versionnée (v1) — Oncoflow
+# Spécification de l'API REST versionnée (v1) — MedDataSyntis
 
-Cette documentation détaille l'ensemble des points d'entrée de l'API REST d'Oncoflow versionnée sous `/api/v1`.
+Cette documentation détaille l'ensemble des points d'entrée de l'API REST de MedDataSyntis versionnée sous `/api/v1`.
 
 L'API permet de gérer les dossiers RCP (Réunions de Concertation Pluridisciplinaire) des patients, de piloter les agents experts d'intelligence artificielle, d'interroger les guides scientifiques (TNCD) de référence et de discuter avec les agents.
 
@@ -36,17 +36,67 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
 
 ---
 
-## 2. Gestion des Fiches Patient / RCP (`/api/v1/rcp`)
+## 2. Gestion des Dossiers Patients & Fiches RCP (`/api/v1/rcp`)
 
-### Lister les dossiers RCP
+### Lister les dossiers patients (synthèse sur la dernière RCP analysée)
+* **URL** : `/api/v1/rcp/patients`
+* **Méthode** : `GET`
+* **Description** : Récupère la liste des dossiers patients, où chaque carte reflète les indicateurs cliniques de la **dernière fiche RCP analysée** du patient.
+* **Réponse de succès (200 OK)** :
+  ```json
+  [
+    {
+      "patient_id": "roussel_marion_1968_04_12",
+      "patient": "Marion ROUSSEL",
+      "first_name": "Marion",
+      "last_name": "ROUSSEL",
+      "date_birth": "1968-04-12T00:00:00",
+      "rcp_count": 2,
+      "latest_file": "ROUSSEL-Marion_2026-07.pdf",
+      "date_refresh": "2026-07-14T16:00:00",
+      "date": "2026-07-20T00:00:00",
+      "experts": ["pancreas expert"],
+      "missing": [],
+      "urgency": "Urgent",
+      "urgency_score": 2,
+      "intervention_required": true,
+      "intervention_type": "chirurgie"
+    }
+  ]
+  ```
+
+### Obtenir le détail d'un dossier patient et l'historique de ses RCP
+* **URL** : `/api/v1/rcp/patients/{patient_id}`
+* **Méthode** : `GET`
+* **Description** : Récupère les informations d'identité du patient, le nom de sa dernière fiche RCP analysée (`latest_file`), ainsi que la liste chronologique complète de ses fiches RCP (`rcps`).
+
+### Supprimer un dossier patient complet
+* **URL** : `/api/v1/rcp/patients/{patient_id}`
+* **Méthode** : `DELETE`
+* **Description** : Supprime le dossier patient ainsi que toutes ses fiches RCP associées en base et sur le disque.
+
+### Poser une question à un agent expert sur l'ensemble du dossier patient
+* **URL** : `/api/v1/rcp/patients/{patient_id}/chat`
+* **Méthode** : `POST`
+* **Corps de la requête (application/json)** :
+  ```json
+  {
+    "agent_name": "pancreas expert",
+    "message": "Quelle est l'évolution du patient entre ses différentes RCP ?"
+  }
+  ```
+* **Description** : Dialogue avec un agent expert en lui fournissant le contexte complet de toutes les fiches RCP du dossier patient (`PatientContext` / `get_patient_mtds_markdown`).
+
+### Lister les fiches RCP scannées
 * **URL** : `/api/v1/rcp`
 * **Méthode** : `GET`
-* **Description** : Récupère la liste synthétique de tous les dossiers RCP disponibles en base.
+* **Description** : Récupère la liste synthétique de toutes les fiches RCP disponibles en base, triées par date de scan décroissante.
 * **Réponse de succès (200 OK)** :
   ```json
   [
     {
       "file": "ROUSSEL-Marion_anon.pdf",
+      "patient_id": "roussel_marion_1968_04_12",
       "patient": "Marion ROUSSEL",
       "date_refresh": "2026-07-14T16:00:00",
       "date": "2026-07-20T00:00:00",
@@ -60,16 +110,16 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
   ]
   ```
 
-### Obtenir le détail complet d'un patient
+### Obtenir le détail complet d'une fiche RCP
 * **URL** : `/api/v1/rcp/{filename}`
 * **Méthode** : `GET`
 * **Description** : Récupère l'intégralité du document structuré MongoDB pour un fichier RCP spécifique.
 * **Réponse de succès (200 OK)** : renvoie l'objet JSON contenant les extractions faites par chaque agent expert (`PatientAdministrative`, `ExpertAnswer`, `MTDCompleted`, etc.).
 
-### Supprimer un dossier patient
+### Supprimer une fiche RCP
 * **URL** : `/api/v1/rcp/{filename}`
 * **Méthode** : `DELETE`
-* **Description** : Supprime la fiche de la base de données MongoDB et le PDF correspondant du disque.
+* **Description** : Supprime la fiche de la base de données MongoDB (et la retire de la liste `files` du patient associé) ainsi que le PDF correspondant du disque.
 * **Réponse de succès (200 OK)** :
   ```json
   {
@@ -77,22 +127,31 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
   }
   ```
 
-### Téléverser un nouveau dossier (PDF)
+### Téléverser une nouvelle fiche RCP (PDF) et l'associer à un patient
 * **URL** : `/api/v1/rcp/upload`
 * **Méthode** : `POST`
 * **Type de contenu** : `multipart/form-data`
 * **Corps de la requête** :
   * `file` : Le fichier PDF de la RCP (binaire)
-* **Description** : Enregistre le PDF dans le dossier de réception configuré, puis initialise la fiche patient en base.
+  * `patient_id` *(optionnel)* : Identifiant d'un patient existant auquel rattacher la fiche. Si omis (par défaut : mode automatique), l'indexation RAG et l'agent administratif IA extraient `first_name`, `last_name` et `date_birth` pour créer ou rattacher automatiquement le dossier patient.
+* **Description** : Enregistre le PDF, exécute le RAG + l'extraction administrative IA, et associe la fiche au dossier patient.
 * **Réponse de succès (200 OK)** :
   ```json
   {
     "filename": "ROUSSEL-Marion_anon.pdf",
-    "message": "Fichier téléversé et initialisé avec succès."
+    "patient_id": "roussel_marion_1968_04_12",
+    "patient": {
+      "patient_id": "roussel_marion_1968_04_12",
+      "first_name": "Marion",
+      "last_name": "ROUSSEL",
+      "date_birth": "1968-04-12T00:00:00",
+      "files": ["ROUSSEL-Marion_anon.pdf"]
+    },
+    "message": "Fichier téléversé, indexé et associé au patient avec succès."
   }
   ```
 
-### Lancer/Relancer le traitement IA d'un dossier
+### Lancer/Relancer le traitement IA d'une fiche RCP
 * **URL** : `/api/v1/rcp/{filename}/process`
 * **Méthode** : `POST`
 * **Corps de la requête (application/json)** :
@@ -110,7 +169,7 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
   }
   ```
 
-### Poser une question à un agent expert (Chat Patient)
+### Poser une question à un agent expert sur une fiche RCP
 * **URL** : `/api/v1/rcp/{filename}/chat`
 * **Méthode** : `POST`
 * **Corps de la requête (application/json)** :
@@ -120,7 +179,7 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
     "message": "Quel est le statut OMS du patient ?"
   }
   ```
-* **Description** : Dialogue directement avec un agent expert dans le cadre d'un dossier patient.
+* **Description** : Dialogue directement avec un agent expert dans le cadre d'une fiche RCP spécifique.
 * **Réponse de succès (200 OK)** :
   ```json
   {

@@ -1,30 +1,46 @@
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "${DOCKER_LOG_MAX_SIZE:-20m}"
+    max-file: "${DOCKER_LOG_MAX_FILE:-5}"
+    compress: "true"
+
 services:
 
   mongod:
-    image: mongodb/mongodb-community-server:latest
-    restart: always
+    image: mongodb/mongodb-community-server:9.0-ubuntu2204
+    container_name: oncoflow-mongod
+    restart: unless-stopped
+    logging: *default-logging
     entrypoint:
-      - sh
+      - python3
       - -c
-      - |
-        openssl rand -base64 756 > /tmp/keyfile  && chmod 600 /tmp/keyfile ;
-        exec python3 -c "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())" "$$@"
-    command: >-
-         mongod
-         --config /etc/mongod.conf
-         --replSet rs0
+      - "import platform, sys; platform.release = lambda: '6.18.0'; sys.argv = ['/usr/local/bin/docker-entrypoint.py'] + sys.argv[1:]; exec(open('/usr/local/bin/docker-entrypoint.py').read())"
+    command:
+      - "mongod"
+      - "--bind_ip_all"
     ports:
-     - 27017:27017
+      - "127.0.0.1:27017:27017"
     environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: root
+      HOME: "/tmp"
+      MONGO_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
+      MONGODB_INITDB_ROOT_USERNAME: ${APP_MONGODB_USER:-root}
+      MONGODB_INITDB_ROOT_PASSWORD: ${APP_MONGODB_PASSWORD:-root}
       GLIBC_TUNABLES: glibc.pthread.rseq=1
     volumes:
-      - ./mongod.conf:/etc/mongod.conf:ro
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb:/data/db
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/mongodb_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.runCommand({ping:1}).ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     extra_hosts:
-         - "host.docker.internal:host-gateway"
+      - "host.docker.internal:host-gateway"
     networks:
-         - search-community
+      - search-community
 
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
@@ -49,7 +65,7 @@ services:
     - "ollama"
 
   llama-cpp-chat:
-    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda12
     container_name: llama-cpp-chat-server
     environment:
       - NVIDIA_VISIBLE_DEVICES=all

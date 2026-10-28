@@ -28,6 +28,7 @@ print(answer)
 
 import hashlib
 import os
+import threading
 
 from langchain_docling.loader import MetaExtractor
 
@@ -69,36 +70,39 @@ class DocumentReader:
 
     _docling_converter = None
     _docling_chunker = None
+    _docling_lock = threading.Lock()
 
     @classmethod
     def get_docling_components(cls):
-        if cls._docling_converter is None:
-            from docling.chunking import HybridChunker
-            from docling.datamodel.base_models import InputFormat
-            from docling.datamodel.pipeline_options import (
-                PdfPipelineOptions,
-                RapidOcrOptions,
-            )
-            from docling.document_converter import (
-                DocumentConverter,
-                PdfFormatOption,
-            )
+        if cls._docling_converter is None or cls._docling_chunker is None:
+            with cls._docling_lock:
+                if cls._docling_converter is None or cls._docling_chunker is None:
+                    from docling.chunking import HybridChunker
+                    from docling.datamodel.base_models import InputFormat
+                    from docling.datamodel.pipeline_options import (
+                        PdfPipelineOptions,
+                        RapidOcrOptions,
+                    )
+                    from docling.document_converter import (
+                        DocumentConverter,
+                        PdfFormatOption,
+                    )
 
-            print("Preloading RapidOCR models and Docling Converter...")
-            ocr_options = RapidOcrOptions()
-            pipeline_options = PdfPipelineOptions(ocr_options=ocr_options)
-            pipeline_options.allow_external_plugins = True
+                    print("Preloading RapidOCR models and Docling Converter...")
+                    ocr_options = RapidOcrOptions()
+                    pipeline_options = PdfPipelineOptions(ocr_options=ocr_options)
+                    pipeline_options.allow_external_plugins = True
 
-            cls._docling_converter = DocumentConverter(
-                format_options={
-                    InputFormat.PDF: PdfFormatOption(
-                        pipeline_options=pipeline_options,
-                    ),
-                },
-            )
-            cls._docling_chunker = HybridChunker(
-                tokenizer="intfloat/multilingual-e5-base"
-            )
+                    converter = DocumentConverter(
+                        format_options={
+                            InputFormat.PDF: PdfFormatOption(
+                                pipeline_options=pipeline_options,
+                            ),
+                        },
+                    )
+                    chunker = HybridChunker(tokenizer="intfloat/multilingual-e5-base")
+                    cls._docling_chunker = chunker
+                    cls._docling_converter = converter
         return cls._docling_converter, cls._docling_chunker
 
     @staticmethod
@@ -148,8 +152,8 @@ class DocumentReader:
         self.logger = config.set_logger(
             "reader",
             default_context={
-                "document": document,
-                "embeddings": self.embeddings,
+                "document": str(document),
+                "embeddings": config.llm.embeddings,
                 "parser": config.rcp.doc_type,
             },
         )

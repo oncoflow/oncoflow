@@ -1,11 +1,14 @@
-import pytz
 from datetime import datetime
+from typing import Any
 import streamlit as st
 
 from src.application.config import AppConfig
-from src.application.app_functions import delete_document
+from src.application.app_functions import delete_document, delete_patient_dossier
+from src.application.patient import (
+    build_patients_cards_data,
+    extract_card_metrics,
+)
 from src.infrastructure.documents.mongodb import Mongodb
-from src.domain.common.common_ressources import PatientPriority
 
 # Configuration de l'application
 app_conf = AppConfig()
@@ -18,31 +21,36 @@ if app_conf.rcp.display_type == "mongodb":
 logger = app_conf.set_logger("ui", default_context={"page": "cards"})
 
 
-def to_naive(dt: datetime | None) -> datetime | None:
-    """Convertit un datetime (aware ou naive) en datetime naive (Europe/Paris)."""
-    if dt is None:
-        return None
-    if dt.tzinfo is not None:
-        return dt.astimezone(pytz.timezone("Europe/Paris")).replace(tzinfo=None)
-    return dt
-
-
 @st.dialog("Confirmation de suppression")
 def delete_card(filename: str):
-    st.warning(f"Voulez-vous vraiment supprimer le dossier : {filename} ?")
+    st.warning(f"Voulez-vous vraiment supprimer la fiche RCP : {filename} ?")
     st.markdown("Cette action est irréversible.")
     if st.button("Confirmer la suppression", type="primary"):
         delete_document(app_conf, filename)
         st.rerun()
 
 
-def get_rcp_data():
+@st.dialog("Confirmation de suppression du dossier patient")
+def delete_patient_card(patient_id: str, patient_name: str):
+    st.warning(
+        f"Voulez-vous vraiment supprimer l'intégralité du dossier patient : {patient_name} ?"
+    )
+    st.markdown(
+        "Toutes les fiches RCP associées à ce patient seront supprimées. Cette action est irréversible."
+    )
+    if st.button("Confirmer la suppression du dossier", type="primary"):
+        delete_patient_dossier(app_conf, patient_id)
+        st.rerun()
+
+
+def get_rcp_data() -> list[dict]:
     """Récupère les données RCP depuis MongoDB et les formate pour l'affichage."""
     if db_client is None or not hasattr(db_client, "database"):
         return []
 
     projection = {
         "file": 1,
+        "patient_id": 1,
         "ui_date": 1,
         "PatientAdministrative": 1,
         "ExpertAnswer": 1,
@@ -50,116 +58,20 @@ def get_rcp_data():
         "isInterventionRequiered": 1,
     }
     db_datas = list(db_client.database["rcp_info"].find({}, projection))
-
-    cards_data = []
-    for d in db_datas:
-        # Données Patient
-        patient_name = "Inconnu"
-        if "PatientAdministrative" in d:
-            p = d["PatientAdministrative"]
-            patient_name = f"{p.get('first_name', '')} {p.get('last_name', '')}"
-
-        # Date
-        date_refresh = d.get(
-            "ui_date",
-            datetime.now(pytz.timezone("Europe/Paris")).replace(
-                hour=0, minute=0, second=0, microsecond=0
-            ),
-        )
-        date_refresh = to_naive(date_refresh)
-
-        date_mcp = (
-            d["PatientAdministrative"]["date_rcp"]
-            if "PatientAdministrative" in d and "date_rcp" in d["PatientAdministrative"]
-            else None
-        )
-        if isinstance(date_mcp, str):
-            date_mcp = datetime.fromisoformat(date_mcp)
-        date_mcp = to_naive(date_mcp)
-
-        # Experts Pertinents & Urgence
-        relevant_experts = []
-        urgency_level = "Indéfini"
-        urgency_score = 0  # 0: Low/None, 1: Medium, 2: Urgent
-
-        if "ExpertAnswer" in d and isinstance(d["ExpertAnswer"], dict):
-            for agent_name, agent_data in d["ExpertAnswer"].items():
-                if isinstance(agent_data, dict):
-                    if agent_data.get("expert_relevant"):
-                        relevant_experts.append(agent_name)
-
-                    # Urgence
-                    p_prio = str(agent_data.get("patient_priority", "")).lower()
-                    for urgency in list(PatientPriority):
-                        if p_prio == urgency.value.lower():
-                            if urgency.name == "urgent":
-                                if urgency_score < 2:
-                                    urgency_score = 2
-                                    urgency_level = "Urgent"
-                            elif urgency.name == "medium":
-                                if urgency_score < 1:
-                                    urgency_score = 1
-                                    urgency_level = "Semi-urgent"
-                            elif urgency.name == "low":
-                                urgency_level = "Standard"
-
-        # Données Manquantes
-        missing_data = []
-        if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
-            if "mtd_complete" in d["MTDCompleted"]:
-                mtd_comp = d["MTDCompleted"].get("mtd_complete")
-                if isinstance(mtd_comp, dict):
-                    m = mtd_comp.get("what_missing", [])
-                    if isinstance(m, list):
-                        missing_data.extend(m)
-            else:
-                for agent_name, agent_data in d["MTDCompleted"].items():
-                    if isinstance(agent_data, dict):
-                        mtd_comp = agent_data.get("mtd_complete")
-                        if isinstance(mtd_comp, dict):
-                            m = mtd_comp.get("what_missing", [])
-                            if isinstance(m, list):
-                                missing_data.extend(m)
-        else:
-            missing_data.extend(["no data"])
-
-        # Intervention requise
-        intervention_required = None
-        intervention_type = None
-        if "isInterventionRequiered" in d and isinstance(
-            d["isInterventionRequiered"], dict
-        ):
-            int_data = d["isInterventionRequiered"]
-            if "intervention_required" in int_data:
-                intervention_required = int_data.get("intervention_required")
-                intervention_type = int_data.get("intervention_type")
-            else:
-                for agent_data in int_data.values():
-                    if (
-                        isinstance(agent_data, dict)
-                        and "intervention_required" in agent_data
-                    ):
-                        intervention_required = agent_data.get("intervention_required")
-                        intervention_type = agent_data.get("intervention_type")
-                        break
-
-        cards_data.append(
-            {
-                "file": d["file"],
-                "patient": patient_name,
-                "date_refresh": date_refresh,
-                "date": date_mcp,
-                "experts": relevant_experts,
-                "missing": list(set(missing_data)),
-                "urgency": urgency_level,
-                "urgency_score": urgency_score,
-                "link": f"datas?file={d['file']}",
-                "intervention_required": intervention_required,
-                "intervention_type": intervention_type,
-            }
-        )
-
+    cards_data = [extract_card_metrics(d) for d in db_datas]
+    # Par défaut, trier les dernières RCP scannées par date de scan (ui_date / date_refresh) décroissante
+    cards_data.sort(
+        key=lambda x: x.get("date_refresh") or datetime.min,
+        reverse=True,
+    )
     return cards_data
+
+
+def get_patients_cards_data() -> list[dict]:
+    """
+    Récupère les dossiers patients et construit pour chacun la carte basée sur sa dernière RCP analysée.
+    """
+    return build_patients_cards_data(db_client)
 
 
 def set_sort_order(column_key: str):
@@ -175,7 +87,9 @@ def set_sort_order(column_key: str):
         st.session_state.list_sort_ascending = True
 
 
-def display_as_list(data):
+def display_as_list(
+    data, section_prefix: str = "rcp", is_patient_section: bool = False
+):
     """Affiche les données sous forme de liste/tableau triable."""
 
     # --- Initialisation & Logique de Tri ---
@@ -186,7 +100,6 @@ def display_as_list(data):
     sort_by = st.session_state.list_sort_by
     ascending = st.session_state.list_sort_ascending
 
-    # Gérer le tri pour différents types de données et les valeurs manquantes
     default_value_map = {
         "date": datetime.min,
         "patient": "",
@@ -203,7 +116,6 @@ def display_as_list(data):
         reverse=not ascending,
     )
 
-    # --- Affichage du Tableau ---
     def get_sort_indicator(column_key: str):
         if st.session_state.get("list_sort_by") == column_key:
             return " ▲" if st.session_state.get("list_sort_ascending") else " ▼"
@@ -213,17 +125,29 @@ def display_as_list(data):
     header_cols = st.columns((3, 2, 2, 3, 4, 2))
 
     with header_cols[0]:
-        if st.button(f"Patient{get_sort_indicator('patient')}", width="stretch"):
+        if st.button(
+            f"Patient{get_sort_indicator('patient')}",
+            key=f"sort_patient_{section_prefix}",
+            width="stretch",
+        ):
             set_sort_order("patient")
             st.rerun()
 
     with header_cols[1]:
-        if st.button(f"Date RCP{get_sort_indicator('date')}", width="stretch"):
+        if st.button(
+            f"Date RCP{get_sort_indicator('date')}",
+            key=f"sort_date_{section_prefix}",
+            width="stretch",
+        ):
             set_sort_order("date")
             st.rerun()
 
     with header_cols[2]:
-        if st.button(f"Urgence{get_sort_indicator('urgency_score')}", width="stretch"):
+        if st.button(
+            f"Urgence{get_sort_indicator('urgency_score')}",
+            key=f"sort_urgency_{section_prefix}",
+            width="stretch",
+        ):
             set_sort_order("urgency_score")
             st.rerun()
 
@@ -236,11 +160,23 @@ def display_as_list(data):
     for item in sorted_data:
         row_cols = st.columns((3, 2, 2, 3, 4, 2))
 
-        # Colonne Patient
-        row_cols[0].subheader(
-            item["patient"],
-            help=f"Refresh : {item['date_refresh'].strftime('%d-%m-%Y')} - Fichier: {item['file']}",
+        refresh_str = (
+            item["date_refresh"].strftime("%d-%m-%Y")
+            if item.get("date_refresh")
+            else "Inconnue"
         )
+        rcp_count = item.get("rcp_count")
+        title_text = (
+            f"{item['patient']} ({rcp_count} RCP)"
+            if is_patient_section and rcp_count
+            else item["patient"]
+        )
+        row_cols[0].subheader(
+            title_text,
+            help=f"Refresh : {refresh_str} - Dernière RCP: {item['file']}",
+        )
+        if not is_patient_section:
+            row_cols[0].caption(f"📄 `{item['file']}`")
 
         # Colonne Date
         date_str = item["date"].strftime("%d-%m-%Y") if item.get("date") else "Inconnue"
@@ -264,7 +200,6 @@ def display_as_list(data):
             else:
                 st.markdown("✅ Complet")
 
-            # Statut Intervention
             if item.get("intervention_required") is True:
                 int_type = (
                     f" ({item['intervention_type']})"
@@ -282,6 +217,11 @@ def display_as_list(data):
             row_cols[4].markdown("Aucun")
 
         # Colonne Actions
+        unique_id = (
+            item.get("patient_id") or item["file"]
+            if is_patient_section
+            else item["file"]
+        )
         with row_cols[5]:
             b1, b2 = st.columns(2)
             with b1:
@@ -294,17 +234,22 @@ def display_as_list(data):
             with b2:
                 if st.button(
                     "🗑️",
-                    key=f"btn_del_list_{item['file']}",
+                    key=f"btn_del_list_{section_prefix}_{unique_id}",
                     type="primary",
                     width="stretch",
                     help="Supprimer le dossier",
                 ):
-                    delete_card(item["file"])
+                    if is_patient_section and item.get("patient_id"):
+                        delete_patient_card(item["patient_id"], item["patient"])
+                    else:
+                        delete_card(item["file"])
         st.divider()
 
 
-def display_as_cards(data):
-    """Affiche les données sous forme de cartes."""
+def display_as_cards(
+    data, section_prefix: str = "rcp", is_patient_section: bool = False
+):
+    """Affiche les données sous forme de cartes (même format pour Dossiers Patients et Fiches RCP)."""
     cols = st.columns(3)
     for i, item in enumerate(data):
         col = cols[i % 3]
@@ -334,21 +279,43 @@ def display_as_cards(data):
                 elif item.get("intervention_required") is False:
                     badge_intervention = ":green-badge[Pas d'intervention]"
 
+                badge_rcp_count = ""
+                if is_patient_section and item.get("rcp_count"):
+                    badge_rcp_count = f":blue-badge[🗂️ {item['rcp_count']} RCP]"
+
+                refresh_str = (
+                    item["date_refresh"].strftime("%d-%m-%Y")
+                    if item.get("date_refresh")
+                    else "Inconnue"
+                )
                 st.subheader(
                     item["patient"],
-                    help=f"Refresh : {item['date_refresh'].strftime('%d-%m-%Y')} - Fichier: {item['file']}",
+                    help=f"Refresh : {refresh_str} - Fichier: {item['file']}",
                 )
 
                 # Combine badges
-                badges = [badge_urgent, badge_missing, badge_intervention]
+                badges = [
+                    badge_rcp_count,
+                    badge_urgent,
+                    badge_missing,
+                    badge_intervention,
+                ]
                 badges_str = " ".join([b for b in badges if b])
                 if badges_str:
                     st.markdown(badges_str)
 
                 if item["date"] is not None:
-                    st.caption(f"📅 {item['date'].strftime('%d-%m-%Y')}")
+                    date_caption = (
+                        f"📅 Dernière RCP : {item['date'].strftime('%d-%m-%Y')}"
+                        if is_patient_section
+                        else f"📅 {item['date'].strftime('%d-%m-%Y')}"
+                    )
+                    st.caption(date_caption)
                 else:
                     st.caption("📅 Inconnu")
+
+                if not is_patient_section:
+                    st.caption(f"📄 `{item['file']}`")
 
                 # Experts
                 if item["experts"]:
@@ -370,25 +337,87 @@ def display_as_cards(data):
                 st.divider()
 
                 # Boutons
+                unique_id = (
+                    item.get("patient_id") or item["file"]
+                    if is_patient_section
+                    else item["file"]
+                )
                 b1, b2 = st.columns(2)
                 with b1:
                     st.link_button("Ouvrir", item["link"], width="stretch")
                 with b2:
                     if st.button(
                         "Supprimer",
-                        key=f"btn_del_card_{item['file']}",
+                        key=f"btn_del_card_{section_prefix}_{unique_id}_{i}",
                         type="primary",
                         width="stretch",
                     ):
-                        delete_card(item["file"])
+                        if is_patient_section and item.get("patient_id"):
+                            delete_patient_card(item["patient_id"], item["patient"])
+                        else:
+                            delete_card(item["file"])
+
+
+def _filter_items(
+    items: list[dict],
+    search_term: str,
+    selected_urgencies: list[str],
+    completeness_filter: str,
+    selected_experts: list[str],
+    date_range: Any,
+) -> list[dict]:
+    """Applique les filtres du tableau de bord à une liste de cartes."""
+    filtered = []
+    for item in items:
+        if search_term:
+            term = search_term.lower()
+            if term not in item["patient"].lower() and term not in item["file"].lower():
+                continue
+
+        if item["urgency"] not in selected_urgencies:
+            continue
+
+        is_incomplete = len(item["missing"]) > 0
+        if completeness_filter == "Complet" and is_incomplete:
+            continue
+        if completeness_filter == "Incomplet" and not is_incomplete:
+            continue
+
+        if selected_experts:
+            if not any(e in item["experts"] for e in selected_experts):
+                continue
+
+        if date_range and len(date_range) == 2:
+            start, end = date_range
+            if item["date"]:
+                if not (start <= item["date"].date() <= end):
+                    continue
+
+        filtered.append(item)
+    return filtered
+
+
+def _sort_cards(items: list[dict], sort_option: str | None) -> list[dict]:
+    """Trie une liste de cartes selon l'option choisie."""
+    result = list(items)
+    if sort_option == "Urgence (Haute > Basse)":
+        result.sort(key=lambda x: x["urgency_score"], reverse=True)
+    elif sort_option == "Urgence (Basse > Haute)":
+        result.sort(key=lambda x: x["urgency_score"], reverse=False)
+    elif sort_option == "Date (Récent > Ancien)":
+        result.sort(key=lambda x: x.get("date") or datetime.min, reverse=True)
+    elif sort_option == "Date (Ancien > Récent)":
+        result.sort(key=lambda x: x.get("date") or datetime.min, reverse=False)
+    return result
 
 
 def cards_view():
-    st.title("📇 Tableau de bord RCP")
+    st.title("📇 Tableau de bord Patients & RCP")
 
-    data = get_rcp_data()
+    rcp_data = get_rcp_data()
+    patient_data = get_patients_cards_data()
 
-    if not data:
+    if not rcp_data and not patient_data:
         st.info("Aucune fiche RCP trouvée.")
         return
 
@@ -396,7 +425,6 @@ def cards_view():
     col_main, col_filters = st.columns([3, 1])
 
     with col_main:
-        # View Toggle
         view_mode = st.segmented_control(
             "Vue",
             options=["Cartes", "Liste"],
@@ -411,13 +439,11 @@ def cards_view():
 
         search_term = st.text_input("Rechercher", placeholder="Patient, Fichier...")
 
-        # Urgency Filter
         urgency_options = ["Urgent", "Semi-urgent", "Standard", "Indéfini"]
         selected_urgencies = st.multiselect(
             "Urgence", options=urgency_options, default=urgency_options
         )
 
-        # Completeness Filter
         completeness_filter = st.segmented_control(
             "Statut dossier",
             options=["Tous", "Complet", "Incomplet"],
@@ -425,18 +451,17 @@ def cards_view():
         )
         completeness_filter = completeness_filter or "Tous"
 
-        # Experts Filter
-        all_experts = sorted(list(set([e for item in data for e in item["experts"]])))
+        all_experts = sorted(
+            list(set([e for item in rcp_data for e in item["experts"]]))
+        )
         selected_experts = st.multiselect("Experts", options=all_experts)
 
-        # Date Filter
-        dates = [x["date"] for x in data if isinstance(x["date"], datetime)]
+        dates = [x["date"] for x in rcp_data if isinstance(x["date"], datetime)]
         date_range = None
         if dates:
             min_date, max_date = min(dates).date(), max(dates).date()
             date_range = st.date_input("Période", value=(min_date, max_date))
 
-        # Sorting (conditional)
         sort_option = None
         if view_mode == "Cartes":
             sort_option = st.selectbox(
@@ -449,64 +474,67 @@ def cards_view():
                 ],
             )
 
-    # --- Filtrage des données ---
-    filtered_data = []
-    for item in data:
-        # Recherche textuelle
-        if search_term:
-            term = search_term.lower()
-            if term not in item["patient"].lower() and term not in item["file"].lower():
-                continue
-
-        # Filtre Urgence
-        if item["urgency"] not in selected_urgencies:
-            continue
-
-        # Filtre Incomplet
-        is_incomplete = len(item["missing"]) > 0
-        if completeness_filter == "Complet" and is_incomplete:
-            continue
-        if completeness_filter == "Incomplet" and not is_incomplete:
-            continue
-
-        # Filtre Experts
-        if selected_experts:
-            if not any(e in item["experts"] for e in selected_experts):
-                continue
-
-        # Filtre Date
-        if date_range and len(date_range) == 2:
-            start, end = date_range
-            if item["date"]:
-                if not (start <= item["date"].date() <= end):
-                    continue
-
-        filtered_data.append(item)
+    filtered_patients = _filter_items(
+        patient_data,
+        search_term,
+        selected_urgencies,
+        completeness_filter,
+        selected_experts,
+        date_range,
+    )
+    filtered_rcps = _filter_items(
+        rcp_data,
+        search_term,
+        selected_urgencies,
+        completeness_filter,
+        selected_experts,
+        date_range,
+    )
 
     # --- Affichage (Left) ---
     with col_main:
-        st.caption(f"{len(filtered_data)} fiche(s)")
-
-        if view_mode == "Cartes":
-            # --- Tri des données pour la vue Cartes ---
-            if sort_option == "Urgence (Haute > Basse)":
-                filtered_data.sort(key=lambda x: x["urgency_score"], reverse=True)
-            elif sort_option == "Urgence (Basse > Haute)":
-                filtered_data.sort(key=lambda x: x["urgency_score"], reverse=False)
-            elif sort_option == "Date (Récent > Ancien)":
-                filtered_data.sort(
-                    key=lambda x: x.get("date") or datetime.min, reverse=True
+        # 1. Section Top : Dossiers Patients (basés sur la dernière RCP analysée)
+        st.subheader("📁 Dossiers Patients")
+        st.caption(
+            f"{len(filtered_patients)} dossier(s) patient — synthétisé(s) sur la dernière RCP analysée"
+        )
+        if filtered_patients:
+            if view_mode == "Cartes":
+                sorted_patients = _sort_cards(filtered_patients, sort_option)
+                display_as_cards(
+                    sorted_patients,
+                    section_prefix="patients",
+                    is_patient_section=True,
                 )
-            elif sort_option == "Date (Ancien > Récent)":
-                filtered_data.sort(
-                    key=lambda x: x.get("date") or datetime.min, reverse=False
+            else:
+                display_as_list(
+                    filtered_patients,
+                    section_prefix="patients",
+                    is_patient_section=True,
                 )
+        else:
+            st.info("Aucun dossier patient ne correspond aux filtres.")
 
-            display_as_cards(filtered_data)
+        st.divider()
 
-        elif view_mode == "Liste":
-            # Le tri est géré à l'intérieur de la fonction display_as_list
-            display_as_list(filtered_data)
+        # 2. Section Bas : Dernières RCP scannées
+        st.subheader("📄 Dernières RCP scannées")
+        st.caption(f"{len(filtered_rcps)} fiche(s) RCP")
+        if filtered_rcps:
+            if view_mode == "Cartes":
+                display_as_cards(
+                    filtered_rcps,
+                    section_prefix="rcp",
+                    is_patient_section=False,
+                )
+            else:
+                display_as_list(
+                    filtered_rcps,
+                    section_prefix="rcp",
+                    is_patient_section=False,
+                )
+        else:
+            st.info("Aucune fiche RCP ne correspond aux filtres.")
 
 
 if __name__ == "__main__":

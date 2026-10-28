@@ -69,6 +69,7 @@ class LiteLLMConnect(LLMConnect):
             api_base=embeddings_base,
             api_key=self.api_key,
             model=config.llm.embeddings,
+            encoding_format="float",
         )
 
         self.logger.info("Succesfully connected to LiteLLM proxy")

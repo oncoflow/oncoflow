@@ -1,0 +1,9 @@
+# Configuration sudoers pour le déploiement MedDataSyntis (Ubuntu 24.04+)
+# L'utilisateur appartient déjà au groupe 'docker' (pas besoin de sudo docker).
+# Installée automatiquement dans /etc/sudoers.d/meddatasyntis (permissions 0440) via :
+#   make sudoers-prod (ou make init-prod)
+
+Defaults:__DEPLOY_USER__ !requiretty
+
+# Droits sans mot de passe pour l'installation et l'exécution de logrotate en production
+__DEPLOY_USER__ ALL=(root) NOPASSWD: /usr/bin/cp * /etc/logrotate.d/meddatasyntis, /usr/bin/chmod 644 /etc/logrotate.d/meddatasyntis, /usr/bin/chown root\:root /etc/logrotate.d/meddatasyntis, /usr/sbin/logrotate *

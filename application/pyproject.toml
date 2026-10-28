@@ -6,48 +6,56 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "blinker>=1.9.0",
-    "fastapi>=0.115.0",
+    "fastapi>=0.143.3",
     "uvicorn>=0.30.0",
     "python-multipart>=0.0.9",
     "chromadb>=1.3.5",
-    "docling-core[chunking]>=2.77.0",
-    "pydantic-settings>=2.9.0",
+    "docling-core[chunking]>=2.101.1",
+    "pydantic-settings>=2.16.0",
     "inquirer>=3.4.1",
     "langchain-chroma>=1.1.0",
-    "langchain-core>=1.6.4",
+    "langchain-core>=1.6.11",
     "langchain-docling>=2.0.0",
     "langchain-milvus==0.3.3",
     "langchain-mongodb>=0.12.1",
     "langchain-ollama>=1.1.0",
-    "langchain-openai>=0.1.0",
-    "langchain-litellm>=0.1.0",
-    "openai>=1.0.0",
+    "langchain-openai>=1.7.2",
+    "langchain-litellm>=0.11.1",
+    "openai>=3.31.0",
     "modelscope>=1.40.1",
-    "docling>=2.132.0",
+    "docling>=2.140.0",
     "ollama-ocr>=0.1.6",
     "openparse>=0.7.0",
     "pandas>=2.2.0",
     "pdfminer-six>=20260107",
     "pymilvus==2.6.14",
     "pymupdf>=1.28.2",
-    "pymongo>=4.18.1",
+    "pymongo>=4.19.0",
     "python-slugify>=9.1.2",
     "sentence-transformers>=5.5.1",
-    "streamlit>=1.57.0",
+    "streamlit>=1.66.0",
     "streamlit-authenticator>=0.4.2",
     "streamlit-pdf-viewer>=0.0.29",
-    "unstructured[pdf]>=0.27.22",
+    "unstructured[pdf]>=0.27.27",
     "pytz>=2026.4",
     "protobuf<8.0.0",
-    "langchain>=1.3.4",
+    "langchain>=1.4.6",
     "pyaml>=26.7.0",
+    "pillow>=13.0.0",
+    "filelock>=4.2.1",
+]
+
+[tool.uv]
+override-dependencies = [
+    "pillow>=13.0.0",
+    "filelock>=4.2.1",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=9.1.1,<10",
   "pytest-cov>=5.0.0",
-  "ruff>=0.16.10,<0.17",
+  "ruff>=0.17.1,<0.18",
   "pre-commit",
   "pyrefly"
 ]
@@ -55,6 +63,9 @@ dev = [
 [tool.pyright]
 autoSearchPaths = false
 extraPaths = ["."]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 
 [tool.ruff.lint.per-file-ignores]
 "app-ui.py" = ["E402"]

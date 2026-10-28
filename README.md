@@ -1,4 +1,4 @@
-# ✨ Oncoflow — L'IA locale au service de la cancérologie digestive
+# ✨ MedDataSyntis — L'IA locale au service de la synthèse de données médicales
 
 <p align="left">
   <a href="https://github.com/oncoflow/oncoflow/actions/workflows/ci.yml"><img src="https://github.com/oncoflow/oncoflow/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI/CD Pipeline" /></a>
@@ -23,17 +23,17 @@
   <a href="https://discord.gg/C2RPhyn9x8"><img src="https://img.shields.io/badge/Discord-Rejoindre%20la%20communauté-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Discord Community" /></a>
 </p>
 
-**Oncoflow** est une solution logicielle innovante, gratuite, open-source et **100% locale**, conçue spécifiquement pour les professionnels francophones de la santé (chirurgiens, oncologues, gastro-entérologues). Elle exploite les capacités des modèles de langage locaux (LLM) et du RAG (Retrieval-Augmented Generation) pour simplifier et optimiser la préparation et le déroulement des **Réunions de Concertation Pluridisciplinaire (RCP)** en oncologie digestive.
+**MedDataSyntis** est une solution logicielle innovante, gratuite, open-source et **100% locale**, conçue spécifiquement pour les professionnels francophones de la santé (chirurgiens, oncologues, gastro-entérologues, spécialistes des maladies rares). Elle exploite les capacités des modèles de langage locaux (LLM) et du RAG (Retrieval-Augmented Generation) pour simplifier et optimiser la préparation et le déroulement des **Réunions de Concertation Pluridisciplinaire (RCP)** (oncologie digestive, amyotrophie spinale, etc.).
 
 ---
 
 ## 🗺️ Vision Clinique vs Solution Technique
 
-Pour répondre au mieux aux besoins de chacun de nos utilisateurs, la documentation d'Oncoflow est scindée en deux grands espaces :
+Pour répondre au mieux aux besoins de chacun de nos utilisateurs, la documentation de MedDataSyntis est scindée en deux grands espaces :
 
 ```
                         ┌──────────────────────────────┐
-                        │      PORTAIL ONCOFLOW        │
+                        │    PORTAIL MEDDATASYNTIS     │
                         └──────────────┬───────────────┘
                                        │
                 ┌──────────────────────┴──────────────────────┐
@@ -53,17 +53,17 @@ Pour répondre au mieux aux besoins de chacun de nos utilisateurs, la documentat
 
 ## 🩺 1. Espace Cliniciens (Professionnels de Santé)
 
-Vous êtes chirurgien, oncologue, gastro-entérologue ou secrétaire médical de RCP ? Oncoflow a été pensé pour réduire votre charge mentale administrative en automatisant la synthèse de vos dossiers patients tout en fiabilisant les processus de prise en charge.
+Vous êtes chirurgien, oncologue, gastro-entérologue ou secrétaire médical de RCP ? MedDataSyntis a été pensé pour réduire votre charge mentale administrative en automatisant la synthèse de vos dossiers patients tout en fiabilisant les processus de prise en charge.
 
 ### Ses atouts cliniques majeurs :
-1. **Synthèse de dossier instantanée** : Extraction et structuration des caractéristiques tumorales (classification TNM, type histologique, biomarqueurs).
+1. **Synthèse de dossier instantanée** : Extraction et structuration des caractéristiques cliniques et tumorales (classification TNM, type histologique, biomarqueurs, bilans génétiques et fonctionnels).
 2. **Alerte de pièces manquantes (Missing Records)** : L'IA détecte si un examen obligatoire (compte-rendu d'anatomopathologie, examen biologique ou d'imagerie) fait défaut avant la réunion, évitant ainsi de reporter le dossier.
 3. **Optimisation de l'ordre de passage** : Triage automatisé priorisant les cas cliniques complexes nécessitant le plus de débats pluridisciplinaires.
-4. **Intégration du TNCD** : Confrontation directe des critères du patient avec les fiches de recommandations cliniques officielles du **Thésaurus National de Cancérologie Digestive (TNCD)**.
+4. **Intégration du TNCD** : Confrontation directe des critères du patient avec les fiches de recommandations cliniques officielles du **Thésaurus National de Cancérologie Digestive (TNCD)** et autres référentiels médicaux.
 
 ### 🛡️ Souveraineté & Sécurité Locale
 > [!IMPORTANT] **Respect absolu du Secret Médical (RGPD)**
-> Oncoflow fonctionne **intégralement hors-ligne (local-first)**. Vos documents et données médicales ne transitent jamais sur internet ou sur des serveurs cloud tiers (zéro connexion avec OpenAI, Google, etc.). Tout le calcul s'effectue localement au sein de l'infrastructure sécurisée de l'hôpital.
+> MedDataSyntis fonctionne **intégralement hors-ligne (local-first)**. Vos documents et données médicales ne transitent jamais sur internet ou sur des serveurs cloud tiers (zéro connexion avec OpenAI, Google, etc.). Tout le calcul s'effectue localement au sein de l'infrastructure sécurisée de l'hôpital.
 
 👉 **[Consulter le Guide d'Utilisation Clinique Complet](docs/guide_clinique.md)**
 
@@ -71,7 +71,7 @@ Vous êtes chirurgien, oncologue, gastro-entérologue ou secrétaire médical de
 
 ## 💻 2. Espace Technique (Développeurs & Admins IT)
 
-Vous êtes ingénieur de recherche, développeur ou administrateur système hospitalier ? Oncoflow est conçu selon des standards rigoureux en Python `>=3.13` avec une architecture propre facilitant l'auditabilité et la maintenance.
+Vous êtes ingénieur de recherche, développeur ou administrateur système hospitalier ? MedDataSyntis est conçu selon des standards rigoureux en Python `>=3.13` avec une architecture propre facilitant l'auditabilité et la maintenance.
 
 ### ⚙️ L'Architecture RAG Multi-Agents locale :
 
@@ -138,9 +138,9 @@ L'application intègre un système d'authentification local sécurisé via `stre
 
 ## 👥 Discord & Communauté
 
-Oncoflow est un projet open-source communautaire. Pour proposer de nouvelles fonctionnalités, poser vos questions techniques ou nous aider à intégrer d'autres thésaurus médicaux, rejoignez notre serveur d'échange :
+MedDataSyntis est un projet open-source communautaire. Pour proposer de nouvelles fonctionnalités, poser vos questions techniques ou nous aider à intégrer d'autres thésaurus médicaux, rejoignez notre serveur d'échange :
 
-💬 **[Lien d'accès au Discord Officiel Oncoflow](https://discord.gg/C2RPhyn9x8)**
+💬 **[Lien d'accès au Discord Officiel MedDataSyntis](https://discord.gg/C2RPhyn9x8)**
 
 ---
 

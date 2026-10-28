@@ -45,3 +45,15 @@ updates:
       - "docker"
     commit-message:
       prefix: "chore(deps)"
+
+  # Maintain Docker Compose image versions in dist/docker/compose
+  - package-ecosystem: "docker-compose"
+    directory: "/dist/docker/compose"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "docker"
+    commit-message:
+      prefix: "chore(deps)"
