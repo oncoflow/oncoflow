@@ -25,9 +25,6 @@ try:
 except ValueError:
     atexit.register(clean_exit)
 
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
-os.environ["DOCLING_DEVICE"] = "cpu"
-
 import json
 from os import listdir
 from os.path import isfile, join

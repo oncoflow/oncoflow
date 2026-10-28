@@ -8,19 +8,22 @@ from pydantic import BaseModel
 from slugify import slugify
 
 from src.application.app_functions.llm import unload_active_models
-from src.domain.patient_mdt_form import PatientMDTForm
+from src.domain.patient_mdt_form import get_domain_mdt_form_cls
 from src.domain.worker.queue_job import JobType
 from src.infrastructure.documents.mongodb import Mongodb
-from src.infrastructure.queue import SqliteQueueBroker
+from src.infrastructure.queue import QueueBroker
 
 
-def get_clinical_models_for_domain() -> list[type[BaseModel]]:
+def get_clinical_models_for_domain(
+    domain: str | None = None,
+) -> list[type[BaseModel]]:
     """
-    Returns all clinical Pydantic model classes defined on PatientMDTForm
+    Returns all clinical Pydantic model classes defined on the domain's PatientMDTForm
     (excluding default_model and PatientAdministrative).
     """
+    form_cls = get_domain_mdt_form_cls(domain)
     models = []
-    for name, obj in inspect.getmembers(PatientMDTForm):
+    for name, obj in inspect.getmembers(form_cls):
         if (
             inspect.isclass(obj)
             and issubclass(obj, BaseModel)
@@ -36,17 +39,17 @@ def enqueue_rcp_batch(
     run_full_ai: bool = True,
 ) -> dict:
     """
-    Enqueues a batch of uploaded RCP files into the MongoDB processing queue (2-wave pipeline).
+    Enqueues a batch of uploaded RCP files into the processing queue (2-wave pipeline).
     Each item in `files_payload` is a dict: {"filename": str, "patient_id": str | None}.
     Strictly deduplicates files that are already in the queue.
     """
     batch_id = f"batch_{uuid.uuid4().hex[:8]}"
-    clinical_count = len(get_clinical_models_for_domain())
+    clinical_count = len(get_clinical_models_for_domain(app_conf.domain))
     results = []
     enqueued_count = 0
     already_queued_count = 0
 
-    broker = SqliteQueueBroker(app_conf)
+    broker = QueueBroker(app_conf)
     try:
         for item in files_payload:
             filename = item["filename"]
@@ -81,10 +84,10 @@ def enqueue_rcp_rerun(
 ) -> dict:
     """
     Enqueues a full RCP rerun (model_name=None) or a single model rerun (model_name=...)
-    into the MongoDB processing queue, strictly avoiding duplicates if already queued.
+    into the processing queue, strictly avoiding duplicates if already queued.
     """
-    clinical_count = len(get_clinical_models_for_domain())
-    broker = SqliteQueueBroker(app_conf)
+    clinical_count = len(get_clinical_models_for_domain(app_conf.domain))
+    broker = QueueBroker(app_conf)
     try:
         return broker.enqueue_rcp_rerun(
             filename=filename,
@@ -113,7 +116,7 @@ def get_rcp_active_jobs_state(app_conf, filename: str) -> dict:
             "jobs": [],
         }
 
-    broker = SqliteQueueBroker(app_conf)
+    broker = QueueBroker(app_conf)
     try:
         jobs = broker.get_active_jobs_for_file(filename)
         has_full = False
@@ -169,7 +172,8 @@ def resolve_rcp_upload(app_conf, file_bytes: bytes, filename: str) -> tuple[str,
 
 def full_read_mtd_agents(app_conf, filename: str, logger, replace: bool = True):
     logger.info(f"Start reading {filename} ...")
-    fiche_rcp = PatientMDTForm(config=app_conf, document=filename)
+    form_cls = get_domain_mdt_form_cls(app_conf.domain)
+    fiche_rcp = form_cls(config=app_conf, document=filename)
     fiche_rcp.read_all_models()
     fiche_rcp.insert_datas_in_db()
     del fiche_rcp
@@ -201,7 +205,8 @@ def ingest_and_associate_rcp(
     logger.info(
         f"Ingesting and associating RCP {filename} (target_patient_id={patient_id})..."
     )
-    fiche_rcp = PatientMDTForm(config=app_conf, document=filename)
+    form_cls = get_domain_mdt_form_cls(app_conf.domain)
+    fiche_rcp = form_cls(config=app_conf, document=filename)
     patient = process_patient_association(
         form=fiche_rcp,
         target_patient_id=patient_id,
@@ -222,7 +227,7 @@ def ingest_and_associate_rcp(
 
 def delete_document(app_conf, filename, delete_file: bool = True):
     try:
-        broker = SqliteQueueBroker(app_conf)
+        broker = QueueBroker(app_conf)
         try:
             broker.delete_jobs_for_file(filename)
         finally:

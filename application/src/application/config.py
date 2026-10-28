@@ -18,10 +18,11 @@ Functions:
         to customize logging context.
 """
 
-import os
+import sys
 import logging
 from logging.handlers import RotatingFileHandler
 import json
+from typing import Any, ClassVar
 import warnings
 from pathlib import Path
 
@@ -35,8 +36,43 @@ warnings.filterwarnings("ignore", message=".*ORM-style.*")
 # Streamlit PDF viewer compatibility warnings
 warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
-from pydantic import Field, field_validator  # noqa: E402
-from pydantic_settings import BaseSettings, SettingsConfigDict  # noqa: E402
+from pydantic import AliasChoices, Field, field_validator  # noqa: E402
+from pydantic_settings import (  # noqa: E402
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+
+def _detect_runtime_service(logger_name: str = "") -> str:
+    """
+    Automatically detect whether the current Python process is running
+    Streamlit ('ui') or FastAPI/Uvicorn ('api') by inspecting `sys.argv`
+    and `sys.modules` (without importing streamlit outside `src/ui/`).
+    """
+    argv_str = " ".join(sys.argv).lower()
+    if "app-ui" in argv_str or "streamlit" in argv_str:
+        return "ui"
+    if "app-api" in argv_str or "uvicorn" in argv_str or "fastapi" in argv_str:
+        return "api"
+
+    st_runtime = sys.modules.get("streamlit.runtime")
+    if st_runtime is not None and getattr(st_runtime, "exists", lambda: False)():
+        return "ui"
+
+    has_st = "streamlit" in sys.modules
+    has_fastapi = "fastapi" in sys.modules or "uvicorn" in sys.modules
+    if has_st and not has_fastapi:
+        return "ui"
+    if has_fastapi and not has_st:
+        return "api"
+
+    lname = (logger_name or "").lower()
+    if lname == "ui" or lname.startswith("oncoflow.ui"):
+        return "ui"
+    if lname == "api" or lname.startswith(("oncoflow.api", "oncoflow.queue")):
+        return "api"
+    return "ui" if has_st else ("api" if has_fastapi else "app")
 
 
 class LogSettings(BaseSettings):
@@ -44,7 +80,7 @@ class LogSettings(BaseSettings):
     Configuration for logging settings.
 
     Environment variables: APP_LOG_LEVEL, APP_LOG_LANGCHAINDEBUG, APP_LOG_TYPE,
-    APP_LOG_FILE, APP_LOG_MAX_BYTES, APP_LOG_BACKUP_COUNT
+    APP_LOG_SERVICE, APP_LOG_FILE, APP_LOG_MAX_BYTES, APP_LOG_BACKUP_COUNT
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_LOG_")
@@ -60,6 +96,10 @@ class LogSettings(BaseSettings):
     type: str = Field(
         default="text",
         description="Log output format. 'text' for human-readable logs, 'json' for structured JSON logs.",
+    )
+    service: str = Field(
+        default_factory=_detect_runtime_service,
+        description="Runtime service identifier ('ui', 'api', 'app'). Automatically detected from Streamlit/FastAPI runtime if APP_LOG_SERVICE is not set.",
     )
     file: str | None = Field(
         default=None,
@@ -133,6 +173,12 @@ class ConfigllmSettings(BaseSettings):
     )
     api_key: str = Field(
         default="ollama",
+        validation_alias=AliasChoices(
+            "APP_CONFIGLLM_API_KEY",
+            "LITELLM_API_KEY",
+            "OPENAI_API_KEY",
+            "LLAMACPP_API_KEY",
+        ),
         description="API key for the LLM backend (required for OpenAI/vLLM, defaults to 'ollama' for local Ollama).",
     )
 
@@ -247,15 +293,14 @@ class QueueSettings(BaseSettings):
     Configuration for the background task queue and hardware batch sizing.
 
     Environment variables: APP_QUEUE_ENABLED, APP_QUEUE_HARDWARE_PROFILE,
-    APP_QUEUE_BATCH_SIZE, APP_QUEUE_GLOBAL_GPU_LOCK, APP_QUEUE_POLL_INTERVAL,
-    APP_QUEUE_LEASE_TTL_SECONDS, APP_QUEUE_MAX_RETRIES, APP_QUEUE_DB_PATH
+    APP_QUEUE_BATCH_SIZE, APP_QUEUE_MAX_RETRIES, APP_QUEUE_API_URL
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_QUEUE_")
 
     enabled: bool = Field(
         default=True,
-        description="Enable asynchronous processing queue via SQLite WAL.",
+        description="Enable asynchronous processing queue via standard library queue.PriorityQueue.",
     )
     hardware_profile: str = Field(
         default="l4_24gb",
@@ -266,28 +311,14 @@ class QueueSettings(BaseSettings):
         ge=1,
         description="Maximum number of RCP files processed concurrently by the worker pool (e.g. 1 for NVIDIA L4 24GB).",
     )
-    global_gpu_lock: bool = Field(
-        default=True,
-        description="Synchronize active batch_size across all domains (oncology, sma) using the shared SQLite WAL database.",
-    )
-    poll_interval: float = Field(
-        default=2.0,
-        gt=0.1,
-        description="Worker polling interval in seconds.",
-    )
-    lease_ttl_seconds: int = Field(
-        default=300,
-        ge=30,
-        description="TTL in seconds for a worker GPU lease before it is considered stale and recoverable.",
-    )
     max_retries: int = Field(
         default=2,
         ge=0,
         description="Maximum automatic retry attempts when a queued task fails.",
     )
-    db_path: str = Field(
-        default="./ressources/queue/oncoflow_queue.db",
-        description="Path to the shared SQLite WAL database file storing queue jobs and hardware leases.",
+    api_url: str = Field(
+        default="http://127.0.0.1:8000",
+        description="URL of the cross-domain FastAPI service hosting the central PriorityQueue (e.g. http://127.0.0.1:8000 in dev, http://oncoflow-api:8000 in prod). Falls back to in-process PriorityQueue if unreachable.",
     )
 
 
@@ -296,24 +327,28 @@ class RCPSettings(BaseSettings):
     Configuration for the RCP (Réunion de Concertation Pluridisciplinaire) pipeline.
 
     Environment variables: APP_RCP_PATH, APP_RCP_ADDITIONAL_PATH, APP_RCP_DOC_TYPE,
-    APP_RCP_CHUNK_SIZE, APP_RCP_CHUNK_OVERLAP, APP_RCP_MANUAL_QUERY, APP_RCP_DISPLAY_TYPE
+    APP_RCP_DOCLING_DEVICE, APP_RCP_CHUNK_SIZE, APP_RCP_CHUNK_OVERLAP,
+    APP_RCP_MANUAL_QUERY, APP_RCP_DISPLAY_TYPE
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_RCP_")
 
     path: Path = Field(
-        default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/PatientMDTForm",
+        default=Path(__file__).resolve().parent / "../../ressources/PatientMDTForm",
         description="Filesystem path to the directory containing patient MDT/RCP files.",
     )
     additional_path: Path = Field(
-        default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/documents",
+        default=Path(__file__).resolve().parent / "../../ressources/documents",
         description="Filesystem path to the directory containing additional reference files (e.g. TNCD guidelines).",
     )
     doc_type: str = Field(
         default="docling",
         description="Document parser type. See https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/",
+    )
+    docling_device: str = Field(
+        default="cpu",
+        validation_alias=AliasChoices("APP_RCP_DOCLING_DEVICE", "DOCLING_DEVICE"),
+        description="Hardware device for Docling model inference ('cpu', 'cuda', 'mps', 'auto').",
     )
     chunk_size: int = Field(
         default=1000,
@@ -340,6 +375,25 @@ class RCPSettings(BaseSettings):
         return v
 
 
+class _RuntimeServiceFilter(logging.Filter):
+    """Injects `record.service` and `record.service_upper` from `LogSettings.service` (or runtime auto-detection)."""
+
+    def __init__(self, log_settings: LogSettings) -> None:
+        super().__init__()
+        self.log_settings = log_settings
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        configured = (self.log_settings.service or "").strip().lower()
+        if configured and configured not in ("auto", "app"):
+            svc = configured
+        else:
+            svc = _detect_runtime_service(record.name)
+            self.log_settings.service = svc
+        record.service = svc
+        record.service_upper = svc.upper()
+        return True
+
+
 class AppConfig(BaseSettings):
     """
     Main application configuration class.
@@ -357,6 +411,8 @@ class AppConfig(BaseSettings):
     - APP_RCP_*        : RCP pipeline settings
     """
 
+    _runtime_overrides: ClassVar[dict[str, Any]] = {}
+
     model_config = SettingsConfigDict(
         env_prefix="APP_",
         env_file=".env",
@@ -364,9 +420,39 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
+    @classmethod
+    def set_runtime_override(cls, **kwargs: Any) -> None:
+        """Register native pydantic-settings runtime overrides without mutating os.environ."""
+        cls._runtime_overrides.update(kwargs)
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        def _runtime_source() -> dict[str, Any]:
+            return dict(cls._runtime_overrides)
+
+        return (
+            init_settings,
+            _runtime_source,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
+
     domain: str = Field(
         default="oncology",
-        description="Domain of the application. Valid values: oncology, sma.",
+        description="Default domain of the application. Valid values: oncology, sma.",
+    )
+
+    allowed_domains: str = Field(
+        default="oncology,sma",
+        description="Comma-separated list of active domains supported by the cross-domain API and Queue (APP_ALLOWED_DOMAINS).",
     )
 
     language: str = Field(
@@ -439,6 +525,37 @@ class AppConfig(BaseSettings):
             self.milvus.database = f"{self.milvus.database}_{self.domain}"
 
     @property
+    def enabled_domains_list(self) -> list[str]:
+        """Return normalized list of enabled domains configured in APP_ALLOWED_DOMAINS."""
+        domains = [
+            d.strip().lower() for d in self.allowed_domains.split(",") if d.strip()
+        ]
+        if self.domain and self.domain.lower() not in domains:
+            domains.append(self.domain.lower())
+        return domains or ["oncology"]
+
+    def for_domain(self, domain: str | None = None) -> "AppConfig":
+        """Return an AppConfig instance scoped to the requested domain after validating it."""
+        target = (domain or self.domain or "oncology").strip().lower()
+        if target not in self.enabled_domains_list:
+            raise ValueError(
+                f"Domain '{target}' is not enabled. Allowed domains: {self.enabled_domains_list}"
+            )
+        if target == self.domain:
+            return self
+        return AppConfig(
+            domain=target,
+            allowed_domains=self.allowed_domains,
+            language=self.language,
+            dev_mode=self.dev_mode,
+            auth_mode=self.auth_mode,
+            llm=self.llm.model_copy(deep=True),
+            logs=self.logs.model_copy(deep=True),
+            chromadb=self.chromadb.model_copy(deep=True),
+            queue=self.queue.model_copy(deep=True),
+        )
+
+    @property
     def auth_config_path(self) -> Path:
         base_dir = Path(__file__).resolve().parent.parent.parent
         if self.dev_mode:
@@ -489,8 +606,12 @@ class AppConfig(BaseSettings):
             set_verbose(True)
         elif self.logs.level == "DEBUG":
             set_verbose(True)
+
+        service_filter = _RuntimeServiceFilter(self.logs)
+        ch.addFilter(service_filter)
+
         if self.logs.type == "text":
-            formatlog = "%(asctime)s - %(levelname)s - %(name)s"
+            formatlog = "%(asctime)s - [%(service_upper)s] - %(levelname)s - %(name)s"
             for k, v in default_context.items():
                 formatlog = f"{formatlog} - {k}: {v}"
             for k in context:
@@ -500,9 +621,12 @@ class AppConfig(BaseSettings):
             formatlog = {
                 "time": "%(asctime)s",
                 "level": "%(levelname)s",
+                "service": "%(service)s",
                 "name": "%(name)s",
                 "message": "%(message)s",
-                "context": default_context | {k: f"%({k})s" for k in context},
+                "context": {"service": "%(service)s"}
+                | default_context
+                | {k: f"%({k})s" for k in context},
             }
             formatter = logging.Formatter(json.dumps(formatlog, default=str))
         else:
@@ -521,6 +645,7 @@ class AppConfig(BaseSettings):
                     encoding="utf-8",
                 )
                 fh.setLevel(level=self.logs.level)
+                fh.addFilter(service_filter)
                 fh.setFormatter(formatter)
                 logger.addHandler(fh)
             except Exception as e:

@@ -10,7 +10,7 @@ from src.application.patient import (
     is_rcp_visible_in_cards,
 )
 from src.infrastructure.documents.mongodb import Mongodb
-from src.infrastructure.queue import SqliteQueueBroker
+from src.infrastructure.queue import QueueBroker
 
 # Configuration de l'application
 app_conf = AppConfig()
@@ -85,7 +85,7 @@ def render_queue_status_banner():
     if not app_conf.queue.enabled:
         return
     try:
-        broker = SqliteQueueBroker(app_conf)
+        broker = QueueBroker(app_conf)
         try:
             stats = broker.get_queue_stats()
         finally:

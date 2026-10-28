@@ -66,10 +66,13 @@ class JobType(str, Enum):
 class JobPriority:
     """Priorités standards d'ordonnancement (plus grand = plus prioritaire)."""
 
+    WAVE1_ADMIN = 100
     WAVE1_ADMIN_IMPORT = 100
     WAVE1_ADMIN_RERUN = 95
     SINGLE_MODEL_RERUN = 90
+    FULL_RCP_RERUN = 80
     WAVE2_CLINICAL_RERUN = 80
+    WAVE2_CLINICAL = 50
     WAVE2_CLINICAL_IMPORT = 50
 
 

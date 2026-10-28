@@ -1,4 +1,3 @@
-import os
 from typing import List, Any
 import httpx
 
@@ -39,12 +38,8 @@ class LiteLLMConnect(LLMConnect):
             "litellm", default_context={"host": self.base_url}
         )
 
-        # Get API key from config, falling back to environment variable, then a mock key
-        self.api_key = (
-            config.llm.api_key
-            if config.llm.api_key
-            else os.environ.get("LITELLM_API_KEY", "mock-key")
-        )
+        # Get API key resolved natively via pydantic-settings (APP_CONFIGLLM_API_KEY / LITELLM_API_KEY)
+        self.api_key = config.llm.api_key if config.llm.api_key else "mock-key"
 
         self.test_connection()
 

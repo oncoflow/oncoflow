@@ -1,7 +1,7 @@
 import os
 
 from src.infrastructure.documents.mongodb import Mongodb
-from src.infrastructure.queue import SqliteQueueBroker
+from src.infrastructure.queue import QueueBroker
 
 
 def delete_patient_dossier(
@@ -24,7 +24,7 @@ def delete_patient_dossier(
             if doc.get("file"):
                 files_to_delete.add(doc["file"])
 
-        broker = SqliteQueueBroker(app_conf)
+        broker = QueueBroker(app_conf)
         try:
             for fname in files_to_delete:
                 try:

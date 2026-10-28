@@ -1,4 +1,3 @@
-import os
 from typing import List, Optional
 import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -50,12 +49,8 @@ class VllmConnect(LLMConnect):
 
         self.logger = config.set_logger("vllm", default_context={"host": self.base_url})
 
-        # Get API key from config, falling back to environment variable, then a mock key
-        self.api_key = (
-            config.llm.api_key
-            if config.llm.api_key
-            else os.environ.get("OPENAI_API_KEY", "vllm-mock-key")
-        )
+        # Get API key resolved natively via pydantic-settings (APP_CONFIGLLM_API_KEY / OPENAI_API_KEY)
+        self.api_key = config.llm.api_key if config.llm.api_key else "vllm-mock-key"
 
         # Initialize the official openai client for utility calls like listing models and connection testing
         self.client = openai.OpenAI(

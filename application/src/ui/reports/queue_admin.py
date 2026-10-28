@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.application.config import AppConfig
 from src.domain.worker import JobStatus, JobType
-from src.infrastructure.queue import SqliteQueueBroker
+from src.infrastructure.queue import QueueBroker
 
 app_conf = AppConfig()
 logger = app_conf.set_logger("ui", default_context={"page": "queue_admin"})
@@ -24,12 +24,12 @@ JOB_TYPE_LABELS = {
 }
 
 
-def _get_broker() -> SqliteQueueBroker:
-    return SqliteQueueBroker(app_conf)
+def _get_broker() -> QueueBroker:
+    return QueueBroker(app_conf)
 
 
 @st.dialog("Confirmation de purge intégrale de la file")
-def confirm_full_queue_purge():
+def confirm_full_queue_purge(cross_domain: bool = True):
     st.warning(
         "Voulez-vous vraiment **vider intégralement la file de traitement** et **lever tous les verrous actifs** ?"
     )
@@ -39,7 +39,7 @@ def confirm_full_queue_purge():
     if st.button("Confirmer la purge intégrale", type="primary", width="stretch"):
         broker = _get_broker()
         try:
-            res = broker.clean_queue(mode="all")
+            res = broker.clean_queue(mode="all", cross_domain=cross_domain)
             unlocked = broker.release_gpu_lease(force_all=True)
             st.toast(
                 f"File purgée ({res['affected_jobs']} tâche(s), {unlocked} verrou(s) levé(s)).",
@@ -50,18 +50,18 @@ def confirm_full_queue_purge():
         st.rerun()
 
 
-def render_locks_section(db_client: SqliteQueueBroker):
+def render_locks_section(db_client: QueueBroker):
     st.subheader("🔒 Gestion des Verrous d'Exécution")
     st.caption(
-        "Les verrous garantissent le respect de la capacité de traitement configurée entre les domaines. "
-        "Si un traitement a été interrompu brutalement, vous pouvez lever manuellement un verrou ici."
+        "La file `PriorityQueue` centrale régule automatiquement les traitements selon la capacité configurée "
+        f"sur les domaines autorisés (`{', '.join(app_conf.enabled_domains_list)}`)."
     )
 
     leases = db_client.get_all_gpu_leases()
     top_c1, top_c2 = st.columns([4, 2], vertical_alignment="center")
     top_c1.markdown(
-        f"**Verrous actifs :** `{len(leases)} / {app_conf.queue.batch_size}` "
-        f"(Verrouillage inter-domaines : `{'Activé' if app_conf.queue.global_gpu_lock else 'Désactivé'}`)"
+        f"**Emplacements actifs :** `{len(leases)} / {app_conf.queue.batch_size}` "
+        f"(Domaines actifs : `{', '.join(app_conf.enabled_domains_list)}`)"
     )
     if top_c2.button(
         "🔓 Lever tous les verrous",
@@ -111,7 +111,7 @@ def render_locks_section(db_client: SqliteQueueBroker):
                 st.rerun()
 
 
-def render_maintenance_actions(db_client: SqliteQueueBroker):
+def render_maintenance_actions(db_client: QueueBroker, cross_domain: bool = True):
     st.subheader("🧹 Actions de Nettoyage de la File")
     c1, c2, c3, c4, c5 = st.columns(5)
 
@@ -120,9 +120,10 @@ def render_maintenance_actions(db_client: SqliteQueueBroker):
         help="Supprime les tâches terminées ou annulées de l'historique",
         width="stretch",
     ):
-        res = db_client.clean_queue(mode="completed")
+        res = db_client.clean_queue(mode="completed", cross_domain=cross_domain)
         st.toast(
-            f"{res['affected_jobs']} tâche(s) terminée(s) supprimée(s).", icon="🧹"
+            f"{res['affected_jobs']} tâche(s) terminée(s) supprimée(s).",
+            icon="🧹",
         )
         st.rerun()
 
@@ -131,7 +132,7 @@ def render_maintenance_actions(db_client: SqliteQueueBroker):
         help="Remet en attente les tâches bloquées à l'état EN COURS et lève les verrous",
         width="stretch",
     ):
-        res = db_client.clean_queue(mode="reset_stuck")
+        res = db_client.clean_queue(mode="reset_stuck", cross_domain=cross_domain)
         st.toast(
             f"{res['affected_jobs']} tâche(s) remise(s) en attente et verrous libérés.",
             icon="🔄",
@@ -143,7 +144,7 @@ def render_maintenance_actions(db_client: SqliteQueueBroker):
         help="Remet en file d'attente toutes les tâches en échec",
         width="stretch",
     ):
-        res = db_client.clean_queue(mode="retry_failed")
+        res = db_client.clean_queue(mode="retry_failed", cross_domain=cross_domain)
         st.toast(f"{res['affected_jobs']} tâche(s) en échec relancée(s).", icon="🔁")
         st.rerun()
 
@@ -152,7 +153,7 @@ def render_maintenance_actions(db_client: SqliteQueueBroker):
         help="Supprime toutes les tâches en attente non démarrées",
         width="stretch",
     ):
-        res = db_client.clean_queue(mode="pending")
+        res = db_client.clean_queue(mode="pending", cross_domain=cross_domain)
         st.toast(f"{res['affected_jobs']} tâche(s) en attente supprimée(s).", icon="🗑️")
         st.rerun()
 
@@ -162,10 +163,10 @@ def render_maintenance_actions(db_client: SqliteQueueBroker):
         help="Purge intégralement la file de traitement et lève tous les verrous",
         width="stretch",
     ):
-        confirm_full_queue_purge()
+        confirm_full_queue_purge(cross_domain=cross_domain)
 
 
-def render_jobs_table(db_client: SqliteQueueBroker):
+def render_jobs_table(db_client: QueueBroker, cross_domain: bool = True):
     st.subheader("📋 Tâches de la File de Traitement")
 
     f1, f2, f3 = st.columns([2, 3, 1], vertical_alignment="bottom")
@@ -185,7 +186,9 @@ def render_jobs_table(db_client: SqliteQueueBroker):
             st.rerun()
 
     status_val = None if status_filter == "Tous" else status_filter
-    jobs = db_client.get_queue_jobs(status=status_val, limit=200)
+    jobs = db_client.get_queue_jobs(
+        status=status_val, limit=200, cross_domain=cross_domain
+    )
 
     if search_file:
         q = search_file.lower().strip()
@@ -195,6 +198,7 @@ def render_jobs_table(db_client: SqliteQueueBroker):
             if q in str(j.get("filename", "")).lower()
             or q in str(j.get("job_id", "")).lower()
             or q in str(j.get("batch_id", "")).lower()
+            or q in str(j.get("domain", "")).lower()
         ]
 
     if not jobs:
@@ -206,6 +210,7 @@ def render_jobs_table(db_client: SqliteQueueBroker):
     for job in jobs:
         job_id = job.get("job_id", "")
         filename = job.get("filename", "Inconnu")
+        job_domain = job.get("domain", app_conf.domain)
         status = job.get("status", JobStatus.PENDING.value)
         job_type = job.get("job_type", "")
         type_label = JOB_TYPE_LABELS.get(job_type, job_type)
@@ -227,7 +232,7 @@ def render_jobs_table(db_client: SqliteQueueBroker):
         with st.container(border=True):
             c1, c2, c3, c4 = st.columns([3, 3, 2, 2], vertical_alignment="center")
             with c1:
-                st.markdown(f"📄 **`{filename}`**")
+                st.markdown(f"📄 **`{filename}`** (`{job_domain}`)")
                 st.caption(f"🆔 `{job_id}` · 📅 {created_str}")
             with c2:
                 st.markdown(f"**{type_label}**")
@@ -267,28 +272,33 @@ def render_jobs_table(db_client: SqliteQueueBroker):
 def queue_admin_view():
     st.title("⚙️ Administration — File de traitement & Verrous")
     st.caption(
-        "Supervisez l'état de la file de traitement, nettoyez les tâches et libérez les verrous en cas d'interruption."
+        "Supervisez l'état de la file de traitement `PriorityQueue`, nettoyez les tâches et libérez les verrous en cas d'interruption."
+    )
+
+    cross_domain = st.toggle(
+        f"Vue globale multi-domaines ({', '.join(app_conf.enabled_domains_list)})",
+        value=True,
     )
 
     broker = _get_broker()
     try:
-        stats = broker.get_queue_stats()
+        stats = broker.get_queue_stats(cross_domain=cross_domain)
         m1, m2, m3, m4, m5 = st.columns(5)
         m1.metric("⏳ En attente", stats.get("pending", 0))
         m2.metric("🔄 En cours", stats.get("processing", 0))
         m3.metric("✅ Terminées", stats.get("completed", 0))
         m4.metric("❌ En échec", stats.get("failed", 0))
         m5.metric(
-            "🔒 Verrous actifs",
+            "🔒 Emplacements actifs",
             f"{stats.get('active_locks', 0)} / {stats.get('batch_size', 1)}",
         )
 
         st.divider()
         render_locks_section(broker)
         st.divider()
-        render_maintenance_actions(broker)
+        render_maintenance_actions(broker, cross_domain=cross_domain)
         st.divider()
-        render_jobs_table(broker)
+        render_jobs_table(broker, cross_domain=cross_domain)
     finally:
         broker.close()
 

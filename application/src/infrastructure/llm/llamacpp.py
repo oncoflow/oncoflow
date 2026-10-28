@@ -1,4 +1,3 @@
-import os
 import time
 from typing import List, Any, Optional
 import httpx
@@ -124,11 +123,7 @@ class LlamaCppConnect(LLMConnect):
         )
 
         # llama.cpp server does not require an API key, but the OpenAI client expects one
-        self.api_key = (
-            config.llm.api_key
-            if config.llm.api_key
-            else os.environ.get("LLAMACPP_API_KEY", "not-needed")
-        )
+        self.api_key = config.llm.api_key if config.llm.api_key else "not-needed"
 
         self.test_connection()
 

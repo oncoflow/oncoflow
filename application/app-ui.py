@@ -25,9 +25,6 @@ try:
 except ValueError:
     atexit.register(clean_exit)
 
-os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
-os.environ["DOCLING_DEVICE"] = "cpu"
-
 import streamlit as st
 import yaml
 from yaml.loader import SafeLoader
@@ -121,10 +118,10 @@ st.sidebar.selectbox(
 )
 
 if st.session_state.get("language") == "English":
-    os.environ["APP_LANGUAGE"] = "english"
+    AppConfig.set_runtime_override(language="english")
     app_config.language = "english"
 else:
-    os.environ["APP_LANGUAGE"] = "french"
+    AppConfig.set_runtime_override(language="french")
     app_config.language = "french"
 
 

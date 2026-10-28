@@ -1,376 +1,567 @@
 import ast
-import copy
-from datetime import datetime
-import os
-import tempfile
-import unittest
+import subprocess
+import sys
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from src.application.patient import (
-    extract_card_metrics,
-    is_rcp_visible_in_cards,
+import pytest
+from fastapi.testclient import TestClient
+
+from src.application.app_functions import (
+    enqueue_rcp_batch,
+    enqueue_rcp_rerun,
+    get_rcp_active_jobs_state,
 )
-from src.application.queue_worker import DomainQueueWorker
-from src.domain.worker import (
-    JobPriority,
-    JobStatus,
-    JobType,
-    QueueJob,
-    RCPProcessingStatus,
+from src.application.config import AppConfig
+from src.application.patient import extract_card_metrics, is_rcp_visible_in_cards
+from src.domain.patient import Patient
+from src.domain.worker import JobStatus, JobType, RCPProcessingStatus
+from src.infrastructure.queue import (
+    InMemoryQueueManager,
+    QueueBroker,
+    reset_global_queue_manager,
 )
-from src.infrastructure.queue import SqliteQueueBroker
 
 
-class TestSqliteQueueBrokerAndWorker(unittest.TestCase):
-    def setUp(self):
-        self.tmp_dir = tempfile.TemporaryDirectory()
-        self.db_path = os.path.join(self.tmp_dir.name, "test_queue.db")
+class _FakeCollection:
+    def __init__(self):
+        self._docs: list[dict] = []
 
-        self.config = MagicMock()
-        self.config.domain = "oncology"
-        self.config.rcp.display_type = "local"
-        self.config.queue.enabled = True
-        self.config.queue.hardware_profile = "l4_24gb"
-        self.config.queue.batch_size = 1
-        self.config.queue.global_gpu_lock = True
-        self.config.queue.poll_interval = 1
-        self.config.queue.lease_ttl_seconds = 900
-        self.config.queue.max_retries = 2
-        self.config.queue.db_path = self.db_path
-        self.config.set_logger.return_value = MagicMock()
+    def find_one(self, query: dict | None = None):
+        for doc in self._docs:
+            if not query or all(doc.get(k) == v for k, v in query.items()):
+                return dict(doc)
+        return None
 
-    def tearDown(self):
-        self.tmp_dir.cleanup()
+    def find(self, query: dict | None = None, projection: dict | None = None):
+        results = []
+        for doc in self._docs:
+            if not query:
+                results.append(dict(doc))
+                continue
+            match = True
+            for k, v in query.items():
+                if isinstance(v, dict) and "$in" in v:
+                    if doc.get(k) not in v["$in"]:
+                        match = False
+                        break
+                elif doc.get(k) != v:
+                    match = False
+                    break
+            if match:
+                results.append(dict(doc))
+        return results
 
-    def _make_broker(
-        self,
-        domain: str = "oncology",
-        batch_size: int = 1,
-        global_gpu_lock: bool = True,
-    ) -> SqliteQueueBroker:
-        cfg = copy.deepcopy(self.config)
-        cfg.domain = domain
-        cfg.queue.batch_size = batch_size
-        cfg.queue.global_gpu_lock = global_gpu_lock
-        return SqliteQueueBroker(cfg, sync_mongodb=False)
+    def update_one(self, query: dict, update: dict, upsert: bool = False):
+        for doc in self._docs:
+            if all(doc.get(k) == v for k, v in query.items()):
+                if "$set" in update:
+                    doc.update(update["$set"])
+                return
+        if upsert:
+            new_doc = dict(query)
+            if "$setOnInsert" in update:
+                new_doc.update(update["$setOnInsert"])
+            if "$set" in update:
+                new_doc.update(update["$set"])
+            self._docs.append(new_doc)
 
-    def test_two_wave_priority_ordering_and_dependency(self):
-        """
-        Uploading 3 files in a batch must process all 3 WAVE1_ADMIN jobs (priority 100)
-        before any WAVE2_CLINICAL job (priority 50).
-        """
-        broker = self._make_broker(batch_size=3)
-        try:
-            for fn in ["rcp1.pdf", "rcp2.pdf", "rcp3.pdf"]:
-                res = broker.enqueue_import_file(
-                    filename=fn,
-                    target_patient_id=None,
-                    batch_id="batch_test",
-                    include_clinical=True,
-                )
-                self.assertFalse(res["already_queued"])
-                self.assertEqual(len(res["jobs"]), 2)
 
-            # Claim 3 jobs sequentially -> all 3 must be WAVE1_ADMIN
-            claimed_wave1 = []
-            for _ in range(3):
-                job = broker.claim_next_ready_job(worker_id="w1")
-                self.assertIsNotNone(job)
-                self.assertEqual(job["job_type"], JobType.WAVE1_ADMIN.value)
-                self.assertEqual(job["priority"], JobPriority.WAVE1_ADMIN_IMPORT)
-                claimed_wave1.append(job)
+class _FakeDatabase:
+    def __init__(self):
+        self._collections: dict[str, _FakeCollection] = {}
 
-            # Before WAVE1 jobs complete, no WAVE2 job can be claimed
-            self.assertIsNone(broker.claim_next_ready_job(worker_id="w1"))
+    def __getitem__(self, name: str) -> _FakeCollection:
+        if name not in self._collections:
+            self._collections[name] = _FakeCollection()
+        return self._collections[name]
 
-            # Complete WAVE1 for rcp1.pdf -> now WAVE2 for rcp1.pdf becomes ready and lease slot frees up
-            broker.complete_job(
-                job_id=claimed_wave1[0]["job_id"],
-                filename="rcp1.pdf",
-                lease_id=claimed_wave1[0]["lease_id"],
-            )
-            next_job = broker.claim_next_ready_job(worker_id="w1")
-            self.assertIsNotNone(next_job)
-            self.assertEqual(next_job["filename"], "rcp1.pdf")
-            self.assertEqual(next_job["job_type"], JobType.WAVE2_CLINICAL.value)
-        finally:
-            broker.close()
 
-    def test_strict_deduplication_on_import_and_rerun(self):
-        """
-        A file with an active job in the queue must never be queued a second time.
-        """
-        broker = self._make_broker()
-        try:
-            first = broker.enqueue_import_file(
-                filename="dup.pdf",
-                target_patient_id=None,
-                batch_id="b1",
-                include_clinical=True,
-            )
-            self.assertFalse(first["already_queued"])
+class _FakeMongoClient:
+    def __init__(self):
+        self._dbs: dict[str, _FakeDatabase] = {}
 
-            # Attempting to re-import the same file while PENDING must be rejected
-            second = broker.enqueue_import_file(
-                filename="dup.pdf",
-                target_patient_id=None,
-                batch_id="b2",
-                include_clinical=True,
-            )
-            self.assertTrue(second["already_queued"])
+    def __getitem__(self, name: str) -> _FakeDatabase:
+        if name not in self._dbs:
+            self._dbs[name] = _FakeDatabase()
+        return self._dbs[name]
 
-            # Attempting a full rerun or single section rerun while full import is pending must also be rejected
-            rerun_full = broker.enqueue_rcp_rerun(filename="dup.pdf", model_name=None)
-            self.assertTrue(rerun_full["already_queued"])
+    def close(self):
+        pass
 
-            rerun_sec = broker.enqueue_rcp_rerun(
-                filename="dup.pdf", model_name="ExpertAnswer"
-            )
-            self.assertTrue(rerun_sec["already_queued"])
 
-            # Once jobs are cleaned, single-section rerun can be queued, but not duplicated for the same section
-            broker.clean_queue(mode="all")
-            sec1 = broker.enqueue_rcp_rerun(
-                filename="dup.pdf", model_name="ExpertAnswer"
-            )
-            self.assertFalse(sec1["already_queued"])
-            sec1_dup = broker.enqueue_rcp_rerun(
-                filename="dup.pdf", model_name="ExpertAnswer"
-            )
-            self.assertTrue(sec1_dup["already_queued"])
+@pytest.fixture
+def mock_mongo_Env():
+    """Provide an isolated fake Mongo client shared across Mongodb instances and reset the PriorityQueue singleton."""
+    mongo_client = _FakeMongoClient()
 
-            # Another distinct section on the same file can still be queued
-            sec2 = broker.enqueue_rcp_rerun(
-                filename="dup.pdf", model_name="MTDCompleted"
-            )
-            self.assertFalse(sec2["already_queued"])
-        finally:
-            broker.close()
+    def _init_mock_mongodb(self, config: AppConfig):
+        self.config = config
+        self.logger = config.set_logger("test_mongo")
+        self.client = mongo_client
+        self.database = self.client[config.mongodb.database]
+        self.vectordatabase = self.client[config.mongodb.vectordatabase]
 
-    def test_cross_domain_gpu_lease_respects_batch_size(self):
-        """
-        With batch_size=1 (L4 24GB), if oncology worker holds a lease in the shared SQLite WAL db,
-        sma worker cannot acquire one until oncology releases it or admin force-unlocks it.
-        """
-        broker_onco = self._make_broker(
-            domain="oncology", batch_size=1, global_gpu_lock=True
+    with patch(
+        "src.infrastructure.documents.mongodb.Mongodb.__init__",
+        new=_init_mock_mongodb,
+    ):
+        conf = AppConfig(
+            domain="oncology",
+            allowed_domains="oncology,sma",
         )
-        broker_sma = self._make_broker(domain="sma", batch_size=1, global_gpu_lock=True)
-        broker_sma_a100 = self._make_broker(
-            domain="sma", batch_size=2, global_gpu_lock=True
+        conf.rcp.display_type = "mongodb"
+        conf.queue.enabled = True
+        conf.queue.batch_size = 1
+        conf.queue.max_retries = 1
+        conf.queue.api_url = ""
+        reset_global_queue_manager(conf, auto_start_workers=False)
+        yield conf, mongo_client
+        reset_global_queue_manager(conf, auto_start_workers=False)
+
+
+class TestPriorityQueueAndCrossDomainAPI:
+    def test_two_wave_priority_ordering_and_dependency(self, mock_mongo_Env):
+        conf, _ = mock_mongo_Env
+        broker = QueueBroker(conf)
+
+        res1 = broker.enqueue_import_file(
+            filename="fiche_a.pdf",
+            batch_id="batch_1",
+            include_clinical=True,
+            total_clinical_models=3,
         )
-        try:
-            lease1 = broker_onco.acquire_gpu_lease(
-                worker_id="worker-onco",
-                job_id="job-onco-1",
-                filename="onco.pdf",
-                job_type=JobType.WAVE1_ADMIN.value,
-            )
-            self.assertIsNotNone(lease1)
+        res2 = broker.enqueue_import_file(
+            filename="fiche_b.pdf",
+            batch_id="batch_1",
+            include_clinical=True,
+            total_clinical_models=3,
+        )
+        assert not res1["already_queued"]
+        assert not res2["already_queued"]
 
-            # Second worker on SMA domain tries to acquire lease with batch_size=1 -> blocked
-            lease2 = broker_sma.acquire_gpu_lease(
-                worker_id="worker-sma",
-                job_id="job-sma-1",
-                filename="sma.pdf",
-                job_type=JobType.WAVE1_ADMIN.value,
-            )
-            self.assertIsNone(lease2)
+        # Wave 1 jobs (priority 100) must always be claimed from PriorityQueue before Wave 2 (priority 50)
+        job1, lease1 = broker.claim_next_job("worker_1")
+        assert job1 is not None
+        assert job1["job_type"] == JobType.WAVE1_ADMIN.value
+        assert job1["filename"] == "fiche_a.pdf"
+        broker.complete_job(
+            job1["job_id"], lease_id=lease1, resolved_patient_id="pat_a"
+        )
 
-            # If batch_size=2 (e.g. A100 80GB), second worker can acquire a lease
-            lease2_a100 = broker_sma_a100.acquire_gpu_lease(
-                worker_id="worker-sma",
-                job_id="job-sma-1",
-                filename="sma.pdf",
-                job_type=JobType.WAVE1_ADMIN.value,
-            )
-            self.assertIsNotNone(lease2_a100)
+        # Even though fiche_a's Wave 1 is done, fiche_b's Wave 1 (priority 100) must run before fiche_a's Wave 2 (priority 50)!
+        job2, lease2 = broker.claim_next_job("worker_1")
+        assert job2 is not None
+        assert job2["job_type"] == JobType.WAVE1_ADMIN.value
+        assert job2["filename"] == "fiche_b.pdf"
+        broker.complete_job(
+            job2["job_id"], lease_id=lease2, resolved_patient_id="pat_b"
+        )
 
-            # Admin force-unlocks all leases
-            removed = broker_onco.release_gpu_lease(force_all=True)
-            self.assertEqual(removed, 2)
-            self.assertEqual(len(broker_onco.get_all_gpu_leases()), 0)
-        finally:
-            broker_onco.close()
-            broker_sma.close()
-            broker_sma_a100.close()
+        # Now Wave 2 jobs are claimed in FIFO order
+        job3, lease3 = broker.claim_next_job("worker_1")
+        assert job3 is not None
+        assert job3["job_type"] == JobType.WAVE2_CLINICAL.value
+        assert job3["filename"] == "fiche_a.pdf"
+        assert job3["resolved_patient_id"] == "pat_a"
+        broker.complete_job(job3["job_id"], lease_id=lease3)
 
-    def test_admin_clean_queue_modes(self):
-        """
-        Verify admin clean_queue modes: completed, reset_stuck, retry_failed, pending, all.
-        """
-        broker = self._make_broker(batch_size=2)
-        try:
-            broker.enqueue_import_file("f1.pdf", include_clinical=False)
-            broker.enqueue_import_file("f2.pdf", include_clinical=False)
+        job4, lease4 = broker.claim_next_job("worker_1")
+        assert job4 is not None
+        assert job4["job_type"] == JobType.WAVE2_CLINICAL.value
+        assert job4["filename"] == "fiche_b.pdf"
+        broker.complete_job(job4["job_id"], lease_id=lease4)
 
-            job1 = broker.claim_next_ready_job("w1")
-            self.assertIsNotNone(job1)
-            self.assertEqual(len(broker.get_all_gpu_leases()), 1)
+    def test_strict_deduplication_on_import_and_rerun(self, mock_mongo_Env):
+        conf, _ = mock_mongo_Env
 
-            # reset_stuck puts PROCESSING job back to PENDING and releases locks
-            res_stuck = broker.clean_queue(mode="reset_stuck")
-            self.assertEqual(res_stuck["affected_jobs"], 1)
-            self.assertEqual(len(broker.get_all_gpu_leases()), 0)
+        batch_res1 = enqueue_rcp_batch(
+            conf,
+            [{"filename": "dup_test.pdf", "patient_id": None}],
+            run_full_ai=True,
+        )
+        assert batch_res1["enqueued_count"] == 1
+        assert batch_res1["already_queued_count"] == 0
 
-            # Force fail job1, then retry_failed
-            job1_again = broker.claim_next_ready_job("w1")
-            broker.fail_job(
-                job_id=job1_again["job_id"],
-                filename="f1.pdf",
-                error_message="GPU timeout",
-                lease_id=job1_again["lease_id"],
-                force_fail=True,
-            )
-            stats = broker.get_queue_stats()
-            self.assertEqual(stats["failed"], 1)
+        # Re-importing the same file while already PENDING must NOT create duplicate jobs
+        batch_res2 = enqueue_rcp_batch(
+            conf,
+            [{"filename": "dup_test.pdf", "patient_id": None}],
+            run_full_ai=True,
+        )
+        assert batch_res2["enqueued_count"] == 0
+        assert batch_res2["already_queued_count"] == 1
 
-            res_retry = broker.clean_queue(mode="retry_failed")
-            self.assertEqual(res_retry["affected_jobs"], 1)
-            self.assertEqual(broker.get_queue_stats()["pending"], 2)
+        # Triggering a full rerun or single-model rerun while full job is active must be rejected
+        rerun_full = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name=None)
+        assert rerun_full["already_queued"] is True
 
-            # Complete one job and purge completed
-            j_comp = broker.claim_next_ready_job("w1")
-            broker.complete_job(
-                job_id=j_comp["job_id"],
-                filename=j_comp["filename"],
-                lease_id=j_comp["lease_id"],
-            )
-            self.assertEqual(broker.get_queue_stats()["completed"], 1)
-            res_comp = broker.clean_queue(mode="completed")
-            self.assertEqual(res_comp["affected_jobs"], 1)
+        rerun_single = enqueue_rcp_rerun(
+            conf, "dup_test.pdf", model_name="TumorLocation"
+        )
+        assert rerun_single["already_queued"] is True
 
-            # Clean all
-            res_all = broker.clean_queue(mode="all")
-            self.assertGreaterEqual(res_all["affected_jobs"], 1)
-            self.assertEqual(broker.get_queue_stats()["pending"], 0)
-        finally:
-            broker.close()
+        state = get_rcp_active_jobs_state(conf, "dup_test.pdf")
+        assert state["has_full_job"] is True
+        assert state["has_any_job"] is True
 
-    def test_cards_visibility_and_progressive_wave2_saving(self):
-        """
-        - PENDING_ADMIN / PROCESSING_ADMIN files are hidden from cards.py.
-        - PENDING_CLINICAL / PROCESSING_CLINICAL files are visible in cards.py without a false 'no data' missing warning.
-        - DomainQueueWorker saves each clinical model progressively (upsert=True).
-        """
+        # Clean the queue, then test single-model deduplication
+        broker = QueueBroker(conf)
+        broker.clean_queue(mode="all")
+
+        s1 = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name="TumorLocation")
+        assert s1["already_queued"] is False
+        s2 = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name="TumorLocation")
+        assert s2["already_queued"] is True
+        # A different section on the same file is allowed
+        s3 = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name="TumorBiology")
+        assert s3["already_queued"] is False
+
+    def test_cross_domain_priority_queue_respects_batch_size(self, mock_mongo_Env):
+        conf_onco, _ = mock_mongo_Env
+        conf_sma = conf_onco.for_domain("sma")
+
+        broker_onco = QueueBroker(conf_onco)
+        broker_sma = QueueBroker(conf_sma)
+
+        broker_onco.enqueue_import_file("onco_1.pdf", include_clinical=False)
+        broker_sma.enqueue_import_file("sma_1.pdf", include_clinical=False)
+
+        # Oncology claims the single execution slot (batch_size=1)
+        job_onco, lease_onco = broker_onco.claim_next_job("worker_onco")
+        assert job_onco is not None
+        assert lease_onco is not None
+
+        # SMA cannot claim a job while the execution slot is held
+        job_sma_blocked, lease_sma_blocked = broker_sma.claim_next_job("worker_sma")
+        assert job_sma_blocked is None
+        assert lease_sma_blocked is None
+
+        # Once Oncology finishes and releases the slot, SMA can claim its job
+        broker_onco.complete_job(job_onco["job_id"], lease_id=lease_onco)
+        job_sma_ok, lease_sma_ok = broker_sma.claim_next_job("worker_sma")
+        assert job_sma_ok is not None
+        assert job_sma_ok["filename"] == "sma_1.pdf"
+        broker_sma.complete_job(job_sma_ok["job_id"], lease_id=lease_sma_ok)
+
+    def test_admin_clean_queue_modes(self, mock_mongo_Env):
+        conf, _ = mock_mongo_Env
+        broker = QueueBroker(conf)
+
+        broker.enqueue_import_file("file1.pdf", include_clinical=False)
+        broker.enqueue_import_file("file2.pdf", include_clinical=False)
+
+        # Claim file1 so it is PROCESSING with an active lease
+        job1, lease1 = broker.claim_next_job("worker_1")
+        assert job1["status"] == JobStatus.PROCESSING.value
+        assert len(broker.get_all_gpu_leases()) == 1
+
+        # Admin reset_stuck moves PROCESSING back to PENDING and releases locks
+        res_stuck = broker.clean_queue(mode="reset_stuck")
+        assert res_stuck["affected_jobs"] == 1
+        assert len(broker.get_all_gpu_leases()) == 0
+        assert broker.get_queue_stats()["pending"] == 2
+
+        # Admin purge all removes everything
+        res_all = broker.clean_queue(mode="all")
+        assert res_all["affected_jobs"] == 2
+        stats = broker.get_queue_stats()
+        assert stats["pending"] == 0
+        assert stats["processing"] == 0
+
+    def test_cards_visibility_and_progressive_wave2_saving(self, mock_mongo_Env):
+        conf, mongo_client = mock_mongo_Env
+        db = mongo_client[conf.mongodb.database]
+
+        # 1. File in PENDING_ADMIN is hidden from cards
         doc_pending_admin = {
-            "file": "new_upload.pdf",
+            "file": "patient_x.pdf",
             "processing_status": RCPProcessingStatus.PENDING_ADMIN.value,
         }
-        doc_proc_admin = {
-            "file": "scanning_admin.pdf",
-            "processing_status": RCPProcessingStatus.PROCESSING_ADMIN.value,
-        }
-        doc_pending_clinical = {
-            "file": "step1_done.pdf",
-            "patient_id": "dupont_jean_1960_01_01",
-            "ui_date": datetime(2026, 5, 10),
+        assert is_rcp_visible_in_cards(doc_pending_admin) is False
+
+        # 2. File after Wave 1 (PENDING_CLINICAL with PatientAdministrative) IS visible in cards
+        doc_after_wave1 = {
+            "file": "patient_x.pdf",
+            "patient_id": "jean_dupont_1960-01-01",
+            "processing_status": RCPProcessingStatus.PENDING_CLINICAL.value,
             "PatientAdministrative": {
                 "first_name": "Jean",
                 "last_name": "Dupont",
-                "date_birth": datetime(1960, 1, 1),
-                "date_rcp": datetime(2026, 5, 10),
+                "date_birth": "1960-01-01",
+                "gender": "Male",
             },
-            "processing_status": RCPProcessingStatus.PENDING_CLINICAL.value,
         }
+        assert is_rcp_visible_in_cards(doc_after_wave1) is True
+        metrics = extract_card_metrics(doc_after_wave1)
+        assert (
+            metrics["processing_status"] == RCPProcessingStatus.PENDING_CLINICAL.value
+        )
+        assert metrics["missing"] == []
 
-        self.assertFalse(is_rcp_visible_in_cards(doc_pending_admin))
-        self.assertFalse(is_rcp_visible_in_cards(doc_proc_admin))
-        self.assertTrue(is_rcp_visible_in_cards(doc_pending_clinical))
+        # 3. Test InMemoryQueueManager Wave 1 + Wave 2 execution with mocked form
+        fake_form = MagicMock()
+        fake_form.mtd_datas = {"experts": {}}
 
-        metrics = extract_card_metrics(doc_pending_clinical)
-        self.assertEqual(metrics["patient"], "Jean Dupont")
-        self.assertEqual(metrics["missing"], [])
-        self.assertEqual(
-            metrics["processing_status"],
-            RCPProcessingStatus.PENDING_CLINICAL.value,
+        def _fake_read_model(model_cls, upsert=False):
+            db["rcp_info"].update_one(
+                {"file": "patient_x.pdf"},
+                {"$set": {model_cls.__name__: {"mocked": True}}},
+                upsert=True,
+            )
+
+        fake_form.read_model.side_effect = _fake_read_model
+
+        with (
+            patch(
+                "src.infrastructure.queue.memory_queue.get_domain_mdt_form_cls",
+                return_value=MagicMock(return_value=fake_form),
+            ),
+            patch(
+                "src.infrastructure.queue.memory_queue.process_patient_association",
+                return_value=Patient(
+                    patient_id="jean_dupont_1960-01-01",
+                    first_name="Jean",
+                    last_name="Dupont",
+                    files=["patient_x.pdf"],
+                ),
+            ),
+            patch("src.infrastructure.queue.memory_queue.unload_active_models"),
+        ):
+            enqueue_rcp_batch(
+                conf,
+                [{"filename": "patient_x.pdf", "patient_id": None}],
+                run_full_ai=True,
+            )
+            manager: InMemoryQueueManager = QueueBroker(conf)._manager
+
+            # First step executes Wave 1 (Identification)
+            assert manager.run_once() is True
+            rcp_after_w1 = db["rcp_info"].find_one({"file": "patient_x.pdf"})
+            assert (
+                rcp_after_w1["processing_status"]
+                == RCPProcessingStatus.PENDING_CLINICAL.value
+            )
+            assert rcp_after_w1["patient_id"] == "jean_dupont_1960-01-01"
+
+            # Second step executes Wave 2 (Clinical models progressively saved)
+            assert manager.run_once() is True
+            rcp_after_w2 = db["rcp_info"].find_one({"file": "patient_x.pdf"})
+            assert (
+                rcp_after_w2["processing_status"] == RCPProcessingStatus.COMPLETED.value
+            )
+
+    def test_cross_domain_fastapi_endpoints(self, mock_mongo_Env):
+        from importlib import import_module
+
+        app_api = import_module("app-api")
+        client = TestClient(app_api.app)
+
+        # 1. Check /api/v1/queue/domains
+        resp_domains = client.get("/api/v1/queue/domains")
+        assert resp_domains.status_code == 200
+        assert "oncology" in resp_domains.json()["allowed_domains"]
+        assert "sma" in resp_domains.json()["allowed_domains"]
+
+        # 2. Check /api/v1/agents across domains (oncology vs sma vs forbidden domain)
+        resp_onco_agents = client.get("/api/v1/agents", params={"domain": "oncology"})
+        assert resp_onco_agents.status_code == 200
+        onco_names = [a["name"] for a in resp_onco_agents.json()]
+        assert len(onco_names) > 0
+
+        resp_sma_agents = client.get("/api/v1/agents", params={"domain": "sma"})
+        assert resp_sma_agents.status_code == 200
+        sma_names = [a["name"] for a in resp_sma_agents.json()]
+        assert len(sma_names) > 0
+        assert onco_names != sma_names
+
+        resp_invalid = client.get("/api/v1/agents", params={"domain": "cardiology"})
+        assert resp_invalid.status_code == 400
+        assert "non autorisé" in resp_invalid.json()["detail"]
+
+        # Check X-Oncoflow-Domain header validation in AllowedDomainMiddleware
+        resp_invalid_header = client.get(
+            "/api/v1/rcp", headers={"X-Oncoflow-Domain": "neurology"}
+        )
+        assert resp_invalid_header.status_code == 400
+        assert resp_sma_agents.headers.get("X-Oncoflow-Domain") == "sma"
+
+        # 3. Enqueue via API for SMA domain and verify domain-filtered stats
+        resp_enq = client.post(
+            "/api/v1/queue/enqueue-import",
+            params={"domain": "sma"},
+            json={
+                "filename": "sma_api_patient.pdf",
+                "include_clinical": True,
+                "total_clinical_models": 4,
+            },
+        )
+        assert resp_enq.status_code == 200
+        assert resp_enq.json()["domain"] == "sma"
+        assert resp_enq.json()["already_queued"] is False
+
+        stats_sma = client.get("/api/v1/queue/stats", params={"domain": "sma"}).json()
+        stats_onco = client.get(
+            "/api/v1/queue/stats", params={"domain": "oncology"}
+        ).json()
+        assert stats_sma["pending"] == 2
+        assert stats_onco["pending"] == 0
+
+        # 4. Check /health, /api/v1/queue/jobs, /api/v1/queue/rerun, /api/v1/queue/clean, /api/v1/rcp
+        resp_health = client.get("/health")
+        assert resp_health.status_code == 200
+        assert resp_health.json()["status"] == "ok"
+
+        resp_jobs_sma = client.get(
+            "/api/v1/queue/jobs",
+            params={"domain": "sma", "filename": "sma_api_patient.pdf"},
+        )
+        assert resp_jobs_sma.status_code == 200
+        assert len(resp_jobs_sma.json()) == 2
+
+        resp_rcp_onco = client.get(
+            "/api/v1/rcp", headers={"X-Oncoflow-Domain": "oncology"}
+        )
+        assert resp_rcp_onco.status_code == 200
+        assert resp_rcp_onco.headers.get("X-Oncoflow-Domain") == "oncology"
+
+        resp_clean = client.post(
+            "/api/v1/queue/clean",
+            params={"domain": "sma"},
+            json={"mode": "all"},
+        )
+        assert resp_clean.status_code == 200
+        assert resp_clean.json()["affected_jobs"] == 2
+
+    def test_startup_recovery_and_dev_standalone_fallback(self, mock_mongo_Env):
+        conf, mongo_client = mock_mongo_Env
+        # Seed an unfinished RCP in oncology and one in sma
+        mongo_client["Oncoflow_oncology"]["rcp_info"].update_one(
+            {"file": "recover_onco.pdf"},
+            {
+                "$set": {
+                    "file": "recover_onco.pdf",
+                    "processing_status": RCPProcessingStatus.PENDING_ADMIN.value,
+                }
+            },
+            upsert=True,
+        )
+        mongo_client["Oncoflow_sma"]["rcp_info"].update_one(
+            {"file": "recover_sma.pdf"},
+            {
+                "$set": {
+                    "file": "recover_sma.pdf",
+                    "processing_status": RCPProcessingStatus.PENDING_CLINICAL.value,
+                    "PatientAdministrative": {
+                        "first_name": "Lea",
+                        "last_name": "Martin",
+                    },
+                }
+            },
+            upsert=True,
         )
 
-        # Progressive Wave 2 execution test
-        broker = self._make_broker()
-        try:
-            wave2_job = QueueJob(
-                filename="step1_done.pdf",
-                domain="oncology",
-                job_type=JobType.WAVE2_CLINICAL,
-                priority=JobPriority.WAVE2_CLINICAL_IMPORT,
-                status=JobStatus.PROCESSING,
+        manager = QueueBroker(conf)._manager
+        recovered_count = manager.recover_unfinished_from_mongodb()
+        assert recovered_count == 2
+        assert manager.get_queue_stats(domain="oncology")["pending"] == 2
+        assert manager.get_queue_stats(domain="sma")["pending"] == 1
+
+        # Verify standalone dev fallback when api_url is unreachable
+        dev_conf = conf.model_copy(deep=True)
+        dev_conf.queue.api_url = "http://127.0.0.1:59999"
+        dev_broker = QueueBroker(dev_conf)
+        res = dev_broker.enqueue_import_file(
+            "standalone_dev.pdf", include_clinical=False
+        )
+        assert res["already_queued"] is False
+        assert manager._workers_started is True
+        manager.shutdown()
+
+    def test_fresh_process_imports_no_circular_dependency(self):
+        """
+        Verify in isolated Python subprocesses that importing `app-api`,
+        `src.infrastructure.queue`, or `src.application.app_functions` first
+        never triggers a circular ImportError.
+        """
+        app_dir = Path(__file__).resolve().parent.parent
+        import_snippets = [
+            "import importlib; importlib.import_module('app-api')",
+            "import src.infrastructure.queue; import src.application.app_functions",
+            "import src.application.app_functions; import src.infrastructure.queue",
+            "import src.routers.queue; import src.routers.rcp; import src.routers.agents; import src.routers.resources",
+        ]
+        for snippet in import_snippets:
+            proc = subprocess.run(
+                [sys.executable, "-c", snippet],
+                cwd=str(app_dir),
+                capture_output=True,
+                text=True,
+                timeout=15,
             )
-            job_dict = broker._insert_job(wave2_job)
-        finally:
-            broker.close()
-
-        class ModelA:
-            """Rubrique Clinique A"""
-
-        class ModelB:
-            """Rubrique Clinique B"""
-
-        call_log = []
-
-        class FakeReader:
-            def __init__(self, config, document):
-                self.document = document
-                self.basemodel_list = [ModelA, ModelB]
-                self.mtd_datas = {"patient_id": "dupont_jean_1960_01_01"}
-
-            def read_model(self, model_cls, upsert=False):
-                call_log.append((model_cls.__name__, upsert))
-
-        with patch("src.application.queue_worker.PatientMDTForm", FakeReader):
-            worker = DomainQueueWorker(self.config, worker_id="test-worker")
-            ok = worker.process_single_job(job_dict)
-            self.assertTrue(ok)
-
-        self.assertEqual(call_log, [("ModelA", True), ("ModelB", True)])
-
-        broker_check = self._make_broker()
-        try:
-            finished_job = broker_check.get_job(wave2_job.job_id)
-            self.assertIsNotNone(finished_job)
-            self.assertEqual(finished_job["status"], JobStatus.COMPLETED.value)
-            self.assertEqual(finished_job["completed_models"], ["ModelA", "ModelB"])
-            self.assertEqual(finished_job["progress_pct"], 100.0)
-        finally:
-            broker_check.close()
+            assert proc.returncode == 0, (
+                f"Fresh import failed for `{snippet}`:\nSTDOUT: {proc.stdout}\nSTDERR: {proc.stderr}"
+            )
 
     def test_no_streamlit_imports_outside_ui(self):
-        """
-        CRITICAL ARCHITECTURAL RULE: No file under src/application/, src/domain/,
-        src/infrastructure/, or src/routers/ may import streamlit.
-        """
-        src_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
-        forbidden_imports = []
-        for root, _, files in os.walk(src_root):
-            rel_dir = os.path.relpath(root, src_root)
-            if rel_dir == "ui" or rel_dir.startswith(f"ui{os.sep}"):
+        """Ensure architectural rule: no `import streamlit` outside `src/ui/`."""
+        src_root = Path(__file__).resolve().parent.parent / "src"
+        violations = []
+        for py_file in src_root.rglob("*.py"):
+            rel_parts = py_file.relative_to(src_root).parts
+            if rel_parts and rel_parts[0] == "ui":
                 continue
-            for fn in files:
-                if not fn.endswith(".py"):
-                    continue
-                full_path = os.path.join(root, fn)
-                with open(full_path, "r", encoding="utf-8") as f:
-                    tree = ast.parse(f.read(), filename=full_path)
-                for node in ast.walk(tree):
-                    if isinstance(node, ast.Import):
-                        for alias in node.names:
-                            if alias.name == "streamlit" or alias.name.startswith(
-                                "streamlit."
-                            ):
-                                forbidden_imports.append(full_path)
-                    elif isinstance(node, ast.ImportFrom):
-                        if node.module and (
-                            node.module == "streamlit"
-                            or node.module.startswith("streamlit.")
+            tree = ast.parse(py_file.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        if alias.name == "streamlit" or alias.name.startswith(
+                            "streamlit."
                         ):
-                            forbidden_imports.append(full_path)
-
-        self.assertEqual(
-            forbidden_imports,
-            [],
-            f"Forbidden streamlit imports outside src/ui/: {forbidden_imports}",
+                            violations.append(str(py_file))
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module and (
+                        node.module == "streamlit"
+                        or node.module.startswith("streamlit.")
+                    ):
+                        violations.append(str(py_file))
+        assert violations == [], (
+            f"Forbidden streamlit imports outside src/ui/: {violations}"
         )
 
+    def test_logger_includes_service_field_for_ui_and_api(self):
+        import io
+        import json
+        import logging
 
-if __name__ == "__main__":
-    unittest.main()
+        with patch.object(sys, "argv", ["streamlit", "run", "app-ui.py"]):
+            conf_ui = AppConfig()
+            assert conf_ui.logs.service == "ui"
+            assert conf_ui.rcp.docling_device == "cpu"
+            conf_ui.logs.type = "text"
+            logger_ui = conf_ui.set_logger("test_ui_logger")
+            stream_ui = io.StringIO()
+            logger_ui.handlers[0].stream = stream_ui
+            logger_ui.info("Hello from UI")
+            assert "[UI]" in stream_ui.getvalue()
+
+        with patch.object(sys, "argv", ["uvicorn", "app-api:app"]):
+            conf_api = AppConfig()
+            assert conf_api.logs.service == "api"
+            conf_api.logs.type = "json"
+            logger_api = conf_api.set_logger("test_api_logger")
+            stream_api = io.StringIO()
+            logger_api.handlers[0].stream = stream_api
+            logger_api.info("Hello from API")
+            payload = json.loads(stream_api.getvalue().strip())
+            assert payload["service"] == "api"
+            assert payload["context"]["service"] == "api"
+
+        AppConfig.set_runtime_override(language="english")
+        try:
+            assert AppConfig().language == "english"
+        finally:
+            AppConfig._runtime_overrides.clear()
+
+        logging.getLogger("test_ui_logger").handlers.clear()
+        logging.getLogger("test_api_logger").handlers.clear()

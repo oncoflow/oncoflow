@@ -99,27 +99,26 @@ upgrade:
 	@echo -e "$(CYAN)--> Mise à jour des paquets avec uv lock --upgrade && uv sync...$(RESET)"
 	cd $(APP_DIR) && $(UV) lock --upgrade && $(UV) sync
 
-## Démarre l'API FastAPI (src/routers, uvicorn)
+## Démarre l'API FastAPI Cross-Domains (avec file PriorityQueue intégrée)
 start-api:
-	@echo -e "$(CYAN)--> Démarrage de l'API FastAPI sur http://$(HOST_API):$(PORT_API)...$(RESET)"
+	@echo -e "$(CYAN)--> Démarrage de l'API Cross-Domains sur http://$(HOST_API):$(PORT_API)...$(RESET)"
 	cd $(APP_DIR) && $(UV) run python app-api.py
 
-## Démarre l'interface utilisateur Streamlit et le Worker IA (logs partagés sur stdout)
+## Démarre l'API Cross-Domains (Queue intégrée) et l'interface Streamlit (logs partagés sur stdout)
 start-ui:
-	@echo -e "$(CYAN)--> Démarrage du Worker IA et de Streamlit UI sur http://localhost:$(PORT_UI) (sortie unifiée sur stdout)...$(RESET)"
-	@pkill -f "[p]ython.*app-worker.py" 2>/dev/null || true
+	@echo -e "$(CYAN)--> Démarrage de l'API Cross-Domains (Queue PriorityQueue) et de Streamlit UI sur http://localhost:$(PORT_UI)...$(RESET)"
+	@pkill -f "[p]ython.*app-api.py" 2>/dev/null || true
 	@cd $(APP_DIR); \
 	unset VIRTUAL_ENV; \
 	export PYTHONUNBUFFERED=1; \
-	$(UV) run python -u app-worker.py & \
-	WORKER_PID=$$!; \
-	trap "kill $$WORKER_PID 2>/dev/null || true" INT TERM EXIT; \
+	export APP_QUEUE_API_URL=http://127.0.0.1:$(PORT_API); \
+	$(UV) run python -u app-api.py & \
+	API_PID=$$!; \
+	trap "kill $$API_PID 2>/dev/null || true" INT TERM EXIT; \
 	$(UV) run streamlit run app-ui.py --server.port=$(PORT_UI)
 
-## Démarre le worker de la file de traitement seul au premier plan
-start-worker:
-	@echo -e "$(CYAN)--> Démarrage du Worker de la file de traitement...$(RESET)"
-	cd $(APP_DIR) && PYTHONUNBUFFERED=1 $(UV) run python -u app-worker.py
+## Alias start-worker vers start-api (la file est désormais intégrée dans l'API Cross-Domains)
+start-worker: start-api
 
 ## Démarre Streamlit UI et le Worker IA connectés au proxy GCP Cloud Run avec l'infrastructure Docker en mode proxy
 start-ui-dev: docker-up-proxy cloudrun-proxy
@@ -472,18 +471,18 @@ down-prod: stop-prod
 
 ## Redémarre uniquement les services applicatifs et proxy (sans décharger le LLM de la VRAM L4)
 restart-prod:
-	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs & Workers Oncology & SMA, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-worker-oncology oncoflow-worker-sma oauth2-proxy caddy
+	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs Oncology & SMA, API Cross-Domains, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy
 	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
 
 ## Met à jour le dépôt git et l'image Docker UI depuis GHCR sans décharger le modèle LLM du GPU
 prod-update:
 	@echo -e "$(CYAN)--> [1/4] Mise à jour du code source (git pull --ff-only)...$(RESET)"
 	git pull --ff-only
-	@echo -e "$(CYAN)--> [2/4] Téléchargement des dernières images applicatives (UIs & Workers Oncology & SMA, oauth2-proxy, caddy, litellm)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oncoflow-worker-oncology oncoflow-worker-sma oauth2-proxy caddy litellm
+	@echo -e "$(CYAN)--> [2/4] Téléchargement des dernières images applicatives (UIs Oncology & SMA, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [3/4] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-worker-oncology oncoflow-worker-sma oauth2-proxy caddy litellm
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [4/4] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod

@@ -11,7 +11,7 @@ from src.application.app_functions import (
 from src.domain.patient import Patient
 from src.domain.worker import RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb
-from src.infrastructure.queue import SqliteQueueBroker
+from src.infrastructure.queue import QueueBroker
 
 
 app_conf = AppConfig()
@@ -98,7 +98,7 @@ def render_upload_queue_tracker():
     if app_conf.rcp.display_type != "mongodb":
         return
 
-    broker = SqliteQueueBroker(app_conf)
+    broker = QueueBroker(app_conf)
     db_client = Mongodb(app_conf)
     try:
         stats = broker.get_queue_stats()
