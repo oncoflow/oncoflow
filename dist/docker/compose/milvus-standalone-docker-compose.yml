@@ -47,7 +47,7 @@ services:
 
   standalone:
     container_name: milvus-standalone
-    image: milvusdb/milvus:v2.6.24
+    image: milvusdb/milvus:v3.0.4
     restart: unless-stopped
     logging: *default-logging
     command: ["milvus", "run", "standalone"]
