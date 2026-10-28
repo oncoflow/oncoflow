@@ -7,6 +7,11 @@
             header_up X-Forwarded-Proto {scheme}
             header_up X-Forwarded-Host {host}
             header_up X-Forwarded-Uri {uri}
+
+            @error500 status 500
+            handle_response @error500 {
+                respond "Accès non autorisé : votre compte GitHub n'est pas autorisé ou la session a expiré." 401
+            }
         }
     }
 }
