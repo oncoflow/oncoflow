@@ -273,6 +273,30 @@ class TestOncowflowAgent(unittest.TestCase):
 
     @patch("src.application.agent.agent.get_llm_client")
     @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.DocumentReader")
+    def test_expert_model_init_with_patient_readers(
+        self, mock_doc_reader_cls, mock_create_agent, mock_get_llm_client
+    ):
+        from src.domain.oncology.agents import Agents
+
+        reader1 = MagicMock(spec=DocumentReader)
+        reader2 = MagicMock(spec=DocumentReader)
+
+        agent = Agents.Pancreas_expert_agent(
+            config=self.mock_config,
+            patient_readers=[reader1, reader2],
+        )
+
+        self.assertEqual(agent.patient_readers, [reader1, reader2])
+        self.assertIn("pancreas diseases", agent.system_prompt)
+        passed_tools = mock_create_agent.call_args.kwargs.get("tools", [])
+        tool_names = [getattr(t, "name", str(t)) for t in passed_tools]
+        self.assertIn("get_patient_mtds_markdown", tool_names)
+        self.assertIn("get_patient_ai_history", tool_names)
+        self.assertIn("search_on_ressources", tool_names)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
     @patch("src.application.agent.agent.Context")
     def test_ask_prefers_final_ai_message(
         self, mock_context_cls, mock_create_agent, mock_get_llm_client

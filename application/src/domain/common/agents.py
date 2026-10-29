@@ -103,8 +103,20 @@ class Agents:
             config: AppConfig,
             mtd: DocumentReader | None = None,
             output_format: Any = None,
+            reasoning: bool = True,
+            reasoning_budget: int | None = None,
+            reader: DocumentReader | None = None,
+            additionnal_readers: list[DocumentReader] | None = None,
+            patient_readers: list[DocumentReader] | None = None,
         ) -> None:
             self.__class__.system_prompt = self.get_system_prompt()
             super(Agents.Expert_model, self).__init__(
-                config=config, mtd=mtd, output_format=output_format
+                config=config,
+                mtd=mtd,
+                output_format=output_format,
+                reasoning=reasoning,
+                reasoning_budget=reasoning_budget,
+                reader=reader,
+                additionnal_readers=additionnal_readers,
+                patient_readers=patient_readers,
             )
