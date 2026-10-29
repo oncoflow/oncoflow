@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from slugify import slugify
 
 from src.application.app_functions.llm import unload_active_models
+from src.application.paths import UnsafePathError, safe_path
 from src.domain.patient_mdt_form import get_domain_mdt_form_cls
 from src.domain.worker.queue_job import JobType
 from src.infrastructure.documents.mongodb import Mongodb
@@ -242,6 +243,10 @@ def delete_document(app_conf, filename, delete_file: bool = True):
             filter={"file": filename},
         )
         if delete_file:
-            if os.path.exists(f"{app_conf.rcp.path}/{filename}"):
-                os.remove(f"{app_conf.rcp.path}/{filename}")
+            try:
+                target = safe_path(app_conf.rcp.path, filename)
+            except UnsafePathError:
+                target = None
+            if target is not None and os.path.exists(target):
+                os.remove(target)
         client.close()

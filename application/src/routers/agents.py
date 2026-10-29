@@ -4,8 +4,8 @@ from fastapi import APIRouter, HTTPException, status
 
 from src.application.config import AppConfig
 from src.domain.agents import get_domain_agents
-from src.infrastructure.documents.db_interface import DomainConfigDep
 from src.models.agents import AgentDetailResponse
+from src.routers.dependencies import DomainConfigDep
 
 router = APIRouter(prefix="/agents", tags=["agents"])
 

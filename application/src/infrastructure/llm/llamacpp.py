@@ -4,7 +4,17 @@ import httpx
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from src.application.config import AppConfig
-from src.infrastructure.llm.base import LLMConnect
+from src.infrastructure.llm.base import (
+    LLMConfigurationError,
+    LLMConnect,
+    LLMConnectionError,
+    build_base_url,
+    retry_connection,
+)
+
+
+class _ServerNotReady(Exception):
+    """Internal: llama.cpp answered but is not ready yet (non-200)."""
 
 
 class LlamaCppCompatibleEmbeddings(OpenAIEmbeddings):
@@ -101,22 +111,14 @@ class LlamaCppConnect(LLMConnect):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
 
-        # Build base URL for the chat server.
-        url = config.llm.url
-        port = config.llm.port
-        if port and port.strip():
-            if f":{port}" not in url:
-                self.base_url = f"{url}:{port}"
-            else:
-                self.base_url = url
-        else:
-            self.base_url = url
-
-        # Avoid double slashes in base URL
-        self.base_url = self.base_url.rstrip("/")
-        uri = self.config.llm.uri.lstrip("/")
-        if uri:
-            self.base_url = f"{self.base_url}/{uri}"
+        # Build base URL for the chat server (url[:port][/uri]).
+        self.base_url = build_base_url(
+            config.llm.url, config.llm.port, self.config.llm.uri
+        )
+        if not self.base_url:
+            raise LLMConfigurationError(
+                "llama.cpp backend requires an explicit base URL (APP_CONFIGLLM_URL)."
+            )
 
         self.logger = config.set_logger(
             "llamacpp", default_context={"host": self.base_url}
@@ -170,10 +172,11 @@ class LlamaCppConnect(LLMConnect):
         model: str,
         output: Any = None,
         temperature: float | None = None,
-        tools: List[Any] = [],
+        tools: Optional[List[Any]] = None,
         reasoning: bool = True,
         reasoning_budget: int | None = None,
     ) -> Any:
+        tools = tools or []
         # Set JSON mode if output is specified and no tools are provided.
         # When tools are present, JSON mode conflicts with tool calling.
         model_kwargs = {}
@@ -181,7 +184,7 @@ class LlamaCppConnect(LLMConnect):
             model_kwargs["response_format"] = {"type": "json_object"}
 
         chat_kwargs = {
-            "base_url": self.base_url if self.base_url else None,
+            "base_url": self.base_url,
             "api_key": self.api_key,
             "model": model,
             "temperature": (
@@ -217,44 +220,50 @@ class LlamaCppConnect(LLMConnect):
 
     def test_connection(
         self,
-        max_retries: int = 15,
-        retry_delay: float = 3.0,
+        max_delay: float = 60.0,
+        max_attempts: int = 15,
         timeout: float = 10.0,
     ) -> None:
         """
         Verify that the llama.cpp server is reachable and ready.
-        Supports cold starts (e.g. Cloud Run, model loading) by retrying on timeouts and connect errors.
+        Supports cold starts (e.g. Cloud Run, model loading) by retrying on timeouts
+        and connect errors, with exponential backoff + jitter bounded to ``max_delay``
+        seconds overall.
+
+        Raises:
+            LLMConnectionError: if the server is still unreachable after retries.
         """
         health_url = self.base_url.rsplit("/v1", 1)[0]
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
-        for attempt in range(1, max_retries + 1):
-            try:
-                # llama.cpp exposes a /health endpoint for readiness checks
-                response = httpx.get(f"{health_url}/health", timeout=timeout)
-                if response.status_code == 200:
-                    return
-                # Fall back to listing models if /health is not available
-                response = httpx.get(
-                    f"{self.base_url}/models", headers=headers, timeout=timeout
-                )
-                if response.status_code == 200:
-                    return
-                self.logger.warning(
-                    f"llama.cpp server returned status {response.status_code} (attempt {attempt}/{max_retries})"
-                )
-            except (httpx.TimeoutException, httpx.ConnectError) as e:
-                if attempt < max_retries:
-                    self.logger.info(
-                        f"Waiting for llama.cpp server to respond ({e})... "
-                        f"(attempt {attempt}/{max_retries}, retrying in {retry_delay}s)"
-                    )
-                    time.sleep(retry_delay)
-                else:
-                    self.logger.error(
-                        f"Connection error to llama.cpp server after {max_retries} attempts: {e}"
-                    )
-                    exit(254)
-            except Exception as e:
-                self.logger.error(f"Connection error to llama.cpp server: {e}")
-                exit(254)
+        def _probe() -> None:
+            # llama.cpp exposes a /health endpoint for readiness checks
+            response = httpx.get(f"{health_url}/health", timeout=timeout)
+            if response.status_code == 200:
+                return
+            # Fall back to listing models if /health is not available
+            response = httpx.get(
+                f"{self.base_url}/models", headers=headers, timeout=timeout
+            )
+            if response.status_code == 200:
+                return
+            # e.g. 503 while the model is still loading: retry
+            raise _ServerNotReady(
+                f"llama.cpp server returned status {response.status_code}"
+            )
+
+        try:
+            retry_connection(
+                _probe,
+                self.logger,
+                retry_on=(httpx.TimeoutException, httpx.ConnectError, _ServerNotReady),
+                max_delay=max_delay,
+                max_attempts=max_attempts,
+                sleep=lambda s: time.sleep(s),
+                backend="llama.cpp server",
+            )
+        except LLMConnectionError:
+            raise
+        except Exception as e:
+            self.logger.error(f"Connection error to llama.cpp server: {e}")
+            raise LLMConnectionError(f"llama.cpp server error: {e}") from e

@@ -1,6 +1,7 @@
+import atexit
+import hmac
 import os
 import signal
-import atexit
 
 
 def clean_exit(signum=None, frame=None):
@@ -69,15 +70,25 @@ if auth_mode == "oauth_proxy":
         if hasattr(st, "context") and hasattr(st.context, "headers")
         else {}
     )
+    # Identity headers are only trusted when the request carries the secret injected
+    # by the reverse proxy (Caddy): a client reaching Streamlit directly cannot forge them.
+    expected_secret = app_config.proxy_secret
+    proxy_ok = expected_secret is not None and hmac.compare_digest(
+        (headers.get("X-Oncoflow-Proxy-Secret") or "").encode(),
+        expected_secret.get_secret_value().encode(),
+    )
+    if expected_secret is None:
+        st.error(
+            "Configuration invalide : APP_PROXY_SECRET est obligatoire avec APP_AUTH_MODE=oauth_proxy."
+        )
+    # Only the headers copied by Caddy `forward_auth` from oauth2-proxy are trusted.
     oauth_user = (
-        headers.get("X-Forwarded-Preferred-Username")
-        or headers.get("X-Auth-Request-Preferred-Username")
-        or headers.get("X-Forwarded-User")
+        headers.get("X-Auth-Request-Preferred-Username")
         or headers.get("X-Auth-Request-User")
+        if proxy_ok
+        else None
     )
-    oauth_email = headers.get("X-Forwarded-Email") or headers.get(
-        "X-Auth-Request-Email"
-    )
+    oauth_email = headers.get("X-Auth-Request-Email") if proxy_ok else None
     if oauth_user or oauth_email:
         st.session_state["authentication_status"] = True
         st.session_state["username"] = oauth_user or oauth_email
@@ -95,10 +106,11 @@ else:
             config["cookie"]["key"],
             config["cookie"]["expiry_days"],
         )
-    except Exception as e:
-        st.error(
-            f"Erreur lors du chargement de la configuration d'authentification : {e}"
+    except Exception:
+        app_config.set_logger("oncoflow.ui").exception(
+            "Failed to load authentication configuration (%s)", auth_config_path
         )
+        st.error("Erreur lors du chargement de la configuration d'authentification.")
 
 
 st.logo(
@@ -153,18 +165,27 @@ pages[app_title] = [
         icon="📚",
     ),
 ]
+st.session_state["is_admin"] = bool(
+    st.session_state.get("authentication_status")
+) and app_config.is_admin(
+    st.session_state.get("username"), st.session_state.get("name")
+)
+
 pages["Reports"] = [
     st.Page(
         f"{PAGES_DIR_SRC}/reports/bugs.py",
         title="Bug reports",
         icon="🐛",
     ),
-    st.Page(
-        f"{PAGES_DIR_SRC}/reports/queue_admin.py",
-        title="File de traitement & Verrous",
-        icon="⚙️",
-    ),
 ]
+if st.session_state["is_admin"]:
+    pages["Reports"].append(
+        st.Page(
+            f"{PAGES_DIR_SRC}/reports/queue_admin.py",
+            title="File de traitement & Verrous",
+            icon="⚙️",
+        )
+    )
 
 
 if st.session_state.get("authentication_status"):
@@ -216,8 +237,11 @@ else:
         try:
             if authenticator is not None:
                 authenticator.login(location="main")
-        except Exception as e:
-            st.error(f"Erreur d'initialisation de l'authentification : {e}")
+        except Exception:
+            app_config.set_logger("oncoflow.ui").exception(
+                "Authentication widget initialisation failed"
+            )
+            st.error("Erreur d'initialisation de l'authentification.")
 
         if st.session_state.get("authentication_status") is False:
             st.error("Identifiant ou mot de passe incorrect")

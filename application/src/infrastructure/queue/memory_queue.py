@@ -1,4 +1,3 @@
-import gc
 import itertools
 import os
 import queue
@@ -20,6 +19,19 @@ from src.domain.worker import (
     RCPProcessingStatus,
 )
 from src.infrastructure.documents.mongodb import Mongodb
+
+# Execution slot (GPU lease) time-to-live. A running job refreshes its lease from a
+# heartbeat thread every `LEASE_HEARTBEAT_SECONDS`; a lease that is not refreshed
+# before `expires_at` is considered orphaned (dead/hung worker) and is purged.
+LEASE_TTL_SECONDS = 300
+LEASE_HEARTBEAT_SECONDS = 60
+# Upper bound of the passive wait of an idle worker (it is normally woken up earlier
+# by `Condition.notify_all()` when a job is pushed or a lease is released).
+WORKER_IDLE_WAIT_SECONDS = 5.0
+
+
+class QueueUnavailableError(RuntimeError):
+    """Raised by `QueueBroker` when the remote queue API cannot be reached or fails."""
 
 
 def unload_active_models(app_conf: AppConfig) -> None:
@@ -61,6 +73,9 @@ class InMemoryQueueManager:
         )
         self._counter = itertools.count()
         self._lock = threading.RLock()
+        # Workers wait passively on this condition (shares `_lock`); it is notified
+        # whenever a job is pushed, a lease is released or the manager shuts down.
+        self._cond = threading.Condition(self._lock)
         self._jobs: dict[str, dict[str, Any]] = {}
         self._active_leases: dict[str, dict[str, Any]] = {}
         self._cancelled_job_ids: set[str] = set()
@@ -75,9 +90,15 @@ class InMemoryQueueManager:
     # Internal Helpers
     # ------------------------------------------------------------------
 
+    def _normalize_domain(self, domain: str | None = None) -> str:
+        return (domain or self.base_config.domain or "oncology").strip().lower()
+
     def _resolve_domain_config(self, domain: str | None = None) -> AppConfig:
-        target = (domain or self.base_config.domain or "oncology").strip().lower()
-        return self.base_config.for_domain(target)
+        return self.base_config.for_domain(self._normalize_domain(domain))
+
+    def _notify_waiters(self) -> None:
+        with self._cond:
+            self._cond.notify_all()
 
     def _push_to_pq(self, job: dict[str, Any]) -> None:
         """Push a runnable job into the standard library PriorityQueue."""
@@ -90,6 +111,28 @@ class InMemoryQueueManager:
         )
         seq = next(self._counter)
         self._pq.put((-priority, ts, seq, job["job_id"]))
+        self._notify_waiters()
+
+    @staticmethod
+    def _reset_run_fields(job: dict[str, Any]) -> None:
+        """Detach a job from its current execution attempt (invalidates `run_id`)."""
+        job["run_id"] = None
+        job["lease_id"] = None
+        job["worker_id"] = None
+
+    @staticmethod
+    def _is_stale_run(
+        job: dict[str, Any], run_id: str | None, lease_id: str | None
+    ) -> bool:
+        """
+        True when the caller is not the current execution attempt of `job`
+        (the job was retried / reset / requeued after lease expiry meanwhile).
+        """
+        if run_id is not None:
+            return job.get("run_id") != run_id
+        if lease_id is not None:
+            return job.get("lease_id") != lease_id
+        return False
 
     def _set_rcp_processing_status(
         self,
@@ -171,9 +214,7 @@ class InMemoryQueueManager:
     def get_active_jobs_for_file(
         self, filename: str, domain: str | None = None
     ) -> list[dict[str, Any]]:
-        target_domain = (
-            (domain or self.base_config.domain or "oncology").strip().lower()
-        )
+        target_domain = self._normalize_domain(domain)
         with self._lock:
             active = [
                 self._clone_job(j)
@@ -219,9 +260,7 @@ class InMemoryQueueManager:
         total_clinical_models: int = 1,
         domain: str | None = None,
     ) -> dict[str, Any]:
-        target_domain = (
-            (domain or self.base_config.domain or "oncology").strip().lower()
-        )
+        target_domain = self._normalize_domain(domain)
         with self._lock:
             existing = [
                 self._clone_job(j)
@@ -304,11 +343,19 @@ class InMemoryQueueManager:
         total_clinical_models: int = 1,
         domain: str | None = None,
     ) -> dict[str, Any]:
-        target_domain = (
-            (domain or self.base_config.domain or "oncology").strip().lower()
-        )
+        target_domain = self._normalize_domain(domain)
         domain_conf = self._resolve_domain_config(target_domain)
         now = datetime.now()
+
+        # Mongo I/O is done before taking the queue lock (never block workers on DB).
+        has_admin = False
+        if not model_name and domain_conf.rcp.display_type == "mongodb":
+            db_client = Mongodb(domain_conf)
+            try:
+                rcp_doc = db_client.database["rcp_info"].find_one({"file": filename})
+                has_admin = bool(rcp_doc and rcp_doc.get("PatientAdministrative"))
+            finally:
+                db_client.close()
 
         with self._lock:
             active_for_file = [
@@ -385,18 +432,6 @@ class InMemoryQueueManager:
                     j["current_step"] = "Remplacée par une relance complète"
                     self._cancelled_job_ids.add(j["job_id"])
 
-            # Check if PatientAdministrative already exists in MongoDB
-            has_admin = False
-            if domain_conf.rcp.display_type == "mongodb":
-                db_client = Mongodb(domain_conf)
-                try:
-                    rcp_doc = db_client.database["rcp_info"].find_one(
-                        {"file": filename}
-                    )
-                    has_admin = bool(rcp_doc and rcp_doc.get("PatientAdministrative"))
-                finally:
-                    db_client.close()
-
             created_jobs: list[dict[str, Any]] = []
             depends_id: str | None = None
             if not has_admin:
@@ -456,18 +491,52 @@ class InMemoryQueueManager:
     # Hardware Execution Slot (Lease) & Claim Operations
     # ------------------------------------------------------------------
 
+    def _purge_expired_leases_locked(self, now: datetime | None = None) -> int:
+        """
+        Drop leases whose heartbeat stopped (`expires_at` in the past) and requeue the
+        PROCESSING job they were protecting (its worker is dead or hung).
+        Must be called while holding `self._lock`.
+        """
+        now = now or datetime.now()
+        expired = [
+            (lid, lease)
+            for lid, lease in self._active_leases.items()
+            if isinstance(lease.get("expires_at"), datetime)
+            and lease["expires_at"] < now
+        ]
+        for lid, lease in expired:
+            self._active_leases.pop(lid, None)
+            job = self._jobs.get(lease.get("job_id") or "")
+            if (
+                job
+                and job["status"] == JobStatus.PROCESSING.value
+                and job.get("lease_id") == lid
+            ):
+                self.logger.warning(
+                    f"GPU lease {lid} expired (worker {lease.get('worker_id')}); "
+                    f"requeuing job {job['job_id']}"
+                )
+                job["status"] = JobStatus.PENDING.value
+                self._reset_run_fields(job)
+                job["current_step"] = "Remis en attente (verrou d'exécution expiré)"
+                job["heartbeat_at"] = now
+                self._push_to_pq(job)
+        if expired:
+            self._notify_waiters()
+        return len(expired)
+
     def acquire_gpu_lease(
         self,
         worker_id: str,
         job_id: str,
         filename: str,
         domain: str | None = None,
+        run_id: str | None = None,
     ) -> str | None:
-        target_domain = (
-            (domain or self.base_config.domain or "oncology").strip().lower()
-        )
+        target_domain = self._normalize_domain(domain)
         now = datetime.now()
         with self._lock:
+            self._purge_expired_leases_locked(now)
             if len(self._active_leases) >= self.base_config.queue.batch_size:
                 return None
             lease_id = f"lease_{uuid.uuid4().hex[:10]}"
@@ -476,10 +545,11 @@ class InMemoryQueueManager:
                 "worker_id": worker_id,
                 "domain": target_domain,
                 "job_id": job_id,
+                "run_id": run_id,
                 "filename": filename,
                 "acquired_at": now,
                 "heartbeat_at": now,
-                "expires_at": now + timedelta(seconds=300),
+                "expires_at": now + timedelta(seconds=LEASE_TTL_SECONDS),
             }
             return lease_id
 
@@ -490,9 +560,10 @@ class InMemoryQueueManager:
             if not lease:
                 return False
             lease["heartbeat_at"] = now
-            lease["expires_at"] = now + timedelta(seconds=300)
-            if job_id and job_id in self._jobs:
-                self._jobs[job_id]["heartbeat_at"] = now
+            lease["expires_at"] = now + timedelta(seconds=LEASE_TTL_SECONDS)
+            job = self._jobs.get(job_id) if job_id else None
+            if job and job.get("lease_id") in (None, lease_id):
+                job["heartbeat_at"] = now
             return True
 
     def release_gpu_lease(
@@ -506,20 +577,24 @@ class InMemoryQueueManager:
             if force_all:
                 count = len(self._active_leases)
                 self._active_leases.clear()
-                return count
-            to_delete = [
-                lid
-                for lid, ldata in self._active_leases.items()
-                if (lease_id and lid == lease_id)
-                or (job_id and ldata.get("job_id") == job_id)
-                or (domain and ldata.get("domain") == domain)
-            ]
-            for lid in to_delete:
-                self._active_leases.pop(lid, None)
-            return len(to_delete)
+            else:
+                to_delete = [
+                    lid
+                    for lid, ldata in self._active_leases.items()
+                    if (lease_id and lid == lease_id)
+                    or (job_id and ldata.get("job_id") == job_id)
+                    or (domain and ldata.get("domain") == domain)
+                ]
+                for lid in to_delete:
+                    self._active_leases.pop(lid, None)
+                count = len(to_delete)
+            if count:
+                self._notify_waiters()
+            return count
 
     def get_all_gpu_leases(self) -> list[dict[str, Any]]:
         with self._lock:
+            self._purge_expired_leases_locked()
             leases = [dict(v) for v in self._active_leases.values()]
         leases.sort(key=lambda x: x.get("acquired_at") or datetime.min)
         return leases
@@ -530,8 +605,12 @@ class InMemoryQueueManager:
         """
         Atomically pop the highest-priority runnable job from `queue.PriorityQueue`
         and acquire an execution slot respecting `batch_size`.
+
+        Each successful claim stamps a fresh `run_id` (and `lease_id`) on the job:
+        lifecycle updates coming from an older attempt are ignored.
         """
         with self._lock:
+            self._purge_expired_leases_locked()
             if len(self._active_leases) >= self.base_config.queue.batch_size:
                 return None, None
 
@@ -563,7 +642,9 @@ class InMemoryQueueManager:
                     if dep_id:
                         dep_job = self._jobs.get(dep_id)
                         if dep_job and dep_job["status"] != JobStatus.COMPLETED.value:
-                            # Dependency not yet completed; keep waiting
+                            # Dependency not completed yet: the job stays stored in
+                            # `_jobs` (PENDING) and `complete_job(dep)` pushes it back.
+                            job["current_step"] = "En attente de l'étape précédente"
                             self._pq.task_done()
                             continue
 
@@ -578,17 +659,23 @@ class InMemoryQueueManager:
                 return None, None
 
             now = datetime.now()
-            claimed_job["status"] = JobStatus.PROCESSING.value
-            claimed_job["worker_id"] = worker_id
-            claimed_job["started_at"] = now
-            claimed_job["heartbeat_at"] = now
-
+            run_id = uuid.uuid4().hex
             lease_id = self.acquire_gpu_lease(
                 worker_id=worker_id,
                 job_id=claimed_job["job_id"],
                 filename=claimed_job["filename"],
                 domain=claimed_job["domain"],
+                run_id=run_id,
             )
+            if not lease_id:  # pragma: no cover - capacity checked above
+                self._push_to_pq(claimed_job)
+                return None, None
+            claimed_job["status"] = JobStatus.PROCESSING.value
+            claimed_job["worker_id"] = worker_id
+            claimed_job["run_id"] = run_id
+            claimed_job["lease_id"] = lease_id
+            claimed_job["started_at"] = now
+            claimed_job["heartbeat_at"] = now
             return self._clone_job(claimed_job), lease_id
 
     # ------------------------------------------------------------------
@@ -607,10 +694,12 @@ class InMemoryQueueManager:
         completed_models: list[str] | None = None,
         progress_pct: float | None = None,
         resolved_patient_id: str | None = None,
+        run_id: str | None = None,
+        lease_id: str | None = None,
     ) -> dict[str, Any] | None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if not job:
+            if not job or self._is_stale_run(job, run_id, lease_id):
                 return None
             job["current_step"] = current_step
             job["heartbeat_at"] = datetime.now()
@@ -628,27 +717,40 @@ class InMemoryQueueManager:
         lease_id: str | None = None,
         resolved_patient_id: str | None = None,
         current_step: str = "Terminé",
+        run_id: str | None = None,
     ) -> dict[str, Any] | None:
         now = datetime.now()
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
-                self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
+                if lease_id:
+                    self.release_gpu_lease(lease_id=lease_id)
+                return None
+            if self._is_stale_run(job, run_id, lease_id):
+                if lease_id:
+                    self.release_gpu_lease(lease_id=lease_id)
                 return None
             job["status"] = JobStatus.COMPLETED.value
             job["completed_at"] = now
             job["heartbeat_at"] = now
             job["progress_pct"] = 100.0
             job["current_step"] = current_step
+            self._reset_run_fields(job)
             if resolved_patient_id:
                 job["resolved_patient_id"] = resolved_patient_id
 
             # Unlock & push any dependent Step 2 (WAVE2_CLINICAL) jobs into PriorityQueue
+            # Also revive CANCELLED dependents if this wave1 was retried after a failure.
             for candidate in self._jobs.values():
-                if (
-                    candidate.get("depends_on_job_id") == job_id
-                    and candidate["status"] == JobStatus.PENDING.value
-                ):
+                if candidate.get("depends_on_job_id") == job_id and candidate[
+                    "status"
+                ] in (JobStatus.PENDING.value, JobStatus.CANCELLED.value):
+                    if candidate["status"] == JobStatus.CANCELLED.value:
+                        candidate["status"] = JobStatus.PENDING.value
+                        candidate["error_message"] = None
+                        candidate["completed_at"] = None
+                        candidate["current_step"] = "En attente de l'analyse clinique"
+                        self._cancelled_job_ids.discard(candidate["job_id"])
                     if resolved_patient_id and not candidate.get("resolved_patient_id"):
                         candidate["resolved_patient_id"] = resolved_patient_id
                     self._push_to_pq(candidate)
@@ -661,15 +763,22 @@ class InMemoryQueueManager:
         job_id: str,
         error_message: str,
         lease_id: str | None = None,
+        run_id: str | None = None,
     ) -> dict[str, Any] | None:
         now = datetime.now()
         job_to_fail_rcp: tuple[str, str] | None = None
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
-                self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
+                if lease_id:
+                    self.release_gpu_lease(lease_id=lease_id)
+                return None
+            if self._is_stale_run(job, run_id, lease_id):
+                if lease_id:
+                    self.release_gpu_lease(lease_id=lease_id)
                 return None
 
+            self._reset_run_fields(job)
             attempts = int(job.get("attempts", 0)) + 1
             max_retries = int(
                 job.get("max_retries", self.base_config.queue.max_retries)
@@ -804,9 +913,7 @@ class InMemoryQueueManager:
         return True
 
     def delete_jobs_for_file(self, filename: str, domain: str | None = None) -> int:
-        target_domain = (
-            (domain or self.base_config.domain or "oncology").strip().lower()
-        )
+        target_domain = self._normalize_domain(domain)
         with self._lock:
             matching_ids = [
                 jid
@@ -827,14 +934,50 @@ class InMemoryQueueManager:
                 return None
             self.release_gpu_lease(job_id=job_id)
             self._cancelled_job_ids.discard(job_id)
+            self._reset_run_fields(job)
             job["status"] = JobStatus.PENDING.value
             job["attempts"] = 0
             job["error_message"] = None
-            job["worker_id"] = None
             job["completed_at"] = None
             job["current_step"] = "Remis en file d'attente"
             job["heartbeat_at"] = now
-            self._push_to_pq(job)
+
+            dep_id = job.get("depends_on_job_id")
+            dep_job = self._jobs.get(dep_id) if dep_id else None
+            if dep_job and dep_job["status"] != JobStatus.COMPLETED.value:
+                if dep_job["status"] in (
+                    JobStatus.FAILED.value,
+                    JobStatus.CANCELLED.value,
+                ):
+                    self.release_gpu_lease(job_id=dep_id)
+                    self._cancelled_job_ids.discard(dep_id)
+                    self._reset_run_fields(dep_job)
+                    dep_job["status"] = JobStatus.PENDING.value
+                    dep_job["attempts"] = 0
+                    dep_job["error_message"] = None
+                    dep_job["completed_at"] = None
+                    dep_job["current_step"] = "Remis en file d'attente"
+                    dep_job["heartbeat_at"] = now
+                    self._push_to_pq(dep_job)
+                job["current_step"] = "En attente de l'étape précédente"
+            else:
+                self._push_to_pq(job)
+
+            # If this job is a parent (wave1) being retried, revive any CANCELLED dependents
+            for cand in self._jobs.values():
+                if (
+                    cand.get("depends_on_job_id") == job_id
+                    and cand["status"] == JobStatus.CANCELLED.value
+                ):
+                    self._cancelled_job_ids.discard(cand["job_id"])
+                    self._reset_run_fields(cand)
+                    cand["status"] = JobStatus.PENDING.value
+                    cand["attempts"] = 0
+                    cand["error_message"] = None
+                    cand["completed_at"] = None
+                    cand["current_step"] = "En attente de l'étape précédente"
+                    cand["heartbeat_at"] = now
+
             cloned = self._clone_job(job)
 
         target_status = (
@@ -881,9 +1024,9 @@ class InMemoryQueueManager:
                 for jid in matching_ids:
                     job = self._jobs[jid]
                     if job["status"] == JobStatus.PROCESSING.value:
+                        self._reset_run_fields(job)
                         job["status"] = JobStatus.PENDING.value
                         job["attempts"] = 0
-                        job["worker_id"] = None
                         job["current_step"] = "Remis en attente par l'administrateur"
                         job["heartbeat_at"] = now
                         self.release_gpu_lease(job_id=jid)
@@ -894,18 +1037,39 @@ class InMemoryQueueManager:
                 )
 
             elif mode == "retry_failed":
+                retried_ids: set[str] = set()
                 for jid in matching_ids:
                     job = self._jobs[jid]
                     if job["status"] == JobStatus.FAILED.value:
+                        self._reset_run_fields(job)
                         job["status"] = JobStatus.PENDING.value
                         job["attempts"] = 0
                         job["error_message"] = None
-                        job["worker_id"] = None
                         job["completed_at"] = None
                         job["current_step"] = "Relancé depuis l'espace d'administration"
                         job["heartbeat_at"] = now
-                        self._push_to_pq(job)
+                        dep_id = job.get("depends_on_job_id")
+                        dep_job = self._jobs.get(dep_id) if dep_id else None
+                        if (
+                            not dep_job
+                            or dep_job["status"] == JobStatus.COMPLETED.value
+                        ):
+                            self._push_to_pq(job)
+                        retried_ids.add(jid)
                         affected += 1
+                for cand in self._jobs.values():
+                    if (
+                        cand.get("depends_on_job_id") in retried_ids
+                        and cand["status"] == JobStatus.CANCELLED.value
+                    ):
+                        self._cancelled_job_ids.discard(cand["job_id"])
+                        self._reset_run_fields(cand)
+                        cand["status"] = JobStatus.PENDING.value
+                        cand["attempts"] = 0
+                        cand["error_message"] = None
+                        cand["completed_at"] = None
+                        cand["current_step"] = "En attente de l'étape précédente"
+                        cand["heartbeat_at"] = now
 
             elif mode == "pending":
                 for jid in matching_ids:
@@ -938,12 +1102,19 @@ class InMemoryQueueManager:
     # Worker Execution Logic (Step 1, Step 2, Single Model)
     # ------------------------------------------------------------------
 
-    def _is_job_aborted(self, job_id: str) -> bool:
+    def _is_job_aborted(
+        self,
+        job_id: str,
+        run_id: str | None = None,
+        lease_id: str | None = None,
+    ) -> bool:
         with self._lock:
             if job_id in self._cancelled_job_ids:
                 return True
             job = self._jobs.get(job_id)
             if not job or job["status"] != JobStatus.PROCESSING.value:
+                return True
+            if self._is_stale_run(job, run_id, lease_id):
                 return True
             return False
 
@@ -994,7 +1165,6 @@ class InMemoryQueueManager:
             return resolved_pid
         finally:
             del form
-            gc.collect()
 
     def _execute_wave2_clinical(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
@@ -1023,8 +1193,9 @@ class InMemoryQueueManager:
 
         form = form_cls(config=domain_conf, document=filename)
         try:
+            run_id = job.get("run_id")
             for idx, model_cls in enumerate(clinical_models, start=1):
-                if self._is_job_aborted(job_id):
+                if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
                     return
                 model_name = model_cls.__name__
                 self.refresh_gpu_lease(lease_id, job_id=job_id)
@@ -1045,7 +1216,7 @@ class InMemoryQueueManager:
                 )
 
             if hasattr(form, "read_experts"):
-                if self._is_job_aborted(job_id):
+                if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
                     return
                 self.refresh_gpu_lease(lease_id, job_id=job_id)
                 self.update_job_progress(
@@ -1076,7 +1247,6 @@ class InMemoryQueueManager:
             )
         finally:
             del form
-            gc.collect()
 
     def _execute_single_model(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
@@ -1122,11 +1292,24 @@ class InMemoryQueueManager:
                 form.read_model(target_cls, upsert=True)
         finally:
             del form
-            gc.collect()
 
     def execute_claimed_job(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
+        run_id = job.get("run_id")
         job_type = job.get("job_type")
+        hb_stop = threading.Event()
+
+        def _heartbeat() -> None:
+            while not hb_stop.wait(LEASE_HEARTBEAT_SECONDS):
+                if not self.refresh_gpu_lease(lease_id, job_id=job_id):
+                    break
+
+        hb_thread = threading.Thread(
+            target=_heartbeat,
+            daemon=True,
+            name=f"oncoflow-lease-hb-{lease_id}",
+        )
+        hb_thread.start()
         try:
             resolved_pid = job.get("resolved_patient_id")
             if job_type == JobType.WAVE1_ADMIN.value:
@@ -1138,8 +1321,8 @@ class InMemoryQueueManager:
             else:
                 raise ValueError(f"Unsupported job_type: {job_type}")
 
-            if self._is_job_aborted(job_id):
-                self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
+            if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
+                self.release_gpu_lease(lease_id=lease_id)
                 return
 
             self.complete_job(
@@ -1147,11 +1330,18 @@ class InMemoryQueueManager:
                 lease_id=lease_id,
                 resolved_patient_id=resolved_pid,
                 current_step="Dossier prêt",
+                run_id=run_id,
             )
         except Exception as exc:
-            self.logger.error(f"Job {job_id} failed: {exc}")
-            self.fail_job(job_id=job_id, error_message=str(exc), lease_id=lease_id)
+            self.logger.exception("Job %s failed: %s", job_id, exc)
+            self.fail_job(
+                job_id=job_id,
+                error_message=str(exc),
+                lease_id=lease_id,
+                run_id=run_id,
+            )
         finally:
+            hb_stop.set()
             self._maybe_unload_models_if_idle()
 
     def _maybe_unload_models_if_idle(self) -> None:
@@ -1215,54 +1405,24 @@ class InMemoryQueueManager:
 
     def _worker_loop(self, worker_id: str) -> None:
         while not self._stop_event.is_set():
-            try:
-                item = self._pq.get(timeout=0.5)
-            except queue.Empty:
-                continue
-
-            prio, ts, seq, job_id = item
-            try:
-                with self._lock:
-                    job = self._jobs.get(job_id)
-                    if (
-                        not job
-                        or job_id in self._cancelled_job_ids
-                        or job["status"] != JobStatus.PENDING.value
-                    ):
-                        continue
-                    dep_id = job.get("depends_on_job_id")
-                    if dep_id:
-                        dep_job = self._jobs.get(dep_id)
-                        if dep_job and dep_job["status"] != JobStatus.COMPLETED.value:
-                            continue
-
-                    now = datetime.now()
-                    job["status"] = JobStatus.PROCESSING.value
-                    job["worker_id"] = worker_id
-                    job["started_at"] = now
-                    job["heartbeat_at"] = now
-                    lease_id = self.acquire_gpu_lease(
-                        worker_id=worker_id,
-                        job_id=job_id,
-                        filename=job["filename"],
-                        domain=job["domain"],
-                    )
-                    if not lease_id:
-                        # Capacity occupied; put back in PriorityQueue
-                        job["status"] = JobStatus.PENDING.value
-                        job["worker_id"] = None
-                        self._pq.put(item)
-                        continue
-                    claimed = self._clone_job(job)
-
-                self.execute_claimed_job(claimed, lease_id)
-            finally:
-                self._pq.task_done()
+            with self._cond:
+                claimed, lease_id = self.claim_next_job(worker_id=worker_id)
+                if not claimed or not lease_id:
+                    self._cond.wait(timeout=WORKER_IDLE_WAIT_SECONDS)
+                    continue
+            self.execute_claimed_job(claimed, lease_id)
 
     def shutdown(self) -> None:
         self._stop_event.set()
         with self._lock:
             self._workers_started = False
+            threads = list(self._worker_threads)
+            self._worker_threads.clear()
+            self._cond.notify_all()
+        curr = threading.current_thread()
+        for t in threads:
+            if t is not curr and t.is_alive():
+                t.join(timeout=2.0)
 
     def recover_unfinished_from_mongodb(self) -> int:
         """
@@ -1357,11 +1517,8 @@ def get_global_queue_manager(
                 base_config=config or AppConfig(),
                 auto_start_workers=auto_start_workers,
             )
-        elif config is not None:
-            # Update batch_size/settings dynamically if reconfigured
-            _GLOBAL_MANAGER.base_config = config
-            if auto_start_workers:
-                _GLOBAL_MANAGER.start_workers()
+        elif auto_start_workers:
+            _GLOBAL_MANAGER.start_workers()
         return _GLOBAL_MANAGER
 
 
@@ -1398,12 +1555,26 @@ class QueueBroker:
         self.domain = (self.config.domain or "oncology").strip().lower()
         self.api_url = (self.config.queue.api_url or "").strip().rstrip("/")
         self._manager = manager or get_global_queue_manager(self.config)
+        self._http_client: httpx.Client | None = None
 
     def _use_remote_api(self) -> bool:
         return bool(self.api_url)
 
+    def _auth_headers(self) -> dict[str, str]:
+        token = getattr(self.config, "api_token", None)
+        if token is not None:
+            return {"Authorization": f"Bearer {token.get_secret_value()}"}
+        return {}
+
+    def _get_http_client(self) -> httpx.Client:
+        if self._http_client is None:
+            self._http_client = httpx.Client(headers=self._auth_headers())
+        return self._http_client
+
     def close(self) -> None:
-        pass
+        if self._http_client is not None:
+            self._http_client.close()
+            self._http_client = None
 
     # --- Delegation Methods ---
 
@@ -1413,6 +1584,7 @@ class QueueBroker:
                 resp = httpx.get(
                     f"{self.api_url}/api/v1/queue/jobs",
                     params={"domain": self.domain, "filename": filename},
+                    headers=self._auth_headers(),
                     timeout=3.0,
                 )
                 if resp.status_code == 200:
@@ -1459,6 +1631,7 @@ class QueueBroker:
                         "include_clinical": include_clinical,
                         "total_clinical_models": total_clinical_models,
                     },
+                    headers=self._auth_headers(),
                     timeout=5.0,
                 )
                 if resp.status_code == 200:
@@ -1491,6 +1664,7 @@ class QueueBroker:
                         "model_name": model_name,
                         "total_clinical_models": total_clinical_models,
                     },
+                    headers=self._auth_headers(),
                     timeout=5.0,
                 )
                 if resp.status_code == 200:
@@ -1527,13 +1701,18 @@ class QueueBroker:
     ) -> int:
         if self._use_remote_api():
             try:
+                params: dict[str, Any] = {
+                    "force_all": force_all,
+                    "domain": domain or self.domain,
+                }
+                if lease_id:
+                    params["lease_id"] = lease_id
+                if job_id:
+                    params["job_id"] = job_id
                 resp = httpx.delete(
                     f"{self.api_url}/api/v1/queue/locks",
-                    params={
-                        "lease_id": lease_id,
-                        "force_all": force_all,
-                        "domain": domain or self.domain,
-                    },
+                    params=params,
+                    headers=self._auth_headers(),
                     timeout=5.0,
                 )
                 if resp.status_code == 200:
@@ -1550,7 +1729,11 @@ class QueueBroker:
     def get_all_gpu_leases(self) -> list[dict[str, Any]]:
         if self._use_remote_api():
             try:
-                resp = httpx.get(f"{self.api_url}/api/v1/queue/locks", timeout=3.0)
+                resp = httpx.get(
+                    f"{self.api_url}/api/v1/queue/locks",
+                    headers=self._auth_headers(),
+                    timeout=3.0,
+                )
                 if resp.status_code == 200:
                     return resp.json()
             except Exception:
@@ -1613,6 +1796,7 @@ class QueueBroker:
                 resp = httpx.get(
                     f"{self.api_url}/api/v1/queue/stats",
                     params=params,
+                    headers=self._auth_headers(),
                     timeout=3.0,
                 )
                 if resp.status_code == 200:
@@ -1641,6 +1825,7 @@ class QueueBroker:
                 resp = httpx.get(
                     f"{self.api_url}/api/v1/queue/jobs",
                     params=params,
+                    headers=self._auth_headers(),
                     timeout=3.0,
                 )
                 if resp.status_code == 200:
@@ -1658,7 +1843,9 @@ class QueueBroker:
         if self._use_remote_api():
             try:
                 resp = httpx.delete(
-                    f"{self.api_url}/api/v1/queue/jobs/{job_id}", timeout=5.0
+                    f"{self.api_url}/api/v1/queue/jobs/{job_id}",
+                    headers=self._auth_headers(),
+                    timeout=5.0,
                 )
                 if resp.status_code == 200:
                     return True
@@ -1674,6 +1861,7 @@ class QueueBroker:
             try:
                 resp = httpx.post(
                     f"{self.api_url}/api/v1/queue/jobs/{job_id}/retry",
+                    headers=self._auth_headers(),
                     timeout=5.0,
                 )
                 if resp.status_code == 200:
@@ -1693,6 +1881,7 @@ class QueueBroker:
                     f"{self.api_url}/api/v1/queue/clean",
                     params=params,
                     json={"mode": mode},
+                    headers=self._auth_headers(),
                     timeout=5.0,
                 )
                 if resp.status_code == 200:

@@ -4,3 +4,14 @@
 */chroma/
 */.rcp/
 */rcp/
+
+# Secrets & local-only files must never be baked into the image
+application/config/auth_config*.yaml
+**/.env
+**/.env.*
+!**/.env.prod.example
+**/__pycache__/
+**/*.pyc
+application/tests/
+**/.pytest_cache/
+**/.ruff_cache/

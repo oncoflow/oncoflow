@@ -8,3 +8,9 @@ class ResourceChatRequest(BaseModel):
 class ResourceIndexResponse(BaseModel):
     filename: str
     is_indexed: bool
+
+
+class ResourceIndexedResponse(BaseModel):
+    filename: str
+    domain: str
+    message: str

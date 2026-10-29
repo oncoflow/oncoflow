@@ -155,13 +155,9 @@ Ouvrez **`http://localhost:8501`** dans votre navigateur pour accéder à l'appl
 
 ### 5. Options et Diagnostic de Débogage
 
-* **Mode console interactif (Debug sans interface graphique)** :
-  ```bash
-  uv run python3 app.py
-  ```
 * **Lister les Variables d'Environnement configurées et leurs valeurs par défaut** :
   ```bash
-  uv run python3 app.py -e
+  uv run python -c "import json; from src.application.config import AppConfig; print(json.dumps(AppConfig.model_json_schema(), indent=2))"
   ```
 * **Lancer l'UI avec un niveau de journalisation détaillé (DEBUG)** :
   ```bash

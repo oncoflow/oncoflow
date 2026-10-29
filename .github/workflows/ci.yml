@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
+      packages: write # only used by the push steps (guarded by github.event_name == 'push')
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -40,10 +40,17 @@ jobs:
           cd application
           uv run --frozen ruff check .
 
+      # Type checking: non-blocking until the existing backlog of type errors is fixed
+      - name: Type check (pyrefly)
+        continue-on-error: true
+        run: |
+          cd application
+          uv run --frozen pyrefly check src
+
       - name: Run Tests with Coverage
         run: |
           cd application
-          PYTHONPATH=. uv run pytest --cov=src --cov-report=xml:coverage.xml tests/
+          PYTHONPATH=. uv run --frozen pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v7
@@ -61,7 +68,7 @@ jobs:
           format: "table"
           exit-code: "1" # Fait échouer le job si des vulnérabilités CRITICAL/HIGH sont trouvées
           severity: "CRITICAL,HIGH"
-          scanners: "vuln"
+          scanners: "vuln,secret"
           ignore-unfixed: true
           skip-dirs: "**/venv,**/.venv,**/dist,**/.cache,**/.pytest_cache"
           trivyignores: ".trivyignore"

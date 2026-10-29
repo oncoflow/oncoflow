@@ -18,11 +18,14 @@ Functions:
         to customize logging context.
 """
 
+import contextvars
+import ipaddress
 import sys
 import logging
 from logging.handlers import RotatingFileHandler
 import json
-from typing import Any, ClassVar
+from typing import Any
+from urllib.parse import urlparse
 import warnings
 from pathlib import Path
 
@@ -36,7 +39,13 @@ warnings.filterwarnings("ignore", message=".*ORM-style.*")
 # Streamlit PDF viewer compatibility warnings
 warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
-from pydantic import AliasChoices, Field, field_validator  # noqa: E402
+from pydantic import (  # noqa: E402
+    AliasChoices,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import (  # noqa: E402
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -375,6 +384,63 @@ class RCPSettings(BaseSettings):
         return v
 
 
+_LOCAL_HOST_SUFFIXES = (".localhost", ".local", ".lan", ".internal", ".home.arpa")
+
+
+def is_local_host(url_or_host: str) -> bool:
+    """
+    Return True when the host is loopback, private (RFC 1918 / ULA), link-local,
+    a single-label name (Docker service / LAN host such as `litellm`, `mongod`)
+    or uses a local-only suffix (`.local`, `.lan`, `.internal`...).
+    """
+    value = (url_or_host or "").strip()
+    host = urlparse(value).hostname if "://" in value else value.split(":")[0]
+    host = (host or "").strip("[]").lower()
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return "." not in host
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+# Per-execution-context overrides (one Streamlit session = one script thread).
+# A ContextVar instead of a class-level dict: an override set by one user session
+# must never leak into other sessions or background worker threads.
+_RUNTIME_OVERRIDES: contextvars.ContextVar[dict[str, Any] | None] = (
+    contextvars.ContextVar("oncoflow_runtime_overrides", default=None)
+)
+
+_LOGGING_GLOBALS_CONFIGURED = False
+
+
+class _JsonFormatter(logging.Formatter):
+    """Serialize log records as valid JSON (messages are escaped by json.dumps)."""
+
+    def __init__(self, default_context: dict[str, Any], context_keys: list[str]):
+        super().__init__()
+        self.default_context = default_context
+        self.context_keys = context_keys
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "service": getattr(record, "service", None),
+            "name": record.name,
+            "message": record.getMessage(),
+            "context": {"service": getattr(record, "service", None)}
+            | self.default_context
+            | {k: getattr(record, k, None) for k in self.context_keys},
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str, ensure_ascii=False)
+
+
 class _RuntimeServiceFilter(logging.Filter):
     """Injects `record.service` and `record.service_upper` from `LogSettings.service` (or runtime auto-detection)."""
 
@@ -411,8 +477,6 @@ class AppConfig(BaseSettings):
     - APP_RCP_*        : RCP pipeline settings
     """
 
-    _runtime_overrides: ClassVar[dict[str, Any]] = {}
-
     model_config = SettingsConfigDict(
         env_prefix="APP_",
         env_file=".env",
@@ -422,8 +486,24 @@ class AppConfig(BaseSettings):
 
     @classmethod
     def set_runtime_override(cls, **kwargs: Any) -> None:
-        """Register native pydantic-settings runtime overrides without mutating os.environ."""
-        cls._runtime_overrides.update(kwargs)
+        """
+        Register pydantic-settings runtime overrides for the current execution context
+        only (current Streamlit session thread), without mutating os.environ nor
+        affecting other sessions / worker threads.
+        """
+        current = dict(_RUNTIME_OVERRIDES.get() or {})
+        current.update(kwargs)
+        _RUNTIME_OVERRIDES.set(current)
+
+    @classmethod
+    def clear_runtime_overrides(cls) -> None:
+        """Remove all runtime overrides of the current execution context."""
+        _RUNTIME_OVERRIDES.set(None)
+
+    @classmethod
+    def get_runtime_overrides(cls) -> dict[str, Any]:
+        """Return a copy of the runtime overrides of the current execution context."""
+        return dict(_RUNTIME_OVERRIDES.get() or {})
 
     @classmethod
     def settings_customise_sources(
@@ -435,7 +515,7 @@ class AppConfig(BaseSettings):
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         def _runtime_source() -> dict[str, Any]:
-            return dict(cls._runtime_overrides)
+            return dict(_RUNTIME_OVERRIDES.get() or {})
 
         return (
             init_settings,
@@ -468,6 +548,31 @@ class AppConfig(BaseSettings):
     auth_mode: str = Field(
         default="local",
         description="Authentication mode for the UI. Valid values: 'local' (streamlit-authenticator) or 'oauth_proxy' (HTTP headers injected by oauth2-proxy).",
+    )
+
+    api_token: SecretStr | None = Field(
+        default=None,
+        description="Shared secret required by the REST API (`Authorization: Bearer <token>` or `X-API-Key`). Mandatory when APP_DEV_MODE=false (APP_API_TOKEN).",
+    )
+
+    proxy_secret: SecretStr | None = Field(
+        default=None,
+        description="Shared secret injected by the reverse proxy (header `X-Oncoflow-Proxy-Secret`) in auth_mode=oauth_proxy. Identity headers are ignored when it does not match (APP_PROXY_SECRET).",
+    )
+
+    admin_users: str = Field(
+        default="",
+        description="Comma-separated usernames/emails allowed to use admin features (queue admin page, global cache purge). Empty = every authenticated user is admin (APP_ADMIN_USERS).",
+    )
+
+    api_host: str = Field(
+        default="127.0.0.1",
+        description="Bind address of the REST API when started with `python app-api.py` (APP_API_HOST). Use 0.0.0.0 only inside a private container network.",
+    )
+
+    allow_remote_llm: bool = Field(
+        default=False,
+        description="Allow LLM endpoints outside the local / private network (APP_ALLOW_REMOTE_LLM). Patient data must stay local: keep False except for explicit test deployments.",
     )
 
     llm: ConfigllmSettings = Field(
@@ -524,6 +629,24 @@ class AppConfig(BaseSettings):
             self.dbvec.collection = f"{self.dbvec.collection}_{self.domain}"
             self.milvus.database = f"{self.milvus.database}_{self.domain}"
 
+    @model_validator(mode="after")
+    def _enforce_local_llm(self) -> "AppConfig":
+        """Refuse to send patient data to non-local LLM endpoints unless explicitly allowed."""
+        if not self.allow_remote_llm and not is_local_host(self.llm.url):
+            raise ValueError(
+                f"LLM endpoint '{self.llm.url}' is not a local/private host. Patient data "
+                "must stay local: use a local endpoint or set APP_ALLOW_REMOTE_LLM=true "
+                "explicitly (test deployments only)."
+            )
+        return self
+
+    def is_admin(self, *identities: str | None) -> bool:
+        """Return True if one of the user identities (username, email) is an admin."""
+        admins = {u.strip().lower() for u in self.admin_users.split(",") if u.strip()}
+        if not admins:
+            return True
+        return any(i and i.strip().lower() in admins for i in identities)
+
     @property
     def enabled_domains_list(self) -> list[str]:
         """Return normalized list of enabled domains configured in APP_ALLOWED_DOMAINS."""
@@ -549,6 +672,11 @@ class AppConfig(BaseSettings):
             language=self.language,
             dev_mode=self.dev_mode,
             auth_mode=self.auth_mode,
+            api_token=self.api_token,
+            proxy_secret=self.proxy_secret,
+            admin_users=self.admin_users,
+            api_host=self.api_host,
+            allow_remote_llm=self.allow_remote_llm,
             llm=self.llm.model_copy(deep=True),
             logs=self.logs.model_copy(deep=True),
             chromadb=self.chromadb.model_copy(deep=True),
@@ -563,25 +691,19 @@ class AppConfig(BaseSettings):
         else:
             return base_dir / "config/auth_config.yaml"
 
-    def set_logger(self, name, default_context={}, additional_context=None):
+    @staticmethod
+    def _configure_logging_globals() -> None:
+        """Process-wide logging tweaks, applied once (not on every `set_logger` call)."""
+        global _LOGGING_GLOBALS_CONFIGURED
+        if _LOGGING_GLOBALS_CONFIGURED:
+            return
+        _LOGGING_GLOBALS_CONFIGURED = True
 
         # --- Suppress noisy third-party loggers ---
         logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
         logging.getLogger("transformers").setLevel(logging.ERROR)
         logging.getLogger("pymilvus").setLevel(logging.ERROR)
         logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.DEBUG)
-
-        # --- Suppress noisy third-party warnings ---
-        # Hugging Face __path__ access deprecation
-        warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
-        # PyMilvus async client init failure (non-critical)
-        warnings.filterwarnings(
-            "ignore", message=".*Failed to initialize AsyncMilvusClient.*"
-        )
-        # PyMilvus ORM-style deprecation warnings
-        warnings.filterwarnings("ignore", message=".*ORM-style.*")
-        # Streamlit PDF viewer compatibility warnings
-        warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
         # Suppress HuggingFace transformers internal logging if available
         try:
@@ -590,6 +712,15 @@ class AppConfig(BaseSettings):
             transformers_logging.set_verbosity_error()
         except ImportError:
             pass
+
+    def set_logger(
+        self,
+        name: str,
+        default_context: dict[str, Any] | None = None,
+        additional_context: list[str] | None = None,
+    ) -> logging.Logger:
+        self._configure_logging_globals()
+        default_context = default_context or {}
 
         context = additional_context if additional_context is not None else []
 
@@ -618,17 +749,7 @@ class AppConfig(BaseSettings):
                 formatlog = f"{formatlog} - {k}: %({k})s"
             formatter = logging.Formatter(f"{formatlog} - %(message)s")
         elif self.logs.type == "json":
-            formatlog = {
-                "time": "%(asctime)s",
-                "level": "%(levelname)s",
-                "service": "%(service)s",
-                "name": "%(name)s",
-                "message": "%(message)s",
-                "context": {"service": "%(service)s"}
-                | default_context
-                | {k: f"%({k})s" for k in context},
-            }
-            formatter = logging.Formatter(json.dumps(formatlog, default=str))
+            formatter = _JsonFormatter(default_context, list(context))
         else:
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)

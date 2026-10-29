@@ -1,7 +1,7 @@
 import inspect
 import os
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -25,20 +25,37 @@ from src.application.patient import (
 from src.domain.agents import get_domain_agents
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import get_domain_mdt_form_cls
-from src.infrastructure.documents.db_interface import DomainConfigDep, get_db
+from src.application.paths import UnsafePathError, safe_path
 from src.infrastructure.documents.mongodb import Mongodb
+from src.routers.dependencies import DomainConfigDep, require_db
 from src.models.rcp import (
     ChatRequest,
     ChatResponse,
+    MessageResponse,
     PatientCardResponse,
     PatientDetailResponse,
     ProcessRequest,
+    ProcessResponse,
     RCPCardResponse,
+    UploadResponse,
 )
 
 router = APIRouter(prefix="/rcp", tags=["rcp"])
 
 # --- Helpers ---
+
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+def _safe_rcp_path(base_dir, filename: str) -> str:
+    """Resolve `filename` inside `base_dir` or raise HTTP 400."""
+    try:
+        return str(safe_path(base_dir, filename))
+    except UnsafePathError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nom de fichier invalide.",
+        ) from err
 
 
 def serialize_mongo_doc(doc: dict) -> dict:
@@ -78,14 +95,8 @@ def get_form_models(domain: str | None = None):
 
 
 @router.get("", response_model=List[RCPCardResponse])
-def get_rcp_cards(db=Depends(get_db)):
+def get_rcp_cards(db=Depends(require_db)):
     """Récupère la liste synthétique de tous les dossiers RCP du domaine."""
-    if db is None or not hasattr(db, "database"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La base de données MongoDB n'est pas configurée ou accessible.",
-        )
-
     db_datas = [d for d in db.database["rcp_info"].find() if is_rcp_visible_in_cards(d)]
     cards_data = [extract_rcp_card_dict(d) for d in db_datas]
     cards_data.sort(
@@ -96,14 +107,8 @@ def get_rcp_cards(db=Depends(get_db)):
 
 
 @router.get("/patients", response_model=List[PatientCardResponse])
-def get_patient_cards(db=Depends(get_db)):
+def get_patient_cards(db=Depends(require_db)):
     """Récupère la liste des dossiers patients synthétisés sur leur dernière RCP analysée."""
-    if db is None or not hasattr(db, "database"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La base de données MongoDB n'est pas configurée ou accessible.",
-        )
-
     all_rcps = list(db.database["rcp_info"].find())
     rcps_by_file = {d["file"]: d for d in all_rcps if "file" in d}
     raw_patients = db.get_all_patients() if hasattr(db, "get_all_patients") else []
@@ -156,14 +161,8 @@ def get_patient_cards(db=Depends(get_db)):
 
 
 @router.get("/patients/{patient_id}", response_model=PatientDetailResponse)
-def get_patient_detail(patient_id: str, db=Depends(get_db)):
+def get_patient_detail(patient_id: str, db=Depends(require_db)):
     """Récupère un dossier patient et l'historique chronologique de toutes ses fiches RCP."""
-    if db is None or not hasattr(db, "database"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La base de données MongoDB n'est pas configurée ou accessible.",
-        )
-
     raw_patient = db.get_patient(patient_id)
     if not raw_patient:
         raise HTTPException(
@@ -193,21 +192,15 @@ def get_patient_detail(patient_id: str, db=Depends(get_db)):
     latest_doc = select_latest_rcp_doc(rcps_list)
 
     return {
-        "patient": serialize_mongo_doc(raw_patient),
+        "patient": patient.model_dump(mode="json"),
         "latest_file": latest_doc["file"] if latest_doc else None,
         "rcps": [serialize_mongo_doc(d) for d in rcps_list],
     }
 
 
-@router.delete("/patients/{patient_id}")
-def delete_patient(patient_id: str, config: DomainConfigDep, db=Depends(get_db)):
+@router.delete("/patients/{patient_id}", response_model=MessageResponse)
+def delete_patient(patient_id: str, config: DomainConfigDep, db=Depends(require_db)):
     """Supprime un dossier patient et l'ensemble de ses fiches RCP."""
-    if db is None or not hasattr(db, "database"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La base de données MongoDB n'est pas configurée ou accessible.",
-        )
-
     raw_patient = db.get_patient(patient_id)
     if not raw_patient:
         raise HTTPException(
@@ -224,15 +217,9 @@ def chat_with_patient_dossier(
     patient_id: str,
     request: ChatRequest,
     config: DomainConfigDep,
-    db=Depends(get_db),
+    db=Depends(require_db),
 ):
     """Dialogue avec un agent expert sur l'intégralité du dossier patient (toutes ses fiches RCP)."""
-    if db is None or not hasattr(db, "database"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La base de données MongoDB n'est pas configurée ou accessible.",
-        )
-
     raw_patient = db.get_patient(patient_id)
     if not raw_patient:
         raise HTTPException(
@@ -246,9 +233,14 @@ def chat_with_patient_dossier(
         if "file" in doc and doc["file"] not in files:
             files.append(doc["file"])
 
-    existing_files = [
-        f for f in files if os.path.exists(os.path.join(config.rcp.path, f))
-    ]
+    existing_files = []
+    for f in files:
+        try:
+            candidate = safe_path(config.rcp.path, f)
+        except UnsafePathError:
+            continue
+        if os.path.exists(candidate):
+            existing_files.append(f)
     if not existing_files:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -270,22 +262,20 @@ def chat_with_patient_dossier(
         agent = agent_cls(config=config, patient_readers=patient_readers)
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
-    except Exception as e:
+    except Exception as err:
+        config.set_logger("oncoflow.api").exception(
+            "Agent error on patient dossier %s", patient_id
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erreur de communication avec l'agent : {e}",
-        )
+            detail="Erreur interne lors de la communication avec l'agent.",
+        ) from err
 
 
-@router.get("/{filename}")
-def get_rcp_detail(filename: str, db=Depends(get_db)):
+@router.get("/{filename}", response_model=dict[str, Any])
+def get_rcp_detail(filename: str, config: DomainConfigDep, db=Depends(require_db)):
     """Récupère les détails complets d'un dossier RCP."""
-    if db is None or not hasattr(db, "database"):
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="La base de données MongoDB n'est pas configurée ou accessible.",
-        )
-
+    _safe_rcp_path(config.rcp.path, filename)
     data = db.database["rcp_info"].find_one({"file": filename})
     if not data:
         raise HTTPException(
@@ -296,10 +286,10 @@ def get_rcp_detail(filename: str, db=Depends(get_db)):
     return serialize_mongo_doc(data)
 
 
-@router.delete("/{filename}")
+@router.delete("/{filename}", response_model=MessageResponse)
 def delete_rcp(filename: str, config: DomainConfigDep):
     """Supprime un dossier RCP de la base et du disque."""
-    file_path = os.path.join(config.rcp.path, filename)
+    file_path = _safe_rcp_path(config.rcp.path, filename)
     if not os.path.exists(file_path):
         db = Mongodb(config)
         exists_in_db = db.database["rcp_info"].find_one({"file": filename}) is not None
@@ -314,7 +304,7 @@ def delete_rcp(filename: str, config: DomainConfigDep):
     return {"message": f"Dossier '{filename}' supprimé avec succès."}
 
 
-@router.post("/upload")
+@router.post("/upload", response_model=UploadResponse)
 def upload_rcp_file(
     config: DomainConfigDep,
     file: UploadFile = File(...),
@@ -333,7 +323,25 @@ def upload_rcp_file(
         )
 
     try:
-        file_bytes = file.file.read()
+        chunks: list[bytes] = []
+        total_read = 0
+        while True:
+            chunk = file.file.read(65536)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Fichier trop volumineux (limite : 50 Mo).",
+                )
+            chunks.append(chunk)
+        file_bytes = b"".join(chunks)
+        if not file_bytes.startswith(b"%PDF-"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Le contenu du fichier n'est pas un PDF valide.",
+            )
         filename, is_duplicate = resolve_rcp_upload(config, file_bytes, file.filename)
 
         if is_duplicate:
@@ -383,17 +391,20 @@ def upload_rcp_file(
             "patient": patient_dict,
             "message": "Fichier téléversé, indexé et associé au patient avec succès.",
         }
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception as err:
+        config.set_logger("oncoflow.api").exception("Failed to upload RCP file")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erreur interne lors de l'enregistrement du fichier : {e}",
-        )
+            detail="Erreur interne lors de l'enregistrement du fichier.",
+        ) from err
 
 
-@router.post("/{filename}/process")
+@router.post("/{filename}/process", response_model=ProcessResponse)
 def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep):
     """Ajoute un retraitement de modèle spécifique ou de fiche complète dans la file de traitement."""
-    file_path = os.path.join(config.rcp.path, filename)
+    file_path = _safe_rcp_path(config.rcp.path, filename)
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -453,11 +464,14 @@ def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep)
             return {"message": f"Dossier complet '{filename}' retraité avec succès."}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception as err:
+        config.set_logger("oncoflow.api").exception(
+            "Failed to process RCP %s", filename
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erreur lors du traitement : {e}",
-        )
+            detail="Erreur interne lors du traitement du dossier.",
+        ) from err
 
 
 @router.post("/{filename}/chat", response_model=ChatResponse)
@@ -465,7 +479,7 @@ def chat_with_patient_agent(
     filename: str, request: ChatRequest, config: DomainConfigDep
 ):
     """Dialogue avec un agent expert pour un dossier patient donné."""
-    file_path = os.path.join(config.rcp.path, filename)
+    file_path = _safe_rcp_path(config.rcp.path, filename)
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -487,17 +501,22 @@ def chat_with_patient_agent(
         agent = agent_cls(config=config, mtd=reader)
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
-    except Exception as e:
+    except Exception as err:
+        config.set_logger("oncoflow.api").exception("Agent error on RCP %s", filename)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Erreur de communication avec l'agent : {e}",
-        )
+            detail="Erreur interne lors de la communication avec l'agent.",
+        ) from err
 
 
-@router.get("/{filename}/pdf")
+@router.get(
+    "/{filename}/pdf",
+    response_class=FileResponse,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
 def download_rcp_pdf(filename: str, config: DomainConfigDep):
     """Télécharge le fichier PDF original pour un dossier donné."""
-    file_path = os.path.join(config.rcp.path, filename)
+    file_path = _safe_rcp_path(config.rcp.path, filename)
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

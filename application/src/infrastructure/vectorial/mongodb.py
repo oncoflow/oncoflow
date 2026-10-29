@@ -1,7 +1,7 @@
-from pymongo import MongoClient
 from langchain_mongodb import MongoDBAtlasVectorSearch
 
 from src.application.config import AppConfig
+from src.infrastructure.documents.mongodb import get_mongo_client
 from src.infrastructure.vectorial.database import VectorialDataBase
 
 
@@ -14,14 +14,8 @@ class Mongodb(VectorialDataBase):
     connection and operations performed, and closing the database connection when done.
     """
 
-    def init_client(self, config=AppConfig) -> None:
-
-        connection_string = "mongodb://"
-        if config.mongodb.user is not None:
-            connection_string += f"{config.mongodb.user}:{config.mongodb.password}@"
-        connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
-
-        self.client = MongoClient(connection_string)
+    def init_client(self, config: AppConfig) -> None:
+        self.client = get_mongo_client(config)
         self.mongo_database = self.client[config.mongodb.vectordatabase]
         self.mongo_collection = self.mongo_database[self.coll_name]
 

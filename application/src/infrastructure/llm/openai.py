@@ -2,7 +2,13 @@ from typing import List, Any, Optional
 import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from src.application.config import AppConfig
-from src.infrastructure.llm.base import LLMConnect
+from src.infrastructure.llm.base import (
+    LLMConfigurationError,
+    LLMConnect,
+    LLMConnectionError,
+    build_base_url,
+    retry_connection,
+)
 
 
 class OllamaCompatibleOpenAIEmbeddings(OpenAIEmbeddings):
@@ -88,40 +94,40 @@ class OpenAIConnect(LLMConnect):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
 
-        # Build base URL. If port is empty or none, just use url.
-        url = config.llm.url
-        port = config.llm.port
-        if port and port.strip():
-            if f":{port}" not in url:
-                self.base_url = f"{url}:{port}"
-            else:
-                self.base_url = url
-        else:
-            self.base_url = url
-
-        # Avoid double slashes in base URL
-        self.base_url = self.base_url.rstrip("/")
-        uri = self.config.llm.uri.lstrip("/")
-        if uri:
-            self.base_url = f"{self.base_url}/{uri}"
+        # Build base URL (url[:port][/uri]).
+        self.base_url = build_base_url(
+            config.llm.url, config.llm.port, self.config.llm.uri
+        )
+        if not self.base_url:
+            # Never silently default to api.openai.com: patient data must stay local.
+            raise LLMConfigurationError(
+                "OpenAI-compatible backend requires an explicit base URL "
+                "(APP_CONFIGLLM_URL); refusing to default to api.openai.com."
+            )
 
         self.logger = config.set_logger(
             "openai", default_context={"host": self.base_url}
         )
 
         # Get API key resolved natively via pydantic-settings (APP_CONFIGLLM_API_KEY / OPENAI_API_KEY)
-        self.api_key = config.llm.api_key if config.llm.api_key else "mock-key"
+        if not config.llm.api_key:
+            raise LLMConfigurationError(
+                "Missing API key for OpenAI-compatible backend "
+                "(APP_CONFIGLLM_API_KEY / OPENAI_API_KEY). Use any non-empty "
+                "placeholder for local servers that do not check it."
+            )
+        self.api_key = config.llm.api_key
 
         # Initialize the official openai client for utility calls like listing models and connection testing
         self.client = openai.OpenAI(
-            base_url=self.base_url if self.base_url else None,
+            base_url=self.base_url,
             api_key=self.api_key,
         )
         self.test_connection()
 
         # Initialize compatible embeddings
         self.embedding = OllamaCompatibleOpenAIEmbeddings(
-            base_url=self.base_url if self.base_url else None,
+            base_url=self.base_url,
             api_key=self.api_key,
             model=config.llm.embeddings,
         )
@@ -133,10 +139,11 @@ class OpenAIConnect(LLMConnect):
         model,
         output=None,
         temperature=None,
-        tools=[],
+        tools=None,
         reasoning=True,
         reasoning_budget=None,
     ):
+        tools = tools or []
         # We set JSON mode if output is specified (matching the Ollama behavior)
         # However, if tools are provided, we must not force JSON mode to avoid conflicts with tool calling.
         model_kwargs = {}
@@ -144,7 +151,7 @@ class OpenAIConnect(LLMConnect):
             model_kwargs["response_format"] = {"type": "json_object"}
 
         chat_kwargs = {
-            "base_url": self.base_url if self.base_url else None,
+            "base_url": self.base_url,
             "api_key": self.api_key,
             "model": model,
             "reasoning": {"effort": "medium"} if reasoning else None,
@@ -176,9 +183,20 @@ class OpenAIConnect(LLMConnect):
             return [self.config.llm.models]
 
     def test_connection(self):
-        try:
+        def _probe():
             # We list models as a fast connection test
             self.client.models.list()
+
+        try:
+            # Only transient network errors are retried; auth/4xx errors fail fast.
+            retry_connection(
+                _probe,
+                self.logger,
+                retry_on=(openai.APIConnectionError, openai.APITimeoutError),
+                backend="OpenAI-compatible",
+            )
+        except LLMConnectionError:
+            raise
         except Exception as e:
             self.logger.error(f"Connection error : {e}")
-            exit(254)
+            raise LLMConnectionError(f"OpenAI-compatible backend error: {e}") from e

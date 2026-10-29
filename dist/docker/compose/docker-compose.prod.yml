@@ -31,6 +31,8 @@ x-ui-env: &ui-env
   APP_QUEUE_HARDWARE_PROFILE: ${APP_QUEUE_HARDWARE_PROFILE:-l4_24gb}
   APP_QUEUE_BATCH_SIZE: ${APP_QUEUE_BATCH_SIZE:-1}
   APP_QUEUE_API_URL: ${APP_QUEUE_API_URL:-http://oncoflow-api:8000}
+  APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
+  APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
 
 x-ui-common: &ui-common
   image: ${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:${ONCOFLOW_TAG:-latest}
@@ -349,6 +351,7 @@ services:
       - "443:443/udp"
     environment:
       PROD_BASE_DOMAIN: ${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}
+      APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/caddy_data:/data

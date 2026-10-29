@@ -561,7 +561,143 @@ class TestPriorityQueueAndCrossDomainAPI:
         try:
             assert AppConfig().language == "english"
         finally:
-            AppConfig._runtime_overrides.clear()
+            AppConfig.clear_runtime_overrides()
 
         logging.getLogger("test_ui_logger").handlers.clear()
         logging.getLogger("test_api_logger").handlers.clear()
+
+    def test_json_logs_stay_valid_with_quotes(self):
+        import io
+        import json
+        import logging
+
+        with patch.object(sys, "argv", ["uvicorn", "app-api:app"]):
+            conf = AppConfig()
+            conf.logs.type = "json"
+            logger = conf.set_logger("test_json_quotes_logger")
+            stream = io.StringIO()
+            logger.handlers[0].stream = stream
+            logger.info('Message with "quotes" and \\ backslash')
+            payload = json.loads(stream.getvalue().strip())
+            assert payload["message"] == 'Message with "quotes" and \\ backslash'
+        logging.getLogger("test_json_quotes_logger").handlers.clear()
+
+    def test_runtime_override_does_not_leak_to_other_threads(self):
+        import threading
+
+        seen: dict[str, str] = {}
+        AppConfig.set_runtime_override(language="english")
+        try:
+            worker = threading.Thread(
+                target=lambda: seen.setdefault("lang", AppConfig().language)
+            )
+            worker.start()
+            worker.join()
+            assert AppConfig().language == "english"
+            assert seen["lang"] != "english"
+        finally:
+            AppConfig.clear_runtime_overrides()
+
+    def test_expired_gpu_lease_is_reclaimed_and_job_requeued(self, mock_mongo_Env):
+        from datetime import datetime, timedelta
+
+        conf, _ = mock_mongo_Env
+        broker = QueueBroker(conf)
+        queue_manager = broker._manager
+
+        res = broker.enqueue_import_file(
+            filename="lease_expire.pdf",
+            include_clinical=False,
+        )
+        job_id = res["jobs"][0]["job_id"]
+        claimed_job, lease_id = queue_manager.claim_next_job(worker_id="dead_worker")
+        assert claimed_job is not None
+        assert claimed_job["job_id"] == job_id
+
+        # Simulate expired lease timestamp
+        queue_manager._active_leases[lease_id]["expires_at"] = (
+            datetime.now() - timedelta(seconds=60)
+        )
+
+        reclaimed_job, new_lease_id = queue_manager.claim_next_job(
+            worker_id="live_worker"
+        )
+        assert reclaimed_job is not None
+        assert reclaimed_job["job_id"] == job_id
+        assert reclaimed_job["worker_id"] == "live_worker"
+        assert new_lease_id != lease_id
+
+    def test_stale_worker_run_id_cannot_overwrite_requeued_job(self, mock_mongo_Env):
+        conf, _ = mock_mongo_Env
+        broker = QueueBroker(conf)
+        queue_manager = broker._manager
+
+        res = broker.enqueue_import_file(
+            filename="stale_worker.pdf",
+            include_clinical=False,
+        )
+        job_id = res["jobs"][0]["job_id"]
+        first_job, stale_lease_id = queue_manager.claim_next_job(worker_id="worker_1")
+        stale_run_id = first_job["run_id"]
+
+        # Admin retries the job -> old lease released, job requeued and claimed by worker_2
+        queue_manager.retry_job(job_id)
+        second_job, _ = queue_manager.claim_next_job(worker_id="worker_2")
+        assert second_job is not None
+        assert second_job["run_id"] != stale_run_id
+
+        # Stale worker_1 finishes late: its completion must be ignored (returns None)
+        stale_result = queue_manager.complete_job(
+            job_id=job_id,
+            lease_id=stale_lease_id,
+            run_id=stale_run_id,
+        )
+        assert stale_result is None
+        current = queue_manager.get_job(job_id)
+        assert current["status"] == JobStatus.PROCESSING.value
+        assert current["worker_id"] == "worker_2"
+
+    def test_wave2_revives_when_failed_wave1_is_retried(self, mock_mongo_Env):
+        conf, _ = mock_mongo_Env
+        broker = QueueBroker(conf)
+        queue_manager = broker._manager
+
+        res = broker.enqueue_import_file(
+            filename="retry_wave.pdf",
+            include_clinical=True,
+        )
+        wave1_id = res["jobs"][0]["job_id"]
+        wave2_id = res["jobs"][1]["job_id"]
+
+        # Fail wave1 exhausting retries (max_retries=0) -> wave2 becomes cancelled
+        with queue_manager._lock:
+            queue_manager._jobs[wave1_id]["max_retries"] = 0
+        _, lease1 = queue_manager.claim_next_job(worker_id="w1")
+        queue_manager.fail_job(
+            job_id=wave1_id,
+            error_message="transient error",
+            lease_id=lease1,
+        )
+        assert queue_manager.get_job(wave1_id)["status"] == JobStatus.FAILED.value
+        assert queue_manager.get_job(wave2_id)["status"] == JobStatus.CANCELLED.value
+
+        # Now manual retry of wave1 revives wave2 back to pending
+        queue_manager.retry_job(wave1_id)
+        assert queue_manager.get_job(wave1_id)["status"] == JobStatus.PENDING.value
+        assert queue_manager.get_job(wave2_id)["status"] == JobStatus.PENDING.value
+
+    def test_delete_locks_endpoint_requires_explicit_filter(self, mock_mongo_Env):
+        from fastapi import FastAPI
+        from src.routers.queue import get_queue_manager, router as queue_router
+
+        conf, _ = mock_mongo_Env
+        queue_manager = QueueBroker(conf)._manager
+
+        test_app = FastAPI()
+        test_app.dependency_overrides[get_queue_manager] = lambda: queue_manager
+        test_app.include_router(queue_router, prefix="/api/v1")
+        client = TestClient(test_app)
+
+        resp = client.delete("/api/v1/queue/locks")
+        assert resp.status_code == 400
+        assert client.delete("/api/v1/queue/locks?force_all=true").status_code == 200

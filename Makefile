@@ -335,6 +335,8 @@ init-prod:
 		LITELLM_KEY="sk-$$(openssl rand -hex 32)"; \
 		sed -i "s|OAUTH2_PROXY_COOKIE_SECRET=.*|OAUTH2_PROXY_COOKIE_SECRET=$${COOKIE_SEC}|" "$(ENV_PROD)"; \
 		sed -i "s|LITELLM_MASTER_KEY=.*|LITELLM_MASTER_KEY=$${LITELLM_KEY}|" "$(ENV_PROD)"; \
+		sed -i "s|APP_API_TOKEN=.*|APP_API_TOKEN=$$(openssl rand -hex 32)|" "$(ENV_PROD)"; \
+		sed -i "s|APP_PROXY_SECRET=.*|APP_PROXY_SECRET=$$(openssl rand -hex 32)|" "$(ENV_PROD)"; \
 		echo -e "  [$(YELLOW)ACTION REQUISE$(RESET)] Renseignez OAUTH2_PROXY_CLIENT_ID et OAUTH2_PROXY_CLIENT_SECRET dans $(ENV_PROD)"; \
 	else \
 		echo -e "  [$(GREEN)OK$(RESET)] Fichier $(ENV_PROD) déjà présent."; \

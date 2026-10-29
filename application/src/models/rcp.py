@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Any, List, Optional
 from pydantic import BaseModel, Field
 
+from src.models.queue import EnqueueResponse, QueueJobResponse
+
 
 class ProcessRequest(BaseModel):
     model_name: Optional[str] = Field(
@@ -49,11 +51,53 @@ class PatientCardResponse(BaseModel):
     intervention_type: Optional[str] = None
 
 
+class PatientResponse(BaseModel):
+    """Identité patient exposée par l'API (liste blanche de champs, sans métadonnées Mongo)."""
+
+    patient_id: str
+    first_name: str = ""
+    last_name: str = ""
+    born_name: Optional[str] = None
+    date_birth: Optional[datetime] = None
+    gender: Optional[str] = None
+    files: List[str] = Field(default_factory=list)
+    updated_at: Optional[datetime] = None
+
+
 class PatientDetailResponse(BaseModel):
-    patient: dict[str, Any]
+    patient: PatientResponse
     latest_file: Optional[str] = None
+    # Le contenu d'une fiche RCP dépend des modèles cliniques du domaine (schéma dynamique).
     rcps: List[dict[str, Any]]
 
 
 class ChatResponse(BaseModel):
     response: str = Field(description="Réponse textuelle de l'agent")
+
+
+class MessageResponse(BaseModel):
+    message: str = Field(description="Message de confirmation lisible")
+
+
+class UploadResponse(BaseModel):
+    filename: str
+    domain: str
+    message: str
+    is_duplicate: bool = False
+    link: Optional[str] = None
+    patient_id: Optional[str] = None
+    patient: Optional[dict[str, Any]] = None
+    batch_id: Optional[str] = None
+    enqueued_count: Optional[int] = None
+    already_queued_count: Optional[int] = None
+    results: List[EnqueueResponse] = Field(default_factory=list)
+
+
+class ProcessResponse(BaseModel):
+    message: str
+    filename: Optional[str] = None
+    domain: Optional[str] = None
+    model_name: Optional[str] = None
+    queued: Optional[bool] = None
+    already_queued: Optional[bool] = None
+    jobs: List[QueueJobResponse] = Field(default_factory=list)

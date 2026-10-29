@@ -22,8 +22,8 @@ Une fois démarré, la documentation interactive Swagger UI est disponible sur :
 
 L'API est structurée de manière modulaire au sein du dossier `application/` :
 * **Point d'entrée principal** : [app-api.py](file:///home/guillaume/git/oncoflow/application/app-api.py) (configuration de FastAPI, lifespan, et inclusion des routeurs).
-* **Routeurs** : [src/application/routers/](file:///home/guillaume/git/oncoflow/application/src/application/routers/) (`rcp.py`, `agents.py`, `resources.py`, et les dépendances partagées dans `dependencies.py`).
-* **Modèles Pydantic / Schémas** : [src/application/models/](file:///home/guillaume/git/oncoflow/application/src/application/models/) (`rcp.py`, `agents.py`, `resources.py`).
+* **Routeurs** : [src/routers/](file:///home/guillaume/git/oncoflow/application/src/routers/) (`rcp.py`, `agents.py`, `resources.py`, `queue.py`), dépendances partagées dans [db_interface.py](file:///home/guillaume/git/oncoflow/application/src/infrastructure/documents/db_interface.py).
+* **Modèles Pydantic / Schémas** : [src/models/](file:///home/guillaume/git/oncoflow/application/src/models/) (`rcp.py`, `agents.py`, `resources.py`, `queue.py`). Chaque endpoint déclare un `response_model`.
 
 ---
 
@@ -32,7 +32,9 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
 ### Obtenir la spécification OpenAPI
 * **URL** : `/api/v1/openapi.json`
 * **Méthode** : `GET`
-* **Description** : Renvoie le schéma de configuration OpenAPI v3 de l'API au format JSON.
+* **Description** : Renvoie le schéma de configuration OpenAPI v3 de l'API au format JSON (schémas de requête **et** de réponse de tous les endpoints).
+* **Interfaces interactives** : `/docs` (Swagger UI) et `/redoc` s'appuient sur cette même URL.
+* **Exemple** : `curl -s http://localhost:8000/api/v1/openapi.json -o openapi.json`
 
 ---
 

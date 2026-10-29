@@ -149,4 +149,4 @@ sequenceDiagram
   - Suppresses Hugging Face Transformers module path imports warnings.
   - Suppresses PyMilvus ORM-style warning hooks (`Index.to_dict is deprecated`).
   - Suppresses streamlit-pdf-viewer experimental annotation warnings.
-* **Environment variables checks**: Run `uv run python3 app.py -e` inside the `application/` folder to check validation settings of all environment variables currently loaded on your host machine.
+* **Environment variables checks**: Run `uv run python -c "import json; from src.application.config import AppConfig; print(json.dumps(AppConfig.model_json_schema(), indent=2))"` inside the `application/` folder to check validation settings of all environment variables currently loaded on your host machine.

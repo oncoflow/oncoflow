@@ -1,13 +1,16 @@
 from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
-import pytz
 from pydantic import BaseModel
 from slugify import slugify
 
+from src.application.paths import is_safe_filename
 from src.domain.common.common_ressources import Gender, PatientPriority
 from src.domain.patient import Patient
 from src.infrastructure.documents.mongodb import Mongodb
+
+_PARIS_TZ = ZoneInfo("Europe/Paris")
 
 
 def to_naive(dt: datetime | None) -> datetime | None:
@@ -15,7 +18,7 @@ def to_naive(dt: datetime | None) -> datetime | None:
     if dt is None:
         return None
     if dt.tzinfo is not None:
-        return dt.astimezone(pytz.timezone("Europe/Paris")).replace(tzinfo=None)
+        return dt.astimezone(_PARIS_TZ).replace(tzinfo=None)
     return dt
 
 
@@ -287,9 +290,7 @@ def extract_card_metrics(d: dict) -> dict:
 
     date_refresh = d.get(
         "ui_date",
-        datetime.now(pytz.timezone("Europe/Paris")).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ),
+        datetime.now(_PARIS_TZ).replace(hour=0, minute=0, second=0, microsecond=0),
     )
     if isinstance(date_refresh, str):
         try:
@@ -646,6 +647,8 @@ def resolve_patient_dossier(
     Résout le dossier patient, la liste chronologique de ses fiches RCP (de la plus récente à la plus ancienne),
     ainsi que le fichier RCP actuellement sélectionné.
     """
+    if file_param and not is_safe_filename(file_param):
+        file_param = None
     if db_client is None or not hasattr(db_client, "database"):
         return None, [], file_param
 

@@ -3,7 +3,13 @@ import openai
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_ollama import OllamaEmbeddings
 from src.application.config import AppConfig
-from src.infrastructure.llm.base import LLMConnect
+from src.infrastructure.llm.base import (
+    LLMConfigurationError,
+    LLMConnect,
+    LLMConnectionError,
+    build_base_url,
+    retry_connection,
+)
 
 
 class VllmCompatibleEmbeddings(OpenAIEmbeddings):
@@ -30,22 +36,14 @@ class VllmConnect(LLMConnect):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
 
-        # Build base URL. If port is empty or none, just use url.
-        url = config.llm.url
-        port = config.llm.port
-        if port and port.strip():
-            if f":{port}" not in url:
-                self.base_url = f"{url}:{port}"
-            else:
-                self.base_url = url
-        else:
-            self.base_url = url
-
-        # Avoid double slashes in base URL
-        self.base_url = self.base_url.rstrip("/")
-        uri = self.config.llm.uri.lstrip("/")
-        if uri:
-            self.base_url = f"{self.base_url}/{uri}"
+        # Build base URL (url[:port][/uri]).
+        self.base_url = build_base_url(
+            config.llm.url, config.llm.port, self.config.llm.uri
+        )
+        if not self.base_url:
+            raise LLMConfigurationError(
+                "vLLM backend requires an explicit base URL (APP_CONFIGLLM_URL)."
+            )
 
         self.logger = config.set_logger("vllm", default_context={"host": self.base_url})
 
@@ -54,7 +52,7 @@ class VllmConnect(LLMConnect):
 
         # Initialize the official openai client for utility calls like listing models and connection testing
         self.client = openai.OpenAI(
-            base_url=self.base_url if self.base_url else None,
+            base_url=self.base_url,
             api_key=self.api_key,
         )
         self.test_connection()
@@ -89,16 +87,17 @@ class VllmConnect(LLMConnect):
         model,
         output=None,
         temperature=None,
-        tools=[],
+        tools=None,
         reasoning=True,
         reasoning_budget=None,
     ):
+        tools = tools or []
         model_kwargs = {}
         if output is not None and not tools:
             model_kwargs["response_format"] = {"type": "json_object"}
 
         chat_kwargs = {
-            "base_url": self.base_url if self.base_url else None,
+            "base_url": self.base_url,
             "api_key": self.api_key,
             "model": model,
             "reasoning": {"effort": "medium"} if reasoning else None,
@@ -128,9 +127,19 @@ class VllmConnect(LLMConnect):
             return [self.config.llm.models]
 
     def test_connection(self):
-        try:
+        def _probe():
             # We list models as a fast connection test
             self.client.models.list()
+
+        try:
+            retry_connection(
+                _probe,
+                self.logger,
+                retry_on=(openai.APIConnectionError, openai.APITimeoutError),
+                backend="vLLM",
+            )
+        except LLMConnectionError:
+            raise
         except Exception as e:
             self.logger.error(f"vLLM Connection error: {e}")
-            exit(254)
+            raise LLMConnectionError(f"vLLM backend error: {e}") from e

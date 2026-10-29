@@ -1,18 +1,32 @@
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 
-from src.application.config import AppConfig
-from src.infrastructure.documents.db_interface import AllowedDomainMiddleware
+from src.infrastructure.documents.mongodb import close_all_mongo_clients
 from src.infrastructure.queue import get_global_queue_manager
+from src.models.queue import HealthResponse
 from src.routers.agents import router as agents_router
+from src.routers.dependencies import (
+    AllowedDomainMiddleware,
+    get_base_config,
+    verify_api_token,
+)
 from src.routers.queue import router as queue_router
 from src.routers.rcp import router as rcp_router
 from src.routers.resources import router as resources_router
 
-app_conf = AppConfig()
+app_conf = get_base_config()
 logger = app_conf.set_logger("oncoflow.api")
+
+if app_conf.api_token is None:
+    if not app_conf.dev_mode:
+        raise RuntimeError(
+            "APP_API_TOKEN est obligatoire hors mode développement (APP_DEV_MODE=false)."
+        )
+    logger.warning(
+        "APP_API_TOKEN non défini : l'API est accessible sans authentification (dev mode)."
+    )
 
 
 @asynccontextmanager
@@ -41,6 +55,7 @@ async def lifespan(app: FastAPI):
         unload_active_models(app_conf)
     except Exception as e:
         logger.warning(f"Error unloading active models during shutdown: {e}")
+    close_all_mongo_clients()
 
 
 app = FastAPI(
@@ -53,12 +68,14 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/docs",
     redoc_url="/redoc",
+    # Spécification OpenAPI versionnée (utilisée aussi par /docs et /redoc)
+    openapi_url="/api/v1/openapi.json",
 )
 
 app.add_middleware(AllowedDomainMiddleware)
 
 
-@app.get("/health", tags=["system"])
+@app.get("/health", tags=["system"], response_model=HealthResponse)
 def healthcheck():
     """Vérifie l'état de santé de l'API Cross-Domains et de la file de traitement intégrée."""
     manager = get_global_queue_manager()
@@ -69,17 +86,13 @@ def healthcheck():
     }
 
 
-# Expose OpenAPI JSON versionné explicitement
-@app.get("/api/v1/openapi.json", include_in_schema=False)
-def get_openapi_json():
-    return app.openapi()
-
-
-# Include versioned routers
-app.include_router(rcp_router, prefix="/api/v1")
-app.include_router(agents_router, prefix="/api/v1")
-app.include_router(resources_router, prefix="/api/v1")
-app.include_router(queue_router, prefix="/api/v1")
+# Include versioned routers (all protected by the shared API token)
+_protected = [Depends(verify_api_token)]
+app.include_router(rcp_router, prefix="/api/v1", dependencies=_protected)
+app.include_router(agents_router, prefix="/api/v1", dependencies=_protected)
+app.include_router(resources_router, prefix="/api/v1", dependencies=_protected)
+app.include_router(queue_router, prefix="/api/v1", dependencies=_protected)
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=False)
+    # Loopback by default (APP_API_HOST); containers set 0.0.0.0 on a private network.
+    uvicorn.run(app, host=app_conf.api_host, port=8000, reload=False)

@@ -1,6 +1,48 @@
+import threading
+from urllib.parse import quote_plus
+
 from pymongo import MongoClient
 
 from src.application.config import AppConfig
+
+# One MongoClient per connection URI for the whole process.
+# MongoClient is thread-safe and owns a connection pool + monitoring threads:
+# creating one per request / rerun / job wastes sockets and threads.
+_CLIENTS: dict[str, MongoClient] = {}
+_CLIENTS_LOCK = threading.Lock()
+
+
+def build_connection_string(config: AppConfig) -> str:
+    """Build the MongoDB URI with URL-escaped credentials."""
+    connection_string = "mongodb://"
+    if config.mongodb.user:
+        connection_string += (
+            f"{quote_plus(config.mongodb.user)}:"
+            f"{quote_plus(config.mongodb.password or '')}@"
+        )
+    connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
+    return connection_string
+
+
+def get_mongo_client(config: AppConfig) -> MongoClient:
+    """Return the process-wide MongoClient for this configuration (created lazily)."""
+    uri = build_connection_string(config)
+    client = _CLIENTS.get(uri)
+    if client is None:
+        with _CLIENTS_LOCK:
+            client = _CLIENTS.get(uri)
+            if client is None:
+                client = MongoClient(uri)
+                _CLIENTS[uri] = client
+    return client
+
+
+def close_all_mongo_clients() -> None:
+    """Close every shared MongoClient (call once at process shutdown)."""
+    with _CLIENTS_LOCK:
+        for client in _CLIENTS.values():
+            client.close()
+        _CLIENTS.clear()
 
 
 class Mongodb:
@@ -10,6 +52,9 @@ class Mongodb:
     This class initializes a connection to a MongoDB database specified by the provided configuration,
     and provides methods for inserting documents into collections, logging information about the
     connection and operations performed, and closing the database connection when done.
+
+    The underlying `MongoClient` is shared per URI (see `get_mongo_client`), so creating
+    `Mongodb` instances is cheap and `close()` does not tear down the shared pool.
     """
 
     def __init__(self, config: AppConfig) -> None:
@@ -18,16 +63,10 @@ class Mongodb:
             "mongodb",
             default_context={
                 "host": config.mongodb.host,
-                "user": config.mongodb.user,
                 "database": config.mongodb.database,
             },
         )
-        connection_string = "mongodb://"
-        if config.mongodb.user is not None:
-            connection_string += f"{config.mongodb.user}:{config.mongodb.password}@"
-        connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
-
-        self.client = MongoClient(connection_string)
+        self.client = get_mongo_client(config)
         self.database = self.client[config.mongodb.database]
 
         self.documents_to_insert = {}
@@ -35,7 +74,9 @@ class Mongodb:
         self.logger.info("Succefully init")
 
     def close(self):
-        self.client.close()
+        """Release this handle. The shared pool is closed by `close_all_mongo_clients()`."""
+        if hasattr(self, "documents_to_insert"):
+            self.documents_to_insert.clear()
 
     def set_uniq_index(self, collection, field):
         collection = self.database[collection]
@@ -66,9 +107,20 @@ class Mongodb:
         collection.update_many(filter=filter, update=value)
         self.logger.info("Success updating documents")
 
-    def update_doc(self, collection, filter: dict, upsertable_data: dict = {}):
-        self.logger.info("Start update document : %s", upsertable_data)
-        self.logger.debug("List of document to update : %s", filter)
+    def update_doc(
+        self,
+        collection,
+        filter: dict,
+        upsertable_data: dict | None = None,
+    ):
+        upsertable_data = upsertable_data or {}
+        # Never log `upsertable_data` values: they can contain patient PII (GDPR).
+        self.logger.info(
+            "Start update document in %s (keys=%s)",
+            collection,
+            sorted(upsertable_data.keys()),
+        )
+        self.logger.debug("Filter keys for update : %s", sorted(filter.keys()))
         collection = self.database[collection]
         infos = collection.update_one(
             filter,
@@ -79,7 +131,10 @@ class Mongodb:
 
     def insert_docs(self):
         self.logger.info("Start inserting documents")
-        self.logger.debug("List of document to insert : %s", self.documents_to_insert)
+        self.logger.debug(
+            "Collections to insert : %s",
+            {col: len(docs) for col, docs in self.documents_to_insert.items()},
+        )
         for collection, documents in self.documents_to_insert.items():
             collection = self.database[collection]
             collection.insert_many(documents)
@@ -123,16 +178,24 @@ class Mongodb:
         )
 
     def delete_document_cache(
-        self, file_hash: str | None = None, file_name: str | None = None
+        self,
+        file_hash: str | None = None,
+        file_name: str | None = None,
+        clear_all: bool = False,
     ) -> None:
         """
-        Deletes cached documents from document_cache by file_hash, file_name, or clears all if none specified.
+        Deletes cached documents from document_cache by file_hash, file_name,
+        or clears all if ``clear_all=True`` is explicitly passed.
         """
         filter_query = {}
         if file_hash:
             filter_query["hash"] = file_hash
         elif file_name:
             filter_query["file"] = file_name
+        elif not clear_all:
+            raise ValueError(
+                "Refusing to clear the entire document_cache without clear_all=True, file_hash, or file_name."
+            )
         self.delete_docs(["document_cache"], filter_query)
 
     # --- Patient Collection Methods ---

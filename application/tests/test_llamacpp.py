@@ -124,13 +124,13 @@ class TestLlamaCppConnection(unittest.TestCase):
     @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
     @patch("src.infrastructure.llm.llamacpp.httpx.get")
     def test_connection_failure_exits(self, mock_get, mock_embeddings_cls):
-        """Connection failure should call exit(254)."""
+        """Connection failure should raise LLMConnectionError (not SystemExit)."""
+        from src.infrastructure.llm.base import LLMConnectionError
+
         mock_get.side_effect = Exception("Connection refused")
 
-        with self.assertRaises(SystemExit) as cm:
+        with self.assertRaises(LLMConnectionError):
             LlamaCppConnect(self.mock_config)
-
-        self.assertEqual(cm.exception.code, 254)
 
     @patch("src.infrastructure.llm.llamacpp.LlamaCppCompatibleEmbeddings")
     @patch("src.infrastructure.llm.llamacpp.httpx.get")

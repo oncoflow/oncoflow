@@ -13,6 +13,7 @@ from pandas import DataFrame
 from pydantic import BaseModel
 from src.infrastructure.llm.factory import get_llm_client
 from src.application.config import AppConfig
+from src.application.paths import UnsafePathError, is_safe_filename, safe_path
 from src.application.app_functions import (
     delete_document,
     enqueue_rcp_rerun,
@@ -411,8 +412,6 @@ def power_mode(
     if "power" in st.session_state:
         if st.session_state["power"]:
             po = element.popover(":repeat: AI process")
-            mm = app_conf.llm.models
-            mp = app_conf.rcp.doc_type
 
             rcp_files = [
                 d["file"]
@@ -478,21 +477,22 @@ def power_mode(
                             icon="ℹ️",
                         )
                 else:
-                    app_conf.llm.models = nm
-                    app_conf.rcp.doc_type = parser
+                    # Work on a private copy: never mutate the module-level config
+                    # shared by the page (and left modified if the run fails).
+                    run_conf = app_conf.model_copy(deep=True)
+                    run_conf.llm.models = nm
+                    run_conf.rcp.doc_type = parser
                     with st.status(f"Relance IA sur {target_rcp_file} ..."):
                         from src.infrastructure.documents.mongodb import Mongodb
 
-                        client = Mongodb(app_conf)
+                        client = Mongodb(run_conf)
                         client.delete_document_cache(file_name=target_rcp_file)
                         client.close()
                         full_read_mtd_agents(
-                            app_conf=app_conf,
+                            app_conf=run_conf,
                             filename=target_rcp_file,
                             logger=logger,
                         )
-                        app_conf.llm.models = mm
-                        app_conf.rcp.doc_type = mp
                         st.write("Succès")
                 st.rerun()
             po.divider()
@@ -765,8 +765,11 @@ def render_rcp_detail_view(
     col_left, col_right = st.columns([1, 1], gap="medium")
 
     with col_left:
-        file_path = f"{app_conf.rcp.path}/{target_filename}"
-        if os.path.exists(file_path):
+        try:
+            file_path = safe_path(app_conf.rcp.path, target_filename)
+        except UnsafePathError:
+            file_path = None
+        if file_path is not None and os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 st.download_button(
                     f"⏬ Télécharger PDF ({target_filename})",
@@ -785,7 +788,7 @@ def render_rcp_detail_view(
                 key=f"pdf_viewer_{section_key}_{target_filename}",
             )
         else:
-            st.error(f"Fichier introuvable: {file_path}")
+            st.error(f"Fichier introuvable : {target_filename}")
 
     with col_right:
         tab_data, tab_chat, tab_preview = st.tabs(
@@ -1071,25 +1074,31 @@ if st.session_state["power"]:
         st.rerun()
     if c_btn2.button(
         "🧹 Tout vider",
-        help="Vider tout le cache des documents",
+        help="Vider tout le cache des documents (administrateurs)",
         width="stretch",
+        disabled=not st.session_state.get("is_admin", False),
     ):
         from src.infrastructure.documents.mongodb import Mongodb
 
         client = Mongodb(app_conf)
-        client.delete_document_cache()
+        client.delete_document_cache(clear_all=True)
         client.close()
         st.toast("Tout le cache document a été vidé", icon="🧹")
         st.rerun()
+
+# `?file=` is user-controlled: reject anything that is not a plain file name
+# (path traversal such as `../../etc/passwd`) before any filesystem access.
+_raw_file_param = st.query_params.get("file")
+if _raw_file_param is not None and not is_safe_filename(_raw_file_param):
+    logger.warning("Rejected unsafe 'file' query parameter")
+    del st.query_params["file"]
+    st.error("Nom de fichier invalide.")
+    st.stop()
 
 if "patient_id" in st.query_params or "file" in st.query_params:
     form()
 else:
     st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
-
-if "reader" in st.session_state:
-    del st.session_state["reader"]
-    st.session_state["reader"] = None
 
 if db_client is not None:
     db_client.close()

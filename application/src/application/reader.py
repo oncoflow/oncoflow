@@ -33,6 +33,7 @@ import threading
 from langchain_docling.loader import MetaExtractor
 
 from src.application.config import AppConfig
+from src.application.paths import safe_path
 from src.application.tools import timed
 
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
@@ -134,9 +135,9 @@ class DocumentReader:
         self.current_model = None
 
         if document_type == "mtd":
-            self.document_path = f"{config.rcp.path}/{document}"
+            self.document_path = str(safe_path(config.rcp.path, document))
         elif document_type == "ressource":
-            self.document_path = f"{config.rcp.additional_path}/{document}"
+            self.document_path = str(safe_path(config.rcp.additional_path, document))
         else:
             raise ValueError(f"{document_type} not yet supported")
 

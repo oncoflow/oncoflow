@@ -270,3 +270,101 @@ class TestOncowflowAgent(unittest.TestCase):
         result = agent.ask("Summarize patient history")
         self.assertEqual(result, self.output_format(**expected_dict))
         mock_patient_context_cls.assert_called_once()
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_prefers_final_ai_message(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        intermediate = AIMessage(content=json.dumps({"response": "draft"}))
+        final = AIMessage(content=json.dumps({"response": "final"}))
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("q"), intermediate, ToolMessage("t"), final]
+        }
+
+        result = agent.ask("My question")
+        self.assertEqual(result, self.output_format(response="final"))
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_retry_prompt_is_bounded_and_keeps_question(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        huge_tool_output = "PATIENT RECORD " * 10_000
+        invalid = AIMessage(content='{"wrong_field": "' + "x" * 50_000 + '"}')
+        valid = AIMessage(content=json.dumps({"response": "ok"}))
+        mock_agent_executor.invoke.side_effect = [
+            {"messages": [HumanMessage("q"), ToolMessage(huge_tool_output), invalid]},
+            {"messages": [HumanMessage("q"), valid]},
+        ]
+
+        result = agent.ask("Original clinical question")
+
+        self.assertEqual(result, self.output_format(response="ok"))
+        self.assertEqual(mock_agent_executor.invoke.call_count, 2)
+        retry_prompt = mock_agent_executor.invoke.call_args_list[1].args[0]["messages"][
+            0
+        ]["content"]
+        # The original task is preserved...
+        self.assertIn("Original clinical question", retry_prompt)
+        # ...but neither tool outputs nor the full invalid answer are replayed.
+        self.assertNotIn("PATIENT RECORD", retry_prompt)
+        max_len = (
+            OncowflowAgent.RETRY_MAX_OUTPUT_CHARS
+            + OncowflowAgent.RETRY_MAX_ERROR_CHARS
+            + 1000
+        )
+        self.assertLess(len(retry_prompt), max_len)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_failure_message_does_not_dump_tool_outputs(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("q"), ToolMessage("SECRET PATIENT DATA")]
+        }
+
+        with self.assertRaises(ValueError) as cm:
+            agent.ask("My question")
+
+        self.assertNotIn("SECRET PATIENT DATA", str(cm.exception))
+
+    def test_extract_json_str_repairs_common_llm_malformations(self):
+        from src.application.agent.agent import extract_json_str
+
+        # Trailing comma + single quotes + unclosed brace repaired by json-repair
+        for raw in (
+            '```json\n{"response": "trailing comma",}\n```',
+            "{'response': 'single quotes'}",
+            '{"response": "unclosed object"',
+        ):
+            repaired = extract_json_str(raw)
+            parsed = self.output_format.model_validate_json(repaired)
+            self.assertTrue(parsed.response)

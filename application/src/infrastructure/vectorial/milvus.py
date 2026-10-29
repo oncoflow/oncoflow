@@ -92,6 +92,7 @@ class MilvusDB(VectorialDataBase):
         self.token = config.milvus.token
         self.database = config.milvus.database
         retry = 3
+        last_error: Exception | None = None
         for r in range(retry):
             try:
                 connections.connect(
@@ -108,15 +109,20 @@ class MilvusDB(VectorialDataBase):
                         db.using_database(self.database, using="default")
                     except Exception:
                         pass
+                    last_error = None
                     break
 
                 except MilvusException as e:
+                    last_error = e
                     self.logger.error(f"An error occurred: {e}")
             except MilvusException as e:
+                last_error = e
                 self.logger.info(
                     f"Milvus still starting ({config.milvus.host}:{config.milvus.port}), waiting... ({r + 1}/{retry}): {e}"
                 )
                 time.sleep(5)
+        if last_error is not None:
+            raise last_error
 
     def get_embedding(self):
         return self.llm_embeddings
