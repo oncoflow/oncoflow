@@ -29,10 +29,11 @@ dependencies = [
     "pymupdf>=1.28.2",
     "pymongo>=4.19.0",
     "python-slugify>=9.1.2",
-    "sentence-transformers>=5.5.1",
     "streamlit>=1.66.0",
     "streamlit-authenticator>=0.4.2",
     "streamlit-pdf-viewer>=0.0.29",
+    "torch",
+    "torchvision",
     "unstructured[pdf]>=0.27.27",
     "protobuf<8.0.0",
     "langchain>=1.4.6",
@@ -48,6 +49,19 @@ dependencies = [
 override-dependencies = [
     "pillow>=13.0.0",
     "filelock>=4.2.1",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cpu", marker = "sys_platform == 'linux'" },
 ]
 
 [dependency-groups]
