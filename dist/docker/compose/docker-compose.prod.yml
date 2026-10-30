@@ -57,6 +57,7 @@ services:
   mongod:
     image: mongodb/mongodb-community-server:9.0-ubuntu2204
     container_name: oncoflow-mongod
+    oom_score_adj: 200
     restart: unless-stopped
     logging: *default-logging
     entrypoint:
