@@ -259,7 +259,7 @@ def translate_domain_fr(domain: str) -> str:
 def get_icon_svg() -> str:
     """
     Génère l'icône d'application DataSyntis (favicon et raccourci bureau hospitalier) :
-    assemblage géométrique ordonné, croisement pluridisciplinaire et point de focalisation central.
+    feuillets documentaires superposés, lignes de synthèse structurées et pastille de validation clinique.
     """
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">\n'
@@ -278,15 +278,18 @@ def get_icon_svg() -> str:
         "    </linearGradient>\n"
         "  </defs>\n"
         '  <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#dsSlate)" stroke="#334155" stroke-width="2" />\n'
-        "  <!-- Assemblage ordonné : 4 faisceaux documentaires convergeant vers le centre -->\n"
-        '  <rect x="20" y="22" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
-        '  <rect x="46" y="64" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
-        '  <rect x="64" y="20" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
-        '  <rect x="22" y="46" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
-        "  <!-- Cadre de synthèse et point de focalisation clinique (Rose) -->\n"
-        '  <rect x="36" y="36" width="28" height="28" rx="6" fill="none" stroke="#F8FAFC" stroke-width="2.5" opacity="0.9" />\n'
-        '  <circle cx="50" cy="50" r="6.5" fill="#D94668" />\n'
-        '  <circle cx="50" cy="50" r="2.5" fill="#FFF1F2" />\n'
+        "  <!-- Feuillet documentaire consolidé en arrière-plan (Sarcelle) -->\n"
+        '  <rect x="18" y="16" width="46" height="58" rx="8" fill="url(#dsTeal)" opacity="0.82" />\n'
+        "  <!-- Fiche de synthèse clinique au premier plan -->\n"
+        '  <rect x="28" y="24" width="48" height="58" rx="8" fill="#F8FAFC" stroke="url(#dsTeal)" stroke-width="2.5" />\n'
+        '  <rect x="35" y="33" width="24" height="5.5" rx="2.75" fill="url(#dsTeal)" />\n'
+        '  <circle cx="66.5" cy="35.75" r="3" fill="#D94668" />\n'
+        '  <rect x="35" y="44" width="34" height="4.5" rx="2.25" fill="#64748B" />\n'
+        '  <rect x="35" y="53" width="28" height="4.5" rx="2.25" fill="#64748B" />\n'
+        '  <rect x="35" y="62" width="20" height="4.5" rx="2.25" fill="#94A3B8" />\n'
+        "  <!-- Pastille de validation et conformité RCP (Sauge / Vert) -->\n"
+        '  <circle cx="70" cy="68" r="13" fill="url(#dsSage)" stroke="#1E293B" stroke-width="2.5" />\n'
+        '  <path d="M64.5 68 L68.5 72 L76 64" fill="none" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />\n'
         "</svg>"
     )
 
@@ -313,19 +316,21 @@ def get_logo_svg(domain: str) -> str:
         '      <stop offset="100%" stop-color="#4A857F" />\n'
         "    </linearGradient>\n"
         '    <linearGradient id="dsSage" x1="0%" y1="0%" x2="100%" y2="100%">\n'
-        '      <stop offset="0%" stop-color="#84A98C" />\n'
-        '      <stop offset="100%" stop-color="#52796F" />\n'
+        '      <stop offset="0%" stop-color="#68A38E" />\n'
+        '      <stop offset="100%" stop-color="#437A68" />\n'
         "    </linearGradient>\n"
         "  </defs>\n"
         '  <g transform="translate(2, 3)">\n'
         '    <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#dsSlate)" stroke="#475569" stroke-width="2" />\n'
-        '    <rect x="20" y="22" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
-        '    <rect x="46" y="64" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
-        '    <rect x="64" y="20" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
-        '    <rect x="22" y="46" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
-        '    <rect x="36" y="36" width="28" height="28" rx="6" fill="none" stroke="#F8FAFC" stroke-width="2.5" opacity="0.9" />\n'
-        '    <circle cx="50" cy="50" r="6.5" fill="#D94668" />\n'
-        '    <circle cx="50" cy="50" r="2.5" fill="#FFF1F2" />\n'
+        '    <rect x="18" y="16" width="46" height="58" rx="8" fill="url(#dsTeal)" opacity="0.82" />\n'
+        '    <rect x="28" y="24" width="48" height="58" rx="8" fill="#F8FAFC" stroke="url(#dsTeal)" stroke-width="2.5" />\n'
+        '    <rect x="35" y="33" width="24" height="5.5" rx="2.75" fill="url(#dsTeal)" />\n'
+        '    <circle cx="66.5" cy="35.75" r="3" fill="#D94668" />\n'
+        '    <rect x="35" y="44" width="34" height="4.5" rx="2.25" fill="#64748B" />\n'
+        '    <rect x="35" y="53" width="28" height="4.5" rx="2.25" fill="#64748B" />\n'
+        '    <rect x="35" y="62" width="20" height="4.5" rx="2.25" fill="#94A3B8" />\n'
+        '    <circle cx="70" cy="68" r="13" fill="url(#dsSage)" stroke="#1E293B" stroke-width="2.5" />\n'
+        '    <path d="M64.5 68 L68.5 72 L76 64" fill="none" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />\n'
         "  </g>\n"
         f'  <text x="112" y="{brand_y}" font-family="\'Inter\', \'Segoe UI\', \'Helvetica Neue\', Arial, sans-serif" font-size="52" font-weight="800" letter-spacing="-1">\n'
         '    <tspan fill="#E2E8F0">Data</tspan><tspan fill="#72A8A2">Syntis</tspan>\n'

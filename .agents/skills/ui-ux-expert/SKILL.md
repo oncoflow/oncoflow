@@ -47,8 +47,8 @@ Configured in `application/.streamlit/config.toml` (with automatic Light & Dark 
 
 ### C. Logotype & Application Icon
 - Defined in `src/ui/patient_mdt/translations.py` (`get_logo_svg()`, `get_icon_svg()`) and `application/static/icon.svg`:
-  - **Wordmark**: Strong `sans-serif` typography pairing `Data` (slate) and `Syntis` (teal) with an uppercase domain subtitle (`ONCOLOGIE`, `AMYOTROPHIE SPINALE (SMA)`, etc.).
-  - **App Icon / Favicon / Desktop Shortcut**: Rounded dark-slate square (`#1E293B`) featuring 4 converging teal/sage document beams (`#14B8A6`, `#6B9080`) that cross and assemble around a central rose focal point (`#E11D48`), evoking **document crossing, ordered assembly, and clinical focalization**.
+  - **Wordmark**: Strong `sans-serif` typography pairing `Data` (slate) and `Syntis` (muted mineral teal) with a French domain subtitle (`- Oncologie`, `- Amyotrophie spinale`, etc.).
+  - **App Icon / Favicon / Desktop Shortcut**: Rounded dark-slate square (`#1E293B`) featuring a layered teal dossier sheet in the background (`#72A8A2`), a crisp front clinical synthesis card (`#F8FAFC`) with structured horizontal data lines, a teal header bar + rose priority indicator dot (`#D94668`), and a bottom-right **sage-green** validation badge (`#68A38E` / `#437A68`) with a white checkmark (`#F8FAFC`), evoking **multi-document consolidation, structured synthesis, and validated RCP readiness** (never place a checkmark on a red/rose background).
 
 ---
 

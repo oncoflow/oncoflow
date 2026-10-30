@@ -396,6 +396,9 @@ def display_as_cards(
                     else:
                         st.caption("**Expertise requise :** Non qualifiée")
 
+                    # Push footer elements (missing items expander + action buttons) to the bottom of the card
+                    st.space("stretch")
+
                     # Missing items
                     if item["missing"]:
                         with st.expander(
@@ -410,7 +413,7 @@ def display_as_cards(
                         if is_patient_section
                         else item["file"]
                     )
-                    b1, b2 = st.columns([3, 1])
+                    b1, b2 = st.columns([3, 1], vertical_alignment="bottom")
                     with b1:
                         st.link_button(
                             "👁️ Consulter le dossier",
