@@ -372,11 +372,41 @@ def apply_card_surface_style() -> None:
             margin-top: 0 !important;
             font-size: 1.85rem !important;
         }
-        img[data-testid="stLogo"],
-        div[data-testid="stSidebarHeader"] img {
-            height: 3.25rem !important;
-            max-height: 3.25rem !important;
+        div[data-testid="stSidebarHeader"] {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            gap: 0.35rem !important;
+        }
+        div[data-testid="stSidebarHeader"] img[data-testid="stLogo"] {
+            height: 2.85rem !important;
+            max-height: 2.85rem !important;
+            max-width: calc(100% - 2.5rem) !important;
             width: auto !important;
+            object-fit: contain !important;
+        }
+        header[data-testid="stHeader"] img[data-testid="stLogo"] {
+            height: 2.15rem !important;
+            max-height: 2.15rem !important;
+            width: auto !important;
+        }
+        div[data-testid="stSidebarCollapseButton"] {
+            visibility: visible !important;
+            display: inline-flex !important;
+            flex-shrink: 0 !important;
+        }
+        div[data-testid="stSidebarCollapseButton"] button,
+        button[data-testid="stExpandSidebarButton"] {
+            visibility: visible !important;
+            pointer-events: auto !important;
+            border: 1px solid rgba(148, 163, 184, 0.35) !important;
+            border-radius: 0.375rem !important;
+            background-color: rgba(15, 23, 42, 0.25) !important;
+        }
+        div[data-testid="stSidebarCollapseButton"] button:hover,
+        button[data-testid="stExpandSidebarButton"]:hover {
+            border-color: #72A8A2 !important;
+            background-color: rgba(114, 168, 162, 0.22) !important;
         }
         div.stApp div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"]:not([class*="st-key-clinical_scroll_"]),
         div.stApp div[data-testid="stVerticalBlockBorderWrapper"]:not([class*="st-key-clinical_scroll_"]),

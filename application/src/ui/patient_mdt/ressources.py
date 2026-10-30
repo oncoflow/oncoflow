@@ -192,58 +192,68 @@ else:
             col_doc = st.container(key="clinical_scroll_res_doc")
 
         with col_doc:
-            tab_pdf, tab_markdown, tab_chunks = st.tabs(
-                [
-                    "📄 Aperçu PDF",
-                    "📝 Format Markdown",
-                    "🧱 Blocs vectoriels (Chunks)",
-                ]
-            )
+            if st.session_state.get("power"):
+                tab_pdf, tab_markdown, tab_chunks = st.tabs(
+                    [
+                        "📄 Aperçu PDF",
+                        "📝 Format Markdown",
+                        "🧱 Blocs vectoriels (Chunks)",
+                    ]
+                )
 
-            with tab_pdf:
+                with tab_pdf:
+                    if selected_resource.lower().endswith(".pdf"):
+                        pdf_viewer(file_path, height=800)
+                    else:
+                        st.info("Aperçu PDF non disponible pour ce type de fichier.")
+
+                with tab_markdown:
+                    with st.spinner("Génération de l'aperçu Markdown..."):
+                        try:
+                            markdown_content, _ = get_resource_preview(
+                                selected_resource, app_conf.rcp.doc_type
+                            )
+                            if markdown_content:
+                                with st.container(height=750, border=True):
+                                    st.markdown(markdown_content)
+                            else:
+                                st.warning(
+                                    "Aucun contenu Markdown disponible pour cette ressource."
+                                )
+                        except Exception as e:
+                            st.error(f"Erreur lors de la génération du Markdown : {e}")
+
+                with tab_chunks:
+                    with st.spinner("Génération de l'aperçu des chunks..."):
+                        try:
+                            _, chunks = get_resource_preview(
+                                selected_resource, app_conf.rcp.doc_type
+                            )
+                            if chunks:
+                                st.success(
+                                    f"{len(chunks)} chunks trouvés.",
+                                    icon=":material/check_circle:",
+                                )
+                                with st.container(height=700, border=True):
+                                    for i, chunk in enumerate(chunks):
+                                        st.markdown(f"**Chunk #{i + 1}**")
+                                        st.write(chunk["page_content"])
+                                        if chunk["metadata"]:
+                                            with st.expander(
+                                                "Métadonnées", expanded=False
+                                            ):
+                                                st.json(chunk["metadata"])
+                            else:
+                                st.warning(
+                                    "Aucun chunk disponible pour cette ressource."
+                                )
+                        except Exception as e:
+                            st.error(f"Erreur lors de la génération des chunks : {e}")
+            else:
                 if selected_resource.lower().endswith(".pdf"):
                     pdf_viewer(file_path, height=800)
                 else:
                     st.info("Aperçu PDF non disponible pour ce type de fichier.")
-
-            with tab_markdown:
-                with st.spinner("Génération de l'aperçu Markdown..."):
-                    try:
-                        markdown_content, _ = get_resource_preview(
-                            selected_resource, app_conf.rcp.doc_type
-                        )
-                        if markdown_content:
-                            with st.container(height=750, border=True):
-                                st.markdown(markdown_content)
-                        else:
-                            st.warning(
-                                "Aucun contenu Markdown disponible pour cette ressource."
-                            )
-                    except Exception as e:
-                        st.error(f"Erreur lors de la génération du Markdown : {e}")
-
-            with tab_chunks:
-                with st.spinner("Génération de l'aperçu des chunks..."):
-                    try:
-                        _, chunks = get_resource_preview(
-                            selected_resource, app_conf.rcp.doc_type
-                        )
-                        if chunks:
-                            st.success(
-                                f"{len(chunks)} chunks trouvés.",
-                                icon=":material/check_circle:",
-                            )
-                            with st.container(height=700, border=True):
-                                for i, chunk in enumerate(chunks):
-                                    st.markdown(f"**Chunk #{i + 1}**")
-                                    st.write(chunk["page_content"])
-                                    if chunk["metadata"]:
-                                        with st.expander("Métadonnées", expanded=False):
-                                            st.json(chunk["metadata"])
-                        else:
-                            st.warning("Aucun chunk disponible pour cette ressource.")
-                    except Exception as e:
-                        st.error(f"Erreur lors de la génération des chunks : {e}")
 
         if chat_active:
             with col_chat:

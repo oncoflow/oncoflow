@@ -52,6 +52,7 @@ st.set_page_config(
     page_title=app_title,
     page_icon="static/icon.svg",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 apply_card_surface_style()
 

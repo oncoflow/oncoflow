@@ -2085,14 +2085,18 @@ def render_rcp_detail_view(
         if data:
             render_clinical_summary_card(data, patient_rcps=patient_rcps)
 
-        tab_clinical, tab_decision, tab_chat, tab_preview = st.tabs(
-            [
-                "🩺 Dossier clinique",
-                "⚖️ Avis & Décision RCP",
-                "💬 Assistant IA",
-                "📄 Texte & Chunks",
-            ]
-        )
+        is_power = bool(st.session_state.get("power"))
+        tab_titles = [
+            "🩺 Dossier clinique",
+            "⚖️ Avis & Décision RCP",
+            "💬 Assistant IA",
+        ]
+        if is_power:
+            tab_titles.append("📄 Texte & Chunks")
+
+        rendered_tabs = st.tabs(tab_titles)
+        tab_clinical, tab_decision, tab_chat = rendered_tabs[:3]
+        tab_preview = rendered_tabs[3] if is_power else None
 
         with tab_clinical:
             with st.container(
@@ -2148,57 +2152,58 @@ def render_rcp_detail_view(
                     current_filename=target_filename,
                 )
 
-        with tab_preview:
-            preview_mode = st.segmented_control(
-                "Format d'aperçu",
-                options=["Format Markdown", "Découpage vectoriel (Chunks)"],
-                default="Format Markdown",
-                width="stretch",
-                key=f"preview_mode_{section_key}_{target_filename}",
-            )
-            with st.container(height=700, border=True):
-                if preview_mode == "Découpage vectoriel (Chunks)":
-                    st.subheader("Aperçu des blocs vectoriels (Chunks)")
-                    with st.spinner("Chargement des chunks..."):
-                        reader = get_mtd_reader(target_filename)
-                        chunked_docs = (
-                            reader.chunked_documents
-                            if hasattr(reader, "chunked_documents")
-                            else None
-                        )
-
-                        if chunked_docs:
-                            st.success(
-                                f"{len(chunked_docs)} chunks de document trouvés.",
-                                icon=":material/check_circle:",
+        if tab_preview is not None:
+            with tab_preview:
+                preview_mode = st.segmented_control(
+                    "Format d'aperçu",
+                    options=["Format Markdown", "Découpage vectoriel (Chunks)"],
+                    default="Format Markdown",
+                    width="stretch",
+                    key=f"preview_mode_{section_key}_{target_filename}",
+                )
+                with st.container(height=700, border=True):
+                    if preview_mode == "Découpage vectoriel (Chunks)":
+                        st.subheader("Aperçu des blocs vectoriels (Chunks)")
+                        with st.spinner("Chargement des chunks..."):
+                            reader = get_mtd_reader(target_filename)
+                            chunked_docs = (
+                                reader.chunked_documents
+                                if hasattr(reader, "chunked_documents")
+                                else None
                             )
-                            for i, doc in enumerate(chunked_docs):
-                                st.markdown(f"**Chunk #{i + 1}**")
-                                st.write(doc.page_content)
-                                if doc.metadata:
-                                    with st.expander(
-                                        "Afficher les métadonnées", expanded=False
-                                    ):
-                                        st.json(doc.metadata)
-                        else:
-                            st.warning(
-                                "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA."
-                            )
-                else:
-                    st.subheader("Aperçu au format Markdown")
-                    with st.spinner("Chargement du Markdown..."):
-                        reader = get_mtd_reader(target_filename)
-                        markdown = (
-                            reader.markdown_exporter[0].page_content
-                            if hasattr(reader, "markdown_exporter")
-                            and reader.markdown_exporter
-                            else None
-                        )
 
-                        if markdown:
-                            st.markdown(markdown)
-                        else:
-                            st.warning("Aucun contenu au format Markdown.")
+                            if chunked_docs:
+                                st.success(
+                                    f"{len(chunked_docs)} chunks de document trouvés.",
+                                    icon=":material/check_circle:",
+                                )
+                                for i, doc in enumerate(chunked_docs):
+                                    st.markdown(f"**Chunk #{i + 1}**")
+                                    st.write(doc.page_content)
+                                    if doc.metadata:
+                                        with st.expander(
+                                            "Afficher les métadonnées", expanded=False
+                                        ):
+                                            st.json(doc.metadata)
+                            else:
+                                st.warning(
+                                    "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA."
+                                )
+                    else:
+                        st.subheader("Aperçu au format Markdown")
+                        with st.spinner("Chargement du Markdown..."):
+                            reader = get_mtd_reader(target_filename)
+                            markdown = (
+                                reader.markdown_exporter[0].page_content
+                                if hasattr(reader, "markdown_exporter")
+                                and reader.markdown_exporter
+                                else None
+                            )
+
+                            if markdown:
+                                st.markdown(markdown)
+                            else:
+                                st.warning("Aucun contenu au format Markdown.")
 
 
 def form():
