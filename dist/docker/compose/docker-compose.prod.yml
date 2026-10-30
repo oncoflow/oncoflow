@@ -90,7 +90,7 @@ services:
       - search-community
 
   # ─── LLM Raisonnement sur GPU NVIDIA L4 (24 Go VRAM) ─────────────────────────
-  # Modèle : Qwen3.6-35B-A3B-UD-IQ4_NL (~18.5 Go poids + ~1.5 Go KV cache q4_0)
+  # Modèle : Ornith-1.5-35B-A3B-IQ4_XS (~19.3 Go poids + ~1.5 Go KV cache q4_0)
   llama-cpp-chat:
     image: ghcr.io/ggml-org/llama.cpp:server-cuda12
     container_name: llama-cpp-chat-server
@@ -123,10 +123,10 @@ services:
         rm -rf /usr/local/cuda*/compat && ldconfig 2>/dev/null || true
         SERVER_BIN="/app/llama-server"
         [ -x "$$SERVER_BIN" ] || SERVER_BIN="llama-server"
-        if [ -f "/models/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf" ]; then
-          MODEL_ARGS="-m /models/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf"
+        if [ -f "/models/Ornith-1.5-35B-A3B-IQ4_XS.gguf" ]; then
+          MODEL_ARGS="-m /models/Ornith-1.5-35B-A3B-IQ4_XS.gguf"
         else
-          MODEL_ARGS="-hf unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-IQ4_NL"
+          MODEL_ARGS="-hf bartowski/Ornith-1.5-35B-A3B-GGUF:IQ4_XS"
         fi
         exec $$SERVER_BIN $$MODEL_ARGS "$$@"
       - --
@@ -154,15 +154,15 @@ services:
       - "-np"
       - "1"
       - "--temp"
-      - "1.0"
+      - "0.6"
       - "--top-p"
       - "0.95"
       - "--top-k"
-      - "40"
+      - "20"
       - "--min-p"
       - "0"
       - "--presence-penalty"
-      - "2.0"
+      - "1.5"
       - "--repeat-penalty"
       - "1.0"
       - "--jinja"

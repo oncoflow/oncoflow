@@ -29,8 +29,8 @@ COMPOSE_DEV := dist/docker/compose/docker-compose.yml
 COMPOSE_PROD := dist/docker/compose/docker-compose.prod.yml
 DEV_VOLUME_DIR ?= $(CURDIR)/dist/docker/compose/volumes
 MODELS_DIR := dist/docker/compose/volumes/models
-CHAT_MODEL_URL := https://huggingface.co/unsloth/Qwen3.6-35B-A3B-MTP-GGUF/resolve/main/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf
-CHAT_MODEL_FILE := $(MODELS_DIR)/Qwen3.6-35B-A3B-UD-IQ4_NL.gguf
+CHAT_MODEL_URL := https://huggingface.co/bartowski/Ornith-1.5-35B-A3B-GGUF/resolve/main/Ornith-1.5-35B-A3B-IQ4_XS.gguf
+CHAT_MODEL_FILE := $(MODELS_DIR)/Ornith-1.5-35B-A3B-IQ4_XS.gguf
 EMBED_MODEL_URL := https://huggingface.co/gpustack/bge-m3-GGUF/resolve/main/bge-m3-Q4_K_M.gguf
 EMBED_MODEL_FILE := $(MODELS_DIR)/bge-m3-Q4_K_M.gguf
 
@@ -43,7 +43,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-worker start-ui-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui worker ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
+.PHONY: help install upgrade start-api start-ui start-worker start-ui-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui worker ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -63,7 +63,7 @@ help:
 	@echo -e "  $(YELLOW)make init-prod$(RESET)           Initialise l'environnement prod (sudoers, .env.prod, volumes, logrotate, modèles)"
 	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
 	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/meddatasyntis)"
-	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Qwen3.6-35B-A3B (IQ4_NL) et bge-m3 (Q4_K_M)"
+	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Ornith-1.5-35B-A3B (IQ4_XS) et bge-m3 (Q4_K_M)"
 	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre toute la stack prod (Milvus, Mongo, LLM L4, UIs Oncology & SMA, OAuth2, Caddy)"
 	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Arrête tous les conteneurs de la stack prod"
 	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre UIs (Oncology & SMA) + OAuth2 Proxy + Caddy (sans décharger le LLM)"
@@ -121,7 +121,7 @@ start-ui:
 start-worker: start-api
 
 ## Démarre Streamlit UI et le Worker IA connectés au proxy GCP Cloud Run avec l'infrastructure Docker en mode proxy
-start-ui-dev: docker-up-proxy cloudrun-proxy
+start-ui-dev: cloudrun-proxy docker-up-proxy
 	@echo -e "$(CYAN)--> Vérification de la disponibilité du serveur llama.cpp (Cloud Run)...$(RESET)"
 	@READY=0; \
 	for i in {1..30}; do \
@@ -144,13 +144,21 @@ start-ui-dev: docker-up-proxy cloudrun-proxy
 	APP_CONFIGLLM_URL=http://127.0.0.1 \
 	$(MAKE) start-ui
 
-## Lance le proxy Cloud Run en arrière-plan (ou le réutilise s'il est déjà actif)
+## Lance le proxy Cloud Run en arrière-plan (ou le réutilise s'il est déjà actif) après vérification du login GCP
 cloudrun-proxy:
+	@echo -e "$(CYAN)--> Vérification de l'authentification GCP (gcloud)...$(RESET)"
+	@if ! $(GCLOUD) auth print-access-token --quiet >/dev/null 2>&1; then \
+		echo -e "  [$(YELLOW)AUTH$(RESET)] Session GCP expirée ou absente. Lancement de 'gcloud auth login'..."; \
+		pkill -f "[g]cloud.*run.*services.*proxy" 2>/dev/null || true; \
+		$(GCLOUD) auth login || { echo -e "  [$(RED)ERREUR$(RESET)] Échec de l'authentification GCP."; exit 1; }; \
+	else \
+		echo -e "  [$(GREEN)OK$(RESET)] Authentification GCP valide."; \
+	fi
 	@if ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
 		echo -e "  [$(GREEN)OK$(RESET)] Proxy Cloud Run déjà actif sur le port $(CLOUDRUN_PORT)"; \
 	else \
 		echo -e "$(CYAN)--> Lancement du proxy Cloud Run vers $(CLOUDRUN_SERVICE) sur le port $(CLOUDRUN_PORT) en arrière-plan...$(RESET)"; \
-		nohup $(GCLOUD) run services proxy $(CLOUDRUN_SERVICE) --port=$(CLOUDRUN_PORT) > /tmp/oncoflow-cloudrun-proxy.log 2>&1 & \
+		nohup $(GCLOUD) run services proxy $(CLOUDRUN_SERVICE) --port=$(CLOUDRUN_PORT) --quiet > /tmp/oncoflow-cloudrun-proxy.log 2>&1 & \
 		echo -n "  Attente de la disponibilité du proxy"; \
 		for i in {1..15}; do \
 			if ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
@@ -161,7 +169,8 @@ cloudrun-proxy:
 			sleep 1; \
 		done; \
 		if ! ss -tlnp 2>/dev/null | grep -q ":$(CLOUDRUN_PORT) "; then \
-			echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le proxy n'a pas encore répondu sur le port $(CLOUDRUN_PORT). Logs : /tmp/oncoflow-cloudrun-proxy.log"; \
+			echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le proxy n'a pas encore répondu sur le port $(CLOUDRUN_PORT). Logs (/tmp/oncoflow-cloudrun-proxy.log) :"; \
+			cat /tmp/oncoflow-cloudrun-proxy.log 2>/dev/null || true; \
 		fi; \
 	fi
 
@@ -179,6 +188,7 @@ api: start-api
 ui: start-ui
 worker: start-worker
 ui-dev: start-ui-dev
+start-dev: start-ui-dev
 start: start-ui
 proxy: cloudrun-proxy
 proxy-stop: cloudrun-proxy-stop
@@ -373,7 +383,7 @@ logrotate-prod:
 		echo -e "  [$(YELLOW)INFO$(RESET)] Pour l'activer au niveau système : sudo cp $(CURDIR)/dist/docker/compose/volumes/logs/meddatasyntis.logrotate /etc/logrotate.d/meddatasyntis && sudo chmod 644 /etc/logrotate.d/meddatasyntis"; \
 	fi
 
-## Télécharge les modèles GGUF de production (Qwen3.6-35B-A3B IQ4_NL & bge-m3 Q4_K_M)
+## Télécharge les modèles GGUF de production (Ornith-1.5-35B-A3B IQ4_XS & bge-m3 Q4_K_M)
 pull-models-prod:
 	@mkdir -p "$(MODELS_DIR)"
 	@echo -e "$(CYAN)--> Vérification / téléchargement du modèle d'embeddings (bge-m3-Q4_K_M.gguf)...$(RESET)"
@@ -383,12 +393,12 @@ pull-models-prod:
 		curl -fL -C - -o "$(EMBED_MODEL_FILE).part" "$(EMBED_MODEL_URL)" && mv "$(EMBED_MODEL_FILE).part" "$(EMBED_MODEL_FILE)"; \
 		echo -e "  [$(GREEN)OK$(RESET)] Modèle d'embeddings téléchargé."; \
 	fi
-	@echo -e "$(CYAN)--> Vérification / téléchargement du modèle LLM L4 (Qwen3.6-35B-A3B-UD-IQ4_NL.gguf ~18.5 Go)...$(RESET)"
+	@echo -e "$(CYAN)--> Vérification / téléchargement du modèle LLM L4 (Ornith-1.5-35B-A3B-IQ4_XS.gguf ~19.3 Go)...$(RESET)"
 	@if [ -f "$(CHAT_MODEL_FILE)" ]; then \
 		echo -e "  [$(GREEN)OK$(RESET)] $(CHAT_MODEL_FILE) déjà présent."; \
 	else \
 		curl -fL -C - -o "$(CHAT_MODEL_FILE).part" "$(CHAT_MODEL_URL)" && mv "$(CHAT_MODEL_FILE).part" "$(CHAT_MODEL_FILE)"; \
-		echo -e "  [$(GREEN)OK$(RESET)] Modèle Qwen3.6-35B-A3B téléchargé."; \
+		echo -e "  [$(GREEN)OK$(RESET)] Modèle Ornith-1.5-35B-A3B téléchargé."; \
 	fi
 
 ## Initialise le Replica Set MongoDB (rs0) directement dans le conteneur mongod
@@ -434,12 +444,12 @@ docker-up-prod:
 
 ## Démarre toute la stack de production et attend la disponibilité des modèles LLM
 start-prod: docker-up-prod
-	@echo -e "$(CYAN)--> Vérification du chargement de Qwen3.6-35B-A3B sur le GPU L4 (port 8080)...$(RESET)"
+	@echo -e "$(CYAN)--> Vérification du chargement de Ornith-1.5-35B-A3B sur le GPU L4 (port 8080)...$(RESET)"
 	@READY=0; \
 	for i in {1..60}; do \
 		if curl -s -m 2 http://127.0.0.1:8080/health 2>/dev/null | grep -q '"status":"ok"'; then \
 			READY=1; \
-			echo -e "\n  [$(GREEN)PRÊT$(RESET)] Serveur llama.cpp Chat (Qwen3.6-35B-A3B) opérationnel sur L4."; \
+			echo -e "\n  [$(GREEN)PRÊT$(RESET)] Serveur llama.cpp Chat (Ornith-1.5-35B-A3B) opérationnel sur L4."; \
 			break; \
 		fi; \
 		if [ $$i -eq 1 ]; then \

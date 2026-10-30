@@ -11,6 +11,7 @@ usage() {
     echo "  qwen3-8b    Qwen3-8B  Q4_K_M  — ~40-50 T/s — ✅ Recommandé vitesse/qualité (dense 8B)"
     echo "  gemma4-12b  Gemma4-12B Q4_K_M — ~26 T/s — ⚠️  Limité par SWA (pas recommandé)"
     echo "  qwen3-6-moe Qwen3.6-35B-A3B IQ4_NL — ~80-120 T/s — 🚀 MoE rapide (35B total, 3B actifs)"
+    echo "  ornith-moe  Ornith-1.5-35B-A3B IQ4_XS — ~80-120 T/s — 🦅 MoE agentique (35B total, 3B actifs)"
     echo "  medgemma    MedGemma-4B-IT Q4_K_M — ~75-90 T/s — 🩺 Spécialisé médecine & oncologie (ultra-rapide)"
     echo "  qwen3-8-27b Qwen3.8-27B Q4_K_M  — ~16-18 T/s — ⚠️  Dense 27B (limité par les 300 Go/s du L4)"
     echo "  qwen3-8-flash Qwen3.8-Flash-Next UD-Q4_K_XL — ⚠️  MoE 125B (~111 Go, dépasse quota 1x L4)"
@@ -51,6 +52,11 @@ case "$MODEL" in
         SERVICE_YAML="cloud-run-service-qwen3-6-moe.yaml"
         MODEL_LABEL="Qwen3.6-35B-A3B UD-IQ4_NL + MTP (MoE)"
         LITELLM_MODEL="openai/Qwen3.6-35B-A3B-MTP-GGUF"
+        ;;
+    ornith-moe|ornith-1-5-moe|ornith)
+        SERVICE_YAML="cloud-run-service-ornith-1-5-moe.yaml"
+        MODEL_LABEL="Ornith-1.5-35B-A3B IQ4_XS (MoE)"
+        LITELLM_MODEL="openai/Ornith-1.5-35B-A3B-IQ4_XS"
         ;;
     medgemma|medgemma-4b)
         SERVICE_YAML="cloud-run-service-medgemma.yaml"

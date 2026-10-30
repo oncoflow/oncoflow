@@ -1,13 +1,13 @@
 model_list:
   - model_name: agents
     litellm_params:
-      model: openai/Qwen3.6-35B-A3B-UD-IQ4_NL
+      model: openai/Ornith-1.5-35B-A3B-IQ4_XS
       api_base: http://127.0.0.1:8080/v1
       api_key: not-needed
       drop_params: true
   - model_name: openai/agents
     litellm_params:
-      model: openai/Qwen3.6-35B-A3B-UD-IQ4_NL
+      model: openai/Ornith-1.5-35B-A3B-IQ4_XS
       api_base: http://127.0.0.1:8080/v1
       api_key: not-needed
       drop_params: true
