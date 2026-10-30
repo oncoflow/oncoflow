@@ -154,6 +154,10 @@ class QueueJob(BaseModel):
         default_factory=list,
         description="Liste des rubriques cliniques déjà traitées",
     )
+    force_replace: bool = Field(
+        default=False,
+        description="Forcer le recalcul même si la rubrique est déjà présente en base",
+    )
     total_models: int = Field(
         default=1,
         ge=1,

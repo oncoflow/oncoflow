@@ -21,7 +21,9 @@ RUN groupadd -g 1002 appuser && \
     mkdir -p /app && chown -R appuser:appuser /app /home/appuser
 
 ENV UV_PYTHON_DOWNLOADS=never
+ENV UV_NO_MANAGED_PYTHON=1
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
+ENV UV_PYTHON=/app/.venv/bin/python
 ENV UV_CACHE_DIR=/tmp/.uv-cache
 ENV HOME=/home/appuser
 

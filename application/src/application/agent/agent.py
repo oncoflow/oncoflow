@@ -221,27 +221,48 @@ class OncowflowAgent:
             if self.patient_readers
             else ""
         )
+        has_tools = bool(
+            self.patient_readers
+            or mtd is not None
+            or self.ressources
+            or additionnal_readers
+        )
+        step1_block = (
+            f"""## STEP 1 — Gather information (use tools)
+        If the required information is NOT already in your context, call the appropriate tools FIRST:
+        - Call `{mtd_tool_name}` to retrieve the full patient record text.{history_tool_instruction}
+        - Call `search_on_ressources` to search reference guidelines if needed.
+        - You MAY call tools multiple times to find all required fields.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+            if has_tools
+            else """## STEP 1 — Analyze the provided context
+        - Use strictly the information provided in the user prompt.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+        )
+
+        schema_dict = self.output_format.model_json_schema()
+        required_keys = schema_dict.get("required", [])
+        required_keys_hint = (
+            f"\n        - Your root JSON object MUST contain all required top-level keys: {required_keys} (do NOT return an isolated item from `$defs`)."
+            if required_keys
+            else ""
+        )
 
         system_prompt = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
         You are a clinical data extraction assistant operating in a live production environment.
         {self.system_prompt}
 
-        ## STEP 1 — Gather information (use tools)
-        If the required information is NOT already in your context, call the appropriate tools FIRST:
-        - Call `{mtd_tool_name}` to retrieve the full patient record text.{history_tool_instruction}
-        - Call `search_on_ressources` to search reference guidelines if needed.
-        - You MAY call tools multiple times to find all required fields.
-        - Do NOT guess, mock, or fabricate any clinical information.
+        {step1_block}
 
         ## STEP 2 — Output your final answer (JSON only)
-        Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.
+        Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.{required_keys_hint}
         - All schema keys and enum values must remain strictly in English as defined by the schema.
         - Write only free-form text fields (summaries, diagnostics, recommendations) in {self.response_language}.
         - Output ONLY the raw JSON — no markdown fences, no explanation, no code blocks.
 
         ## STEP 3 — formatting outputs
         - You MUST respond with output JSON schema:
-        {json.dumps(self.output_format.model_json_schema(), indent=2)}
+        {json.dumps(schema_dict, indent=2)}
         """
         # Configure logging for the agent
         self.logger = config.set_logger(
@@ -400,16 +421,33 @@ class OncowflowAgent:
                     logger=self.logger,
                 )
             )
-            result = self.agent.invoke(
-                {"messages": [{"role": "user", "content": question}]},
-                context=runtime_context,
-                config={
-                    "callbacks": callbacks,
-                    "tags": [self.agent_name] if self.agent_name else [],
-                }
-                if callbacks
-                else None,
-            )
+            try:
+                result = self.agent.invoke(
+                    {"messages": [{"role": "user", "content": question}]},
+                    context=runtime_context,
+                    config={
+                        "callbacks": callbacks,
+                        "tags": [self.agent_name] if self.agent_name else [],
+                    }
+                    if callbacks
+                    else None,
+                )
+            except Exception as invoke_exc:
+                validation_error = invoke_exc
+                last_failed_output = None
+                self.logger.info(
+                    "Error, previous result (attempt %d/%d) : <invoke_error> - error : %s",
+                    r + 1,
+                    retry,
+                    self._truncate(str(validation_error), 500),
+                )
+                question = self._build_correction_prompt(
+                    original_question=original_question,
+                    error=validation_error,
+                    failed_output=None,
+                )
+                continue
+
             # Extract and store the thinking process from the execution history
             self.latest_thinking = self.extract_thinking(result.get("messages", []))
 
@@ -435,8 +473,8 @@ class OncowflowAgent:
                 raw_content = self._message_text(msg.content)
                 if not raw_content.strip():
                     continue
-                strict_candidates = extract_json_candidates(
-                    raw_content, allow_repair=False
+                strict_candidates = self._prioritize_root_schema_candidates(
+                    extract_json_candidates(raw_content, allow_repair=False)
                 )
                 candidates_to_try = (
                     strict_candidates
@@ -523,6 +561,38 @@ class OncowflowAgent:
             return "".join(text_parts)
         return str(content) if content is not None else ""
 
+    def _prioritize_root_schema_candidates(self, candidates: list[str]) -> list[str]:
+        """
+        Order JSON candidate strings so objects matching the root schema's required
+        or top-level properties are tried before nested `$defs` sub-objects.
+        """
+        if (
+            len(candidates) <= 1
+            or self.output_format is None
+            or not issubclass(self.output_format, BaseModel)
+        ):
+            return candidates
+
+        schema_dict = self.output_format.model_json_schema()
+        required_keys = set(schema_dict.get("required") or [])
+        top_props = set((schema_dict.get("properties") or {}).keys())
+        if not required_keys and not top_props:
+            return candidates
+
+        def _score(cand: str) -> tuple[int, int]:
+            try:
+                parsed = json.loads(cand)
+            except Exception:
+                return (0, 0)
+            if not isinstance(parsed, dict):
+                return (0, 0)
+            keys = set(parsed.keys())
+            has_all_req = int(bool(required_keys) and required_keys.issubset(keys))
+            matched_props = len(keys & (required_keys or top_props))
+            return (has_all_req, matched_props)
+
+        return sorted(candidates, key=_score, reverse=True)
+
     @staticmethod
     def _truncate(text: str, limit: int) -> str:
         """Keep the head of `text` (JSON structure) within `limit` characters."""
@@ -544,6 +614,17 @@ class OncowflowAgent:
         previous output and the validation error are truncated so the retry fits in
         the context window of small local models (e.g. Qwen 3.6).
         """
+        is_context_exceeded = "ContextWindowExceededError" in (
+            failed_output or ""
+        ) or "ContextWindowExceededError" in str(error or "")
+        if is_context_exceeded:
+            return (
+                f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
+                f"{original_question}\n\n"
+                "IMPORTANT: The previous attempt exceeded the model context window because too many tool searches were performed. "
+                "Call `get_mtd_markdown` at most ONCE and `search_on_ressources` at most ONCE with `k=2`, then immediately output the final JSON object."
+            )
+
         error_txt = self._truncate(
             str(error) if error else "No JSON answer found.",
             self.RETRY_MAX_ERROR_CHARS,

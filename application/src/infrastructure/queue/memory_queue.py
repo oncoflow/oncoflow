@@ -343,6 +343,7 @@ class InMemoryQueueManager:
         total_expert_models: int = 3,
         start_from_wave: int | None = None,
         domain: str | None = None,
+        force_replace: bool = True,
     ) -> dict[str, Any]:
         target_domain = self._normalize_domain(domain)
         now = datetime.now()
@@ -444,6 +445,7 @@ class InMemoryQueueManager:
                     priority=int(JobPriority.WAVE3_EXPERTS_RERUN),
                     current_step="Relance de la concertation d'experts en attente",
                     total_models=max(1, total_expert_models),
+                    force_replace=force_replace,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now,
                 ).model_dump(mode="python")
@@ -462,6 +464,7 @@ class InMemoryQueueManager:
                         priority=int(JobPriority.WAVE1_ADMIN_IMPORT),
                         current_step="En attente d'identification du patient",
                         total_models=1,
+                        force_replace=force_replace,
                         max_retries=self.base_config.queue.max_retries,
                         created_at=now,
                     ).model_dump(mode="python")
@@ -481,6 +484,7 @@ class InMemoryQueueManager:
                     depends_on_job_id=depends_id,
                     current_step="Relance de l'extraction clinique en attente",
                     total_models=max(1, total_clinical_models),
+                    force_replace=force_replace,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now + timedelta(milliseconds=1),
                 ).model_dump(mode="python")
@@ -500,6 +504,7 @@ class InMemoryQueueManager:
                     depends_on_job_id=wave2_job["job_id"],
                     current_step="En attente de la concertation d'experts",
                     total_models=max(1, total_expert_models),
+                    force_replace=force_replace,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now + timedelta(milliseconds=2),
                 ).model_dump(mode="python")

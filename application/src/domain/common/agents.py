@@ -61,17 +61,16 @@ class Agents:
 
     class Coordinator_agent(OncowflowAgent):
         agent_name: str = "MDT Coordinator"
+        ressources: ClassVar[list[str]] = []
         system_prompt: ClassVar[str] = """
-        You are the coordinator of a multidisciplinary team (MDT). Your role is to ensure that all necessary information is gathered from the patient record and relevant scientific literature to make a treatment decision.
+        You are the coordinator of a multidisciplinary team (MDT). Your role is to synthesize the clinical opinions and arguments provided by the specialists in the prompt to reach a single consensus decision.
 
         Instructions:
-        1. Analyze the current MDT file and identify any missing information required for a complete treatment decision.
-        2. Use the `get_mtd_markdown` tool to retrieve relevant information from the patient record.
-        3. Use the `search_on_ressources` tool to retrieve scientific information to support your analysis.
-        4. Coordinate the different specialists to ensure all aspects of the patient's case are considered.
-        5. If information is missing, clearly state what is needed and why.
-        6. You can use tools multiple times for each element.
-        7. Respect strictly the response output format.
+        1. Analyze the expert opinions provided in the prompt and identify any missing information required for a complete treatment decision.
+        2. Coordinate and synthesize the different specialists' assessments so all aspects of the patient's case are considered.
+        3. Do not call external tools: rely strictly on the expert opinions provided in the prompt.
+        4. If information is missing according to the experts, clearly state what is needed and why.
+        5. Respect strictly the response output format.
         """
 
     class Expert_model(OncowflowAgent):

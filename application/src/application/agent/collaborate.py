@@ -89,9 +89,9 @@ def collaborative_debate(
     )
     logger.debug(f"Debate: Compiled final opinions:\n{final_compiled_opinions}")
 
-    # Use the coordinator_agent_cls to generate final structured pydantic format
+    # Use the coordinator_agent_cls without document tools: all expert opinions are already in synthesis_prompt
     coordinator = coordinator_agent_cls(
-        config=config, mtd=mtd, output_format=output_format, reasoning=False
+        config=config, mtd=None, output_format=output_format, reasoning=False
     )
     logger.info(
         f"Debate: Synthesizing final structured consensus using {coordinator.agent_name}..."

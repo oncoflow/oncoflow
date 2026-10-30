@@ -234,3 +234,69 @@ class TestAgentTools(unittest.TestCase):
 
         self.assertEqual(serialized, "No additionnal ressources provided")
         self.assertEqual(docs, [])
+
+    def test_search_on_ressources_strips_docling_dl_meta_and_pk(self):
+        """Ensure verbose Docling bbox/dl_meta and pk fields are stripped from serialized LLM context."""
+        doc = Document(
+            page_content="Risdiplam posologie et administration.",
+            metadata={
+                "pk": "7d7e66fc-d055-11f1-bab9-f28a890c7a45",
+                "source": "/app/ressources/documents/sma/amyotrophie_spinale_infantile_-_pnds.pdf",
+                "dl_meta": {
+                    "schema_name": "docling_core.transforms.chunker.DocMeta",
+                    "version": "1.0.0",
+                    "doc_items": [
+                        {
+                            "self_ref": "#/texts/374",
+                            "prov": [
+                                {
+                                    "page_no": 38,
+                                    "bbox": {
+                                        "l": 56.64,
+                                        "t": 559.8,
+                                        "r": 538.4,
+                                        "b": 511.1,
+                                        "coord_origin": "BOTTOMLEFT",
+                                    },
+                                    "charspan": [0, 333],
+                                }
+                            ],
+                        }
+                    ],
+                    "headings": ["7.2 Prise en charge thérapeutique"],
+                    "origin": {
+                        "mimetype": "application/pdf",
+                        "binary_hash": 8830968531653069611,
+                        "filename": "amyotrophie_spinale_infantile_-_pnds.pdf",
+                    },
+                },
+            },
+        )
+        self.mock_add_clientdb.max_marginal_relevance_search.return_value = [doc]
+
+        serialized, docs = search_on_ressources.func(
+            self.mock_runtime,
+            query="risdiplam",
+            k=1,
+        )
+
+        self.assertEqual(len(docs), 1)
+        self.assertNotIn("bbox", serialized)
+        self.assertNotIn("dl_meta", serialized)
+        self.assertNotIn("7d7e66fc-d055", serialized)
+        self.assertIn("amyotrophie_spinale_infantile_-_pnds.pdf", serialized)
+        self.assertIn("'page': 38", serialized)
+        self.assertIn("7.2 Prise en charge thérapeutique", serialized)
+
+    def test_search_clamps_excessive_k(self):
+        """Ensure LLM-provided excessive k values are clamped to MAX_SEARCH_K_PER_READER (4)."""
+        self.mock_add_clientdb.max_marginal_relevance_search.return_value = []
+        search_on_ressources.func(self.mock_runtime, query="sma", k=25)
+        self.mock_add_clientdb.max_marginal_relevance_search.assert_called_once_with(
+            "sma",
+            k=4,
+            fetch_k=20,
+            param=None,
+            expr=None,
+            timeout=None,
+        )

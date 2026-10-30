@@ -1008,3 +1008,83 @@ class TestPriorityQueueAndCrossDomainAPI:
             body = "".join(sse_resp.iter_text())
             assert "event: done" in body
             assert "Étape 1 du raisonnement clinique..." in body
+
+    def test_section_models_execution_order_and_incremental_wave2_checkpointing(
+        self, mock_mongo_Env
+    ):
+        from src.domain.sma.patient_mdt_sma_form import PatientMDTSmaForm
+
+        conf, mongo_client = mock_mongo_Env
+        db = mongo_client[conf.mongodb.database]
+
+        # 1. Verify section execution order: PatientAdministrative first, then factual, then ExpertAnswer, MTDCompleted, CareOrientationProposal
+        sma_models = [m.__name__ for m in PatientMDTSmaForm.get_section_models()]
+        assert sma_models[0] == "PatientAdministrative"
+        assert sma_models[-3:] == [
+            "ExpertAnswer",
+            "MTDCompleted",
+            "CareOrientationProposal",
+        ]
+
+        # 2. Verify incremental checkpointing skips already extracted factual sections when force_replace=False
+        db["rcp_info"].update_one(
+            {"file": "checkpoint_patient.pdf"},
+            {
+                "$set": {
+                    "file": "checkpoint_patient.pdf",
+                    "processing_status": RCPProcessingStatus.PENDING_CLINICAL.value,
+                    "PatientAdministrative": {
+                        "first_name": "Pauline",
+                        "last_name": "Lefebvre",
+                        "age": 12,
+                        "date_birth": "2014-01-01",
+                        "date_rcp": "2025-01-15",
+                        "gender": "Female",
+                    },
+                    "TumorLocation": {"tumor_location": "Pancreas"},
+                }
+            },
+            upsert=True,
+        )
+
+        extracted_names: list[str] = []
+
+        def _track_extract_section(
+            self_svc, form, reader, model_cls, upsert=False, callbacks=None
+        ):
+            extracted_names.append(model_cls.__name__)
+            db["rcp_info"].update_one(
+                {"file": "checkpoint_patient.pdf"},
+                {"$set": {model_cls.__name__: {"mocked": True}}},
+                upsert=True,
+            )
+
+        with (
+            patch(
+                "src.application.use_cases.queue_executor.DocumentReader",
+                return_value=MagicMock(document="checkpoint_patient.pdf"),
+            ),
+            patch.object(
+                PatientMDTFormExtractionService,
+                "extract_section",
+                new=_track_extract_section,
+            ),
+            patch("src.application.use_cases.queue_executor.unload_active_models"),
+        ):
+            manager: InMemoryQueueManager = QueueBroker(conf)._manager
+            # Startup recovery sets force_replace=False -> TumorLocation must be skipped
+            manager.recover_unfinished_from_mongodb()
+            assert manager.run_once() is True
+            assert "TumorLocation" not in extracted_names
+            assert len(extracted_names) > 0
+
+            # Explicit user rerun sets force_replace=True -> TumorLocation IS re-extracted
+            extracted_names.clear()
+            manager.clean_queue(mode="all")
+            manager.enqueue_rcp_rerun(
+                filename="checkpoint_patient.pdf",
+                model_name=None,
+                domain="oncology",
+            )
+            assert manager.run_once() is True
+            assert "TumorLocation" in extracted_names

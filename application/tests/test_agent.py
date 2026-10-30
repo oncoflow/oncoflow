@@ -422,3 +422,43 @@ class TestOncowflowAgent(unittest.TestCase):
         result = agent.ask("My question")
         self.assertEqual(result, self.output_format(response="Valid final answer"))
         mock_agent_executor.invoke.assert_called_once()
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_prioritizes_root_schema_candidates_and_handles_context_exceeded(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        class NestedItem(BaseModel):
+            title: str
+
+        class RootSchema(BaseModel):
+            expert_relevant: bool
+            reference: NestedItem | None = None
+
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=RootSchema,
+        )
+
+        # 1st attempt raises ContextWindowExceededError, 2nd attempt outputs both a root object and a trailing $defs sub-object
+        second_msg_content = (
+            '```json\n{"expert_relevant": true, "reference": {"title": "PNDS"}}\n```\n'
+            '```json\n{"title": "Isolated nested item"}\n```'
+        )
+        mock_agent_executor.invoke.side_effect = [
+            RuntimeError("litellm.ContextWindowExceededError: 78553 > 64000 tokens"),
+            {"messages": [HumanMessage("q"), AIMessage(content=second_msg_content)]},
+        ]
+
+        result = agent.ask("Evaluate expert relevance")
+        self.assertEqual(result.expert_relevant, True)
+        self.assertEqual(result.reference.title, "PNDS")
+        self.assertEqual(mock_agent_executor.invoke.call_count, 2)
+        retry_prompt = mock_agent_executor.invoke.call_args_list[1].args[0]["messages"][
+            0
+        ]["content"]
+        self.assertIn("exceeded the model context window", retry_prompt)

@@ -3,9 +3,6 @@
         reverse_proxy oauth2-proxy:4180 {
             header_up Host {host}
             header_up X-Real-IP {remote_host}
-            header_up X-Forwarded-For {remote_host}
-            header_up X-Forwarded-Proto {scheme}
-            header_up X-Forwarded-Host {host}
             header_up X-Forwarded-Uri {uri}
 
             @error500 status 500
@@ -21,9 +18,6 @@
         uri /oauth2/auth
         header_up Host {host}
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
-        header_up X-Forwarded-Host {host}
         header_up X-Forwarded-Uri {uri}
         copy_headers X-Auth-Request-User X-Auth-Request-Email X-Auth-Request-Preferred-Username
 
@@ -62,8 +56,6 @@ oncologic.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
                 header_up X-Oncoflow-Proxy-Secret {$APP_PROXY_SECRET}
                 header_up Host {host}
                 header_up X-Real-IP {remote_host}
-                header_up X-Forwarded-For {remote_host}
-                header_up X-Forwarded-Proto {scheme}
                 header_up X-Forwarded-Uri {uri}
             }
         }
@@ -89,8 +81,6 @@ sma.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
                 header_up X-Oncoflow-Proxy-Secret {$APP_PROXY_SECRET}
                 header_up Host {host}
                 header_up X-Real-IP {remote_host}
-                header_up X-Forwarded-For {remote_host}
-                header_up X-Forwarded-Proto {scheme}
                 header_up X-Forwarded-Uri {uri}
             }
         }

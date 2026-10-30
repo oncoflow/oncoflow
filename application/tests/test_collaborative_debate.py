@@ -131,6 +131,7 @@ class TestCollaborativeDebate(unittest.TestCase):
         self.assertEqual(agent1_instance.ask.call_count, 2)
         self.assertEqual(agent2_instance.ask.call_count, 2)
         coordinator_instance.ask.assert_called_once()
+        self.assertIsNone(mock_coordinator_cls.call_args.kwargs.get("mtd"))
 
         # Check synthesis prompt contains final opinions of both agents
         synthesis_prompt = coordinator_instance.ask.call_args[0][0]

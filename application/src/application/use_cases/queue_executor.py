@@ -316,6 +316,7 @@ class PatientMDTFormQueueJobExecutor:
             total = max(1, len(clinical_models))
             completed_models: list[str] = list(job.get("completed_models") or [])
             run_id = job.get("run_id")
+            is_Explicit_rerun = bool(job.get("force_replace", False))
 
             for idx, model_cls in enumerate(clinical_models, start=1):
                 if queue_manager._is_job_aborted(
@@ -323,6 +324,25 @@ class PatientMDTFormQueueJobExecutor:
                 ):
                     return
                 model_name = model_cls.__name__
+
+                # Skip sections already persisted on the form when resuming an unfinished job
+                if (
+                    not is_Explicit_rerun
+                    and model_name in service.form.sections
+                    and service.form.sections.get(model_name)
+                ):
+                    if model_name not in completed_models:
+                        completed_models.append(model_name)
+                    queue_manager.update_job_progress(
+                        job_id=job_id,
+                        current_step=f"Analyse clinique ({idx}/{total}) — {model_name} (déjà extraite)",
+                        completed_models=completed_models,
+                        progress_pct=round((idx / total) * 100.0, 1),
+                        run_id=run_id,
+                        lease_id=lease_id,
+                    )
+                    continue
+
                 thinking_cb = QueueThinkingCallbackHandler(
                     queue_manager=queue_manager,
                     job_id=job_id,
@@ -393,6 +413,7 @@ class PatientMDTFormQueueJobExecutor:
             total = max(1, len(expert_models))
             completed_models: list[str] = list(job.get("completed_models") or [])
             run_id = job.get("run_id")
+            is_Explicit_rerun = bool(job.get("force_replace", False))
 
             for idx, model_cls in enumerate(expert_models, start=1):
                 if queue_manager._is_job_aborted(
@@ -400,6 +421,25 @@ class PatientMDTFormQueueJobExecutor:
                 ):
                     return
                 model_name = model_cls.__name__
+
+                # Skip sections already persisted on the form when resuming an unfinished job
+                if (
+                    not is_Explicit_rerun
+                    and model_name in service.form.sections
+                    and service.form.sections.get(model_name)
+                ):
+                    if model_name not in completed_models:
+                        completed_models.append(model_name)
+                    queue_manager.update_job_progress(
+                        job_id=job_id,
+                        current_step=f"Concertation d'experts ({idx}/{total}) — {model_name} (déjà extraite)",
+                        completed_models=completed_models,
+                        progress_pct=round((idx / total) * 100.0, 1),
+                        run_id=run_id,
+                        lease_id=lease_id,
+                    )
+                    continue
+
                 thinking_cb = QueueThinkingCallbackHandler(
                     queue_manager=queue_manager,
                     job_id=job_id,
@@ -547,6 +587,7 @@ class PatientMDTFormQueueJobExecutor:
                             total_expert_models=expert_count,
                             domain=domain,
                             start_from_wave=3,
+                            force_replace=False,
                         )
                     else:
                         res = queue_manager.enqueue_rcp_rerun(
@@ -555,6 +596,7 @@ class PatientMDTFormQueueJobExecutor:
                             total_clinical_models=clinical_count,
                             total_expert_models=expert_count,
                             domain=domain,
+                            force_replace=False,
                         )
                     if not res.get("already_queued"):
                         recovered += 1

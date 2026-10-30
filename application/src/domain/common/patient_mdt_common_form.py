@@ -110,7 +110,8 @@ class PatientMDTForm:
     def get_section_models(cls) -> list[type[BaseModel]]:
         """
         Return all domain section Pydantic models defined on this `PatientMDTForm` subclass
-        (excluding `default_model` and `PatientMDTFormCheck`).
+        (excluding `default_model` and `PatientMDTFormCheck`), ordered from fastest
+        single-agent factual extractions to multi-agent expert evaluations and collaborative debates.
         """
         models = []
         for name, obj in inspect.getmembers(cls):
@@ -120,7 +121,24 @@ class PatientMDTForm:
                 and name not in ("default_model", "PatientMDTFormCheck")
             ):
                 models.append(obj)
-        return models
+
+        def _execution_order_key(model_cls: type[BaseModel]) -> tuple[int, int, str]:
+            name = model_cls.__name__
+            if name == "PatientAdministrative":
+                return (0, 0, name)
+            agents_count = len(getattr(model_cls, "agents", None) or [])
+            is_collab = bool(getattr(model_cls, "collaborative", False))
+            if not is_collab and agents_count <= 1:
+                # 1. Single-agent factual clinical extractions first (~7-25s each)
+                return (1, 0, name)
+            if not is_collab:
+                # 2. Multi-agent non-collaborative evaluations (e.g. ExpertAnswer)
+                return (2, agents_count, name)
+            # 3. Collaborative multi-agent debates last (MTDCompleted before CareOrientationProposal)
+            debate_rank = 0 if name == "MTDCompleted" else 1
+            return (3, debate_rank, name)
+
+        return sorted(models, key=_execution_order_key)
 
     @classmethod
     def is_expert_section_model(cls, model_cls: type[BaseModel]) -> bool:
