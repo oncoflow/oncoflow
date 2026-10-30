@@ -1,6 +1,6 @@
 import streamlit as st
 
-from src.domain.agents import Agents
+from src.domain.agents import get_domain_agents
 from src.application.reader import DocumentReader
 from src.application.config import AppConfig
 from src.ui.patient_mdt.translations import get_agent_icon_and_label
@@ -15,7 +15,7 @@ def read(ressource: str, config: AppConfig):
 
 app_conf = AppConfig()
 
-pmtd = Agents()
+pmtd = get_domain_agents(app_conf.domain)
 st.title("🩺 Modules d'expertise & Référentiels associés")
 st.caption(
     "Conformité aux recommandations : consultez les modules d'analyse spécialisés mobilisés lors de la structuration des dossiers RCP et gérez l'indexation de leurs référentiels cliniques."

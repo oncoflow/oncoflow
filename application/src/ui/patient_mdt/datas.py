@@ -25,7 +25,7 @@ from src.infrastructure.documents.repositories import (
     MongoPatientMDTFormRepository,
     MongoPatientRepository,
 )
-from src.domain.agents import Agents
+from src.domain.agents import get_domain_agents
 from src.domain.patient import Patient
 from src.domain.patient_mdt_form import PatientMDTForm, get_domain_mdt_form_cls
 from src.domain.common.common_ressources import (
@@ -479,7 +479,7 @@ def _render_chemotherapy_item(chemo: Any):
 
 
 def _render_expert_suggestion(sugg: Any, index: int):
-    """Render an ExpertSuggestion with its clinical justification and TNCD references."""
+    """Render an ExpertSuggestion with its clinical justification and guideline references."""
     d = (
         sugg
         if isinstance(sugg, ExpertSuggestion)
@@ -487,14 +487,17 @@ def _render_expert_suggestion(sugg: Any, index: int):
     )
     if d is None:
         return
+    ref_title = (
+        "Références scientifiques (TNCD)"
+        if app_conf.domain == "oncology"
+        else "Références scientifiques (PNDS / Référentiels)"
+    )
     with st.container(border=True):
         st.markdown(f"💡 **Proposition #{index} :** {d.suggestion}")
         if d.why:
             st.markdown(f"**Justification clinique :** {d.why}")
         if d.references:
-            _render_references_list(
-                d.references, title_label="Références scientifiques (TNCD)"
-            )
+            _render_references_list(d.references, title_label=ref_title)
 
 
 def render_expert_answer_model(pydantic_model: BaseModel):
@@ -1191,7 +1194,7 @@ def form_rcp_chat(filename: str, section_key: str = "rcp"):
     if messages_key not in st.session_state:
         st.session_state[messages_key] = []
 
-    agents = Agents()
+    agents = get_domain_agents(app_conf.domain)
     available_agents = agents.list
     c_sel, c_btn = st.columns([3, 2], vertical_alignment="bottom")
     with c_sel:
@@ -1308,7 +1311,7 @@ def form_dossier_chat(
     if "chat_active" not in st.session_state:
         st.session_state["chat_active"] = False
 
-    agents = Agents()
+    agents = get_domain_agents(app_conf.domain)
     available_agents = agents.list
     c_sel, c_btn = st.columns([3, 2], vertical_alignment="bottom")
     with c_sel:

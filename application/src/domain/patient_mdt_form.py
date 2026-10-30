@@ -1,3 +1,5 @@
+import os
+
 from src.domain.common.patient_mdt_common_form import (
     NonPatientMDTFormError,
     PatientMDTForm as BasePatientMDTForm,
@@ -15,7 +17,7 @@ def get_domain_mdt_form_cls(
     domain: str | None = None,
 ) -> type[BasePatientMDTForm]:
     """Return the domain-specific `PatientMDTForm` aggregate class."""
-    target = (domain or "oncology").strip().lower()
+    target = (domain or os.environ.get("APP_DOMAIN") or "oncology").strip().lower()
     if target not in _DOMAIN_MDT_FORM_MAP:
         raise ValueError(
             f"Domain '{target}' not found. Available domains: {list(_DOMAIN_MDT_FORM_MAP.keys())}"
@@ -23,7 +25,7 @@ def get_domain_mdt_form_cls(
     return _DOMAIN_MDT_FORM_MAP[target]
 
 
-PatientMDTForm = PatientMDTOncologicForm
+PatientMDTForm = get_domain_mdt_form_cls()
 
 __all__ = [
     "BasePatientMDTForm",

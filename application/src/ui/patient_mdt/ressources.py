@@ -115,7 +115,7 @@ else:
                             }
                         ]
                         with st.spinner("Initialisation de l'agent IA..."):
-                            from src.domain.agents import Agents
+                            from src.domain.agents import get_domain_agents
                             from src.application.reader import DocumentReader
 
                             reader = DocumentReader(
@@ -123,7 +123,7 @@ else:
                                 document=selected_resource,
                                 document_type="ressource",
                             )
-                            agents = Agents()
+                            agents = get_domain_agents(app_conf.domain)
                             agent_cls = agents.list["Ressource Assistant"]
                             st.session_state["agent_res"] = agent_cls(
                                 config=app_conf, additionnal_readers=[reader]

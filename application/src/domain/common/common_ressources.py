@@ -302,7 +302,7 @@ class ExpertSuggestion(BaseModel):
     why: str = Field(description="Explanation of the reasoning behind the suggestion")
 
     references: list[Reference] = Field(
-        description="list of suggestion references, including TNCD references"
+        description="list of clinical guideline references supporting the suggestion"
     )
 
 
@@ -322,5 +322,5 @@ class MTDComplete(BaseModel):
     )
 
     references: list[Reference] = Field(
-        description="list of references for missing items, including TNCD references"
+        description="list of clinical guideline references for the missing items"
     )

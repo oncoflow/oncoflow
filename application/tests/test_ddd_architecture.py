@@ -246,6 +246,12 @@ class TestPureDomainEntitiesAndValueObjects:
         assert getattr(sma_proposal_cls, "collaborative", False) is True
         assert len(onco_proposal_cls.agents) == 3
         assert len(sma_proposal_cls.agents) == 5
+        assert len(PatientMDTOncologicForm.MTDCompleted.agents) == 3
+        assert len(PatientMDTSmaForm.MTDCompleted.agents) == 5
+        for ag in PatientMDTSmaForm.MTDCompleted.agents:
+            for res_file in getattr(ag, "ressources", []):
+                assert "TNCD" not in res_file
+                assert "amyotrophie_spinale_infantile" in res_file
         assert "Time is Motoneuron" in sma_proposal_cls.question
 
         proposal = sma_proposal_cls(

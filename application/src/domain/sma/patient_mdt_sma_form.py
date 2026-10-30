@@ -194,6 +194,9 @@ class PatientMDTSmaForm(PatientMDTForm):
             You can use tools multiple times for each element and have more scientific elements.
             """
 
+    class MTDCompleted(PatientMDTForm.MTDCompleted):
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+
     class CareOrientationProposal(PatientMDTForm.CareOrientationProposal):
         """
         Pre-MDT collaborative synthesis proposing whether an initiation or adaptation
