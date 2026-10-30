@@ -344,6 +344,7 @@ class InMemoryQueueManager:
         start_from_wave: int | None = None,
         domain: str | None = None,
         force_replace: bool = True,
+        preserve_manual_edits: bool = True,
     ) -> dict[str, Any]:
         target_domain = self._normalize_domain(domain)
         now = datetime.now()
@@ -446,6 +447,7 @@ class InMemoryQueueManager:
                     current_step="Relance de la concertation d'experts en attente",
                     total_models=max(1, total_expert_models),
                     force_replace=force_replace,
+                    preserve_manual_edits=preserve_manual_edits,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now,
                 ).model_dump(mode="python")
@@ -465,6 +467,7 @@ class InMemoryQueueManager:
                         current_step="En attente d'identification du patient",
                         total_models=1,
                         force_replace=force_replace,
+                        preserve_manual_edits=preserve_manual_edits,
                         max_retries=self.base_config.queue.max_retries,
                         created_at=now,
                     ).model_dump(mode="python")
@@ -485,6 +488,7 @@ class InMemoryQueueManager:
                     current_step="Relance de l'extraction clinique en attente",
                     total_models=max(1, total_clinical_models),
                     force_replace=force_replace,
+                    preserve_manual_edits=preserve_manual_edits,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now + timedelta(milliseconds=1),
                 ).model_dump(mode="python")
@@ -505,6 +509,7 @@ class InMemoryQueueManager:
                     current_step="En attente de la concertation d'experts",
                     total_models=max(1, total_expert_models),
                     force_replace=force_replace,
+                    preserve_manual_edits=preserve_manual_edits,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now + timedelta(milliseconds=2),
                 ).model_dump(mode="python")
@@ -1705,6 +1710,7 @@ class QueueBroker:
         total_clinical_models: int = 1,
         total_expert_models: int = 3,
         start_from_wave: int | None = None,
+        preserve_manual_edits: bool = True,
     ) -> dict[str, Any]:
         if self._use_remote_api():
             try:
@@ -1716,6 +1722,7 @@ class QueueBroker:
                         "model_name": model_name,
                         "total_clinical_models": total_clinical_models,
                         "total_expert_models": total_expert_models,
+                        "preserve_manual_edits": preserve_manual_edits,
                     },
                     headers=self._auth_headers(),
                     timeout=5.0,
@@ -1732,6 +1739,7 @@ class QueueBroker:
             total_expert_models=total_expert_models,
             domain=self.domain,
             start_from_wave=start_from_wave,
+            preserve_manual_edits=preserve_manual_edits,
         )
 
     def acquire_gpu_lease(

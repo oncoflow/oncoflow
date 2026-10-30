@@ -317,6 +317,7 @@ class PatientMDTFormQueueJobExecutor:
             completed_models: list[str] = list(job.get("completed_models") or [])
             run_id = job.get("run_id")
             is_Explicit_rerun = bool(job.get("force_replace", False))
+            preserve_manual = bool(job.get("preserve_manual_edits", True))
 
             for idx, model_cls in enumerate(clinical_models, start=1):
                 if queue_manager._is_job_aborted(
@@ -325,8 +326,17 @@ class PatientMDTFormQueueJobExecutor:
                     return
                 model_name = model_cls.__name__
 
+                is_manually_edited = (
+                    preserve_manual
+                    and service.form_cls.is_section_manually_edited(
+                        service.form, model_name
+                    )
+                    and model_name in service.form.sections
+                )
+
                 # Skip sections already persisted on the form when resuming an unfinished job
-                if (
+                # or when protecting manually edited sections during a global rerun
+                if is_manually_edited or (
                     not is_Explicit_rerun
                     and model_name in service.form.sections
                     and service.form.sections.get(model_name)
@@ -359,12 +369,16 @@ class PatientMDTFormQueueJobExecutor:
                     run_id=run_id,
                     lease_id=lease_id,
                 )
+                extra_kwargs = (
+                    {"clear_manual_flag": True} if not preserve_manual else {}
+                )
                 service.extract_section(
                     model_cls=model_cls,
                     upsert=True,
                     callbacks=[thinking_cb],
                     form=service.form,
                     reader=reader,
+                    **extra_kwargs,
                 )
                 if model_name not in completed_models:
                     completed_models.append(model_name)
@@ -414,6 +428,7 @@ class PatientMDTFormQueueJobExecutor:
             completed_models: list[str] = list(job.get("completed_models") or [])
             run_id = job.get("run_id")
             is_Explicit_rerun = bool(job.get("force_replace", False))
+            preserve_manual = bool(job.get("preserve_manual_edits", True))
 
             for idx, model_cls in enumerate(expert_models, start=1):
                 if queue_manager._is_job_aborted(
@@ -422,8 +437,17 @@ class PatientMDTFormQueueJobExecutor:
                     return
                 model_name = model_cls.__name__
 
+                is_manually_edited = (
+                    preserve_manual
+                    and service.form_cls.is_section_manually_edited(
+                        service.form, model_name
+                    )
+                    and model_name in service.form.sections
+                )
+
                 # Skip sections already persisted on the form when resuming an unfinished job
-                if (
+                # or when protecting manually edited sections during a global rerun
+                if is_manually_edited or (
                     not is_Explicit_rerun
                     and model_name in service.form.sections
                     and service.form.sections.get(model_name)
@@ -456,12 +480,16 @@ class PatientMDTFormQueueJobExecutor:
                     run_id=run_id,
                     lease_id=lease_id,
                 )
+                extra_kwargs = (
+                    {"clear_manual_flag": True} if not preserve_manual else {}
+                )
                 service.extract_section(
                     model_cls=model_cls,
                     upsert=True,
                     callbacks=[thinking_cb],
                     form=service.form,
                     reader=reader,
+                    **extra_kwargs,
                 )
                 if model_name not in completed_models:
                     completed_models.append(model_name)
@@ -519,6 +547,12 @@ class PatientMDTFormQueueJobExecutor:
                 )
 
             if target_cls.__name__ == "PatientAdministrative":
+                service.form.manual_edits = (
+                    service.form_cls.archive_manual_edit_before_ai_rerun(
+                        service.form.manual_edits,
+                        "PatientAdministrative",
+                    )
+                )
                 service.process_patient_association(
                     run_admin_ai=True,
                     callbacks=[thinking_cb],
@@ -526,12 +560,18 @@ class PatientMDTFormQueueJobExecutor:
                     reader=reader,
                 )
             else:
+                extra_kwargs = (
+                    {"clear_manual_flag": True}
+                    if target_cls.__name__ in service.form.manual_edits
+                    else {}
+                )
                 service.extract_section(
                     model_cls=target_cls,
                     upsert=True,
                     callbacks=[thinking_cb],
                     form=service.form,
                     reader=reader,
+                    **extra_kwargs,
                 )
         finally:
             service.close()

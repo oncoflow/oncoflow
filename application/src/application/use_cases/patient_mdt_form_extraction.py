@@ -195,6 +195,7 @@ class PatientMDTFormExtractionService:
         *,
         form: PatientMDTForm | None = None,
         reader: DocumentReader | None = None,
+        clear_manual_flag: bool = False,
     ) -> Any:
         """
         Execute AI extraction for section `model_cls` on the `PatientMDTForm`,
@@ -269,6 +270,13 @@ class PatientMDTFormExtractionService:
 
         elapsed = round(time.perf_counter() - t_start, 2)
         target_form.set_section(section_name, serialized_value, elapsed_seconds=elapsed)
+        if clear_manual_flag and section_name in target_form.manual_edits:
+            target_form.manual_edits = (
+                self.form_cls.archive_manual_edit_before_ai_rerun(
+                    target_form.manual_edits,
+                    section_name,
+                )
+            )
 
         if upsert and target_file:
             if section_name == "PatientAdministrative" and isinstance(
@@ -287,13 +295,17 @@ class PatientMDTFormExtractionService:
                 )
                 serialized_value = merged_admin
 
+            upsert_fields_dict: dict[str, Any] = {
+                section_name: serialized_value,
+                "execution_times": dict(target_form.execution_times),
+                "date_refresh": target_form.date_refresh,
+            }
+            if clear_manual_flag:
+                upsert_fields_dict["manual_edits"] = dict(target_form.manual_edits)
+
             self.mdt_form_repo.upsert_fields(
                 target_file,
-                fields={
-                    section_name: serialized_value,
-                    "execution_times": dict(target_form.execution_times),
-                    "date_refresh": target_form.date_refresh,
-                },
+                fields=upsert_fields_dict,
                 set_on_insert={
                     "file": target_file,
                     "ui_date": target_form.ui_date,
@@ -469,20 +481,28 @@ class PatientMDTFormExtractionService:
         replace: bool = True,
         unload_models: bool = True,
         callbacks: list | None = None,
+        *,
+        preserve_manual_edits: bool = True,
     ) -> PatientMDTForm:
         """Execute full extraction across all sections of the `PatientMDTForm`."""
-        if filename and filename != self.filename:
-            self.filename = filename
-            existing_raw = self.mdt_form_repo.get_by_file(filename)
-            self.form = (
-                self.form_cls.from_persistence(existing_raw)
-                if existing_raw
-                else self.form_cls(file=filename)
-            )
-            self._reader = None
+        target_fname = filename or self.filename
+        if target_fname:
+            self.filename = target_fname
+            existing_raw = self.mdt_form_repo.get_by_file(target_fname)
+            if existing_raw:
+                self.form = self.form_cls.from_persistence(existing_raw)
 
         try:
-            if replace or "PatientAdministrative" not in self.form.sections:
+            admin_manually_edited = (
+                preserve_manual_edits
+                and self.form_cls.is_section_manually_edited(
+                    self.form, "PatientAdministrative"
+                )
+                and "PatientAdministrative" in self.form.sections
+            )
+            if (
+                replace or "PatientAdministrative" not in self.form.sections
+            ) and not admin_manually_edited:
                 self.process_patient_association(
                     target_patient_id=self.form.patient_id,
                     run_admin_ai=True,
@@ -491,10 +511,20 @@ class PatientMDTFormExtractionService:
                 )
 
             for model_cls in self.form_cls.get_clinical_models():
-                if not replace and model_cls.__name__ in self.form.sections:
+                sec_name = model_cls.__name__
+                if not replace and sec_name in self.form.sections:
+                    continue
+                if (
+                    preserve_manual_edits
+                    and self.form_cls.is_section_manually_edited(self.form, sec_name)
+                    and sec_name in self.form.sections
+                ):
                     continue
                 self.extract_section(
-                    model_cls=model_cls, upsert=True, callbacks=callbacks
+                    model_cls=model_cls,
+                    upsert=True,
+                    callbacks=callbacks,
+                    clear_manual_flag=(not preserve_manual_edits),
                 )
 
             return self.form
@@ -620,6 +650,8 @@ class PatientMDTFormExtractionService:
         self,
         filename: str,
         model_name: str | None = None,
+        *,
+        preserve_manual_edits: bool = True,
     ) -> dict[str, Any]:
         """Enqueue a full `PatientMDTForm` rerun or a single-section rerun into the processing queue."""
         from src.infrastructure.queue import QueueBroker
@@ -634,6 +666,7 @@ class PatientMDTFormExtractionService:
                 model_name=model_name,
                 total_clinical_models=clinical_count,
                 total_expert_models=expert_count,
+                preserve_manual_edits=preserve_manual_edits,
             )
         finally:
             broker.close()

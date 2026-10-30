@@ -19,7 +19,7 @@ x-ui-env: &ui-env
   APP_CONFIGLLM_EMBEDDINGS_PORT: "4000"
   APP_CONFIGLLM_MODELS: "openai/agents"
   APP_CONFIGLLM_EMBEDDINGS: "openai/embeddings"
-  APP_CONFIGLLM_API_KEY: ${LITELLM_MASTER_KEY}
+  APP_CONFIGLLM_API_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env.prod}
   APP_MONGODB_HOST: "mongod"
   APP_MONGODB_PORT: "27017"
   APP_MONGODB_USER: ${APP_MONGODB_USER:-root}
@@ -245,7 +245,8 @@ services:
     restart: unless-stopped
     logging: *default-logging
     environment:
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?LITELLM_MASTER_KEY must be set in .env.prod}
+      LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "false"
     ports:
       - "127.0.0.1:4000:4000"
     volumes:

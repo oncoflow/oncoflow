@@ -21,14 +21,17 @@ from src.infrastructure.documents.repositories import (
     MongoPatientRepository,
 )
 from src.models.rcp import (
+    AdministrativeUpdateRequest,
     ChatRequest,
     ChatResponse,
+    LinkPatientRequest,
     MessageResponse,
     PatientCardResponse,
     PatientDetailResponse,
     ProcessRequest,
     ProcessResponse,
     RCPCardResponse,
+    SectionUpdateRequest,
     UploadResponse,
 )
 from src.routers.dependencies import DomainConfigDep, require_db
@@ -373,6 +376,7 @@ def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep)
             res = extraction_service.enqueue_rerun(
                 filename=filename,
                 model_name=matched_model_name,
+                preserve_manual_edits=request.preserve_manual_edits,
             )
             return {
                 "filename": filename,
@@ -398,12 +402,16 @@ def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep)
                 reader=reader,
                 model_cls=matched_model,
                 upsert=True,
+                clear_manual_flag=True,
             )
             return {
                 "message": f"Modèle '{matched_model_name}' retraité avec succès pour '{filename}'."
             }
         else:
-            extraction_service.extract_all_sections(filename=filename)
+            extraction_service.extract_all_sections(
+                filename=filename,
+                preserve_manual_edits=request.preserve_manual_edits,
+            )
             return {"message": f"Dossier complet '{filename}' retraité avec succès."}
     except HTTPException:
         raise
@@ -466,3 +474,92 @@ def download_rcp_pdf(filename: str, config: DomainConfigDep):
             detail=f"Le fichier '{filename}' n'a pas été trouvé ({config.domain}).",
         )
     return FileResponse(file_path, media_type="application/pdf", filename=filename)
+
+
+@router.patch("/{filename}/sections/{section_name}", response_model=dict[str, Any])
+def update_rcp_section(
+    filename: str,
+    section_name: str,
+    request: SectionUpdateRequest,
+    config: DomainConfigDep,
+    db=Depends(require_db),
+):
+    """Manually update a clinical, completeness, or decision section on a PatientMDTForm."""
+    _safe_mdt_form_path(config.rcp.path, filename)
+    record_service = _build_record_service(config, db=db)
+    try:
+        updated_doc = record_service.update_patient_mdt_form_section(
+            filename=filename,
+            section_name=section_name,
+            section_data=request.section_data,
+            edited_by=request.edited_by,
+        )
+        return serialize_mongo_doc(updated_doc)
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+
+@router.patch("/{filename}/administrative", response_model=dict[str, Any])
+def update_rcp_administrative(
+    filename: str,
+    request: AdministrativeUpdateRequest,
+    config: DomainConfigDep,
+    db=Depends(require_db),
+):
+    """Manually update patient administrative information and synchronize the PatientRecord."""
+    _safe_mdt_form_path(config.rcp.path, filename)
+    record_service = _build_record_service(config, db=db)
+    try:
+        patient, updated_doc = record_service.update_patient_administrative(
+            filename=filename,
+            admin_data={
+                "first_name": request.first_name,
+                "last_name": request.last_name,
+                "born_name": request.born_name,
+                "date_birth": request.date_birth,
+                "date_rcp": request.date_rcp,
+                "gender": request.gender,
+            },
+            apply_to_all_patient_forms=request.apply_to_all_patient_forms,
+            edited_by=request.edited_by,
+        )
+        return {
+            "patient": patient.model_dump(mode="json"),
+            "form": serialize_mongo_doc(updated_doc),
+        }
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+
+@router.post("/{filename}/link-patient", response_model=dict[str, Any])
+def link_rcp_to_patient(
+    filename: str,
+    request: LinkPatientRequest,
+    config: DomainConfigDep,
+    db=Depends(require_db),
+):
+    """Link a PatientMDTForm record to an existing PatientRecord."""
+    _safe_mdt_form_path(config.rcp.path, filename)
+    record_service = _build_record_service(config, db=db)
+    try:
+        patient, updated_doc = record_service.link_mdt_form_to_patient(
+            filename=filename,
+            target_patient_id=request.target_patient_id,
+            override_date_rcp=request.override_date_rcp,
+            edited_by=request.edited_by,
+        )
+        return {
+            "patient": patient.model_dump(mode="json"),
+            "form": serialize_mongo_doc(updated_doc),
+        }
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err

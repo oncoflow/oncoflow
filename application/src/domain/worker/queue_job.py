@@ -158,6 +158,10 @@ class QueueJob(BaseModel):
         default=False,
         description="Forcer le recalcul même si la rubrique est déjà présente en base",
     )
+    preserve_manual_edits: bool = Field(
+        default=True,
+        description="Conserver les rubriques modifiées manuellement lors d'une relance globale",
+    )
     total_models: int = Field(
         default=1,
         ge=1,

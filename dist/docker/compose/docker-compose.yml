@@ -146,6 +146,8 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
     network_mode: "host"
+    environment:
+      LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "true"
     ports:
      - 4000:4000
     volumes:

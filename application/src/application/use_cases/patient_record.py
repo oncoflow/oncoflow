@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,7 @@ from src.domain.repositories import (
     PatientMDTFormRepository,
     PatientRepository,
 )
+from src.domain.worker import RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb
 from src.infrastructure.documents.repositories import (
     MongoDocumentCacheRepository,
@@ -152,6 +153,7 @@ class PatientRecordService:
             "ExpertAnswer": 1,
             "MTDCompleted": 1,
             "CareOrientationProposal": 1,
+            "manual_edits": 1,
             "processing_status": 1,
             "processing_step": 1,
             "processing_progress_pct": 1,
@@ -167,6 +169,270 @@ class PatientRecordService:
             reverse=True,
         )
         return cards
+
+    def update_patient_mdt_form_section(
+        self,
+        filename: str,
+        section_name: str,
+        section_data: dict[str, Any],
+        *,
+        edited_by: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Validate and manually update a section on a `PatientMDTForm` record,
+        recording manual provenance metadata in `manual_edits`.
+        """
+        if section_name == "PatientAdministrative":
+            _, updated_doc = self.update_patient_administrative(
+                filename=filename,
+                admin_data=section_data,
+                edited_by=edited_by,
+            )
+            return updated_doc
+
+        validated_payload = self.form_cls.validate_manual_section_update(
+            section_name, section_data
+        )
+        existing_doc = self.mdt_form_repo.get_by_file(filename) or {"file": filename}
+        now = datetime.now()
+        manual_edits = self.form_cls.build_manual_edit_trace(
+            existing_doc,
+            section_name,
+            validated_payload,
+            edited_by=edited_by,
+            edited_at=now,
+        )
+        self.mdt_form_repo.upsert_fields(
+            filename,
+            {
+                section_name: validated_payload,
+                "manual_edits": manual_edits,
+                "date_refresh": now,
+            },
+            set_on_insert={"file": filename, "ui_date": now},
+        )
+        return self.mdt_form_repo.get_by_file(filename) or {}
+
+    def update_patient_administrative(
+        self,
+        filename: str,
+        admin_data: dict[str, Any],
+        *,
+        apply_to_all_patient_forms: bool = True,
+        edited_by: str | None = None,
+    ) -> tuple[Patient, dict[str, Any]]:
+        """
+        Manually update `PatientAdministrative` on `filename` (and optionally across all
+        `PatientMDTForm` records of the same `PatientRecord`), recomputing the canonical
+        `patient_id`, cleaning up temporary fallback patient records, and recovering from
+        failed AI administrative extraction.
+        """
+        validated_admin = self.form_cls.validate_manual_section_update(
+            "PatientAdministrative", admin_data
+        )
+        form_doc = self.mdt_form_repo.get_by_file(filename) or {"file": filename}
+        old_patient_id = form_doc.get("patient_id")
+        old_patient = (
+            self.patient_repo.get_by_id(old_patient_id) if old_patient_id else None
+        )
+
+        new_patient_id = Patient.build_id(
+            first_name=validated_admin.get("first_name"),
+            last_name=validated_admin.get("last_name"),
+            date_birth=validated_admin.get("date_birth"),
+            fallback_file=filename,
+        )
+        now = datetime.now()
+
+        is_real_existing_patient = (
+            old_patient is not None
+            and not old_patient.patient_id.startswith("patient_")
+        )
+
+        if apply_to_all_patient_forms and is_real_existing_patient and old_patient:
+            all_patient_files: list[str] = list(old_patient.files)
+            if filename not in all_patient_files:
+                all_patient_files.append(filename)
+
+            updated_patient = Patient(
+                patient_id=new_patient_id,
+                first_name=str(validated_admin.get("first_name") or ""),
+                last_name=str(validated_admin.get("last_name") or ""),
+                born_name=validated_admin.get("born_name"),
+                date_birth=validated_admin.get("date_birth"),
+                gender=validated_admin.get("gender") or "Not_given",
+                files=all_patient_files,
+                updated_at=now,
+            )
+            saved_patient = self.patient_repo.save(updated_patient, filename=filename)
+
+            if old_patient.patient_id != saved_patient.patient_id:
+                self.patient_repo.delete(old_patient.patient_id)
+
+            for other_file in saved_patient.files:
+                if other_file == filename:
+                    continue
+                other_doc = self.mdt_form_repo.get_by_file(other_file)
+                if other_doc is not None:
+                    other_admin_raw = saved_patient.apply_to_administrative(
+                        other_doc.get("PatientAdministrative"),
+                        recompute_age=True,
+                    )
+                    other_admin_valid = self.form_cls.validate_manual_section_update(
+                        "PatientAdministrative", other_admin_raw
+                    )
+                    other_manual_edits = self.form_cls.build_manual_edit_trace(
+                        other_doc,
+                        "PatientAdministrative",
+                        other_admin_valid,
+                        edited_by=edited_by,
+                        edited_at=now,
+                    )
+                    self.mdt_form_repo.upsert_fields(
+                        other_file,
+                        {
+                            "patient_id": saved_patient.patient_id,
+                            "PatientAdministrative": other_admin_valid,
+                            "manual_edits": other_manual_edits,
+                        },
+                    )
+        else:
+            if old_patient_id and old_patient_id != new_patient_id:
+                self.patient_repo.remove_file(filename)
+
+            existing_target = self.patient_repo.find_by_identity(
+                first_name=validated_admin.get("first_name"),
+                last_name=validated_admin.get("last_name"),
+                date_birth=validated_admin.get("date_birth"),
+                fallback_file=filename,
+            )
+            if (
+                existing_target is not None
+                and not existing_target.patient_id.startswith("patient_")
+            ):
+                if old_patient_id and old_patient_id != existing_target.patient_id:
+                    self.patient_repo.remove_file(filename)
+                existing_target.first_name = (
+                    str(validated_admin.get("first_name") or "").strip()
+                    or existing_target.first_name
+                )
+                existing_target.last_name = (
+                    str(validated_admin.get("last_name") or "").strip()
+                    or existing_target.last_name
+                )
+                if validated_admin.get("born_name") is not None:
+                    existing_target.born_name = validated_admin.get("born_name")
+                if validated_admin.get("date_birth") is not None:
+                    existing_target.date_birth = Patient.parse_date_birth(
+                        validated_admin.get("date_birth")
+                    )
+                if validated_admin.get("gender"):
+                    existing_target.gender = Patient.parse_gender(
+                        validated_admin.get("gender")
+                    )
+                existing_target.attach_file(filename)
+                saved_patient = self.patient_repo.save(
+                    existing_target, filename=filename
+                )
+            else:
+                new_patient = Patient.from_administrative(
+                    validated_admin,
+                    filename=filename,
+                    patient_id=new_patient_id,
+                )
+                saved_patient = self.patient_repo.save(new_patient, filename=filename)
+
+        manual_edits = self.form_cls.build_manual_edit_trace(
+            form_doc,
+            "PatientAdministrative",
+            validated_admin,
+            edited_by=edited_by,
+            edited_at=now,
+        )
+        fields_to_update: dict[str, Any] = {
+            "patient_id": saved_patient.patient_id,
+            "PatientAdministrative": validated_admin,
+            "manual_edits": manual_edits,
+            "date_refresh": now,
+        }
+        if form_doc.get("processing_status") == RCPProcessingStatus.FAILED.value:
+            fields_to_update["processing_status"] = RCPProcessingStatus.COMPLETED.value
+            fields_to_update["processing_error"] = None
+
+        self.mdt_form_repo.upsert_fields(
+            filename,
+            fields_to_update,
+            set_on_insert={"file": filename, "ui_date": now},
+        )
+        return saved_patient, self.mdt_form_repo.get_by_file(filename) or {}
+
+    def link_mdt_form_to_patient(
+        self,
+        filename: str,
+        target_patient_id: str,
+        *,
+        override_date_rcp: datetime | date | str | None = None,
+        edited_by: str | None = None,
+    ) -> tuple[Patient, dict[str, Any]]:
+        """
+        Link a `PatientMDTForm` (`filename`) to an existing `PatientRecord` (`target_patient_id`),
+        propagate the target patient's civil identity onto the form's `PatientAdministrative`
+        section while preserving `date_rcp`, and remove any emptied temporary patient record.
+        """
+        target_patient = self.patient_repo.get_by_id(target_patient_id)
+        if target_patient is None:
+            all_forms = self.mdt_form_repo.list_all()
+            for candidate in self._collect_patients_including_unlinked(all_forms):
+                if candidate.patient_id == target_patient_id:
+                    target_patient = candidate
+                    break
+        if target_patient is None:
+            raise ValueError(f"Target patient record '{target_patient_id}' not found.")
+
+        form_doc = self.mdt_form_repo.get_by_file(filename) or {"file": filename}
+        old_patient_id = form_doc.get("patient_id")
+
+        if old_patient_id != target_patient.patient_id:
+            self.patient_repo.remove_file(filename)
+
+        current_admin = dict(form_doc.get("PatientAdministrative") or {})
+        if override_date_rcp is not None:
+            current_admin["date_rcp"] = override_date_rcp
+
+        merged_admin_raw = target_patient.apply_to_administrative(
+            current_admin, recompute_age=True
+        )
+        validated_admin = self.form_cls.validate_manual_section_update(
+            "PatientAdministrative", merged_admin_raw
+        )
+
+        target_patient.attach_file(filename)
+        saved_patient = self.patient_repo.save(target_patient, filename=filename)
+
+        now = datetime.now()
+        manual_edits = self.form_cls.build_manual_edit_trace(
+            form_doc,
+            "PatientAdministrative",
+            validated_admin,
+            edited_by=edited_by,
+            edited_at=now,
+        )
+        fields_to_update: dict[str, Any] = {
+            "patient_id": saved_patient.patient_id,
+            "PatientAdministrative": validated_admin,
+            "manual_edits": manual_edits,
+            "date_refresh": now,
+        }
+        if form_doc.get("processing_status") == RCPProcessingStatus.FAILED.value:
+            fields_to_update["processing_status"] = RCPProcessingStatus.COMPLETED.value
+            fields_to_update["processing_error"] = None
+
+        self.mdt_form_repo.upsert_fields(
+            filename,
+            fields_to_update,
+            set_on_insert={"file": filename, "ui_date": now},
+        )
+        return saved_patient, self.mdt_form_repo.get_by_file(filename) or {}
 
     def _collect_patients_including_unlinked(
         self, all_forms: list[dict[str, Any]]

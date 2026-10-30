@@ -10,6 +10,55 @@ class ProcessRequest(BaseModel):
         default=None,
         description="Nom optionnel du modèle à réexécuter (ex: PatientPerformanceStatus). Si omis, exécute l'analyse complète.",
     )
+    preserve_manual_edits: bool = Field(
+        default=True,
+        description="Conserver par défaut les rubriques modifiées manuellement lors d'une relance globale.",
+    )
+
+
+class SectionUpdateRequest(BaseModel):
+    section_data: dict[str, Any] = Field(
+        description="Données de la rubrique à valider et enregistrer"
+    )
+    edited_by: Optional[str] = Field(
+        default=None,
+        description="Identifiant de l'utilisateur ayant effectué la modification",
+    )
+
+
+class AdministrativeUpdateRequest(BaseModel):
+    first_name: str = Field(default="", description="Prénom du patient")
+    last_name: str = Field(default="", description="Nom d'usage du patient")
+    born_name: Optional[str] = Field(default=None, description="Nom de naissance")
+    date_birth: Optional[str | datetime] = Field(
+        default=None, description="Date de naissance (YYYY-MM-DD)"
+    )
+    date_rcp: Optional[str | datetime] = Field(
+        default=None, description="Date de la séance RCP (YYYY-MM-DD)"
+    )
+    gender: Optional[str] = Field(default=None, description="Genre du patient")
+    apply_to_all_patient_forms: bool = Field(
+        default=True,
+        description="Appliquer la mise à jour d'état civil à toutes les fiches du dossier patient",
+    )
+    edited_by: Optional[str] = Field(
+        default=None,
+        description="Identifiant de l'utilisateur ayant effectué la modification",
+    )
+
+
+class LinkPatientRequest(BaseModel):
+    target_patient_id: str = Field(
+        description="Identifiant du dossier patient existant auquel rattacher la fiche RCP"
+    )
+    override_date_rcp: Optional[str | datetime] = Field(
+        default=None,
+        description="Date de la séance RCP optionnelle à enregistrer sur la fiche",
+    )
+    edited_by: Optional[str] = Field(
+        default=None,
+        description="Identifiant de l'utilisateur ayant effectué le rattachement",
+    )
 
 
 class ChatRequest(BaseModel):

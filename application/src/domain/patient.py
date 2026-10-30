@@ -58,6 +58,8 @@ class PatientIdentity(BaseModel):
             return None
         if isinstance(v, datetime):
             return v
+        if isinstance(v, date):
+            return datetime(v.year, v.month, v.day)
         if isinstance(v, str):
             try:
                 return datetime.fromisoformat(v)
@@ -75,6 +77,26 @@ class PatientIdentity(BaseModel):
                 if v.lower() in (g.value.lower(), g.name.lower()):
                     return g
         return Gender.not_given
+
+    @classmethod
+    def compute_age(
+        cls,
+        date_birth: datetime | date | str | None,
+        reference_date: datetime | date | str | None = None,
+    ) -> int | None:
+        """Compute patient age in years at `reference_date` (or today if omitted)."""
+        dob = cls.parse_date_birth(date_birth)
+        if dob is None:
+            return None
+        ref = cls.parse_date_birth(reference_date) or datetime.now()
+        dob_naive = dob.replace(tzinfo=None)
+        ref_naive = ref.replace(tzinfo=None)
+        if dob_naive > ref_naive:
+            return 0
+        years = ref_naive.year - dob_naive.year
+        if (ref_naive.month, ref_naive.day) < (dob_naive.month, dob_naive.day):
+            years -= 1
+        return max(0, years)
 
     @property
     def full_name(self) -> str:
@@ -230,7 +252,10 @@ class Patient(BaseModel):
         return True
 
     def apply_to_administrative(
-        self, admin_data: BaseModel | dict | None
+        self,
+        admin_data: BaseModel | dict | None,
+        *,
+        recompute_age: bool = False,
     ) -> dict[str, Any]:
         """
         Enforce this patient's civil identity onto an administrative section dictionary
@@ -253,6 +278,12 @@ class Patient(BaseModel):
                 if isinstance(self.date_birth, datetime)
                 else self.date_birth
             )
+            if recompute_age or admin_dict.get("age") is None:
+                computed_age = PatientIdentity.compute_age(
+                    self.date_birth, admin_dict.get("date_rcp")
+                )
+                if computed_age is not None:
+                    admin_dict["age"] = computed_age
         if self.gender is not None and self.gender != Gender.not_given:
             admin_dict["gender"] = self.gender.value
         return admin_dict

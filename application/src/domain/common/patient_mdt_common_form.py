@@ -102,6 +102,7 @@ class PatientMDTForm:
         processing_progress_pct: float = 0.0,
         sections: dict[str, Any] | None = None,
         execution_times: dict[str, float] | None = None,
+        manual_edits: dict[str, dict[str, Any]] | None = None,
         *,
         document: str | None = None,
     ) -> None:
@@ -118,6 +119,9 @@ class PatientMDTForm:
         self.sections: dict[str, Any] = dict(sections) if sections else {}
         self.execution_times: dict[str, float] = (
             dict(execution_times) if execution_times else {}
+        )
+        self.manual_edits: dict[str, dict[str, Any]] = (
+            dict(manual_edits) if manual_edits else {}
         )
         self.date_refresh: datetime = datetime.now()
 
@@ -253,9 +257,270 @@ class PatientMDTForm:
             processing_step=raw_doc.get("processing_step"),
             processing_progress_pct=raw_doc.get("processing_progress_pct", 0.0),
             execution_times=raw_doc.get("execution_times") or {},
+            manual_edits=raw_doc.get("manual_edits") or {},
         )
         instance.hydrate_sections(raw_doc)
         return instance
+
+    NON_EDITABLE_SECTIONS: tuple[str, ...] = (
+        "CareOrientationProposal",
+        "ExpertAnswer",
+        "PatientMDTFormCheck",
+    )
+
+    @classmethod
+    def is_section_manually_editable(
+        cls, section_or_model: str | type[BaseModel]
+    ) -> bool:
+        """
+        Return True if `section_or_model` can be manually modified by a user.
+        AI synthesis/proposal sections (`CareOrientationProposal`, `ExpertAnswer`) are read-only.
+        """
+        if isinstance(section_or_model, str):
+            model_cls = cls.get_section_model(section_or_model)
+            name = section_or_model
+        else:
+            model_cls = section_or_model
+            name = getattr(section_or_model, "__name__", str(section_or_model))
+
+        if name in cls.NON_EDITABLE_SECTIONS or model_cls is None:
+            return False
+        if name == "MTDCompleted":
+            return True
+        if getattr(model_cls, "collaborative", False):
+            return False
+        if len(getattr(model_cls, "agents", [])) > 1:
+            return False
+        return True
+
+    @classmethod
+    def is_section_manually_edited(
+        cls,
+        doc_or_form: "dict[str, Any] | PatientMDTForm | None",
+        section_name: str,
+    ) -> bool:
+        """Return True if `section_name` has been manually edited by a user."""
+        if doc_or_form is None:
+            return False
+        if isinstance(doc_or_form, PatientMDTForm):
+            manual_map = doc_or_form.manual_edits
+        elif isinstance(doc_or_form, dict):
+            manual_map = doc_or_form.get("manual_edits") or {}
+        else:
+            return False
+        if not isinstance(manual_map, dict):
+            return False
+        entry = manual_map.get(section_name)
+        return bool(isinstance(entry, dict) and entry.get("is_manual"))
+
+    @classmethod
+    def build_manual_edit_trace(
+        cls,
+        existing_doc: dict[str, Any] | None,
+        section_name: str,
+        new_validated_payload: dict[str, Any],
+        *,
+        edited_by: str | None = None,
+        edited_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """
+        Build an updated `manual_edits` dictionary for `existing_doc` that preserves
+        the original AI extraction (`ai_original`), field-level diffs (`modified_fields`),
+        and chronological `edit_history` for downstream LLM-as-a-Judge evaluation.
+        """
+        doc = existing_doc or {}
+        now = edited_at or datetime.now()
+        manual_edits = dict(doc.get("manual_edits") or {})
+        prev_entry = (
+            dict(manual_edits.get(section_name))
+            if isinstance(manual_edits.get(section_name), dict)
+            else {}
+        )
+        current_section_val = (
+            dict(doc.get(section_name))
+            if isinstance(doc.get(section_name), dict)
+            else None
+        )
+
+        # Capture the original AI output once before the first manual edit of the current AI cycle
+        if prev_entry.get("is_manual") and "ai_original" in prev_entry:
+            ai_original = prev_entry.get("ai_original")
+        else:
+            ai_original = (
+                _serialize_persistence_value(dict(current_section_val))
+                if isinstance(current_section_val, dict)
+                else None
+            )
+
+        meta_keys = {"reasoning_thinking", "time_execution"}
+        ai_clean = (
+            {k: v for k, v in ai_original.items() if k not in meta_keys}
+            if isinstance(ai_original, dict)
+            else {}
+        )
+        human_clean = {
+            k: v for k, v in (new_validated_payload or {}).items() if k not in meta_keys
+        }
+
+        all_field_keys = list(
+            dict.fromkeys(list(ai_clean.keys()) + list(human_clean.keys()))
+        )
+        modified_fields: dict[str, dict[str, Any]] = {}
+        for field_key in all_field_keys:
+            ai_val = ai_clean.get(field_key)
+            human_val = human_clean.get(field_key)
+            if ai_val != human_val:
+                modified_fields[field_key] = {
+                    "ai_value": ai_val,
+                    "human_value": human_val,
+                }
+
+        prev_clean = (
+            {k: v for k, v in current_section_val.items() if k not in meta_keys}
+            if isinstance(current_section_val, dict)
+            else {}
+        )
+        step_keys = list(
+            dict.fromkeys(list(prev_clean.keys()) + list(human_clean.keys()))
+        )
+        step_changed_fields = [
+            k for k in step_keys if prev_clean.get(k) != human_clean.get(k)
+        ]
+
+        history = list(prev_entry.get("edit_history") or [])
+        history.append(
+            {
+                "edited_at": now,
+                "edited_by": edited_by,
+                "previous_value": prev_clean if prev_clean else None,
+                "new_value": human_clean,
+                "changed_fields": step_changed_fields,
+            }
+        )
+
+        ai_thinking = (
+            ai_original.get("reasoning_thinking")
+            if isinstance(ai_original, dict)
+            else None
+        )
+        archived_traces = list(prev_entry.get("archived_judge_traces") or [])
+
+        manual_edits[section_name] = {
+            "is_manual": True,
+            "edited_at": now,
+            "edited_by": edited_by,
+            "ai_original": ai_original,
+            "ai_reasoning_thinking": ai_thinking,
+            "human_value": human_clean,
+            "modified_fields": modified_fields,
+            "edit_history": history,
+            "archived_judge_traces": archived_traces,
+        }
+        return manual_edits
+
+    @classmethod
+    def archive_manual_edit_before_ai_rerun(
+        cls,
+        manual_edits: dict[str, Any] | None,
+        section_name: str,
+        *,
+        rerun_at: datetime | None = None,
+    ) -> dict[str, Any]:
+        """
+        When a manually edited section is explicitly re-extracted by AI, clear the active
+        `is_manual` protection flag while archiving the human-vs-AI comparison trace inside
+        `archived_judge_traces` so LLM-as-a-Judge evaluation data is never lost.
+        """
+        updated_map = dict(manual_edits or {})
+        entry = updated_map.get(section_name)
+        if not isinstance(entry, dict):
+            return updated_map
+
+        now = rerun_at or datetime.now()
+        archived = list(entry.get("archived_judge_traces") or [])
+        if entry.get("is_manual") and (
+            entry.get("modified_fields") or entry.get("human_value")
+        ):
+            archived.append(
+                {
+                    "archived_at": now,
+                    "edited_at": entry.get("edited_at"),
+                    "edited_by": entry.get("edited_by"),
+                    "ai_original": entry.get("ai_original"),
+                    "ai_reasoning_thinking": entry.get("ai_reasoning_thinking"),
+                    "human_value": entry.get("human_value"),
+                    "modified_fields": entry.get("modified_fields") or {},
+                }
+            )
+        updated_map[section_name] = {
+            "is_manual": False,
+            "last_ai_rerun_at": now,
+            "edit_history": list(entry.get("edit_history") or []),
+            "archived_judge_traces": archived,
+        }
+        return updated_map
+
+    @classmethod
+    def validate_manual_section_update(
+        cls,
+        section_name: str,
+        section_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """
+        Validate a manually edited section payload against the domain section model
+        and return a persistence-ready dictionary.
+        """
+        model_cls = cls.get_section_model(section_name)
+        if model_cls is None:
+            raise ValueError(f"Unknown section model '{section_name}'.")
+        if not cls.is_section_manually_editable(model_cls):
+            raise ValueError(
+                f"Section '{section_name}' is an AI synthesis proposal and cannot be manually modified."
+            )
+
+        payload = dict(section_data or {})
+        if model_cls.__name__ == "PatientAdministrative":
+            from src.domain.patient import PatientIdentity
+
+            dob = PatientIdentity.parse_date_birth(payload.get("date_birth"))
+            d_rcp = PatientIdentity.parse_date_birth(payload.get("date_rcp"))
+            if dob and d_rcp and dob.replace(tzinfo=None) > d_rcp.replace(tzinfo=None):
+                raise ValueError("Date of birth must be before Date of RCP")
+            computed_age = PatientIdentity.compute_age(dob, d_rcp)
+            if payload.get("age") is None:
+                payload["age"] = computed_age if computed_age is not None else 0
+            elif computed_age is not None:
+                payload["age"] = computed_age
+            if not payload.get("gender"):
+                payload["gender"] = Gender.not_given.value  # noqa: F405
+            payload["first_name"] = str(payload.get("first_name") or "").strip()
+            payload["last_name"] = str(payload.get("last_name") or "").strip()
+            validated = model_cls.model_validate(payload)
+            dumped = _serialize_persistence_value(validated.model_dump())
+            # Preserve historical date_rcp if manually entered (> 5 years ago)
+            if d_rcp is not None and dumped.get("date_rcp") is None:
+                dumped["date_rcp"] = _to_naive_paris(d_rcp)
+            return dumped
+
+        is_multi_agent = len(getattr(model_cls, "agents", [])) > 1 and not getattr(
+            model_cls, "collaborative", False
+        )
+        if is_multi_agent:
+            out: dict[str, Any] = {}
+            for agent_key, agent_val in payload.items():
+                if isinstance(agent_val, dict):
+                    validated_sub = model_cls.model_validate(agent_val)
+                    sub_dump = _serialize_persistence_value(validated_sub.model_dump())
+                    if "reasoning_thinking" in agent_val:
+                        sub_dump["reasoning_thinking"] = agent_val["reasoning_thinking"]
+                    out[agent_key] = sub_dump
+            return out
+
+        validated = model_cls.model_validate(payload)
+        dumped = _serialize_persistence_value(validated.model_dump())
+        if "reasoning_thinking" in payload:
+            dumped["reasoning_thinking"] = payload["reasoning_thinking"]
+        return dumped
 
     def hydrate_sections(
         self,
@@ -303,6 +568,8 @@ class PatientMDTForm:
             "execution_times": dict(self.execution_times),
             "processing_status": self.processing_status,
         }
+        if self.manual_edits:
+            payload["manual_edits"] = _serialize_persistence_value(self.manual_edits)
         if self.patient_id is not None:
             payload["patient_id"] = self.patient_id
         if self.ui_date is not None:
@@ -467,6 +734,7 @@ class PatientMDTForm:
 
         care_adaptation_suggested = None
         proposed_care_type = None
+        suggested_priority_raw = None
         if "CareOrientationProposal" in d and isinstance(
             d["CareOrientationProposal"], dict
         ):
@@ -476,6 +744,7 @@ class PatientMDTForm:
                     "care_adaptation_suggested"
                 )
                 proposed_care_type = proposal_data.get("proposed_care_type")
+                suggested_priority_raw = proposal_data.get("suggested_priority")
             else:
                 for agent_data in proposal_data.values():
                     if (
@@ -486,7 +755,40 @@ class PatientMDTForm:
                             "care_adaptation_suggested"
                         )
                         proposed_care_type = agent_data.get("proposed_care_type")
+                        suggested_priority_raw = agent_data.get("suggested_priority")
                         break
+
+        if suggested_priority_raw is not None:
+            s_prio = str(
+                suggested_priority_raw.value
+                if isinstance(suggested_priority_raw, Enum)
+                else suggested_priority_raw
+            ).lower()
+            is_manual_proposal = cls.is_section_manually_edited(
+                d, "CareOrientationProposal"
+            )
+            for urgency in list(PatientPriority):  # noqa: F405
+                if s_prio in (urgency.value.lower(), urgency.name.lower()):
+                    if urgency.name == "urgent":
+                        urgency_score = 2
+                        urgency_level = "Urgent"
+                    elif urgency.name == "medium":
+                        if is_manual_proposal or urgency_score < 1:
+                            urgency_score = 1
+                            urgency_level = "Semi-urgent"
+                    elif urgency.name == "low":
+                        if is_manual_proposal or urgency_score == 0:
+                            urgency_score = 0
+                            urgency_level = "Standard"
+                    elif urgency.name == "not_given" and is_manual_proposal:
+                        urgency_score = 0
+                        urgency_level = "Indéfini"
+        elif (
+            cls.is_section_manually_edited(d, "CareOrientationProposal")
+            and care_adaptation_suggested is False
+        ):
+            urgency_score = 0
+            urgency_level = "Standard"
 
         patient_id = d.get("patient_id")
         file_name = d.get("file", "")
@@ -563,6 +865,7 @@ class PatientMDTForm:
             "patient_id",
             "ui_date",
             "execution_times",
+            "manual_edits",
             "processing_status",
             "processing_step",
             "processing_progress_pct",

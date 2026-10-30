@@ -297,8 +297,16 @@ def display_as_list(
                 if is_patient_section
                 else item["file"]
             )
+            needs_id = not is_patient_section and (
+                item.get("patient") == "Inconnu"
+                or item.get("processing_status") == "FAILED"
+            )
             with row_cols[5]:
-                b1, b2 = st.columns([2, 1])
+                if needs_id:
+                    b1, b_id, b2 = st.columns([2, 1, 1])
+                else:
+                    b1, b2 = st.columns([2, 1])
+                    b_id = None
                 with b1:
                     st.link_button(
                         "👁️ Consulter",
@@ -306,6 +314,14 @@ def display_as_list(
                         width="stretch",
                         help="Ouvrir le dossier clinique structuré",
                     )
+                if b_id is not None:
+                    with b_id:
+                        st.link_button(
+                            ":material/person_add:",
+                            f"{item['link']}&action=identify",
+                            width="stretch",
+                            help="Saisir l'identité du patient ou rattacher la fiche à un dossier existant",
+                        )
                 with b2:
                     if st.button(
                         ":material/delete:",
@@ -433,13 +449,31 @@ def display_as_cards(
                         if is_patient_section
                         else item["file"]
                     )
-                    b1, b2 = st.columns([3, 1], vertical_alignment="bottom")
+                    needs_id = not is_patient_section and (
+                        item.get("patient") == "Inconnu"
+                        or item.get("processing_status") == "FAILED"
+                    )
+                    if needs_id:
+                        b1, b_id, b2 = st.columns(
+                            [3, 1, 1], vertical_alignment="bottom"
+                        )
+                    else:
+                        b1, b2 = st.columns([3, 1], vertical_alignment="bottom")
+                        b_id = None
                     with b1:
                         st.link_button(
                             "👁️ Consulter le dossier",
                             item["link"],
                             width="stretch",
                         )
+                    if b_id is not None:
+                        with b_id:
+                            st.link_button(
+                                ":material/person_add:",
+                                f"{item['link']}&action=identify",
+                                width="stretch",
+                                help="Saisir l'identité du patient ou rattacher la fiche à un dossier existant",
+                            )
                     with b2:
                         if st.button(
                             ":material/delete:",
