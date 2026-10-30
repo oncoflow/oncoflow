@@ -613,11 +613,10 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
         req = model_data.get("care_adaptation_suggested")
         ctype = model_data.get("proposed_care_type")
         if req is True:
-            return (
-                f" — 🧭 Adaptation suggérée ({ctype})"
-                if ctype
-                else " — 🧭 Adaptation suggérée"
+            short_ctype = (
+                f" ({translate(ctype)})" if ctype and len(str(ctype)) <= 28 else ""
             )
+            return f" — 🧭 Adaptation suggérée{short_ctype}"
         if req is False:
             return " — Surveillance / Suivi habituel"
     elif model_name == "MTDCompleted":
@@ -1330,11 +1329,12 @@ def render_unified_patient_banner(
             )
 
         with right_col:
-            with st.container(
+            action_bar = st.container(
                 horizontal=True,
                 horizontal_alignment="right",
                 vertical_alignment="center",
-            ) as action_bar:
+            )
+            with action_bar:
                 if st.button(
                     "Modifier",
                     icon=":material/edit:",
@@ -1619,15 +1619,16 @@ def render_unified_patient_banner(
 
 
 def power_mode(
-    element,
+    element=None,
     filename: str | None = None,
     key_prefix: str = "default",
     patient_rcps: list[dict] | None = None,
 ):
     active_file = filename or st.query_params.get("file")
     if st.session_state.get("power"):
-        po = element.popover(
-            "",
+        target = element if element is not None else st
+        po = target.popover(
+            "Options IA",
             icon=":material/tune:",
             help="Options IA avancées (modèle, extracteur PDF, écrasement des modifications manuelles)",
         )
@@ -2094,8 +2095,10 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
         else ":green-badge[✅ Dossier conforme]"
     )
     if int_req is True:
-        int_label = f" ({int_type})" if int_type else ""
-        int_badge = f":red-badge[🧭 Orientation : Adaptation suggérée{int_label}]"
+        short_int = (
+            f" · {translate(int_type)}" if int_type and len(str(int_type)) <= 24 else ""
+        )
+        int_badge = f":red-badge[🧭 Adaptation suggérée{short_int}]"
     elif int_req is False:
         int_badge = ":gray-badge[Suivi habituel]"
     else:
@@ -2108,12 +2111,23 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
         ]
     )
 
+    def _clean_marker_val(val: Any) -> str:
+        s = str(translate(val)).strip()
+        low = s.lower()
+        if (
+            "not documented" in low
+            or "not mentioned" in low
+            or low in ("unknown", "none", "n/a")
+        ):
+            return "Non renseigné"
+        return s
+
     # Extract synoptic clinical markers (Oncology & SMA) as (label, value) pairs
     marker_pairs: list[tuple[str, str]] = []
     if isinstance(data.get("TumorLocation"), dict):
         loc = data["TumorLocation"].get("tumor_location")
         if loc:
-            marker_pairs.append(("🎯 Organe primitif", str(translate(loc))))
+            marker_pairs.append(("🎯 Organe primitif", _clean_marker_val(loc)))
     if isinstance(data.get("PatientPerformanceStatus"), dict):
         ps = data["PatientPerformanceStatus"].get("performance_status")
         if ps is not None:
@@ -2146,7 +2160,7 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     if isinstance(data.get("MotorFunctionStatus"), dict):
         sma_t = data["MotorFunctionStatus"].get("sma_type")
         if sma_t:
-            marker_pairs.append(("🦿 Type SMA", str(sma_t)))
+            marker_pairs.append(("🦿 Type SMA", _clean_marker_val(sma_t)))
     if isinstance(data.get("GeneticDiagnosis"), dict):
         copies = data["GeneticDiagnosis"].get("smn2_copy_count")
         if copies is not None:
@@ -2158,7 +2172,7 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     if isinstance(data.get("BulbarAndNutritionalStatus"), dict):
         feed = data["BulbarAndNutritionalStatus"].get("feeding_mode")
         if feed:
-            marker_pairs.append(("🍽️ Alimentation", str(translate(feed))))
+            marker_pairs.append(("🍽️ Alimentation", _clean_marker_val(feed)))
 
     # Find immediately preceding RCP if patient has multiple RCPs
     prev_doc: dict[str, Any] | None = None
@@ -2170,16 +2184,27 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
                 break
 
     with st.container(border=True):
-        missing_help = (
-            "Pièces / données à compléter :\n" + "\n".join(f"- {m}" for m in missing)
-            if missing
-            else None
-        )
+        help_parts: list[str] = []
+        if int_type and len(str(int_type)) > 24:
+            help_parts.append(f"**Orientation pré-RCP :** {int_type}")
+        if missing:
+            help_parts.append(
+                "**Pièces / données à compléter :**\n"
+                + "\n".join(f"- {m}" for m in missing)
+            )
+        summary_help = "\n\n".join(help_parts) if help_parts else None
+
+        # Row 1: Triage & Decision Status (always fits on 1 clean line)
         st.markdown(
-            f"**🩺 Synthèse synoptique RCP** &nbsp; {urg_badge} {comp_badge} {int_badge}"
-            + (f" &nbsp; {experts_badges}" if experts_badges else ""),
-            help=missing_help,
+            f"**🩺 Synthèse synoptique RCP** &nbsp; {urg_badge} {comp_badge} {int_badge}",
+            help=summary_help,
         )
+        # Row 2: Required Specialties (for the RCP secretary & coordinator)
+        if experts_badges:
+            st.markdown(
+                f":small[**👥 Spécialités requises ({len(experts)}) :**] &nbsp; {experts_badges}"
+            )
+        # Row 3: Key Clinical Markers (for the physician)
         if marker_pairs:
             m_cols = st.columns(len(marker_pairs))
             for col, (m_label, m_val) in zip(m_cols, marker_pairs):

@@ -6,7 +6,7 @@ from src.application.config import AppConfig
 from src.application.use_cases import PatientRecordService
 from src.infrastructure.documents.mongodb import Mongodb
 from src.infrastructure.queue import QueueBroker
-from src.ui.patient_mdt.translations import get_agent_icon_and_label
+from src.ui.patient_mdt.translations import get_agent_icon_and_label, translate
 
 # Application configuration
 app_conf = AppConfig()
@@ -265,7 +265,11 @@ def display_as_list(
                     "proposed_care_type", item.get("intervention_type")
                 )
                 if care_req is True:
-                    int_type = f" ({care_type})" if care_type else ""
+                    int_type = (
+                        f" ({translate(care_type)})"
+                        if care_type and len(str(care_type)) <= 24
+                        else ""
+                    )
                     status_badges.append(
                         f":red-badge[🧭 Adaptation suggérée{int_type}]"
                     )
@@ -376,7 +380,11 @@ def display_as_cards(
                         "proposed_care_type", item.get("intervention_type")
                     )
                     if care_req is True:
-                        int_type = f" ({care_type})" if care_type else ""
+                        int_type = (
+                            f" ({translate(care_type)})"
+                            if care_type and len(str(care_type)) <= 24
+                            else ""
+                        )
                         badge_intervention = (
                             f":red-badge[🧭 Adaptation suggérée{int_type}]"
                         )
