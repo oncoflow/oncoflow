@@ -1,7 +1,11 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.infrastructure.documents.mongodb import Mongodb, close_all_mongo_clients
+from src.infrastructure.documents.mongodb import (
+    _BSON_CODEC_OPTIONS,
+    Mongodb,
+    close_all_mongo_clients,
+)
 
 
 class TestMongodbDocumentStore(unittest.TestCase):
@@ -30,7 +34,11 @@ class TestMongodbDocumentStore(unittest.TestCase):
         # Asserts connection string & db name
         expected_conn_str = "mongodb://root:password@127.0.0.1:27017"
         mock_mongo_client_cls.assert_called_once_with(expected_conn_str)
-        self.assertEqual(db.database, mock_client[self.mock_config.mongodb.database])
+        mock_client.get_database.assert_called_once_with(
+            self.mock_config.mongodb.database,
+            codec_options=_BSON_CODEC_OPTIONS,
+        )
+        self.assertEqual(db.database, mock_client.get_database.return_value)
         self.mock_logger.info.assert_called_with("Succefully init")
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
