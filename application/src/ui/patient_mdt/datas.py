@@ -1669,9 +1669,15 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
                 break
 
     with st.container(border=True):
+        missing_help = (
+            "Pièces / données à compléter :\n" + "\n".join(f"- {m}" for m in missing)
+            if missing
+            else None
+        )
         st.markdown(
             f"**🩺 Synthèse synoptique RCP** &nbsp; {urg_badge} {comp_badge} {int_badge}"
-            + (f" &nbsp; {experts_badges}" if experts_badges else "")
+            + (f" &nbsp; {experts_badges}" if experts_badges else ""),
+            help=missing_help,
         )
         if marker_pairs:
             m_cols = st.columns(len(marker_pairs))
@@ -1690,8 +1696,6 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
                     f":small[**📈 Évolution vs RCP du {prev_dt_str} :**] &nbsp; "
                     + " ".join(deltas)
                 )
-        if missing:
-            st.caption("⚠️ **Pièces / données à compléter :** " + ", ".join(missing))
 
 
 def _render_form_sections_list(
