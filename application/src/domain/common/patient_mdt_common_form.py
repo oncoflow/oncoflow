@@ -9,7 +9,7 @@ import json
 from typing import Any, ClassVar, Optional, Self
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field, PastDatetime, model_validator
+from pydantic import BaseModel, Field, PastDatetime, ValidationError, model_validator
 
 from src.application.agent.agent import OncowflowAgent
 from src.domain.common.agents import Agents
@@ -123,6 +123,40 @@ class PatientMDTForm:
         return models
 
     @classmethod
+    def is_expert_section_model(cls, model_cls: type[BaseModel]) -> bool:
+        """
+        Return True if `model_cls` belongs to Wave 3 (`WAVE3_EXPERTS`: multi-agent
+        specialist opinion or collaborative MDT debate).
+        """
+        if model_cls.__name__ in (
+            "ExpertAnswer",
+            "MTDCompleted",
+            "CareOrientationProposal",
+        ):
+            return True
+        if bool(getattr(model_cls, "collaborative", False)):
+            return True
+        agents = getattr(model_cls, "agents", None) or []
+        return len(agents) > 1
+
+    @classmethod
+    def get_factual_clinical_models(cls) -> list[type[BaseModel]]:
+        """
+        Return factual single-agent clinical section models executed in Wave 2 (`WAVE2_CLINICAL`),
+        excluding `PatientAdministrative` and Wave 3 expert/collaborative models.
+        """
+        return [
+            m for m in cls.get_clinical_models() if not cls.is_expert_section_model(m)
+        ]
+
+    @classmethod
+    def get_expert_models(cls) -> list[type[BaseModel]]:
+        """
+        Return multi-agent and collaborative expert section models executed in Wave 3 (`WAVE3_EXPERTS`).
+        """
+        return [m for m in cls.get_clinical_models() if cls.is_expert_section_model(m)]
+
+    @classmethod
     def get_clinical_models(cls) -> list[type[BaseModel]]:
         """
         Return all clinical model classes defined on this `PatientMDTForm`
@@ -210,13 +244,20 @@ class PatientMDTForm:
                 validated_by_agent: dict[str, Any] = {}
                 for agent_cls in model_cls.agents:
                     if agent_cls.agent_name in value:
-                        validated_by_agent[agent_cls.agent_name] = (
-                            model_cls.model_validate(value[agent_cls.agent_name])
-                        )
+                        raw_agent_val = value[agent_cls.agent_name]
+                        try:
+                            validated_by_agent[agent_cls.agent_name] = (
+                                model_cls.model_validate(raw_agent_val)
+                            )
+                        except ValidationError:
+                            validated_by_agent[agent_cls.agent_name] = raw_agent_val
                 if validated_by_agent:
                     self.sections[key] = validated_by_agent
             else:
-                self.sections[key] = model_cls.model_validate(value)
+                try:
+                    self.sections[key] = model_cls.model_validate(value)
+                except ValidationError:
+                    self.sections[key] = value
 
     def to_persistence(self) -> dict[str, Any]:
         """Convert this domain aggregate into a persistence-ready dictionary."""
@@ -309,6 +350,8 @@ class PatientMDTForm:
         is_clinical_pending = processing_status in (
             "PENDING_CLINICAL",
             "PROCESSING_CLINICAL",
+            "PENDING_EXPERTS",
+            "PROCESSING_EXPERTS",
         )
 
         patient_name = "Inconnu"

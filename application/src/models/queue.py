@@ -26,12 +26,14 @@ class EnqueueImportRequest(BaseModel):
     batch_id: str | None = None
     include_clinical: bool = True
     total_clinical_models: int = Field(default=1, ge=1)
+    total_expert_models: int = Field(default=3, ge=1)
 
 
 class EnqueueRerunRequest(BaseModel):
     filename: str
     model_name: str | None = None
     total_clinical_models: int = Field(default=1, ge=1)
+    total_expert_models: int = Field(default=3, ge=1)
 
 
 # --- Responses ---

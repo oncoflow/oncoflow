@@ -210,31 +210,48 @@ def update_date(filename, date):
         mdt_repo.update_fields(filename, {"ui_date": date})
 
 
+def _format_duration(seconds: float | int) -> str:
+    """Format an execution duration in seconds (< 60 s) or minutes and seconds (>= 60 s)."""
+    total_sec = float(seconds)
+    if total_sec < 60:
+        return f"{total_sec:.1f} s"
+    mins = int(total_sec // 60)
+    secs = int(round(total_sec % 60))
+    if secs == 60:
+        mins += 1
+        secs = 0
+    if mins >= 60:
+        hours = mins // 60
+        rem_mins = mins % 60
+        return f"{hours} h {rem_mins:02d} min {secs:02d} s"
+    return f"{mins} min {secs:02d} s"
+
+
 SECTION_META: dict[str, dict[str, Any]] = {
     # Pole 1: Decision Support & MDT Conformity (MDT Opinions & Decision tab)
     "CareOrientationProposal": {
         "order": 10,
         "tab": "decision",
-        "pole": "🎯 Synthèse & Orientation pré-RCP",
+        "pole": None,
         "icon": "🧭",
         "title": "Proposition d'orientation pré-RCP",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "MTDCompleted": {
         "order": 20,
         "tab": "decision",
-        "pole": "📋 Conformité & Complétude du dossier",
+        "pole": None,
         "icon": "✅",
         "title": "Contrôle de complétude du dossier",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "ExpertAnswer": {
         "order": 30,
         "tab": "decision",
-        "pole": "🩺 Avis & propositions cadrées par spécialité",
+        "pole": None,
         "icon": "🩺",
         "title": "Avis des experts & Référentiels",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     # Pole 2: Clinical & Biological Characterization (Clinical Record tab)
     "TumorLocation": {
@@ -867,6 +884,30 @@ def render_unified_patient_banner(
                 st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
 
         with top_cols[1]:
+            active_doc = next(
+                (d for d in patient_rcps if d.get("file") == default_file), None
+            )
+            if active_doc is None and db_client is not None:
+                active_doc = db_client.database["rcp_info"].find_one(
+                    {"file": default_file}
+                )
+            exec_times_dict = (
+                active_doc.get("execution_times")
+                if isinstance(active_doc, dict)
+                and isinstance(active_doc.get("execution_times"), dict)
+                else {}
+            )
+            total_exec_sec = sum(
+                float(v)
+                for v in exec_times_dict.values()
+                if isinstance(v, (int, float))
+            )
+            cumul_badge = (
+                f" :gray-badge[⏱️ Temps cumulé : {_format_duration(total_exec_sec)}]"
+                if total_exec_sec > 0
+                else ""
+            )
+
             if patient is not None:
                 dob_str = (
                     patient.date_birth.strftime("%d/%m/%Y")
@@ -885,10 +926,7 @@ def render_unified_patient_banner(
                     f"### 👤 {patient.full_name}  "
                     f":blue-badge[🎂 {dob_str}] "
                     f":violet-badge[⚧️ {translate(gender_val)}] "
-                    f":gray-badge[🗂️ {len(patient_rcps)} RCP]"
-                )
-                active_doc = next(
-                    (d for d in patient_rcps if d.get("file") == default_file), None
+                    f":gray-badge[🗂️ {len(patient_rcps)} RCP]{cumul_badge}"
                 )
                 rcp_dt = (
                     PatientMDTForm.extract_mdt_date(active_doc) if active_doc else None
@@ -901,7 +939,7 @@ def render_unified_patient_banner(
                     f" · Dernière RCP analysée : `{latest_file}`{born_part}"
                 )
             else:
-                st.markdown(f"### 📄 Dossier : `{default_file}`")
+                st.markdown(f"### 📄 Dossier : `{default_file}`{cumul_badge}")
 
         with top_cols[2]:
             if has_pdf and file_path is not None:
@@ -1671,8 +1709,11 @@ def _render_form_sections_list(
     for model_cls in models:
         model_name = model_cls.__name__
         meta = SECTION_META.get(model_name, {})
-        pole_label = meta.get("pole", "📋 Rubriques complémentaires")
-        if pole_label != current_pole:
+        pole_label = meta.get(
+            "pole",
+            "📋 Rubriques complémentaires" if "pole" not in meta else None,
+        )
+        if pole_label and pole_label != current_pole:
             current_pole = pole_label
             st.markdown(f"##### {current_pole}")
 
@@ -1684,6 +1725,177 @@ def _render_form_sections_list(
             model_name in active_state["active_models"]
         )
         exec_time = execution_times.get(model_name)
+        formatted_exec_time = (
+            _format_duration(exec_time) if exec_time is not None else None
+        )
+        time_help = (
+            f" (Dernier temps d'analyse : {formatted_exec_time})"
+            if formatted_exec_time is not None
+            else ""
+        )
+
+        if st.session_state.get(run_key):
+            st.session_state[run_key] = False
+            if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
+                res = extraction_service.enqueue_rerun(
+                    target_filename, model_name=model_name
+                )
+                if not res.get("already_queued"):
+                    st.toast(
+                        "Rubrique ajoutée à la file de traitement",
+                        icon="⏳",
+                    )
+                else:
+                    st.toast(
+                        "Cette rubrique est déjà dans la file de traitement",
+                        icon="ℹ️",
+                    )
+                st.rerun()
+            else:
+                try:
+                    with st.status(
+                        f"Relance de l'IA pour {model_name} ({target_filename}) ..."
+                    ) as status:
+                        st_callback = ThreadSafeStreamlitCallbackHandler(status)
+                        reader = get_mtd_reader(target_filename)
+                        form_cls = get_domain_mdt_form_cls(app_conf.domain)
+                        form = form_cls(file=target_filename)
+                        extraction_service.extract_section(
+                            form=form,
+                            reader=reader,
+                            model_cls=model_cls,
+                            upsert=True,
+                            callbacks=[st_callback],
+                        )
+                        data = (
+                            db_client.database["rcp_info"].find_one(
+                                {"file": target_filename}
+                            )
+                            if db_client is not None
+                            else form.sections
+                        ) or {}
+                except Exception as e:
+                    logger.error(f"Erreur lors de la relance de l'IA : {e}")
+                    st.error(f"Erreur lors de l'exécution de l'IA : {e}")
+                finally:
+                    st.rerun()
+
+        is_multi = (
+            hasattr(model_cls, "agents")
+            and len(model_cls.agents) > 1
+            and not getattr(model_cls, "collaborative", False)
+        )
+
+        # List each expert specialty one by one as its own collapsible accordion
+        if (
+            is_multi
+            and model_name in data
+            and isinstance(data[model_name], dict)
+            and data[model_name]
+        ):
+            model_data = data[model_name]
+            raw_agents = list(model_data.keys())
+
+            def _expert_sort_key(
+                ag_name: str,
+            ) -> tuple[int, int, str]:
+                ag_d = model_data.get(ag_name)
+                if not isinstance(ag_d, dict):
+                    return (2, 9, ag_name)
+                rel = bool(ag_d.get("expert_relevant"))
+                prio_val = str(ag_d.get("patient_priority") or "").lower()
+                prio_rank = (
+                    0
+                    if "urgent" in prio_val and "not" not in prio_val
+                    else 1
+                    if "soon" in prio_val or "medium" in prio_val
+                    else 2
+                )
+                return (0 if rel else 1, prio_rank, ag_name)
+
+            agent_names = sorted(raw_agents, key=_expert_sort_key)
+            for agent_name in agent_names:
+                ag_icon, ag_label = get_agent_icon_and_label(agent_name)
+                agent_dict = model_data.get(agent_name)
+                if isinstance(agent_dict, dict) and agent_dict.get("expert_relevant"):
+                    prio_val = str(agent_dict.get("patient_priority") or "").lower()
+                    if "urgent" in prio_val and "not" not in prio_val:
+                        ag_summary = " — 🚨 Priorité haute"
+                    elif "soon" in prio_val or "medium" in prio_val:
+                        ag_summary = " — 🟠 Priorité moyenne"
+                    else:
+                        ag_summary = " — ✅ Spécialité concernée"
+                    sugg_list = agent_dict.get("expert_suggestion") or []
+                    if isinstance(sugg_list, list) and len(sugg_list) > 0:
+                        ag_summary += f" · {len(sugg_list)} proposition(s)"
+                else:
+                    ag_summary = " — ⚪ Non concerné"
+
+                with st.expander(
+                    f"{ag_icon} **Avis — {ag_label}**{ag_summary}",
+                    expanded=False,
+                ):
+                    try:
+                        pydantic_model = model_cls.model_validate(agent_dict)
+                        render_fields(pydantic_model)
+                    except Exception:
+                        if isinstance(agent_dict, dict) and agent_dict.get("value"):
+                            st.markdown(str(agent_dict["value"]))
+                        else:
+                            st.caption(
+                                "⚪ Aucune donnée structurée renseignée dans le document pour cette spécialité."
+                            )
+
+                    ag_thinking = (
+                        agent_dict.get("reasoning_thinking")
+                        if isinstance(agent_dict, dict)
+                        else None
+                    )
+                    ag_exec_raw = (
+                        agent_dict.get("time_execution")
+                        if isinstance(agent_dict, dict)
+                        and isinstance(agent_dict.get("time_execution"), (int, float))
+                        else exec_time
+                    )
+                    ag_formatted_time = (
+                        _format_duration(ag_exec_raw)
+                        if ag_exec_raw is not None
+                        else None
+                    )
+
+                    with st.container(
+                        horizontal=True,
+                        horizontal_alignment="right",
+                        vertical_alignment="center",
+                    ):
+                        if ag_thinking:
+                            with st.popover(
+                                "💭 :small[Réflexion IA]",
+                                type="tertiary",
+                                help=f"Afficher le raisonnement détaillé de {ag_label}",
+                            ):
+                                with st.container(
+                                    height=280,
+                                    width=520,
+                                    border=False,
+                                    key=f"clinical_scroll_pop_{section_key}_{tab_suffix}_{target_filename}_{model_name}_{agent_name}",
+                                ):
+                                    st.write(ag_thinking)
+
+                        if st.button(
+                            ":blue[:material/refresh:] :small[Relancer les avis d'experts]",
+                            type="tertiary",
+                            key=f"btn_retry_{section_key}_{tab_suffix}_{target_filename}_{model_name}_{agent_name}",
+                            disabled=is_section_queued,
+                            help=f"Relancer l'extraction IA des avis d'experts{time_help}",
+                        ):
+                            st.session_state[run_key] = True
+                            st.rerun()
+
+                        if ag_formatted_time is not None:
+                            st.caption(f"⏱️ {ag_formatted_time}", width="content")
+            continue
+
         header_summary = (
             _extract_section_header_summary(model_name, data.get(model_name))
             if model_name in data
@@ -1697,158 +1909,43 @@ def _render_form_sections_list(
             f"{icon_str} **{display_title}**{header_summary}",
             expanded=default_exp,
         ):
-            if st.session_state.get(run_key):
-                st.session_state[run_key] = False
-                if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
-                    res = extraction_service.enqueue_rerun(
-                        target_filename, model_name=model_name
-                    )
-                    if not res.get("already_queued"):
-                        st.toast(
-                            "Rubrique ajoutée à la file de traitement",
-                            icon="⏳",
-                        )
-                    else:
-                        st.toast(
-                            "Cette rubrique est déjà dans la file de traitement",
-                            icon="ℹ️",
-                        )
-                    st.rerun()
-                else:
-                    try:
-                        with st.status(
-                            f"Relance de l'IA pour {model_name} ({target_filename}) ..."
-                        ) as status:
-                            st_callback = ThreadSafeStreamlitCallbackHandler(status)
-                            reader = get_mtd_reader(target_filename)
-                            form_cls = get_domain_mdt_form_cls(app_conf.domain)
-                            form = form_cls(file=target_filename)
-                            extraction_service.extract_section(
-                                form=form,
-                                reader=reader,
-                                model_cls=model_cls,
-                                upsert=True,
-                                callbacks=[st_callback],
-                            )
-                            data = (
-                                db_client.database["rcp_info"].find_one(
-                                    {"file": target_filename}
-                                )
-                                if db_client is not None
-                                else form.sections
-                            ) or {}
-                    except Exception as e:
-                        logger.error(f"Erreur lors de la relance de l'IA : {e}")
-                        st.error(f"Erreur lors de l'exécution de l'IA : {e}")
-                    finally:
-                        st.rerun()
-
             single_thinking: str | None = None
-            multi_thinkings: dict[str, str] = {}
 
             if model_name in data:
                 model_data = data[model_name]
-
-                is_multi = (
-                    hasattr(model_cls, "agents")
-                    and len(model_cls.agents) > 1
-                    and not getattr(model_cls, "collaborative", False)
-                )
-
-                if is_multi and isinstance(model_data, dict):
-                    raw_agents = list(model_data.keys())
-
-                    def _expert_sort_key(
-                        ag_name: str,
-                    ) -> tuple[int, int, str]:
-                        ag_d = model_data.get(ag_name)
-                        if not isinstance(ag_d, dict):
-                            return (2, 9, ag_name)
-                        rel = bool(ag_d.get("expert_relevant"))
-                        prio_val = str(ag_d.get("patient_priority") or "").lower()
-                        prio_rank = (
-                            0
-                            if "urgent" in prio_val and "not" not in prio_val
-                            else 1
-                            if "soon" in prio_val or "medium" in prio_val
-                            else 2
-                        )
-                        return (0 if rel else 1, prio_rank, ag_name)
-
-                    agent_names = sorted(raw_agents, key=_expert_sort_key)
-                    if agent_names:
-                        tab_labels = []
-                        for ag_name in agent_names:
-                            ag_icon, ag_label = get_agent_icon_and_label(ag_name)
-                            ag_d = model_data.get(ag_name)
-                            if isinstance(ag_d, dict) and ag_d.get("expert_relevant"):
-                                prio_val = str(
-                                    ag_d.get("patient_priority") or ""
-                                ).lower()
-                                if "urgent" in prio_val and "not" not in prio_val:
-                                    tab_labels.append(f"🚨 {ag_icon} {ag_label}")
-                                else:
-                                    tab_labels.append(f"✅ {ag_icon} {ag_label}")
-                            else:
-                                tab_labels.append(f"⚪ {ag_icon} {ag_label}")
-
-                        tabs = st.tabs(tab_labels)
-                        for tab, agent_name in zip(tabs, agent_names):
-                            agent_dict = data[model_name][agent_name]
-                            if isinstance(agent_dict, dict) and agent_dict.get(
-                                "reasoning_thinking"
-                            ):
-                                ag_icon, ag_label = get_agent_icon_and_label(agent_name)
-                                multi_thinkings[f"{ag_icon} {ag_label}"] = agent_dict[
-                                    "reasoning_thinking"
-                                ]
-                            with tab:
-                                try:
-                                    pydantic_model = model_cls.model_validate(
-                                        agent_dict
-                                    )
-                                    render_fields(pydantic_model)
-                                except Exception:
-                                    if isinstance(agent_dict, dict) and agent_dict.get(
-                                        "value"
-                                    ):
-                                        st.markdown(str(agent_dict["value"]))
-                                    else:
-                                        st.caption(
-                                            "⚪ Aucune donnée structurée renseignée dans le document pour cette spécialité."
-                                        )
-                else:
+                if isinstance(model_data, dict):
+                    single_thinking = model_data.get("reasoning_thinking")
+                try:
+                    pydantic_model = model_cls.model_validate(model_data)
+                    render_model_data(pydantic_model)
+                except Exception:
                     if isinstance(model_data, dict):
-                        single_thinking = model_data.get("reasoning_thinking")
-                    try:
-                        pydantic_model = model_cls.model_validate(model_data)
-                        render_model_data(pydantic_model)
-                    except Exception:
-                        if isinstance(model_data, dict):
-                            extra_fields = {
-                                k: v
-                                for k, v in model_data.items()
-                                if k
-                                not in ("value", "reasoning_thinking", "time_execution")
-                                and v is not None
-                            }
-                            if extra_fields:
-                                for k, v in extra_fields.items():
-                                    render_field(translate(k), v, field_name=k)
-                            elif model_data.get("value"):
-                                st.markdown(str(model_data["value"]))
-                            else:
-                                st.caption(
-                                    "⚪ Aucune information mentionnée dans le document pour cette rubrique."
-                                )
+                        extra_fields = {
+                            k: v
+                            for k, v in model_data.items()
+                            if k
+                            not in ("value", "reasoning_thinking", "time_execution")
+                            and v is not None
+                        }
+                        if extra_fields:
+                            for k, v in extra_fields.items():
+                                render_field(translate(k), v, field_name=k)
+                        elif model_data.get("value"):
+                            st.markdown(str(model_data["value"]))
                         else:
                             st.caption(
                                 "⚪ Aucune information mentionnée dans le document pour cette rubrique."
                             )
+                    else:
+                        st.caption(
+                            "⚪ Aucune information mentionnée dans le document pour cette rubrique."
+                        )
             else:
                 if is_section_queued or data.get("processing_status") in (
                     "PENDING_CLINICAL",
                     "PROCESSING_CLINICAL",
+                    "PENDING_EXPERTS",
+                    "PROCESSING_EXPERTS",
                     "PENDING_ADMIN",
                     "PROCESSING_ADMIN",
                 ):
@@ -1867,7 +1964,7 @@ def _render_form_sections_list(
                 horizontal_alignment="right",
                 vertical_alignment="center",
             ):
-                if single_thinking or multi_thinkings:
+                if single_thinking:
                     with st.popover(
                         "💭 :small[Réflexion IA]",
                         type="tertiary",
@@ -1879,21 +1976,8 @@ def _render_form_sections_list(
                             border=False,
                             key=f"clinical_scroll_pop_{section_key}_{tab_suffix}_{target_filename}_{model_name}",
                         ):
-                            if multi_thinkings:
-                                t_tabs = st.tabs(list(multi_thinkings.keys()))
-                                for t_tab, (ag_name, ag_think) in zip(
-                                    t_tabs, multi_thinkings.items()
-                                ):
-                                    with t_tab:
-                                        st.write(ag_think)
-                            elif single_thinking:
-                                st.write(single_thinking)
+                            st.write(single_thinking)
 
-                time_help = (
-                    f" (Dernier temps d'analyse : {exec_time:.2f} s)"
-                    if exec_time is not None
-                    else ""
-                )
                 if st.button(
                     ":blue[:material/refresh:] :small[Relancer cette rubrique]",
                     type="tertiary",
@@ -1902,9 +1986,10 @@ def _render_form_sections_list(
                     help=f"Relancer l'extraction IA de cette rubrique uniquement{time_help}",
                 ):
                     st.session_state[run_key] = True
+                    st.rerun()
 
-                if exec_time is not None:
-                    st.caption(f"⏱️ {exec_time:.1f} s", width="content")
+                if formatted_exec_time is not None:
+                    st.caption(f"⏱️ {formatted_exec_time}", width="content")
 
 
 def render_rcp_detail_view(

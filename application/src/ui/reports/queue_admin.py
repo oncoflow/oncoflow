@@ -18,8 +18,9 @@ STATUS_BADGES = {
 }
 
 JOB_TYPE_LABELS = {
-    JobType.WAVE1_ADMIN.value: "Identification patient (Étape 1)",
-    JobType.WAVE2_CLINICAL.value: "Analyse clinique complète (Étape 2)",
+    JobType.WAVE1_ADMIN.value: "Identification patient (Vague 1)",
+    JobType.WAVE2_CLINICAL.value: "Extraction clinique (Vague 2)",
+    JobType.WAVE3_EXPERTS.value: "Concertation d'experts (Vague 3)",
     JobType.SINGLE_MODEL.value: "Relance rubrique unitaire",
 }
 

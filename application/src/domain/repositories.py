@@ -133,6 +133,10 @@ class QueueJobExecutor(Protocol):
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
     ) -> None: ...
 
+    def execute_wave3_experts(
+        self, job: dict[str, Any], lease_id: str, queue_manager: Any
+    ) -> None: ...
+
     def execute_single_model(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
     ) -> None: ...

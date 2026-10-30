@@ -242,9 +242,13 @@ def display_as_list(
                 proc_status = item.get("processing_status")
                 status_badges = []
                 if proc_status == "PENDING_CLINICAL":
-                    status_badges.append(":blue-badge[⏳ Structuration en attente]")
+                    status_badges.append(":blue-badge[⏳ Extraction en attente]")
                 elif proc_status == "PROCESSING_CLINICAL":
-                    status_badges.append(":blue-badge[🔄 Structuration en cours]")
+                    status_badges.append(":blue-badge[🔄 Extraction en cours]")
+                elif proc_status == "PENDING_EXPERTS":
+                    status_badges.append(":violet-badge[⏳ Concertation en attente]")
+                elif proc_status == "PROCESSING_EXPERTS":
+                    status_badges.append(":violet-badge[🩺 Concertation en cours]")
                 elif proc_status == "FAILED":
                     status_badges.append(":red-badge[❌ Échec d'extraction]")
                 elif item["missing"]:
@@ -332,9 +336,13 @@ def display_as_cards(
                     proc_status = item.get("processing_status")
                     badge_status = ""
                     if proc_status == "PENDING_CLINICAL":
-                        badge_status = ":blue-badge[⏳ Structuration en attente]"
+                        badge_status = ":blue-badge[⏳ Extraction en attente]"
                     elif proc_status == "PROCESSING_CLINICAL":
-                        badge_status = ":blue-badge[🔄 Structuration en cours]"
+                        badge_status = ":blue-badge[🔄 Extraction en cours]"
+                    elif proc_status == "PENDING_EXPERTS":
+                        badge_status = ":violet-badge[⏳ Concertation en attente]"
+                    elif proc_status == "PROCESSING_EXPERTS":
+                        badge_status = ":violet-badge[🩺 Concertation en cours]"
                     elif proc_status == "FAILED":
                         badge_status = ":red-badge[❌ Échec d'extraction]"
                     elif item["missing"]:

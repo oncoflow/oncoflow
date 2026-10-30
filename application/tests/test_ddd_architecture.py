@@ -302,6 +302,33 @@ class TestPureDomainEntitiesAndValueObjects:
             "sma_patient_2026.pdf"
         )
 
+        # Verify 3-Wave model split: factual clinical (Wave 2) vs expert/collaborative (Wave 3)
+        onco_factual = [
+            m.__name__ for m in PatientMDTOncologicForm.get_factual_clinical_models()
+        ]
+        onco_experts = [m.__name__ for m in PatientMDTOncologicForm.get_expert_models()]
+        assert "TumorLocation" in onco_factual
+        assert "RadiologicExams" in onco_factual
+        assert "ExpertAnswer" not in onco_factual
+        assert set(onco_experts) == {
+            "ExpertAnswer",
+            "MTDCompleted",
+            "CareOrientationProposal",
+        }
+
+        sma_factual = [
+            m.__name__ for m in PatientMDTSmaForm.get_factual_clinical_models()
+        ]
+        sma_experts = [m.__name__ for m in PatientMDTSmaForm.get_expert_models()]
+        assert "GeneticDiagnosis" in sma_factual
+        assert "MotorFunctionStatus" in sma_factual
+        assert "ExpertAnswer" not in sma_factual
+        assert set(sma_experts) == {
+            "ExpertAnswer",
+            "MTDCompleted",
+            "CareOrientationProposal",
+        }
+
 
 class TestRepositoriesAndApplicationUseCases:
     """Test Repositories and Application Use Cases in isolation (no MongoDB daemon)."""

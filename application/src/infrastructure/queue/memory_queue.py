@@ -164,6 +164,23 @@ class InMemoryQueueManager:
             cloned["completed_models"] = list(cloned["completed_models"])
         return cloned
 
+    def _get_transitive_dependents_locked(
+        self, root_job_id: str
+    ) -> list[dict[str, Any]]:
+        """Return all direct and transitive dependent jobs of `root_job_id` in BFS order."""
+        result: list[dict[str, Any]] = []
+        frontier = [root_job_id]
+        seen = {root_job_id}
+        while frontier:
+            parent_id = frontier.pop(0)
+            for cand in self._jobs.values():
+                cid = cand["job_id"]
+                if cid not in seen and cand.get("depends_on_job_id") == parent_id:
+                    seen.add(cid)
+                    result.append(cand)
+                    frontier.append(cid)
+        return result
+
     # ------------------------------------------------------------------
     # Deduplication & Active Job Queries
     # ------------------------------------------------------------------
@@ -215,6 +232,7 @@ class InMemoryQueueManager:
         batch_id: str | None = None,
         include_clinical: bool = True,
         total_clinical_models: int = 1,
+        total_expert_models: int = 3,
         domain: str | None = None,
     ) -> dict[str, Any]:
         target_domain = self._normalize_domain(domain)
@@ -226,7 +244,11 @@ class InMemoryQueueManager:
                 and j["filename"] == filename
                 and j["status"] in (JobStatus.PENDING.value, JobStatus.PROCESSING.value)
                 and j["job_type"]
-                in (JobType.WAVE1_ADMIN.value, JobType.WAVE2_CLINICAL.value)
+                in (
+                    JobType.WAVE1_ADMIN.value,
+                    JobType.WAVE2_CLINICAL.value,
+                    JobType.WAVE3_EXPERTS.value,
+                )
             ]
             if existing:
                 return {
@@ -267,7 +289,7 @@ class InMemoryQueueManager:
                     status=JobStatus.PENDING,
                     priority=int(JobPriority.WAVE2_CLINICAL_IMPORT),
                     depends_on_job_id=wave1_job["job_id"],
-                    current_step="En attente de l'analyse clinique",
+                    current_step="En attente de l'extraction clinique",
                     total_models=max(1, total_clinical_models),
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now + timedelta(milliseconds=1),
@@ -277,6 +299,26 @@ class InMemoryQueueManager:
                 # Stored in _jobs; pushed to _pq automatically once wave1 completes
                 self._jobs[wave2_job["job_id"]] = wave2_job
                 created_jobs.append(self._clone_job(wave2_job))
+
+                wave3_job = QueueJob(
+                    batch_id=batch_id,
+                    domain=target_domain,
+                    filename=filename,
+                    target_patient_id=target_patient_id,
+                    job_type=JobType.WAVE3_EXPERTS,
+                    status=JobStatus.PENDING,
+                    priority=int(JobPriority.WAVE3_EXPERTS_IMPORT),
+                    depends_on_job_id=wave2_job["job_id"],
+                    current_step="En attente de la concertation d'experts",
+                    total_models=max(1, total_expert_models),
+                    max_retries=self.base_config.queue.max_retries,
+                    created_at=now + timedelta(milliseconds=2),
+                ).model_dump(mode="python")
+                wave3_job["job_type"] = JobType.WAVE3_EXPERTS.value
+                wave3_job["status"] = JobStatus.PENDING.value
+                # Stored in _jobs; pushed to _pq automatically once wave2 completes
+                self._jobs[wave3_job["job_id"]] = wave3_job
+                created_jobs.append(self._clone_job(wave3_job))
 
         self._set_rcp_processing_status(
             target_domain,
@@ -298,6 +340,8 @@ class InMemoryQueueManager:
         filename: str,
         model_name: str | None = None,
         total_clinical_models: int = 1,
+        total_expert_models: int = 3,
+        start_from_wave: int | None = None,
         domain: str | None = None,
     ) -> dict[str, Any]:
         target_domain = self._normalize_domain(domain)
@@ -306,8 +350,8 @@ class InMemoryQueueManager:
         # Repository check is done before taking the queue lock (never block workers on DB).
         has_admin = (
             self.executor.has_administrative_data(target_domain, filename)
-            if not model_name
-            else False
+            if not model_name and start_from_wave != 3
+            else True
         )
 
         with self._lock:
@@ -323,7 +367,11 @@ class InMemoryQueueManager:
                 self._clone_job(j)
                 for j in active_for_file
                 if j["job_type"]
-                in (JobType.WAVE1_ADMIN.value, JobType.WAVE2_CLINICAL.value)
+                in (
+                    JobType.WAVE1_ADMIN.value,
+                    JobType.WAVE2_CLINICAL.value,
+                    JobType.WAVE3_EXPERTS.value,
+                )
             ]
             if full_active:
                 return {
@@ -387,50 +435,89 @@ class InMemoryQueueManager:
 
             created_jobs: list[dict[str, Any]] = []
             depends_id: str | None = None
-            if not has_admin:
-                wave1_job = QueueJob(
+            if start_from_wave == 3:
+                wave3_job = QueueJob(
                     domain=target_domain,
                     filename=filename,
-                    job_type=JobType.WAVE1_ADMIN,
+                    job_type=JobType.WAVE3_EXPERTS,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.WAVE1_ADMIN_IMPORT),
-                    current_step="En attente d'identification du patient",
-                    total_models=1,
+                    priority=int(JobPriority.WAVE3_EXPERTS_RERUN),
+                    current_step="Relance de la concertation d'experts en attente",
+                    total_models=max(1, total_expert_models),
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now,
                 ).model_dump(mode="python")
-                wave1_job["job_type"] = JobType.WAVE1_ADMIN.value
-                wave1_job["status"] = JobStatus.PENDING.value
-                self._jobs[wave1_job["job_id"]] = wave1_job
-                self._push_to_pq(wave1_job)
-                created_jobs.append(self._clone_job(wave1_job))
-                depends_id = wave1_job["job_id"]
+                wave3_job["job_type"] = JobType.WAVE3_EXPERTS.value
+                wave3_job["status"] = JobStatus.PENDING.value
+                self._jobs[wave3_job["job_id"]] = wave3_job
+                self._push_to_pq(wave3_job)
+                created_jobs.append(self._clone_job(wave3_job))
+            else:
+                if not has_admin:
+                    wave1_job = QueueJob(
+                        domain=target_domain,
+                        filename=filename,
+                        job_type=JobType.WAVE1_ADMIN,
+                        status=JobStatus.PENDING,
+                        priority=int(JobPriority.WAVE1_ADMIN_IMPORT),
+                        current_step="En attente d'identification du patient",
+                        total_models=1,
+                        max_retries=self.base_config.queue.max_retries,
+                        created_at=now,
+                    ).model_dump(mode="python")
+                    wave1_job["job_type"] = JobType.WAVE1_ADMIN.value
+                    wave1_job["status"] = JobStatus.PENDING.value
+                    self._jobs[wave1_job["job_id"]] = wave1_job
+                    self._push_to_pq(wave1_job)
+                    created_jobs.append(self._clone_job(wave1_job))
+                    depends_id = wave1_job["job_id"]
 
-            wave2_job = QueueJob(
-                domain=target_domain,
-                filename=filename,
-                job_type=JobType.WAVE2_CLINICAL,
-                status=JobStatus.PENDING,
-                priority=int(JobPriority.WAVE2_CLINICAL_RERUN),
-                depends_on_job_id=depends_id,
-                current_step="Relance de l'analyse clinique en attente",
-                total_models=max(1, total_clinical_models),
-                max_retries=self.base_config.queue.max_retries,
-                created_at=now + timedelta(milliseconds=1),
-            ).model_dump(mode="python")
-            wave2_job["job_type"] = JobType.WAVE2_CLINICAL.value
-            wave2_job["status"] = JobStatus.PENDING.value
-            self._jobs[wave2_job["job_id"]] = wave2_job
-            if depends_id is None:
-                self._push_to_pq(wave2_job)
-            created_jobs.append(self._clone_job(wave2_job))
+                wave2_job = QueueJob(
+                    domain=target_domain,
+                    filename=filename,
+                    job_type=JobType.WAVE2_CLINICAL,
+                    status=JobStatus.PENDING,
+                    priority=int(JobPriority.WAVE2_CLINICAL_RERUN),
+                    depends_on_job_id=depends_id,
+                    current_step="Relance de l'extraction clinique en attente",
+                    total_models=max(1, total_clinical_models),
+                    max_retries=self.base_config.queue.max_retries,
+                    created_at=now + timedelta(milliseconds=1),
+                ).model_dump(mode="python")
+                wave2_job["job_type"] = JobType.WAVE2_CLINICAL.value
+                wave2_job["status"] = JobStatus.PENDING.value
+                self._jobs[wave2_job["job_id"]] = wave2_job
+                if depends_id is None:
+                    self._push_to_pq(wave2_job)
+                created_jobs.append(self._clone_job(wave2_job))
+
+                wave3_job = QueueJob(
+                    domain=target_domain,
+                    filename=filename,
+                    job_type=JobType.WAVE3_EXPERTS,
+                    status=JobStatus.PENDING,
+                    priority=int(JobPriority.WAVE3_EXPERTS_RERUN),
+                    depends_on_job_id=wave2_job["job_id"],
+                    current_step="En attente de la concertation d'experts",
+                    total_models=max(1, total_expert_models),
+                    max_retries=self.base_config.queue.max_retries,
+                    created_at=now + timedelta(milliseconds=2),
+                ).model_dump(mode="python")
+                wave3_job["job_type"] = JobType.WAVE3_EXPERTS.value
+                wave3_job["status"] = JobStatus.PENDING.value
+                self._jobs[wave3_job["job_id"]] = wave3_job
+                created_jobs.append(self._clone_job(wave3_job))
 
         self._set_rcp_processing_status(
             target_domain,
             filename,
-            RCPProcessingStatus.PENDING_CLINICAL
-            if has_admin
-            else RCPProcessingStatus.PENDING_ADMIN,
+            RCPProcessingStatus.PENDING_EXPERTS
+            if start_from_wave == 3
+            else (
+                RCPProcessingStatus.PENDING_CLINICAL
+                if has_admin
+                else RCPProcessingStatus.PENDING_ADMIN
+            ),
         )
         return {
             "already_queued": False,
@@ -888,20 +975,23 @@ class InMemoryQueueManager:
             if resolved_patient_id:
                 job["resolved_patient_id"] = resolved_patient_id
 
-            # Unlock & push any dependent Step 2 (WAVE2_CLINICAL) jobs into PriorityQueue
-            # Also revive CANCELLED dependents if this wave1 was retried after a failure.
+            # Propagate resolved_patient_id and revive any CANCELLED transitive dependents
+            for candidate in self._get_transitive_dependents_locked(job_id):
+                if candidate["status"] == JobStatus.CANCELLED.value:
+                    candidate["status"] = JobStatus.PENDING.value
+                    candidate["error_message"] = None
+                    candidate["completed_at"] = None
+                    candidate["current_step"] = "En attente de l'étape précédente"
+                    self._cancelled_job_ids.discard(candidate["job_id"])
+                if resolved_patient_id and not candidate.get("resolved_patient_id"):
+                    candidate["resolved_patient_id"] = resolved_patient_id
+
+            # Unlock & push direct dependent jobs into PriorityQueue
             for candidate in self._jobs.values():
-                if candidate.get("depends_on_job_id") == job_id and candidate[
-                    "status"
-                ] in (JobStatus.PENDING.value, JobStatus.CANCELLED.value):
-                    if candidate["status"] == JobStatus.CANCELLED.value:
-                        candidate["status"] = JobStatus.PENDING.value
-                        candidate["error_message"] = None
-                        candidate["completed_at"] = None
-                        candidate["current_step"] = "En attente de l'analyse clinique"
-                        self._cancelled_job_ids.discard(candidate["job_id"])
-                    if resolved_patient_id and not candidate.get("resolved_patient_id"):
-                        candidate["resolved_patient_id"] = resolved_patient_id
+                if (
+                    candidate.get("depends_on_job_id") == job_id
+                    and candidate["status"] == JobStatus.PENDING.value
+                ):
                     self._push_to_pq(candidate)
 
             self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
@@ -954,17 +1044,14 @@ class InMemoryQueueManager:
                 job["current_step"] = (
                     "Document refusé (non-RCP)" if no_retry else "Échec du traitement"
                 )
-                for dep in self._jobs.values():
-                    if (
-                        dep.get("depends_on_job_id") == job_id
-                        and dep["status"] == JobStatus.PENDING.value
-                    ):
+                for dep in self._get_transitive_dependents_locked(job_id):
+                    if dep["status"] == JobStatus.PENDING.value:
                         dep["status"] = JobStatus.CANCELLED.value
                         dep["completed_at"] = now
                         dep["error_message"] = (
                             "Annulé : le document importé n'est pas une fiche RCP"
                             if no_retry
-                            else "Annulé suite à l'échec de l'identification patient"
+                            else "Annulé suite à l'échec d'une étape précédente"
                         )
                         dep["current_step"] = "Annulé"
                         self._cancelled_job_ids.add(dep["job_id"])
@@ -1042,17 +1129,19 @@ class InMemoryQueueManager:
     def cancel_or_delete_job(self, job_id: str) -> bool:
         file_to_stabilize: tuple[str, str] | None = None
         with self._lock:
-            job = self._jobs.pop(job_id, None)
+            job = self._jobs.get(job_id)
             if not job:
                 return False
+            deps = self._get_transitive_dependents_locked(job_id)
+            self._jobs.pop(job_id, None)
             self._cancelled_job_ids.add(job_id)
             self.release_gpu_lease(job_id=job_id)
 
-            for dep_id, dep in list(self._jobs.items()):
-                if dep.get("depends_on_job_id") == job_id:
-                    self._jobs.pop(dep_id, None)
-                    self._cancelled_job_ids.add(dep_id)
-                    self.release_gpu_lease(job_id=dep_id)
+            for dep in deps:
+                dep_id = dep["job_id"]
+                self._jobs.pop(dep_id, None)
+                self._cancelled_job_ids.add(dep_id)
+                self.release_gpu_lease(job_id=dep_id)
 
             domain = job["domain"]
             filename = job["filename"]
@@ -1099,33 +1188,53 @@ class InMemoryQueueManager:
             job["current_step"] = "Remis en file d'attente"
             job["heartbeat_at"] = now
 
-            dep_id = job.get("depends_on_job_id")
-            dep_job = self._jobs.get(dep_id) if dep_id else None
-            if dep_job and dep_job["status"] != JobStatus.COMPLETED.value:
-                if dep_job["status"] in (
-                    JobStatus.FAILED.value,
-                    JobStatus.CANCELLED.value,
-                ):
-                    self.release_gpu_lease(job_id=dep_id)
-                    self._cancelled_job_ids.discard(dep_id)
-                    self._reset_run_fields(dep_job)
-                    dep_job["status"] = JobStatus.PENDING.value
-                    dep_job["attempts"] = 0
-                    dep_job["error_message"] = None
-                    dep_job["completed_at"] = None
-                    dep_job["current_step"] = "Remis en file d'attente"
-                    dep_job["heartbeat_at"] = now
-                    self._push_to_pq(dep_job)
+            # Walk ancestor chain if this job depends on a previous wave
+            ancestors: list[dict[str, Any]] = []
+            cur_dep_id = job.get("depends_on_job_id")
+            while cur_dep_id:
+                dep_job = self._jobs.get(cur_dep_id)
+                if not dep_job:
+                    break
+                ancestors.append(dep_job)
+                cur_dep_id = dep_job.get("depends_on_job_id")
+
+            uncompleted_ancestors = [
+                a for a in ancestors if a["status"] != JobStatus.COMPLETED.value
+            ]
+            if uncompleted_ancestors:
+                # Revive any FAILED or CANCELLED ancestors; push only the earliest uncompleted ancestor
+                earliest = uncompleted_ancestors[-1]
+                for anc in uncompleted_ancestors:
+                    if anc["status"] in (
+                        JobStatus.FAILED.value,
+                        JobStatus.CANCELLED.value,
+                    ):
+                        anc_id = anc["job_id"]
+                        self.release_gpu_lease(job_id=anc_id)
+                        self._cancelled_job_ids.discard(anc_id)
+                        self._reset_run_fields(anc)
+                        anc["status"] = JobStatus.PENDING.value
+                        anc["attempts"] = 0
+                        anc["error_message"] = None
+                        anc["completed_at"] = None
+                        anc["current_step"] = (
+                            "Remis en file d'attente"
+                            if anc is earliest
+                            else "En attente de l'étape précédente"
+                        )
+                        anc["heartbeat_at"] = now
+                if earliest["status"] == JobStatus.PENDING.value:
+                    self._push_to_pq(earliest)
                 job["current_step"] = "En attente de l'étape précédente"
             else:
                 self._push_to_pq(job)
 
-            # If this job is a parent (wave1) being retried, revive any CANCELLED dependents
-            for cand in self._jobs.values():
-                if (
-                    cand.get("depends_on_job_id") == job_id
-                    and cand["status"] == JobStatus.CANCELLED.value
-                ):
+            # Revive any CANCELLED transitive dependents (e.g., Wave 2 and Wave 3 when Wave 1 is retried)
+            root_for_dependents = (
+                uncompleted_ancestors[-1]["job_id"] if uncompleted_ancestors else job_id
+            )
+            for cand in self._get_transitive_dependents_locked(root_for_dependents):
+                if cand["status"] == JobStatus.CANCELLED.value:
                     self._cancelled_job_ids.discard(cand["job_id"])
                     self._reset_run_fields(cand)
                     cand["status"] = JobStatus.PENDING.value
@@ -1137,11 +1246,12 @@ class InMemoryQueueManager:
 
             cloned = self._clone_job(job)
 
-        target_status = (
-            RCPProcessingStatus.PENDING_ADMIN
-            if cloned["job_type"] == JobType.WAVE1_ADMIN.value
-            else RCPProcessingStatus.PENDING_CLINICAL
-        )
+        if cloned["job_type"] == JobType.WAVE1_ADMIN.value:
+            target_status = RCPProcessingStatus.PENDING_ADMIN
+        elif cloned["job_type"] == JobType.WAVE3_EXPERTS.value:
+            target_status = RCPProcessingStatus.PENDING_EXPERTS
+        else:
+            target_status = RCPProcessingStatus.PENDING_CLINICAL
         self._set_rcp_processing_status(
             cloned["domain"], cloned["filename"], target_status
         )
@@ -1214,19 +1324,17 @@ class InMemoryQueueManager:
                             self._push_to_pq(job)
                         retried_ids.add(jid)
                         affected += 1
-                for cand in self._jobs.values():
-                    if (
-                        cand.get("depends_on_job_id") in retried_ids
-                        and cand["status"] == JobStatus.CANCELLED.value
-                    ):
-                        self._cancelled_job_ids.discard(cand["job_id"])
-                        self._reset_run_fields(cand)
-                        cand["status"] = JobStatus.PENDING.value
-                        cand["attempts"] = 0
-                        cand["error_message"] = None
-                        cand["completed_at"] = None
-                        cand["current_step"] = "En attente de l'étape précédente"
-                        cand["heartbeat_at"] = now
+                for r_id in retried_ids:
+                    for cand in self._get_transitive_dependents_locked(r_id):
+                        if cand["status"] == JobStatus.CANCELLED.value:
+                            self._cancelled_job_ids.discard(cand["job_id"])
+                            self._reset_run_fields(cand)
+                            cand["status"] = JobStatus.PENDING.value
+                            cand["attempts"] = 0
+                            cand["error_message"] = None
+                            cand["completed_at"] = None
+                            cand["current_step"] = "En attente de l'étape précédente"
+                            cand["heartbeat_at"] = now
 
             elif mode == "pending":
                 for jid in matching_ids:
@@ -1256,7 +1364,7 @@ class InMemoryQueueManager:
         return {"mode": mode, "affected_jobs": affected}
 
     # ------------------------------------------------------------------
-    # Worker Execution Logic (Step 1, Step 2, Single Model)
+    # Worker Execution Logic (Wave 1, Wave 2, Wave 3, Single Model)
     # ------------------------------------------------------------------
 
     def _is_job_aborted(
@@ -1280,6 +1388,9 @@ class InMemoryQueueManager:
 
     def _execute_wave2_clinical(self, job: dict[str, Any], lease_id: str) -> None:
         self.executor.execute_wave2_clinical(job, lease_id, self)
+
+    def _execute_wave3_experts(self, job: dict[str, Any], lease_id: str) -> None:
+        self.executor.execute_wave3_experts(job, lease_id, self)
 
     def _execute_single_model(self, job: dict[str, Any], lease_id: str) -> None:
         self.executor.execute_single_model(job, lease_id, self)
@@ -1307,6 +1418,8 @@ class InMemoryQueueManager:
                 resolved_pid = self._execute_wave1_admin(job, lease_id)
             elif job_type == JobType.WAVE2_CLINICAL.value:
                 self._execute_wave2_clinical(job, lease_id)
+            elif job_type == JobType.WAVE3_EXPERTS.value:
+                self._execute_wave3_experts(job, lease_id)
             elif job_type == JobType.SINGLE_MODEL.value:
                 self._execute_single_model(job, lease_id)
             else:
@@ -1547,6 +1660,7 @@ class QueueBroker:
         batch_id: str | None = None,
         include_clinical: bool = True,
         total_clinical_models: int = 1,
+        total_expert_models: int = 3,
     ) -> dict[str, Any]:
         if self._use_remote_api():
             try:
@@ -1559,6 +1673,7 @@ class QueueBroker:
                         "batch_id": batch_id,
                         "include_clinical": include_clinical,
                         "total_clinical_models": total_clinical_models,
+                        "total_expert_models": total_expert_models,
                     },
                     headers=self._auth_headers(),
                     timeout=5.0,
@@ -1574,6 +1689,7 @@ class QueueBroker:
             batch_id=batch_id,
             include_clinical=include_clinical,
             total_clinical_models=total_clinical_models,
+            total_expert_models=total_expert_models,
             domain=self.domain,
         )
 
@@ -1582,6 +1698,8 @@ class QueueBroker:
         filename: str,
         model_name: str | None = None,
         total_clinical_models: int = 1,
+        total_expert_models: int = 3,
+        start_from_wave: int | None = None,
     ) -> dict[str, Any]:
         if self._use_remote_api():
             try:
@@ -1592,6 +1710,7 @@ class QueueBroker:
                         "filename": filename,
                         "model_name": model_name,
                         "total_clinical_models": total_clinical_models,
+                        "total_expert_models": total_expert_models,
                     },
                     headers=self._auth_headers(),
                     timeout=5.0,
@@ -1605,7 +1724,9 @@ class QueueBroker:
             filename=filename,
             model_name=model_name,
             total_clinical_models=total_clinical_models,
+            total_expert_models=total_expert_models,
             domain=self.domain,
+            start_from_wave=start_from_wave,
         )
 
     def acquire_gpu_lease(

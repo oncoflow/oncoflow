@@ -12,6 +12,8 @@ class RCPProcessingStatus(str, Enum):
     PROCESSING_ADMIN = "PROCESSING_ADMIN"
     PENDING_CLINICAL = "PENDING_CLINICAL"
     PROCESSING_CLINICAL = "PROCESSING_CLINICAL"
+    PENDING_EXPERTS = "PENDING_EXPERTS"
+    PROCESSING_EXPERTS = "PROCESSING_EXPERTS"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
 
@@ -20,8 +22,10 @@ class RCPProcessingStatus(str, Enum):
         return {
             cls.PENDING_ADMIN.value: "⏳ En attente de traitement",
             cls.PROCESSING_ADMIN.value: "🔍 Identification du patient en cours",
-            cls.PENDING_CLINICAL.value: "⏳ Analyse clinique en attente",
-            cls.PROCESSING_CLINICAL.value: "🔄 Analyse clinique en cours",
+            cls.PENDING_CLINICAL.value: "⏳ Extraction clinique en attente",
+            cls.PROCESSING_CLINICAL.value: "🔄 Extraction clinique en cours",
+            cls.PENDING_EXPERTS.value: "⏳ Concertation d'experts en attente",
+            cls.PROCESSING_EXPERTS.value: "🩺 Concertation d'experts en cours",
             cls.COMPLETED.value: "✅ Dossier prêt",
             cls.FAILED.value: "❌ Échec du traitement",
         }
@@ -51,17 +55,19 @@ class JobStatus(str, Enum):
 
 
 class JobType(str, Enum):
-    """Task type in the two-wave priority processing queue."""
+    """Task type in the three-wave priority processing queue."""
 
     WAVE1_ADMIN = "WAVE1_ADMIN"
     WAVE2_CLINICAL = "WAVE2_CLINICAL"
+    WAVE3_EXPERTS = "WAVE3_EXPERTS"
     SINGLE_MODEL = "SINGLE_MODEL"
 
     @classmethod
     def labels_fr(cls) -> dict[str, str]:
         return {
             cls.WAVE1_ADMIN.value: "Identification du patient",
-            cls.WAVE2_CLINICAL.value: "Analyse clinique complète",
+            cls.WAVE2_CLINICAL.value: "Extraction du dossier clinique",
+            cls.WAVE3_EXPERTS.value: "Concertation d'experts & décision RCP",
             cls.SINGLE_MODEL.value: "Mise à jour d'une rubrique",
         }
 
@@ -75,8 +81,11 @@ class JobPriority:
     SINGLE_MODEL_RERUN = 90
     FULL_RCP_RERUN = 80
     WAVE2_CLINICAL_RERUN = 80
-    WAVE2_CLINICAL = 50
-    WAVE2_CLINICAL_IMPORT = 50
+    WAVE3_EXPERTS_RERUN = 75
+    WAVE2_CLINICAL = 70
+    WAVE2_CLINICAL_IMPORT = 70
+    WAVE3_EXPERTS = 40
+    WAVE3_EXPERTS_IMPORT = 40
 
 
 class QueueJob(BaseModel):

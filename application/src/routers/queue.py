@@ -148,7 +148,7 @@ def enqueue_import_endpoint(
     config: DomainConfigDep,
     manager: QueueManagerDep,
 ):
-    """Enqueue an imported `PatientMDTForm` file (Wave 1 Identification + Wave 2 Clinical) into the `PriorityQueue`."""
+    """Enqueue an imported `PatientMDTForm` file (Wave 1 Identification + Wave 2 Clinical + Wave 3 Experts) into the `PriorityQueue`."""
     if not is_safe_filename(request.filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -160,6 +160,7 @@ def enqueue_import_endpoint(
         batch_id=request.batch_id,
         include_clinical=request.include_clinical,
         total_clinical_models=request.total_clinical_models,
+        total_expert_models=request.total_expert_models,
         domain=config.domain,
     )
 
@@ -180,6 +181,7 @@ def enqueue_rerun_endpoint(
         filename=request.filename,
         model_name=request.model_name,
         total_clinical_models=request.total_clinical_models,
+        total_expert_models=request.total_expert_models,
         domain=config.domain,
     )
 

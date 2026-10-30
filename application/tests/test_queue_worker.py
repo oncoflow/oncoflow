@@ -147,7 +147,7 @@ def mock_mongo_Env():
 
 
 class TestPriorityQueueAndCrossDomainAPI:
-    def test_two_wave_priority_ordering_and_dependency(self, mock_mongo_Env):
+    def test_three_wave_priority_ordering_and_dependency(self, mock_mongo_Env):
         conf, _ = mock_mongo_Env
         broker = QueueBroker(conf)
 
@@ -156,17 +156,21 @@ class TestPriorityQueueAndCrossDomainAPI:
             batch_id="batch_1",
             include_clinical=True,
             total_clinical_models=3,
+            total_expert_models=3,
         )
         res2 = broker.enqueue_import_file(
             filename="fiche_b.pdf",
             batch_id="batch_1",
             include_clinical=True,
             total_clinical_models=3,
+            total_expert_models=3,
         )
         assert not res1["already_queued"]
         assert not res2["already_queued"]
+        assert len(res1["jobs"]) == 3
+        assert len(res2["jobs"]) == 3
 
-        # Wave 1 jobs (priority 100) must always be claimed from PriorityQueue before Wave 2 (priority 50)
+        # Wave 1 jobs (priority 100) must always be claimed from PriorityQueue before Wave 2 (priority 70)
         job1, lease1 = broker.claim_next_job("worker_1")
         assert job1 is not None
         assert job1["job_type"] == JobType.WAVE1_ADMIN.value
@@ -175,7 +179,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             job1["job_id"], lease_id=lease1, resolved_patient_id="pat_a"
         )
 
-        # Even though fiche_a's Wave 1 is done, fiche_b's Wave 1 (priority 100) must run before fiche_a's Wave 2 (priority 50)!
+        # Even though fiche_a's Wave 1 is done, fiche_b's Wave 1 (priority 100) must run before fiche_a's Wave 2 (priority 70)
         job2, lease2 = broker.claim_next_job("worker_1")
         assert job2 is not None
         assert job2["job_type"] == JobType.WAVE1_ADMIN.value
@@ -184,7 +188,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             job2["job_id"], lease_id=lease2, resolved_patient_id="pat_b"
         )
 
-        # Now Wave 2 jobs are claimed in FIFO order
+        # Now Wave 2 jobs (priority 70) are claimed in FIFO order before any Wave 3 job (priority 40)
         job3, lease3 = broker.claim_next_job("worker_1")
         assert job3 is not None
         assert job3["job_type"] == JobType.WAVE2_CLINICAL.value
@@ -192,11 +196,28 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert job3["resolved_patient_id"] == "pat_a"
         broker.complete_job(job3["job_id"], lease_id=lease3)
 
+        # Even though fiche_a's Wave 2 is done (unlocking fiche_a Wave 3), fiche_b's Wave 2 (priority 70) runs before fiche_a's Wave 3 (priority 40)!
         job4, lease4 = broker.claim_next_job("worker_1")
         assert job4 is not None
         assert job4["job_type"] == JobType.WAVE2_CLINICAL.value
         assert job4["filename"] == "fiche_b.pdf"
+        assert job4["resolved_patient_id"] == "pat_b"
         broker.complete_job(job4["job_id"], lease_id=lease4)
+
+        # Finally Wave 3 jobs (priority 40) are claimed in FIFO order
+        job5, lease5 = broker.claim_next_job("worker_1")
+        assert job5 is not None
+        assert job5["job_type"] == JobType.WAVE3_EXPERTS.value
+        assert job5["filename"] == "fiche_a.pdf"
+        assert job5["resolved_patient_id"] == "pat_a"
+        broker.complete_job(job5["job_id"], lease_id=lease5)
+
+        job6, lease6 = broker.claim_next_job("worker_1")
+        assert job6 is not None
+        assert job6["job_type"] == JobType.WAVE3_EXPERTS.value
+        assert job6["filename"] == "fiche_b.pdf"
+        assert job6["resolved_patient_id"] == "pat_b"
+        broker.complete_job(job6["job_id"], lease_id=lease6)
 
     def test_strict_deduplication_on_import_and_rerun(self, mock_mongo_Env):
         conf, _ = mock_mongo_Env
@@ -387,12 +408,25 @@ class TestPriorityQueueAndCrossDomainAPI:
             )
             assert rcp_after_w1["patient_id"] == "jean_dupont_1960-01-01"
 
-            # Second step executes Wave 2 (Clinical models progressively saved)
+            # Second step executes Wave 2 (Factual clinical models progressively saved)
             assert manager.run_once() is True
             rcp_after_w2 = db["rcp_info"].find_one({"file": "patient_x.pdf"})
             assert (
-                rcp_after_w2["processing_status"] == RCPProcessingStatus.COMPLETED.value
+                rcp_after_w2["processing_status"]
+                == RCPProcessingStatus.PENDING_EXPERTS.value
             )
+            assert "TumorLocation" in rcp_after_w2
+            assert "ExpertAnswer" not in rcp_after_w2
+
+            # Third step executes Wave 3 (Expert & collaborative models progressively saved)
+            assert manager.run_once() is True
+            rcp_after_w3 = db["rcp_info"].find_one({"file": "patient_x.pdf"})
+            assert (
+                rcp_after_w3["processing_status"] == RCPProcessingStatus.COMPLETED.value
+            )
+            assert "ExpertAnswer" in rcp_after_w3
+            assert "MTDCompleted" in rcp_after_w3
+            assert "CareOrientationProposal" in rcp_after_w3
 
     def test_cross_domain_fastapi_endpoints(self, mock_mongo_Env):
         from importlib import import_module
@@ -447,7 +481,7 @@ class TestPriorityQueueAndCrossDomainAPI:
         stats_onco = client.get(
             "/api/v1/queue/stats", params={"domain": "oncology"}
         ).json()
-        assert stats_sma["pending"] == 2
+        assert stats_sma["pending"] == 3
         assert stats_onco["pending"] == 0
 
         # 4. Check /health, /api/v1/queue/jobs, /api/v1/queue/rerun, /api/v1/queue/clean, /api/v1/patientmdtform
@@ -460,7 +494,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             params={"domain": "sma", "filename": "sma_api_patient.pdf"},
         )
         assert resp_jobs_sma.status_code == 200
-        assert len(resp_jobs_sma.json()) == 2
+        assert len(resp_jobs_sma.json()) == 3
 
         resp_rcp_onco = client.get(
             "/api/v1/patientmdtform", headers={"X-Oncoflow-Domain": "oncology"}
@@ -474,7 +508,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             json={"mode": "all"},
         )
         assert resp_clean.status_code == 200
-        assert resp_clean.json()["affected_jobs"] == 2
+        assert resp_clean.json()["affected_jobs"] == 3
 
     def test_startup_recovery_and_dev_standalone_fallback(self, mock_mongo_Env):
         conf, mongo_client = mock_mongo_Env
@@ -507,8 +541,8 @@ class TestPriorityQueueAndCrossDomainAPI:
         manager = QueueBroker(conf)._manager
         recovered_count = manager.recover_unfinished_from_mongodb()
         assert recovered_count == 2
-        assert manager.get_queue_stats(domain="oncology")["pending"] == 2
-        assert manager.get_queue_stats(domain="sma")["pending"] == 1
+        assert manager.get_queue_stats(domain="oncology")["pending"] == 3
+        assert manager.get_queue_stats(domain="sma")["pending"] == 2
 
         # Verify standalone dev fallback when api_url is unreachable
         dev_conf = conf.model_copy(deep=True)
@@ -701,7 +735,7 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert current["status"] == JobStatus.PROCESSING.value
         assert current["worker_id"] == "worker_2"
 
-    def test_wave2_revives_when_failed_wave1_is_retried(self, mock_mongo_Env):
+    def test_wave2_and_wave3_revive_when_failed_wave1_is_retried(self, mock_mongo_Env):
         conf, _ = mock_mongo_Env
         broker = QueueBroker(conf)
         queue_manager = broker._manager
@@ -712,8 +746,9 @@ class TestPriorityQueueAndCrossDomainAPI:
         )
         wave1_id = res["jobs"][0]["job_id"]
         wave2_id = res["jobs"][1]["job_id"]
+        wave3_id = res["jobs"][2]["job_id"]
 
-        # Fail wave1 exhausting retries (max_retries=0) -> wave2 becomes cancelled
+        # Fail wave1 exhausting retries (max_retries=0) -> wave2 and wave3 become cancelled
         with queue_manager._lock:
             queue_manager._jobs[wave1_id]["max_retries"] = 0
         _, lease1 = queue_manager.claim_next_job(worker_id="w1")
@@ -724,11 +759,13 @@ class TestPriorityQueueAndCrossDomainAPI:
         )
         assert queue_manager.get_job(wave1_id)["status"] == JobStatus.FAILED.value
         assert queue_manager.get_job(wave2_id)["status"] == JobStatus.CANCELLED.value
+        assert queue_manager.get_job(wave3_id)["status"] == JobStatus.CANCELLED.value
 
-        # Now manual retry of wave1 revives wave2 back to pending
+        # Now manual retry of wave1 revives wave2 and wave3 back to pending
         queue_manager.retry_job(wave1_id)
         assert queue_manager.get_job(wave1_id)["status"] == JobStatus.PENDING.value
         assert queue_manager.get_job(wave2_id)["status"] == JobStatus.PENDING.value
+        assert queue_manager.get_job(wave3_id)["status"] == JobStatus.PENDING.value
 
     def test_delete_locks_endpoint_requires_explicit_filter(self, mock_mongo_Env):
         from fastapi import FastAPI
@@ -779,12 +816,14 @@ class TestPriorityQueueAndCrossDomainAPI:
             )
             wave1_id = res["results"][0]["jobs"][0]["job_id"]
             wave2_id = res["results"][0]["jobs"][1]["job_id"]
+            wave3_id = res["results"][0]["jobs"][2]["job_id"]
 
             manager: InMemoryQueueManager = QueueBroker(conf)._manager
             assert manager.run_once() is True
 
             w1_job = manager.get_job(wave1_id)
             w2_job = manager.get_job(wave2_id)
+            w3_job = manager.get_job(wave3_id)
             assert w1_job["status"] == JobStatus.FAILED.value
             assert w1_job["attempts"] == 1
             assert w1_job["current_step"] == "Document refusé (non-RCP)"
@@ -792,6 +831,8 @@ class TestPriorityQueueAndCrossDomainAPI:
 
             assert w2_job["status"] == JobStatus.CANCELLED.value
             assert "n'est pas une fiche RCP" in w2_job["error_message"]
+            assert w3_job["status"] == JobStatus.CANCELLED.value
+            assert "n'est pas une fiche RCP" in w3_job["error_message"]
 
             # No orphan document must be recreated in rcp_info after rejection
             assert db["rcp_info"].find_one({"file": "courrier_non_rcp.pdf"}) is None

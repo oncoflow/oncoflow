@@ -572,7 +572,8 @@ class PatientMDTFormExtractionService:
         """Enqueue a batch of `PatientMDTForm` files into the priority processing queue."""
         from src.infrastructure.queue import QueueBroker
 
-        clinical_count = max(1, len(self.form_cls.get_clinical_models()))
+        clinical_count = max(1, len(self.form_cls.get_factual_clinical_models()))
+        expert_count = max(1, len(self.form_cls.get_expert_models()))
         batch_id = f"batch_{uuid.uuid4().hex[:10]}"
 
         broker = QueueBroker(self.config)
@@ -589,6 +590,7 @@ class PatientMDTFormExtractionService:
                     batch_id=batch_id,
                     include_clinical=run_full_ai,
                     total_clinical_models=clinical_count,
+                    total_expert_models=expert_count,
                 )
                 results.append(res)
                 if res.get("already_queued"):
@@ -612,7 +614,8 @@ class PatientMDTFormExtractionService:
         """Enqueue a full `PatientMDTForm` rerun or a single-section rerun into the processing queue."""
         from src.infrastructure.queue import QueueBroker
 
-        clinical_count = max(1, len(self.form_cls.get_clinical_models()))
+        clinical_count = max(1, len(self.form_cls.get_factual_clinical_models()))
+        expert_count = max(1, len(self.form_cls.get_expert_models()))
 
         broker = QueueBroker(self.config)
         try:
@@ -620,6 +623,7 @@ class PatientMDTFormExtractionService:
                 filename=filename,
                 model_name=model_name,
                 total_clinical_models=clinical_count,
+                total_expert_models=expert_count,
             )
         finally:
             broker.close()
@@ -636,7 +640,11 @@ class PatientMDTFormExtractionService:
 
         has_full = any(
             j.get("job_type")
-            in (JobType.WAVE1_ADMIN.value, JobType.WAVE2_CLINICAL.value)
+            in (
+                JobType.WAVE1_ADMIN.value,
+                JobType.WAVE2_CLINICAL.value,
+                JobType.WAVE3_EXPERTS.value,
+            )
             for j in active_jobs
         )
         active_models = [

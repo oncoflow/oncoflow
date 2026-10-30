@@ -59,10 +59,23 @@ def _format_business_status(rcp_doc: dict | None) -> tuple[str, int, bool]:
     if proc_status == RCPProcessingStatus.PROCESSING_ADMIN.value:
         return "🔍 Identification du patient en cours...", max(pct, 20), False
     if proc_status == RCPProcessingStatus.PENDING_CLINICAL.value:
-        return "⏳ Patient identifié — Analyse clinique en attente", max(pct, 30), True
+        return (
+            "⏳ Patient identifié — Extraction clinique en attente",
+            max(pct, 30),
+            True,
+        )
     if proc_status == RCPProcessingStatus.PROCESSING_CLINICAL.value:
-        step_label = proc_step if proc_step else "Analyse clinique en cours..."
+        step_label = proc_step if proc_step else "Extraction clinique en cours..."
         return f"📋 {step_label}", max(pct, 40), True
+    if proc_status == RCPProcessingStatus.PENDING_EXPERTS.value:
+        return (
+            "⏳ Clinique extraite — Concertation d'experts en attente",
+            max(pct, 70),
+            True,
+        )
+    if proc_status == RCPProcessingStatus.PROCESSING_EXPERTS.value:
+        step_label = proc_step if proc_step else "Concertation d'experts en cours..."
+        return f"🩺 {step_label}", max(pct, 75), True
     if proc_status == RCPProcessingStatus.FAILED.value:
         return "❌ Échec du traitement", pct, bool(rcp_doc.get("patient_id"))
     if proc_status == RCPProcessingStatus.COMPLETED.value or proc_status is None:

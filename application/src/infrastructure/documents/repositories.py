@@ -472,6 +472,8 @@ class MongoPatientMDTFormRepository:
                             RCPProcessingStatus.PROCESSING_ADMIN.value,
                             RCPProcessingStatus.PENDING_CLINICAL.value,
                             RCPProcessingStatus.PROCESSING_CLINICAL.value,
+                            RCPProcessingStatus.PENDING_EXPERTS.value,
+                            RCPProcessingStatus.PROCESSING_EXPERTS.value,
                         ]
                     }
                 }

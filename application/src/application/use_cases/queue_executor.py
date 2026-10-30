@@ -298,7 +298,7 @@ class PatientMDTFormQueueJobExecutor:
     def execute_wave2_clinical(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
     ) -> None:
-        """Execute Wave 2 (extraction of all clinical sections on the `PatientMDTForm`)."""
+        """Execute Wave 2 (extraction of factual single-agent clinical sections on the `PatientMDTForm`)."""
         job_id = job["job_id"]
         domain = job["domain"]
         filename = job["filename"]
@@ -312,7 +312,7 @@ class PatientMDTFormQueueJobExecutor:
             config=domain_conf, filename=filename, reader=reader
         )
         try:
-            clinical_models = service.form_cls.get_clinical_models()
+            clinical_models = service.form_cls.get_factual_clinical_models()
             total = max(1, len(clinical_models))
             completed_models: list[str] = list(job.get("completed_models") or [])
             run_id = job.get("run_id")
@@ -333,7 +333,7 @@ class PatientMDTFormQueueJobExecutor:
                 queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
                 queue_manager.update_job_progress(
                     job_id=job_id,
-                    current_step=f"Analyse clinique ({idx}/{total}) — {model_name}",
+                    current_step=f"Extraction clinique ({idx}/{total}) — {model_name}",
                     completed_models=completed_models,
                     progress_pct=round(((idx - 1) / total) * 100.0, 1),
                     run_id=run_id,
@@ -350,7 +350,84 @@ class PatientMDTFormQueueJobExecutor:
                     completed_models.append(model_name)
                 queue_manager.update_job_progress(
                     job_id=job_id,
-                    current_step=f"Analyse clinique ({idx}/{total}) — {model_name}",
+                    current_step=f"Extraction clinique ({idx}/{total}) — {model_name}",
+                    completed_models=completed_models,
+                    progress_pct=round((idx / total) * 100.0, 1),
+                    run_id=run_id,
+                    lease_id=lease_id,
+                )
+
+            with queue_manager._lock:
+                has_wave3 = any(
+                    j.get("depends_on_job_id") == job_id
+                    and j["status"] == JobStatus.PENDING.value
+                    for j in queue_manager._jobs.values()
+                )
+            next_status = (
+                RCPProcessingStatus.PENDING_EXPERTS
+                if has_wave3
+                else RCPProcessingStatus.COMPLETED
+            )
+            self.on_job_enqueued(domain, filename, next_status)
+        finally:
+            service.close()
+
+    def execute_wave3_experts(
+        self, job: dict[str, Any], lease_id: str, queue_manager: Any
+    ) -> None:
+        """Execute Wave 3 (multi-agent expert board, completeness check, and care orientation on the `PatientMDTForm`)."""
+        job_id = job["job_id"]
+        domain = job["domain"]
+        filename = job["filename"]
+        domain_conf = self._resolve_domain_config(domain)
+
+        self.on_job_enqueued(domain, filename, RCPProcessingStatus.PROCESSING_EXPERTS)
+
+        reader = DocumentReader(domain_conf, filename)
+        reader.read_document()
+        service = PatientMDTFormExtractionService(
+            config=domain_conf, filename=filename, reader=reader
+        )
+        try:
+            expert_models = service.form_cls.get_expert_models()
+            total = max(1, len(expert_models))
+            completed_models: list[str] = list(job.get("completed_models") or [])
+            run_id = job.get("run_id")
+
+            for idx, model_cls in enumerate(expert_models, start=1):
+                if queue_manager._is_job_aborted(
+                    job_id, run_id=run_id, lease_id=lease_id
+                ):
+                    return
+                model_name = model_cls.__name__
+                thinking_cb = QueueThinkingCallbackHandler(
+                    queue_manager=queue_manager,
+                    job_id=job_id,
+                    run_id=run_id,
+                    lease_id=lease_id,
+                    section_name=model_name,
+                )
+                queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
+                queue_manager.update_job_progress(
+                    job_id=job_id,
+                    current_step=f"Concertation d'experts ({idx}/{total}) — {model_name}",
+                    completed_models=completed_models,
+                    progress_pct=round(((idx - 1) / total) * 100.0, 1),
+                    run_id=run_id,
+                    lease_id=lease_id,
+                )
+                service.extract_section(
+                    model_cls=model_cls,
+                    upsert=True,
+                    callbacks=[thinking_cb],
+                    form=service.form,
+                    reader=reader,
+                )
+                if model_name not in completed_models:
+                    completed_models.append(model_name)
+                queue_manager.update_job_progress(
+                    job_id=job_id,
+                    current_step=f"Concertation d'experts ({idx}/{total}) — {model_name}",
                     completed_models=completed_models,
                     progress_pct=round((idx / total) * 100.0, 1),
                     run_id=run_id,
@@ -431,7 +508,8 @@ class PatientMDTFormQueueJobExecutor:
                 if domain_conf.rcp.display_type != "mongodb":
                     continue
                 form_cls = get_domain_mdt_form_cls(domain)
-                clinical_count = max(1, len(form_cls.get_clinical_models()))
+                clinical_count = max(1, len(form_cls.get_factual_clinical_models()))
+                expert_count = max(1, len(form_cls.get_expert_models()))
 
                 db_client = Mongodb(domain_conf)
                 try:
@@ -455,13 +533,27 @@ class PatientMDTFormQueueJobExecutor:
                             or doc.get("patient_id"),
                             include_clinical=True,
                             total_clinical_models=clinical_count,
+                            total_expert_models=expert_count,
                             domain=domain,
+                        )
+                    elif status in (
+                        RCPProcessingStatus.PENDING_EXPERTS.value,
+                        RCPProcessingStatus.PROCESSING_EXPERTS.value,
+                    ):
+                        res = queue_manager.enqueue_rcp_rerun(
+                            filename=filename,
+                            model_name=None,
+                            total_clinical_models=clinical_count,
+                            total_expert_models=expert_count,
+                            domain=domain,
+                            start_from_wave=3,
                         )
                     else:
                         res = queue_manager.enqueue_rcp_rerun(
                             filename=filename,
                             model_name=None,
                             total_clinical_models=clinical_count,
+                            total_expert_models=expert_count,
                             domain=domain,
                         )
                     if not res.get("already_queued"):
