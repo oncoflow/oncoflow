@@ -30,13 +30,20 @@ def _get_broker() -> QueueBroker:
 
 @st.dialog("Confirmation de purge intégrale de la file")
 def confirm_full_queue_purge(cross_domain: bool = True):
-    st.warning(
-        "Voulez-vous vraiment **vider intégralement la file de traitement** et **lever tous les verrous actifs** ?"
+    st.error(
+        "Voulez-vous vraiment **vider intégralement la file de traitement** et **lever tous les verrous actifs** ?",
+        icon=":material/warning:",
     )
-    st.markdown(
-        "Toutes les tâches (en attente, en cours, terminées ou en échec) seront supprimées et les verrous seront immédiatement libérés."
+    st.caption(
+        "Toutes les tâches (en attente, en cours, terminées ou en échec) seront supprimées et les verrous seront immédiatement libérés. Cette action est irréversible."
     )
-    if st.button("Confirmer la purge intégrale", type="primary", width="stretch"):
+    if st.button(
+        "Confirmer la purge intégrale",
+        type="primary",
+        icon=":material/delete_forever:",
+        key="btn_danger_confirm_purge_all",
+        width="stretch",
+    ):
         broker = _get_broker()
         try:
             res = broker.clean_queue(mode="all", cross_domain=cross_domain)
@@ -151,9 +158,10 @@ def render_maintenance_actions(db_client: QueueBroker, cross_domain: bool = True
     c1, c2, c3, c4, c5 = st.columns(5)
 
     if c1.button(
-        "🧹 Purger terminées",
-        help="Supprime les tâches terminées ou annulées de l'historique",
+        ":material/delete_sweep: Purger terminées",
+        help="Supprime définitivement les tâches terminées ou annulées de l'historique",
         width="stretch",
+        key="btn_del_purge_completed",
     ):
         res = db_client.clean_queue(mode="completed", cross_domain=cross_domain)
         st.toast(
@@ -184,19 +192,21 @@ def render_maintenance_actions(db_client: QueueBroker, cross_domain: bool = True
         st.rerun()
 
     if c4.button(
-        "🗑️ Vider en attente",
-        help="Supprime toutes les tâches en attente non démarrées",
+        ":material/delete: Vider en attente",
+        help="Supprime définitivement toutes les tâches en attente non démarrées",
         width="stretch",
+        key="btn_del_purge_pending",
     ):
         res = db_client.clean_queue(mode="pending", cross_domain=cross_domain)
         st.toast(f"{res['affected_jobs']} tâche(s) en attente supprimée(s).", icon="🗑️")
         st.rerun()
 
     if c5.button(
-        "🧨 Tout vider",
+        ":material/delete_forever: Tout vider",
         type="primary",
-        help="Purge intégralement la file de traitement et lève tous les verrous",
+        help="Purge intégralement la file de traitement et lève tous les verrous (action irréversible)",
         width="stretch",
+        key="btn_danger_purge_all",
     ):
         confirm_full_queue_purge(cross_domain=cross_domain)
 
@@ -290,10 +300,10 @@ def render_jobs_table(db_client: QueueBroker, cross_domain: bool = True):
                     st.toast(f"Tâche {job_id} remise en file d'attente.", icon="🔁")
                     st.rerun()
                 if b2.button(
-                    ":red[:material/delete:]",
-                    key=f"del_{job_id}",
+                    ":material/delete:",
+                    key=f"btn_del_job_{job_id}",
                     type="secondary",
-                    help="Supprimer cette tâche et lever son verrou éventuel",
+                    help="Supprimer cette tâche et lever son verrou éventuel (action irréversible)",
                     width="stretch",
                 ):
                     db_client.cancel_or_delete_job(job_id)

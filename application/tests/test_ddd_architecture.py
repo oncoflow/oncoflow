@@ -223,6 +223,76 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics["experts"] == ["pancreas expert"]
         assert metrics["patient"] == "Jean Dupont"
 
+    def test_cross_domain_care_orientation_proposal_collaborative_schema_and_metrics(
+        self,
+    ):
+        from src.domain.common.common_ressources import PatientPriority
+        from src.domain.common.patient_mdt_common_form import (
+            PatientMDTForm as BasePatientMDTForm,
+        )
+        from src.domain.sma.patient_mdt_sma_form import PatientMDTSmaForm
+
+        # Base cross-domain definition on PatientMDTForm
+        assert hasattr(BasePatientMDTForm, "CareOrientationProposal")
+        assert hasattr(PatientMDTOncologicForm, "CareOrientationProposal")
+        assert hasattr(PatientMDTSmaForm, "CareOrientationProposal")
+
+        onco_proposal_cls = PatientMDTOncologicForm.CareOrientationProposal
+        sma_proposal_cls = PatientMDTSmaForm.CareOrientationProposal
+
+        assert issubclass(onco_proposal_cls, BasePatientMDTForm.CareOrientationProposal)
+        assert issubclass(sma_proposal_cls, BasePatientMDTForm.CareOrientationProposal)
+        assert getattr(onco_proposal_cls, "collaborative", False) is True
+        assert getattr(sma_proposal_cls, "collaborative", False) is True
+        assert len(onco_proposal_cls.agents) == 3
+        assert len(sma_proposal_cls.agents) == 5
+        assert "Time is Motoneuron" in sma_proposal_cls.question
+
+        proposal = sma_proposal_cls(
+            care_adaptation_suggested=True,
+            suggested_priority=PatientPriority.urgent,
+            proposed_care_type="Initiation of SMN-targeted therapy and NIV",
+            clinical_rationale="Infant SMA Type 1 with 2 SMN2 copies requires immediate therapy discussion.",
+        )
+        assert proposal.care_adaptation_suggested is True
+        assert proposal.suggested_priority == PatientPriority.urgent
+
+        raw_doc = {
+            "file": "sma_patient_2026.pdf",
+            "patient_id": "petit_lucas_2025_11_02",
+            "processing_status": RCPProcessingStatus.COMPLETED.value,
+            "PatientAdministrative": {
+                "first_name": "Lucas",
+                "last_name": "Petit",
+                "age": 1,
+                "date_birth": datetime(2025, 11, 2),
+                "date_rcp": datetime(2026, 4, 10),
+                "gender": "Male",
+            },
+            "CareOrientationProposal": proposal.model_dump(mode="json"),
+        }
+        sma_form = PatientMDTSmaForm.from_persistence(raw_doc)
+        assert "CareOrientationProposal" in sma_form.sections
+        assert (
+            sma_form.sections["CareOrientationProposal"].care_adaptation_suggested
+            is True
+        )
+
+        metrics = PatientMDTSmaForm.extract_card_metrics(sma_form)
+        assert metrics["care_adaptation_suggested"] is True
+        assert metrics["intervention_required"] is True
+        assert (
+            metrics["proposed_care_type"]
+            == "Initiation of SMN-targeted therapy and NIV"
+        )
+        assert (
+            metrics["intervention_type"] == "Initiation of SMN-targeted therapy and NIV"
+        )
+        assert (
+            PatientMDTSmaForm.select_latest_analyzed([raw_doc])["file"]
+            == "sma_patient_2026.pdf"
+        )
+
 
 class TestRepositoriesAndApplicationUseCases:
     """Test Repositories and Application Use Cases in isolation (no MongoDB daemon)."""

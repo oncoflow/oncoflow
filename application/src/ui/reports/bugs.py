@@ -72,11 +72,17 @@ def _load_context_options(
 
 @st.dialog("Confirmation de suppression du signalement")
 def confirm_delete_bug(bug_id: str, title: str):
-    st.warning(
-        f"Voulez-vous vraiment supprimer le signalement **{title}** (`{bug_id}`) ?"
+    st.error(
+        f"Voulez-vous vraiment supprimer le signalement **{title}** (`{bug_id}`) ?",
+        icon=":material/warning:",
     )
-    st.markdown("Cette action est irréversible.")
-    if st.button("Confirmer la suppression", type="primary"):
+    st.caption("Cette action est irréversible.")
+    if st.button(
+        "Confirmer la suppression",
+        type="primary",
+        icon=":material/delete_forever:",
+        key=f"btn_danger_confirm_bug_{bug_id}",
+    ):
         client = _get_db_client()
         if client is not None:
             try:
@@ -363,11 +369,11 @@ def render_bug_list(db_client: Mongodb | None):
                     st.rerun()
 
                 if act2.button(
-                    ":red[:material/delete:]",
-                    key=f"del_bug_{bug_id}",
+                    ":material/delete:",
+                    key=f"btn_del_bug_{bug_id}",
                     type="secondary",
                     width="stretch",
-                    help="Supprimer ce signalement",
+                    help="Supprimer ce signalement (action irréversible)",
                 ):
                     confirm_delete_bug(bug_id, title)
 

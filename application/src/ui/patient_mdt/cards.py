@@ -21,13 +21,17 @@ logger = app_conf.set_logger("ui", default_context={"page": "cards"})
 
 @st.dialog("Confirmation de suppression")
 def delete_card(filename: str):
-    st.warning(f"Voulez-vous vraiment supprimer la fiche RCP : `{filename}` ?")
+    st.error(
+        f"Voulez-vous vraiment supprimer la fiche RCP : `{filename}` ?",
+        icon=":material/warning:",
+    )
     st.caption("Cette action est irréversible.")
     with st.container(horizontal=True, horizontal_alignment="right"):
         if st.button(
             "Confirmer la suppression",
             type="primary",
             icon=":material/delete_forever:",
+            key=f"btn_danger_confirm_card_{filename}",
         ):
             record_service = PatientRecordService.from_config(
                 app_conf, db_client=db_client
@@ -38,8 +42,9 @@ def delete_card(filename: str):
 
 @st.dialog("Confirmation de suppression du dossier patient")
 def delete_patient_card(patient_id: str, patient_name: str):
-    st.warning(
-        f"Voulez-vous vraiment supprimer l'intégralité du dossier patient : **{patient_name}** ?"
+    st.error(
+        f"Voulez-vous vraiment supprimer l'intégralité du dossier patient : **{patient_name}** ?",
+        icon=":material/warning:",
     )
     st.caption(
         "Toutes les fiches RCP associées à ce patient seront supprimées. Cette action est irréversible."
@@ -49,6 +54,7 @@ def delete_patient_card(patient_id: str, patient_name: str):
             "Confirmer la suppression du dossier",
             type="primary",
             icon=":material/delete_forever:",
+            key=f"btn_danger_confirm_patient_{patient_id}",
         ):
             record_service = PatientRecordService.from_config(
                 app_conf, db_client=db_client
@@ -248,15 +254,19 @@ def display_as_list(
                 else:
                     status_badges.append(":green-badge[✅ Dossier conforme]")
 
-                if item.get("intervention_required") is True:
-                    int_type = (
-                        f" ({item['intervention_type']})"
-                        if item.get("intervention_type")
-                        else ""
+                care_req = item.get(
+                    "care_adaptation_suggested", item.get("intervention_required")
+                )
+                care_type = item.get(
+                    "proposed_care_type", item.get("intervention_type")
+                )
+                if care_req is True:
+                    int_type = f" ({care_type})" if care_type else ""
+                    status_badges.append(
+                        f":red-badge[🧭 Adaptation suggérée{int_type}]"
                     )
-                    status_badges.append(f":red-badge[💉 Intervention{int_type}]")
-                elif item.get("intervention_required") is False:
-                    status_badges.append(":gray-badge[Surveillance / Sans geste]")
+                elif care_req is False:
+                    status_badges.append(":gray-badge[Suivi habituel]")
 
                 st.markdown(" ".join(status_badges))
                 if item["missing"]:
@@ -294,11 +304,11 @@ def display_as_list(
                     )
                 with b2:
                     if st.button(
-                        "🗑️",
+                        ":material/delete:",
                         key=f"btn_del_list_{section_prefix}_{unique_id}",
                         type="secondary",
                         width="stretch",
-                        help="Supprimer ce dossier",
+                        help="Supprimer ce dossier (action irréversible)",
                     ):
                         if is_patient_section and item.get("patient_id"):
                             delete_patient_card(item["patient_id"], item["patient"])
@@ -335,17 +345,19 @@ def display_as_cards(
                         badge_status = ":green-badge[✅ Dossier conforme]"
 
                     badge_intervention = ""
-                    if item.get("intervention_required") is True:
-                        int_type = (
-                            f" ({item['intervention_type']})"
-                            if item.get("intervention_type")
-                            else ""
-                        )
+                    care_req = item.get(
+                        "care_adaptation_suggested", item.get("intervention_required")
+                    )
+                    care_type = item.get(
+                        "proposed_care_type", item.get("intervention_type")
+                    )
+                    if care_req is True:
+                        int_type = f" ({care_type})" if care_type else ""
                         badge_intervention = (
-                            f":red-badge[💉 Intervention discutée{int_type}]"
+                            f":red-badge[🧭 Adaptation suggérée{int_type}]"
                         )
-                    elif item.get("intervention_required") is False:
-                        badge_intervention = ":gray-badge[Surveillance / Sans geste]"
+                    elif care_req is False:
+                        badge_intervention = ":gray-badge[Suivi habituel]"
 
                     badge_rcp_count = ""
                     if is_patient_section and item.get("rcp_count"):
@@ -422,11 +434,11 @@ def display_as_cards(
                         )
                     with b2:
                         if st.button(
-                            "🗑️",
+                            ":material/delete:",
                             key=f"btn_del_card_{section_prefix}_{unique_id}_{i}",
                             type="secondary",
                             width="stretch",
-                            help="Supprimer ce dossier",
+                            help="Supprimer ce dossier (action irréversible)",
                         ):
                             if is_patient_section and item.get("patient_id"):
                                 delete_patient_card(item["patient_id"], item["patient"])
@@ -520,12 +532,15 @@ def render_kpi_summary(patient_data: list[dict], rcp_data: list[dict]):
         height="stretch",
     )
     interventions_count = sum(
-        1 for item in source if item.get("intervention_required") is True
+        1
+        for item in source
+        if item.get("care_adaptation_suggested", item.get("intervention_required"))
+        is True
     )
     k4.metric(
-        "💉 Actes / Interventions",
+        "🧭 Orientations / Adaptations",
         interventions_count,
-        delta="Discussion spécialisée" if interventions_count > 0 else "Suivi médical",
+        delta="Adaptation à discuter" if interventions_count > 0 else "Suivi habituel",
         delta_color="off",
         border=True,
         height="stretch",

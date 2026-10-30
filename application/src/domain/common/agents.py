@@ -24,8 +24,10 @@ class Agents:
             if name.startswith("__"):
                 continue
             cls_attribute = getattr(self.__class__, name)
-            if inspect.isclass(cls_attribute) and issubclass(
-                cls_attribute, Agents.Expert_model
+            if (
+                inspect.isclass(cls_attribute)
+                and issubclass(cls_attribute, Agents.Expert_model)
+                and cls_attribute is not Agents.Expert_model
             ):
                 self.expert_agents.append(cls_attribute)
 

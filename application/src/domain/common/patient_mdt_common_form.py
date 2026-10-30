@@ -391,23 +391,27 @@ class PatientMDTForm:
         elif not is_clinical_pending:
             missing_data.extend(["no data"])
 
-        intervention_required = None
-        intervention_type = None
-        if "isInterventionRequiered" in d and isinstance(
-            d["isInterventionRequiered"], dict
+        care_adaptation_suggested = None
+        proposed_care_type = None
+        if "CareOrientationProposal" in d and isinstance(
+            d["CareOrientationProposal"], dict
         ):
-            int_data = d["isInterventionRequiered"]
-            if "intervention_required" in int_data:
-                intervention_required = int_data.get("intervention_required")
-                intervention_type = int_data.get("intervention_type")
+            proposal_data = d["CareOrientationProposal"]
+            if "care_adaptation_suggested" in proposal_data:
+                care_adaptation_suggested = proposal_data.get(
+                    "care_adaptation_suggested"
+                )
+                proposed_care_type = proposal_data.get("proposed_care_type")
             else:
-                for agent_data in int_data.values():
+                for agent_data in proposal_data.values():
                     if (
                         isinstance(agent_data, dict)
-                        and "intervention_required" in agent_data
+                        and "care_adaptation_suggested" in agent_data
                     ):
-                        intervention_required = agent_data.get("intervention_required")
-                        intervention_type = agent_data.get("intervention_type")
+                        care_adaptation_suggested = agent_data.get(
+                            "care_adaptation_suggested"
+                        )
+                        proposed_care_type = agent_data.get("proposed_care_type")
                         break
 
         patient_id = d.get("patient_id")
@@ -429,8 +433,10 @@ class PatientMDTForm:
             "urgency": urgency_level,
             "urgency_score": urgency_score,
             "link": link,
-            "intervention_required": intervention_required,
-            "intervention_type": intervention_type,
+            "care_adaptation_suggested": care_adaptation_suggested,
+            "proposed_care_type": proposed_care_type,
+            "intervention_required": care_adaptation_suggested,
+            "intervention_type": proposed_care_type,
             "processing_status": processing_status,
             "processing_step": d.get("processing_step"),
             "processing_progress_pct": d.get("processing_progress_pct", 0.0),
@@ -455,7 +461,7 @@ class PatientMDTForm:
                 bool(
                     doc.get("ExpertAnswer")
                     or doc.get("MTDCompleted")
-                    or doc.get("isInterventionRequiered")
+                    or doc.get("CareOrientationProposal")
                 )
             )
             has_admin_ai = int(bool(doc.get("PatientAdministrative")))
@@ -613,4 +619,45 @@ class PatientMDTForm:
             Are there missing elements required for a treatment decision?
             You can use search_on_ressources tool what type of elements/documents is needed.
             You can use tools multiple times for each element
+            """
+
+    class CareOrientationProposal(default_model):
+        """
+        Pre-MDT collaborative synthesis proposing whether an initiation or adaptation
+        of patient care should be discussed by the medical board, its priority, and rationale.
+        """
+
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        collaborative = True
+
+        care_adaptation_suggested: bool = Field(
+            description=(
+                "Does the clinical file suggest that an initiation or adaptation of care "
+                "(medical, respiratory, nutritional, rehabilitative, or surgical) should be discussed by the physicians?"
+            )
+        )
+        suggested_priority: Optional[PatientPriority] = Field(  # noqa: F405
+            default=None,
+            description="Suggested priority level for MDT discussion and care management. None if routine follow-up.",
+        )
+        proposed_care_type: Optional[str] = Field(
+            default=None,
+            description=(
+                "Suggested area or modality of care to discuss during the MDT meeting "
+                "(e.g., disease-modifying therapy, surgery, chemotherapy, NIV/Cough Assist, nutritional support, orthopedic care). "
+                "None if no specific adaptation is suggested."
+            ),
+        )
+        clinical_rationale: str = Field(
+            description="Clinical rationale and guideline arguments summarizing the expert debate to assist the physicians."
+        )
+
+        question: ClassVar[str] = """
+            Based on the multidisciplinary expert debate, synthesize a pre-MDT orientation proposal to assist the medical board (do not replace the physicians' final decision):
+            Determine whether an initiation or adaptation of care should be discussed for this patient.
+            If yes, specify:
+            1. The suggested priority level for the MDT discussion.
+               CRITICAL SAFETY RULE: If even a single expert in the debate flags the case as urgent or high priority, you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
+            2. The proposed area or modality of care to discuss.
+            Provide a clear clinical rationale detailing the positions of the experts and highlighting any divergence in opinions regarding urgency.
             """

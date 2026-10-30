@@ -300,8 +300,8 @@ class OncowflowAgent:
                 ),
             ],
             # response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
-            response_format=self.output_format,
-            # response_format=None,
+            # response_format=self.output_format,
+            response_format=None,
             context_schema=active_context_schema,
             system_prompt=system_prompt,
         )

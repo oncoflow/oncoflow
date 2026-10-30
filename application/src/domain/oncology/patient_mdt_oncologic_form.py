@@ -140,36 +140,23 @@ class PatientMDTOncologicForm(PatientMDTForm):
             You can use tools multiple times for each element and have more scientific elements.
             """
 
-    class isInterventionRequiered(PatientMDTForm.default_model):
+    class CareOrientationProposal(PatientMDTForm.CareOrientationProposal):
         """
-        Consensus on whether an intervention is required, its urgency, and description.
+        Pre-MDT collaborative synthesis proposing whether an initiation or adaptation
+        of patient care should be discussed by the medical board, its priority, and rationale.
         """
 
         agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
         collaborative = True
 
-        intervention_required: bool = Field(
-            description="Is a medical, surgical, or radiologic intervention required for this patient?"
-        )
-        urgency: Optional[PatientPriority] = Field(  # noqa: F405
-            default=None,
-            description="How urgently the intervention should be performed. None if no intervention is required.",
-        )
-        intervention_type: Optional[str] = Field(
-            default=None,
-            description="Type of intervention required (e.g., surgery, chemotherapy, biliary drainage, endoscopy, etc.). None if no intervention is required.",
-        )
-        justification: str = Field(
-            description="Clinical justification for the consensus decision."
-        )
-
         question: ClassVar[str] = """
-            Based on the expert debate, determine if a medical, surgical, or radiological intervention is required for this patient.
+            Based on the multidisciplinary oncology expert debate, synthesize a pre-MDT orientation proposal to assist the medical board (do not replace the physicians' final decision):
+            Determine if an initiation or adaptation of medical, surgical, or radiological care should be discussed for this patient.
             If yes, specify:
-            1. If the intervention must be done urgently (rapidly) or not.
-               CRITICAL SAFETY RULE: If even a single expert in the debate recommends or identifies that the intervention is urgent or high priority (e.g., if one expert says it is urgent due to rapid tumor progression or suspected metastases), you MUST default to classifying the overall urgency as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority. The consensus must respect this safety principle and escalate to the highest urgency flagged.
-            2. What kind of intervention is required.
-            Provide a clear justification detailing the positions of the experts, especially highlighting any divergence in opinions regarding urgency.
+            1. The suggested priority level (`suggested_priority`) for the MDT discussion.
+               CRITICAL SAFETY RULE: If even a single expert in the debate recommends or identifies that the case is urgent or high priority (e.g., due to rapid tumor progression, biliary obstruction, or suspected metastases), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts disagree or recommend a lower priority.
+            2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., surgery, chemotherapy, biliary drainage, endoscopy, radiotherapy, or surveillance).
+            Provide a clear `clinical_rationale` detailing the positions of the experts and TNCD references, especially highlighting any divergence in opinions regarding urgency.
             """
 
     # class ExpertPancreasAnswer(default_model):

@@ -65,7 +65,7 @@ Configured in `application/.streamlit/config.toml` (with automatic Light & Dark 
 
 ### A. Architectural Boundary & Compact Top Spacing (CRITICAL)
 - **Never import `streamlit` outside `src/ui/` and `app-ui.py`**. All business logic, database queries, and queue operations must go through `src/application/` Use Cases and `src/domain/` entities.
-- **Compact Top Page Margin**: Streamlit applies a large `6rem` top padding by default on `div[data-testid="stMainBlockContainer"]`. `apply_card_surface_style()` in `src/ui/patient_mdt/translations.py` overrides `padding-top: 1.5rem !important` on `stMainBlockContainer` and zeroes `padding-top` / `margin-top` on `h1` so page titles sit high on the screen and maximize vertical clinical workspace.
+- **Compact Top Page Margin**: Streamlit applies a large `6rem` top padding by default on `div[data-testid="stMainBlockContainer"]` and an opaque `3.75rem` fixed `header[data-testid="stHeader"]`. `apply_card_surface_style()` in `src/ui/patient_mdt/translations.py` makes `header[data-testid="stHeader"]` transparent (`background: transparent !important; pointer-events: none !important;` while keeping its toolbar buttons clickable) and sets `padding-top: 2.75rem !important` on `stMainBlockContainer` so page titles sit high on the screen without ever being clipped by the header bar.
 
 ### B. RCP Preparation & Triage Dashboard (`src/ui/patient_mdt/cards.py`)
 1. **Top KPI Summary Bar**:
@@ -80,8 +80,10 @@ Configured in `application/.streamlit/config.toml` (with automatic Light & Dark 
 3. **Equal-Height 3-Column Card Grid**:
    - Render cards in rows of 3 (`st.columns(3)`) with `st.container(border=True, height="stretch")` so every card in a row has the exact same height.
    - Separate **consolidated patient dossiers** (`📁 Dossiers patients consolidés`) and **chronological RCP forms** (`📄 Flux documentaire RCP`) into `st.tabs` rather than stacking both grids vertically.
-4. **Safe Destructive Actions**:
-   - Delete buttons (`🗑️`) on cards and list rows must use `type="secondary"` (never `type="primary"`) and always open a confirmation `@st.dialog`.
+4. **Destructive & Irreversible Actions in DataSyntis Rose**:
+   - All deletion, purge, and irreversible actions must visually use the **DataSyntis Rose** palette (`#B83B5E` in light mode, `#E11D48` / `#F43F5E` in dark mode):
+     - Secondary delete/purge triggers on cards, list rows, and cache controls use `key="btn_del_..."` (`type="secondary"`, `icon=":material/delete:"`), styled via `apply_card_surface_style()` with a soft rose border, rose tint background, and rose icon/text.
+     - Primary irreversible confirmation buttons inside `@st.dialog` modals (and full-purge actions) use `key="btn_danger_..."` (`type="primary"`, `icon=":material/delete_forever:"`), styled via `apply_card_surface_style()` with a solid DataSyntis Rose fill (`#B83B5E` / `#E11D48`) and white text, alongside a rose `st.error(..., icon=":material/warning:")` banner inside the confirmation dialog.
 
 ### C. Patient Clinical File View (`src/ui/patient_mdt/datas.py`)
 1. **Unified Hospital-Grade Patient & RCP Banner (`render_unified_patient_banner`)**:

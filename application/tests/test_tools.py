@@ -43,9 +43,9 @@ class TestAgentTools(unittest.TestCase):
                 "last_name": "Dupont",
                 "date_rcp": "2026-03-18T00:00:00",
             },
-            "isInterventionRequiered": {
-                "intervention_required": True,
-                "intervention_type": "Chirurgie",
+            "CareOrientationProposal": {
+                "care_adaptation_suggested": True,
+                "proposed_care_type": "Chirurgie",
             },
         }
         self.mock_exporter_doc2 = MagicMock()
@@ -146,7 +146,7 @@ class TestAgentTools(unittest.TestCase):
             "=== HISTORIQUE IA — FICHE RCP : rcp2.pdf (Date RCP : 2026-03-18) ===",
             result,
         )
-        self.assertIn('"intervention_type": "Chirurgie"', result)
+        self.assertIn('"proposed_care_type": "Chirurgie"', result)
         self.mock_logger.info.assert_called_with("tool get_patient_ai_history called")
 
     def test_search_on_mtd_success(self):

@@ -14,8 +14,8 @@ TRANSLATIONS = {
     "Chemotherapy treatments": "Traitements par chimiothérapie",
     "ExpertAnswer": "Réponse de l'expert",
     "MTDCompleted": "Dossier RCP complet",
-    "Consensus on whether an intervention is required, its urgency, and description.": "Consensus sur la nécessité d'une intervention, son urgence et son type",
-    "isInterventionRequiered": "Nécessité d'intervention",
+    "CareOrientationProposal": "Proposition d'orientation de prise en charge",
+    "Pre-MDT collaborative synthesis proposing whether an initiation or adaptation of patient care should be discussed by the medical board, its priority, and rationale.": "Synthèse pré-RCP proposant si une initiation ou adaptation de la prise en charge doit être discutée en séance, sa priorité suggérée et son argumentaire clinique",
     # SMA (Spinal Muscular Atrophy) Model Docstrings / Class Titles
     "GeneticDiagnosis": "Diagnostic génétique",
     "Genetic characteristics of Spinal Muscular Atrophy (SMN1 mutation and SMN2 copy number)": "Caractéristiques génétiques de l'amyotrophie spinale (mutation SMN1 et nombre de copies SMN2)",
@@ -68,10 +68,10 @@ TRANSLATIONS = {
     "List of missing elements required for a decision": "Liste des éléments manquants requis pour une prise de décision",
     "list of references for missing items, including TNCD references": "Liste des références pour les éléments manquants, incluant le TNCD",
     "Detailed reflection, reasoning, or synthesis of the collaborative team discussion": "Synthèse détaillée de la discussion et du raisonnement de l'équipe",
-    "Is a medical, surgical, or radiologic intervention required for this patient?": "Une intervention médicale, chirurgicale ou radiologique est-elle requise pour ce patient ?",
-    "How urgently the intervention should be performed. None if no intervention is required.": "Degré d'urgence de l'intervention. Aucun si aucune intervention n'est requise.",
-    "Type of intervention required (e.g., surgery, chemotherapy, biliary drainage, endoscopy, etc.). None if no intervention is required.": "Type d'intervention requise (ex : chirurgie, chimiothérapie, drainage biliaire, endoscopie, etc.). Aucun si aucune intervention n'est requise.",
-    "Clinical justification for the consensus decision.": "Justification clinique de la décision de consensus.",
+    "Does the clinical file suggest that an initiation or adaptation of care (medical, respiratory, nutritional, rehabilitative, or surgical) should be discussed by the physicians?": "Le dossier suggère-t-il de discuter en RCP une initiation ou une adaptation de la prise en charge (médicale, respiratoire, nutritionnelle, rééducative ou chirurgicale) ?",
+    "Suggested priority level for MDT discussion and care management. None if routine follow-up.": "Niveau de priorité suggéré pour la discussion en RCP et la prise en charge. Aucun si suivi habituel.",
+    "Suggested area or modality of care to discuss during the MDT meeting (e.g., disease-modifying therapy, surgery, chemotherapy, NIV/Cough Assist, nutritional support, orthopedic care). None if no specific adaptation is suggested.": "Axe ou modalité de prise en charge proposé(e) à la discussion collégiale (ex : traitement modificateur, chirurgie, chimiothérapie, VNI/Cough Assist, support nutritionnel, prise en charge orthopédique). Aucun si suivi habituel.",
+    "Clinical rationale and guideline arguments summarizing the expert debate to assist the physicians.": "Argumentaire clinique et références aux recommandations résumant la concertation des experts pour éclairer les médecins.",
     # SMA (Spinal Muscular Atrophy) Field Descriptions
     "Is the homozygous deletion or mutation of SMN1 confirmed?": "La délétion homozygote ou la mutation de SMN1 est-elle confirmée ?",
     "Number of SMN2 backup gene copies (crucial for prognosis and treatment eligibility)": "Nombre de copies du gène de secours SMN2 (crucial pour le pronostic et l'éligibilité au traitement)",
@@ -135,9 +135,10 @@ TRANSLATIONS = {
     "is_mtd_complete": "Dossier complet ?",
     "what_missing": "Éléments manquants",
     "reflection": "Réflexion / Synthèse du débat",
-    "intervention_required": "Intervention conseillée",
-    "intervention_type": "Type d'intervention",
-    "justification": "Justification du consensus",
+    "care_adaptation_suggested": "Adaptation de prise en charge suggérée",
+    "suggested_priority": "Priorité suggérée",
+    "proposed_care_type": "Modalité / Axe de prise en charge proposé",
+    "clinical_rationale": "Argumentaire clinique pré-RCP",
     # SMA Field Name translations
     "smn1_deletion_confirmed": "Délétion SMN1 confirmée",
     "smn2_copy_count": "Nombre de copies SMN2",
@@ -249,7 +250,7 @@ DOMAIN_FR_LABELS: dict[str, str] = {
 
 
 def translate_domain_fr(domain: str) -> str:
-    """Retourne le libellé en français du domaine médical configuré."""
+    """Return the French display label for the configured medical domain."""
     if not domain:
         return ""
     clean = domain.strip().lower()
@@ -258,8 +259,8 @@ def translate_domain_fr(domain: str) -> str:
 
 def get_icon_svg() -> str:
     """
-    Génère l'icône d'application DataSyntis (favicon et raccourci bureau hospitalier) :
-    feuillets documentaires superposés, lignes de synthèse structurées et pastille de validation clinique.
+    Generate the DataSyntis application icon (favicon and hospital desktop shortcut):
+    layered document sheets, structured synthesis lines, and clinical validation badge.
     """
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">\n'
@@ -278,16 +279,16 @@ def get_icon_svg() -> str:
         "    </linearGradient>\n"
         "  </defs>\n"
         '  <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#dsSlate)" stroke="#334155" stroke-width="2" />\n'
-        "  <!-- Feuillet documentaire consolidé en arrière-plan (Sarcelle) -->\n"
+        "  <!-- Background consolidated document sheet (Teal) -->\n"
         '  <rect x="18" y="16" width="46" height="58" rx="8" fill="url(#dsTeal)" opacity="0.82" />\n'
-        "  <!-- Fiche de synthèse clinique au premier plan -->\n"
+        "  <!-- Foreground clinical synthesis card -->\n"
         '  <rect x="28" y="24" width="48" height="58" rx="8" fill="#F8FAFC" stroke="url(#dsTeal)" stroke-width="2.5" />\n'
         '  <rect x="35" y="33" width="24" height="5.5" rx="2.75" fill="url(#dsTeal)" />\n'
         '  <circle cx="66.5" cy="35.75" r="3" fill="#D94668" />\n'
         '  <rect x="35" y="44" width="34" height="4.5" rx="2.25" fill="#64748B" />\n'
         '  <rect x="35" y="53" width="28" height="4.5" rx="2.25" fill="#64748B" />\n'
         '  <rect x="35" y="62" width="20" height="4.5" rx="2.25" fill="#94A3B8" />\n'
-        "  <!-- Pastille de validation et conformité RCP (Sauge / Vert) -->\n"
+        "  <!-- MDT validation and conformity badge (Sage / Green) -->\n"
         '  <circle cx="70" cy="68" r="13" fill="url(#dsSage)" stroke="#1E293B" stroke-width="2.5" />\n'
         '  <path d="M64.5 68 L68.5 72 L76 64" fill="none" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />\n'
         "</svg>"
@@ -295,7 +296,7 @@ def get_icon_svg() -> str:
 
 
 def get_logo_svg(domain: str) -> str:
-    """Génère le logotype SVG DataSyntis intégrant dynamiquement le domaine médical en français."""
+    """Generate the DataSyntis SVG logotype dynamically integrating the medical domain in French."""
     domain_fr = translate_domain_fr(domain)
     subtitle_line = (
         f"  <text x=\"114\" y=\"92\" font-family=\"'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif\" "
@@ -345,9 +346,20 @@ def apply_card_surface_style() -> None:
     st.html(
         """
         <style>
+        header[data-testid="stHeader"] {
+            background: transparent !important;
+            background-color: transparent !important;
+            pointer-events: none !important;
+        }
+        header[data-testid="stHeader"] button,
+        header[data-testid="stHeader"] a,
+        header[data-testid="stHeader"] [data-testid="stToolbar"],
+        header[data-testid="stHeader"] [data-testid="stExpandSidebarButton"] {
+            pointer-events: auto !important;
+        }
         div[data-testid="stMainBlockContainer"],
         .block-container {
-            padding-top: 1.5rem !important;
+            padding-top: 2.75rem !important;
             padding-bottom: 2rem !important;
         }
         div[data-testid="stHeadingWithActionElements"] h1,
@@ -363,10 +375,10 @@ def apply_card_surface_style() -> None:
             max-height: 3.25rem !important;
             width: auto !important;
         }
-        div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"],
-        div[data-testid="stVerticalBlockBorderWrapper"],
-        div[data-testid="stExpander"],
-        div[data-testid="stMetric"] {
+        div.stApp div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"]:not([class*="st-key-clinical_scroll_"]),
+        div.stApp div[data-testid="stVerticalBlockBorderWrapper"]:not([class*="st-key-clinical_scroll_"]),
+        div.stApp div[data-testid="stExpander"],
+        div.stApp div[data-testid="stMetric"] {
             background-color: light-dark(#FBFDFF, #162032) !important;
             border-color: light-dark(#CBD5E1, #334155) !important;
             box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
@@ -386,12 +398,40 @@ def apply_card_surface_style() -> None:
             border-radius: 0.5rem !important;
             padding: 0.65rem 1rem !important;
         }
+        div[data-testid="stPopoverBody"] div[data-testid="stVerticalBlock"],
+        div[data-testid="stPopoverBody"] div[data-testid="stLayoutWrapper"],
+        div[data-testid="stPopoverBody"] div[class*="st-key-clinical_scroll_"],
+        div[role="dialog"] div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"],
+        div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"][class*="st-key-clinical_scroll_"],
         div[data-testid="stVerticalBlock"]:has(> div[data-testid="stLayoutWrapper"] > div[class*="st-key-clinical_scroll_"]),
         div[class*="st-key-clinical_scroll_"] > div[data-testid="stVerticalBlock"],
         div[class*="st-key-clinical_scroll_"] {
             background-color: transparent !important;
             box-shadow: none !important;
             border: none !important;
+        }
+        /* Destructive & irreversible actions -> DataSyntis Rose (#B83B5E / #F43F5E) */
+        div[class*="st-key-btn_del_"] button {
+            background-color: light-dark(#FDF2F5, rgba(184, 59, 94, 0.15)) !important;
+            border: 1px solid light-dark(#E5A4B4, #9F1239) !important;
+            color: light-dark(#B83B5E, #FDA4AF) !important;
+        }
+        div[class*="st-key-btn_del_"] button:hover:not(:disabled),
+        div[class*="st-key-btn_del_"] button:focus-visible:not(:disabled) {
+            background-color: light-dark(#F9E0E7, rgba(225, 29, 72, 0.28)) !important;
+            border-color: light-dark(#B83B5E, #F43F5E) !important;
+            color: light-dark(#9B2C4B, #FFE4E6) !important;
+        }
+        div[class*="st-key-btn_danger_"] button {
+            background-color: light-dark(#B83B5E, #E11D48) !important;
+            border: 1px solid light-dark(#9F2F4F, #BE123C) !important;
+            color: #FFFFFF !important;
+        }
+        div[class*="st-key-btn_danger_"] button:hover:not(:disabled),
+        div[class*="st-key-btn_danger_"] button:focus-visible:not(:disabled) {
+            background-color: light-dark(#9B2C4B, #BE123C) !important;
+            border-color: light-dark(#831843, #9F1239) !important;
+            color: #FFFFFF !important;
         }
         </style>
         """
@@ -421,6 +461,10 @@ def translate(text: Any) -> Any:
     stripped = text.strip()
     if stripped in TRANSLATIONS:
         return TRANSLATIONS[stripped]
+
+    normalized = " ".join(stripped.split())
+    if normalized in TRANSLATIONS:
+        return TRANSLATIONS[normalized]
 
     lower = stripped.lower()
     if lower in TRANSLATIONS:

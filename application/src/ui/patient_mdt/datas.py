@@ -179,10 +179,18 @@ def _get_extraction_service(
     )
 
 
-@st.dialog("Êtes-vous sûr ?")
+@st.dialog("Confirmation de suppression")
 def delete(items: DataFrame):
-    st.write(f"Vous êtes sur le point de supprimer {items['file'].to_string()}")
-    if st.button("Confirmer", type="primary"):
+    st.error(
+        f"Vous êtes sur le point de supprimer définitivement : {items['file'].to_string()}",
+        icon=":material/warning:",
+    )
+    if st.button(
+        "Confirmer la suppression",
+        type="primary",
+        icon=":material/delete_forever:",
+        key="btn_danger_confirm_datas_del",
+    ):
         record_service = _get_record_service()
         for doc in items["file"].to_list():
             record_service.delete_patient_mdt_form_document(doc)
@@ -203,13 +211,13 @@ def update_date(filename, date):
 
 
 SECTION_META: dict[str, dict[str, Any]] = {
-    # Pole 1 : Aide à la décision & Conformité RCP (Onglet Avis & Décision RCP)
-    "isInterventionRequiered": {
+    # Pole 1: Decision Support & MDT Conformity (MDT Opinions & Decision tab)
+    "CareOrientationProposal": {
         "order": 10,
         "tab": "decision",
-        "pole": "🎯 Synthèse & Consensus collégial",
-        "icon": "💉",
-        "title": "Consensus d'intervention RCP",
+        "pole": "🎯 Synthèse & Orientation pré-RCP",
+        "icon": "🧭",
+        "title": "Proposition d'orientation pré-RCP",
         "default_expanded": True,
     },
     "MTDCompleted": {
@@ -228,14 +236,14 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "title": "Avis des experts & Référentiels",
         "default_expanded": True,
     },
-    # Pole 2 : Caractérisation clinique & biologique (Onglet Dossier clinique)
+    # Pole 2: Clinical & Biological Characterization (Clinical Record tab)
     "TumorLocation": {
         "order": 40,
         "tab": "clinical",
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🎯",
         "title": "Localisation de la tumeur primitive",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "TumorBiology": {
         "order": 50,
@@ -243,7 +251,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🧬",
         "title": "Biologie tumorale (Statut MSI / MSS)",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "GeneticDiagnosis": {
         "order": 45,
@@ -251,7 +259,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🧬",
         "title": "Diagnostic génétique (SMN1 / SMN2)",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "PatientPerformanceStatus": {
         "order": 60,
@@ -259,7 +267,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🏃",
         "title": "Statut de performance OMS",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "MotorFunctionStatus": {
         "order": 65,
@@ -267,7 +275,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🦿",
         "title": "Classification clinique & scores moteurs",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "RespiratoryFunction": {
         "order": 70,
@@ -275,7 +283,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🫁",
         "title": "Fonction respiratoire & ventilation",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "OrthopedicAndSpineStatus": {
         "order": 75,
@@ -283,7 +291,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🦴",
         "title": "Statut orthopédique & rachidien",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "BulbarAndNutritionalStatus": {
         "order": 80,
@@ -291,16 +299,16 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🍽️",
         "title": "Statut bulbaire & nutritionnel",
-        "default_expanded": True,
+        "default_expanded": False,
     },
-    # Pole 3 : Bilan paraclinique & Historique thérapeutique (Onglet Dossier clinique)
+    # Pole 3: Paraclinical Assessment & Therapeutic History (Clinical Record tab)
     "RadiologicExams": {
         "order": 90,
         "tab": "clinical",
         "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
         "icon": "🔬",
         "title": "Examens radiologiques",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "PreviousCurativeSurgery": {
         "order": 100,
@@ -316,7 +324,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
         "icon": "💊",
         "title": "Traitements par chimiothérapie",
-        "default_expanded": True,
+        "default_expanded": False,
     },
     "PlannedCurativeSurgery": {
         "order": 120,
@@ -326,7 +334,7 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "title": "Chirurgie curative prévue",
         "default_expanded": False,
     },
-    # Pole 4 : Données administratives (Onglet Dossier clinique)
+    # Pole 4: Administrative Information (Clinical Record tab)
     "PatientAdministrative": {
         "order": 200,
         "tab": "clinical",
@@ -567,13 +575,26 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
     if not isinstance(model_data, dict):
         return ""
 
-    if model_name == "isInterventionRequiered":
-        req = model_data.get("intervention_required")
-        itype = model_data.get("intervention_type")
+    # Detect fallback DefaultResponse(value=None) when the LLM found no information in the record
+    non_meta_keys = {
+        k
+        for k in model_data.keys()
+        if k not in ("value", "reasoning_thinking", "time_execution")
+    }
+    if not non_meta_keys and model_data.get("value") is None:
+        return " — ⚪ Non mentionné"
+
+    if model_name == "CareOrientationProposal":
+        req = model_data.get("care_adaptation_suggested")
+        ctype = model_data.get("proposed_care_type")
         if req is True:
-            return f" — 💉 Oui ({itype})" if itype else " — 💉 Oui"
+            return (
+                f" — 🧭 Adaptation suggérée ({ctype})"
+                if ctype
+                else " — 🧭 Adaptation suggérée"
+            )
         if req is False:
-            return " — Surveillance / Sans geste"
+            return " — Surveillance / Suivi habituel"
     elif model_name == "MTDCompleted":
         mc = model_data.get("mtd_complete")
         if isinstance(mc, dict):
@@ -604,9 +625,14 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
         if ps is not None:
             return f" — OMS {ps}"
     elif model_name == "RadiologicExams":
-        exams = model_data.get("exams_list") or []
-        if isinstance(exams, list):
-            return f" — {len(exams)} examen(s)"
+        if "exams_list" in model_data or "radiological_exams" in model_data:
+            exams = (
+                model_data.get("exams_list")
+                or model_data.get("radiological_exams")
+                or []
+            )
+            if isinstance(exams, list):
+                return f" — {len(exams)} examen(s)"
     elif model_name == "PreviousCurativeSurgery":
         done = model_data.get("previous_curative_surgery")
         dt = model_data.get("previous_curative_surgery_date")
@@ -956,10 +982,13 @@ def render_unified_patient_banner(
                         else "⚪"
                     )
                     missing_cnt = len(doc_metrics.get("missing", []))
-                    int_req_val = doc_metrics.get("intervention_required")
+                    int_req_val = doc_metrics.get(
+                        "care_adaptation_suggested",
+                        doc_metrics.get("intervention_required"),
+                    )
                     tags = []
                     if int_req_val is True:
-                        tags.append("💉")
+                        tags.append("🧭")
                     if missing_cnt > 0:
                         tags.append(f"⚠️{missing_cnt}")
                     elif urg_val != "Indéfini":
@@ -1136,7 +1165,7 @@ def power_mode(
             icon=":material/delete:",
             help="Supprimer le cache Markdown de cette fiche RCP uniquement pour forcer une ré-extraction",
             width="stretch",
-            key=f"pow_clear_{key_prefix}_{active_file}",
+            key=f"btn_del_pow_clear_{key_prefix}_{active_file}",
         ):
             cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
             cache_repo.delete_cache(file_name=target_rcp_file)
@@ -1380,14 +1409,18 @@ def _compute_longitudinal_deltas(
         )
         deltas.append(f":{badge_c}-badge[⚡ Urgence : {p_urg} → {c_urg}]")
 
-    # 2. Intervention consensus evolution
-    c_int = curr_m.get("intervention_required")
-    p_int = prev_m.get("intervention_required")
+    # 2. Care orientation proposal evolution
+    c_int = curr_m.get("care_adaptation_suggested", curr_m.get("intervention_required"))
+    p_int = prev_m.get("care_adaptation_suggested", prev_m.get("intervention_required"))
     if c_int is not None and p_int is not None and c_int != p_int:
         if c_int is True:
-            deltas.append(":red-badge[💉 Décision : Surveillance → Intervention]")
+            deltas.append(
+                ":red-badge[🧭 Orientation : Suivi habituel → Adaptation suggérée]"
+            )
         else:
-            deltas.append(":green-badge[✅ Décision : Intervention → Surveillance]")
+            deltas.append(
+                ":green-badge[✅ Orientation : Adaptation suggérée → Suivi habituel]"
+            )
 
     # 3. WHO / OMS Performance status evolution
     c_ps = (
@@ -1410,12 +1443,20 @@ def _compute_longitudinal_deltas(
 
     # 4. New imaging exams or chemotherapy lines
     c_rad = (
-        len(current_doc.get("RadiologicExams", {}).get("radiological_exams") or [])
+        len(
+            current_doc.get("RadiologicExams", {}).get("exams_list")
+            or current_doc.get("RadiologicExams", {}).get("radiological_exams")
+            or []
+        )
         if isinstance(current_doc.get("RadiologicExams"), dict)
         else 0
     )
     p_rad = (
-        len(prev_doc.get("RadiologicExams", {}).get("radiological_exams") or [])
+        len(
+            prev_doc.get("RadiologicExams", {}).get("exams_list")
+            or prev_doc.get("RadiologicExams", {}).get("radiological_exams")
+            or []
+        )
         if isinstance(prev_doc.get("RadiologicExams"), dict)
         else 0
     )
@@ -1474,8 +1515,10 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     metrics = PatientMDTForm.extract_card_metrics(data)
     urgency = metrics.get("urgency", "Indéfini")
     missing = metrics.get("missing", [])
-    int_req = metrics.get("intervention_required")
-    int_type = metrics.get("intervention_type")
+    int_req = metrics.get(
+        "care_adaptation_suggested", metrics.get("intervention_required")
+    )
+    int_type = metrics.get("proposed_care_type", metrics.get("intervention_type"))
     experts = metrics.get("experts", [])
 
     urg_badge = (
@@ -1494,11 +1537,11 @@ def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = N
     )
     if int_req is True:
         int_label = f" ({int_type})" if int_type else ""
-        int_badge = f":red-badge[💉 Intervention{int_label}]"
+        int_badge = f":red-badge[🧭 Orientation : Adaptation suggérée{int_label}]"
     elif int_req is False:
-        int_badge = ":gray-badge[Surveillance / Sans geste]"
+        int_badge = ":gray-badge[Suivi habituel]"
     else:
-        int_badge = ":gray-badge[Intervention non évaluée]"
+        int_badge = ":gray-badge[Orientation non évaluée]"
 
     experts_badges = " ".join(
         [
@@ -1622,20 +1665,17 @@ def _render_form_sections_list(
             model_name in active_state["active_models"]
         )
         exec_time = execution_times.get(model_name)
-        time_badge = (
-            f" :small[:gray[· ⏱️ {exec_time:.1f}s]]" if exec_time is not None else ""
-        )
         header_summary = (
             _extract_section_header_summary(model_name, data.get(model_name))
             if model_name in data
             else " — ⚠️ Non extrait"
         )
-        default_exp = meta.get("default_expanded", True)
-        if model_name not in data:
+        default_exp = meta.get("default_expanded", False)
+        if model_name not in data or header_summary == " — ⚪ Non mentionné":
             default_exp = False
 
         with st.expander(
-            f"{icon_str} **{display_title}**{header_summary}{time_badge}",
+            f"{icon_str} **{display_title}**{header_summary}",
             expanded=default_exp,
         ):
             if st.session_state.get(run_key):
@@ -1736,20 +1776,56 @@ def _render_form_sections_list(
                         tabs = st.tabs(tab_labels)
                         for tab, agent_name in zip(tabs, agent_names):
                             agent_dict = data[model_name][agent_name]
-                            pydantic_model = model_cls.model_validate(agent_dict)
                             if isinstance(agent_dict, dict) and agent_dict.get(
                                 "reasoning_thinking"
                             ):
-                                multi_thinkings[agent_name] = agent_dict[
+                                ag_icon, ag_label = get_agent_icon_and_label(agent_name)
+                                multi_thinkings[f"{ag_icon} {ag_label}"] = agent_dict[
                                     "reasoning_thinking"
                                 ]
                             with tab:
-                                render_fields(pydantic_model)
+                                try:
+                                    pydantic_model = model_cls.model_validate(
+                                        agent_dict
+                                    )
+                                    render_fields(pydantic_model)
+                                except Exception:
+                                    if isinstance(agent_dict, dict) and agent_dict.get(
+                                        "value"
+                                    ):
+                                        st.markdown(str(agent_dict["value"]))
+                                    else:
+                                        st.caption(
+                                            "⚪ Aucune donnée structurée renseignée dans le document pour cette spécialité."
+                                        )
                 else:
-                    pydantic_model = model_cls.model_validate(data[model_name])
-                    render_model_data(pydantic_model)
                     if isinstance(model_data, dict):
                         single_thinking = model_data.get("reasoning_thinking")
+                    try:
+                        pydantic_model = model_cls.model_validate(model_data)
+                        render_model_data(pydantic_model)
+                    except Exception:
+                        if isinstance(model_data, dict):
+                            extra_fields = {
+                                k: v
+                                for k, v in model_data.items()
+                                if k
+                                not in ("value", "reasoning_thinking", "time_execution")
+                                and v is not None
+                            }
+                            if extra_fields:
+                                for k, v in extra_fields.items():
+                                    render_field(translate(k), v, field_name=k)
+                            elif model_data.get("value"):
+                                st.markdown(str(model_data["value"]))
+                            else:
+                                st.caption(
+                                    "⚪ Aucune information mentionnée dans le document pour cette rubrique."
+                                )
+                        else:
+                            st.caption(
+                                "⚪ Aucune information mentionnée dans le document pour cette rubrique."
+                            )
             else:
                 if is_section_queued or data.get("processing_status") in (
                     "PENDING_CLINICAL",
@@ -1807,6 +1883,9 @@ def _render_form_sections_list(
                     help=f"Relancer l'extraction IA de cette rubrique uniquement{time_help}",
                 ):
                     st.session_state[run_key] = True
+
+                if exec_time is not None:
+                    st.caption(f"⏱️ {exec_time:.1f} s", width="content")
 
 
 def render_rcp_detail_view(
@@ -2067,6 +2146,7 @@ if st.session_state.get("power"):
         icon=":material/delete:",
         help="Supprimer le cache du document courant",
         width="stretch",
+        key="btn_del_sidebar_doc_cache",
     ):
         cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
         filename = st.query_params.get("file")
@@ -2076,10 +2156,11 @@ if st.session_state.get("power"):
         st.rerun()
     if c_btn2.button(
         "Tout vider",
-        icon=":material/cleaning_services:",
+        icon=":material/delete_forever:",
         help="Vider tout le cache des documents (administrateurs)",
         width="stretch",
         disabled=not st.session_state.get("is_admin", False),
+        key="btn_danger_sidebar_all_cache",
     ):
         cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
         cache_repo.delete_cache(clear_all=True)

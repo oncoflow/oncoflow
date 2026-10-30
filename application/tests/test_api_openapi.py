@@ -37,7 +37,7 @@ def test_every_json_endpoint_declares_a_response_schema(client):
     for path, methods in spec["paths"].items():
         for method, operation in methods.items():
             content = operation["responses"].get("200", {}).get("content", {})
-            if "application/pdf" in content:
+            if "application/pdf" in content or "text/event-stream" in content:
                 continue
             schema = content.get("application/json", {}).get("schema", {})
             if not schema:

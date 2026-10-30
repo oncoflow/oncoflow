@@ -151,7 +151,7 @@ class PatientRecordService:
             "PatientAdministrative": 1,
             "ExpertAnswer": 1,
             "MTDCompleted": 1,
-            "isInterventionRequiered": 1,
+            "CareOrientationProposal": 1,
             "processing_status": 1,
             "processing_step": 1,
             "processing_progress_pct": 1,

@@ -193,3 +193,22 @@ class PatientMDTSmaForm(PatientMDTForm):
             As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
             You can use tools multiple times for each element and have more scientific elements.
             """
+
+    class CareOrientationProposal(PatientMDTForm.CareOrientationProposal):
+        """
+        Pre-MDT collaborative synthesis proposing whether an initiation or adaptation
+        of patient care should be discussed by the medical board, its priority, and rationale.
+        """
+
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+        collaborative = True
+
+        question: ClassVar[str] = """
+            Based on the multidisciplinary SMA expert debate (neurologist, geneticist, pulmonologist, orthopedist, physiotherapist), synthesize a pre-MDT orientation proposal to assist the medical board (do not replace the physicians' final decision):
+            Determine if an initiation or adaptation of therapeutic, respiratory, nutritional, orthopedic, or rehabilitative care should be discussed for this SMA patient.
+            If yes, specify:
+            1. The suggested priority level (`suggested_priority`) for the MDT discussion.
+               CRITICAL SAFETY RULE: In Spinal Muscular Atrophy, motor neuron loss is irreversible ("Time is Motoneuron") and respiratory/bulbar decompensations are life-threatening. If even a single expert in the debate flags the case as urgent or high priority (e.g., infant SMA Type 1 or pre-symptomatic newborn needing immediate disease-modifying therapy, rapid motor regression on HFMSE/CHOP-INTEND/RULM, respiratory insufficiency requiring NIV/Cough Assist, dysphagia with aspiration pneumonia risk, or rapidly progressing scoliosis compromising lung function), you MUST default to classifying `suggested_priority` as urgent (high priority), regardless of whether other experts recommend a lower priority.
+            2. What kind of care modality (`proposed_care_type`) should be discussed (e.g., SMN-targeted disease-modifying therapy initiation/switch [nusinersen, risdiplam, onasemnogene abeparvovec], NIV/BiPAP or Cough Assist adaptation, nutritional/gastrostomy support, orthopedic spine management/arthrodesis, or specialized rehabilitation).
+            Provide a clear `clinical_rationale` detailing the positions of the experts and French PNDS SMA guidelines, especially highlighting any divergence in opinions regarding urgency.
+            """
