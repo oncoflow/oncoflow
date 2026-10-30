@@ -1,9 +1,58 @@
+from datetime import date, datetime
+from enum import Enum
+from pathlib import Path
 import threading
+from typing import Any
 from urllib.parse import quote_plus
+from uuid import UUID
 
+from bson.codec_options import CodecOptions, TypeCodec, TypeRegistry
+from pydantic import BaseModel
 from pymongo import MongoClient
 
+from src.application.app_functions import to_naive
 from src.application.config import AppConfig
+
+
+class _DateIsoCodec(TypeCodec):
+    """BSON TypeCodec that encodes Python `datetime.date` objects into ISO-8601 strings."""
+
+    python_type = date
+    bson_type = str
+
+    def transform_python(self, value: date) -> str:
+        return value.isoformat()
+
+    def transform_bson(self, value: str) -> str:
+        return value
+
+
+_BSON_CODEC_OPTIONS: CodecOptions = CodecOptions(
+    type_registry=TypeRegistry([_DateIsoCodec()])
+)
+
+
+def sanitize_bson_payload(data: Any) -> Any:
+    """
+    Recursively convert non-BSON-native Python types (`datetime.date`, `Enum`,
+    `BaseModel`, `set`, `tuple`, `Path`, `UUID`, aware `datetime`) into BSON-safe values.
+    """
+    if isinstance(data, BaseModel):
+        return sanitize_bson_payload(data.model_dump())
+    if isinstance(data, dict):
+        return {str(k): sanitize_bson_payload(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple, set)):
+        return [sanitize_bson_payload(i) for i in data]
+    if isinstance(data, datetime):
+        return to_naive(data)
+    if isinstance(data, date):
+        return data.isoformat()
+    if isinstance(data, Enum):
+        return data.value
+    if isinstance(data, (Path, UUID)):
+        return str(data)
+    return data
+
 
 # One MongoClient per connection URI for the whole process.
 # MongoClient is thread-safe and owns a connection pool + monitoring threads:
@@ -67,7 +116,10 @@ class Mongodb:
             },
         )
         self.client = get_mongo_client(config)
-        self.database = self.client[config.mongodb.database]
+        self.database = self.client.get_database(
+            config.mongodb.database,
+            codec_options=_BSON_CODEC_OPTIONS,
+        )
 
         self.documents_to_insert = {}
 
@@ -96,15 +148,13 @@ class Mongodb:
     def prepare_insert_doc(self, collection, document):
         if collection not in self.documents_to_insert:
             self.documents_to_insert[collection] = []
-        # if "timestamp" not in document:
-        #     document["timestamp"]
-        self.documents_to_insert[collection].append(document)
+        self.documents_to_insert[collection].append(sanitize_bson_payload(document))
 
     def update_docs(self, collection, filter, value):
         self.logger.info("Start update documents")
         self.logger.debug("List of document to update : %s", filter)
         collection = self.database[collection]
-        collection.update_many(filter=filter, update=value)
+        collection.update_many(filter=filter, update=sanitize_bson_payload(value))
         self.logger.info("Success updating documents")
 
     def update_doc(
@@ -113,7 +163,7 @@ class Mongodb:
         filter: dict,
         upsertable_data: dict | None = None,
     ):
-        upsertable_data = upsertable_data or {}
+        upsertable_data = sanitize_bson_payload(upsertable_data or {})
         # Never log `upsertable_data` values: they can contain patient PII (GDPR).
         self.logger.info(
             "Start update document in %s (keys=%s)",

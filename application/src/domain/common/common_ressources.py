@@ -1,9 +1,68 @@
 from enum import Enum
-from datetime import date
+from datetime import date, datetime
+import re
 
-from typing import Optional, ClassVar
+from typing import Any, Optional, ClassVar
 
-from pydantic import BaseModel, Field, PastDate
+from pydantic import BaseModel, Field, PastDate, field_validator
+
+
+def _coerce_clinical_date(v: Any) -> Optional[date]:
+    """
+    Coerce clinical date inputs (`date`, `datetime`, ISO strings, French `DD/MM/YYYY`,
+    or `YYYY`) into a `datetime.date`, returning `None` for empty/unparseable values.
+    """
+    if v is None:
+        return None
+    if isinstance(v, datetime):
+        return v.date()
+    if isinstance(v, date):
+        return v
+    if isinstance(v, str):
+        s = v.strip()
+        if not s or s.lower() in (
+            "n/a",
+            "na",
+            "none",
+            "null",
+            "inconnu",
+            "inconnue",
+            "non précisé",
+            "non précise",
+        ):
+            return None
+        try:
+            return datetime.fromisoformat(s).date()
+        except ValueError:
+            pass
+        # French format DD/MM/YYYY or DD-MM-YYYY
+        m_fr = re.match(r"^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$", s)
+        if m_fr:
+            try:
+                return date(int(m_fr.group(3)), int(m_fr.group(2)), int(m_fr.group(1)))
+            except ValueError:
+                return None
+        # Year-month YYYY-MM or MM/YYYY
+        m_ym = re.match(r"^(\d{4})[/.-](\d{1,2})$", s)
+        if m_ym:
+            try:
+                return date(int(m_ym.group(1)), int(m_ym.group(2)), 1)
+            except ValueError:
+                return None
+        m_my = re.match(r"^(\d{1,2})[/.-](\d{4})$", s)
+        if m_my:
+            try:
+                return date(int(m_my.group(2)), int(m_my.group(1)), 1)
+            except ValueError:
+                return None
+        # Year only YYYY
+        m_y = re.match(r"^(\d{4})$", s)
+        if m_y:
+            try:
+                return date(int(m_y.group(1)), 1, 1)
+            except ValueError:
+                return None
+    return v
 
 
 class RadiologicExamType(str, Enum):
@@ -125,14 +184,21 @@ class ChemotherapyData(BaseModel):
         description="Name of the chemotherapy drug or regimen (e.g., FOLFIRINOX)"
     )
     chemotherapy_start_date: Optional[date] = Field(
-        description="Start date of this specific chemotherapy line"
+        default=None,
+        description="Start date of this specific chemotherapy line",
     )
     chemotherapy_end_date: Optional[date] = Field(
-        description="End date of this specific chemotherapy line"
+        default=None,
+        description="End date of this specific chemotherapy line",
     )
     chemotherapy_tolerance: TreatmentToleranceEnum = Field(
         description="Patient's tolerance to the treatment"
     )
+
+    @field_validator("chemotherapy_start_date", "chemotherapy_end_date", mode="before")
+    @classmethod
+    def _parse_chemo_dates(cls, v: Any) -> Optional[date]:
+        return _coerce_clinical_date(v)
 
 
 # class CurativeSurgery(BaseModel):
@@ -213,8 +279,9 @@ class RadiologicalExamination(BaseModel):
     """
 
     exam_name: str = Field(description="The name of the radiological exam")
-    exam_date: date = Field(
-        description="The date when the radiological examination was performed."
+    exam_date: Optional[date] = Field(
+        default=None,
+        description="The date when the radiological examination was performed (YYYY-MM-DD).",
     )
     exam_type: RadiologicExamType = Field(
         description="The type of radiological examination performed (e.g., CT, MRI, X-ray, EUS)."
@@ -223,6 +290,11 @@ class RadiologicalExamination(BaseModel):
         description="Summary of key findings from the radiological report",
         default="N/A",
     )
+
+    @field_validator("exam_date", mode="before")
+    @classmethod
+    def _parse_exam_date(cls, v: Any) -> Optional[date]:
+        return _coerce_clinical_date(v)
 
 
 class HistologicAnalysis(BaseModel):

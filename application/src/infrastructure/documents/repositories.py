@@ -6,7 +6,7 @@ from src.application.config import AppConfig
 from src.domain.bug_report import BugReport, BugStatus
 from src.domain.patient import Patient
 from src.domain.worker.queue_job import RCPProcessingStatus
-from src.infrastructure.documents.mongodb import Mongodb
+from src.infrastructure.documents.mongodb import Mongodb, sanitize_bson_payload
 
 
 class InMemoryPatientRepository:
@@ -483,7 +483,7 @@ class MongoPatientMDTFormRepository:
     def save_full(
         self, filename: str, payload: dict[str, Any], replace: bool = True
     ) -> None:
-        data = dict(payload)
+        data = sanitize_bson_payload(dict(payload))
         data["file"] = filename
         try:
             self.db_client.set_uniq_index(self.collection_name, "file")
@@ -510,11 +510,12 @@ class MongoPatientMDTFormRepository:
         except Exception:
             pass
         col = self.db_client.database[self.collection_name]
-        update_op: dict[str, Any] = {"$set": dict(fields)}
+        sanitized_fields = sanitize_bson_payload(dict(fields))
+        update_op: dict[str, Any] = {"$set": sanitized_fields}
         if set_on_insert:
-            clean_on_insert = {
-                k: v for k, v in set_on_insert.items() if k not in fields
-            }
+            clean_on_insert = sanitize_bson_payload(
+                {k: v for k, v in set_on_insert.items() if k not in sanitized_fields}
+            )
             if clean_on_insert:
                 update_op["$setOnInsert"] = clean_on_insert
         col.update_one({"file": filename}, update_op, upsert=True)

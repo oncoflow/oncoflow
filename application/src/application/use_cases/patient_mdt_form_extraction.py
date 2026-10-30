@@ -4,7 +4,8 @@ import os
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -39,13 +40,22 @@ from src.infrastructure.documents.repositories import (
 
 
 def _serialize_dates(data: Any) -> Any:
-    """Recursively normalize all datetime objects into naive datetimes for persistence."""
+    """
+    Recursively normalize Pydantic models, `datetime`, `date`, and `Enum` objects
+    into BSON/JSON-compatible primitives for persistence.
+    """
+    if isinstance(data, BaseModel):
+        return _serialize_dates(data.model_dump())
     if isinstance(data, dict):
-        return {k: _serialize_dates(v) for k, v in data.items()}
-    if isinstance(data, list):
+        return {str(k): _serialize_dates(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple, set)):
         return [_serialize_dates(i) for i in data]
     if isinstance(data, datetime):
         return to_naive(data)
+    if isinstance(data, date):
+        return data.isoformat()
+    if isinstance(data, Enum):
+        return data.value
     return data
 
 

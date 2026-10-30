@@ -522,3 +522,116 @@ class TestRepositoriesAndApplicationUseCases:
 
         assert repo.delete("bug_1") is True
         assert [b["bug_id"] for b in repo.list_all()] == ["bug_2"]
+
+    def test_radiologic_exams_date_and_enum_bson_serialization(self, tmp_path: Path):
+        """
+        Ensure `datetime.date` and `Enum` values returned by AI agents (e.g., `RadiologicExams`)
+        are serialized into BSON-compatible primitives across `extract_section`,
+        `PatientMDTForm.to_persistence`, and `MongoPatientMDTFormRepository.upsert_fields`.
+        """
+        from datetime import date
+        import bson
+        from src.domain.common.common_ressources import (
+            RadiologicalExamination,
+            RadiologicExamType,
+        )
+        from src.infrastructure.documents.repositories import (
+            MongoPatientMDTFormRepository,
+        )
+
+        patient_repo = InMemoryPatientRepository()
+        mdt_form_repo = InMemoryPatientMDTFormRepository()
+        cache_repo = InMemoryDocumentCacheRepository()
+
+        mock_conf = MagicMock()
+        mock_conf.domain = "oncology"
+        mock_conf.rcp.path = str(tmp_path)
+        mock_conf.queue.enabled = False
+
+        extraction_service = PatientMDTFormExtractionService(
+            config=mock_conf,
+            filename="dossier_pancreas.pdf",
+            patient_repo=patient_repo,
+            mdt_form_repo=mdt_form_repo,
+            cache_repo=cache_repo,
+        )
+
+        ai_response = PatientMDTOncologicForm.RadiologicExams(
+            exams_list=[
+                RadiologicalExamination(
+                    exam_name="Scanner abdomino-pelvien",
+                    exam_date=date(2023, 1, 23),
+                    exam_type=RadiologicExamType.CT,
+                    exam_result="Lésion pancréatique céphalique de 13 mm.",
+                ),
+                RadiologicalExamination(
+                    exam_name="IRM hépatique",
+                    exam_date=date(2023, 1, 31),
+                    exam_type=RadiologicExamType.MRI,
+                    exam_result="Absence de métastases hépatiques.",
+                ),
+            ]
+        )
+
+        mock_agent_instance = MagicMock()
+        mock_agent_instance.ask.return_value = ai_response
+        mock_agent_instance.latest_thinking = ""
+        mock_agent_cls = MagicMock(return_value=mock_agent_instance)
+
+        original_agents = PatientMDTOncologicForm.RadiologicExams.agents
+        try:
+            PatientMDTOncologicForm.RadiologicExams.agents = [mock_agent_cls]
+            extraction_service.extract_section(
+                model_cls=PatientMDTOncologicForm.RadiologicExams,
+                upsert=True,
+                reader=MagicMock(),
+            )
+        finally:
+            PatientMDTOncologicForm.RadiologicExams.agents = original_agents
+
+        stored_doc = mdt_form_repo.get_by_file("dossier_pancreas.pdf")
+        assert stored_doc is not None
+        # Must encode cleanly into BSON without InvalidDocument on datetime.date
+        encoded = bson.BSON.encode(stored_doc)
+        assert encoded is not None
+        assert (
+            stored_doc["RadiologicExams"]["exams_list"][0]["exam_date"] == "2023-01-23"
+        )
+        assert stored_doc["RadiologicExams"]["exams_list"][0]["exam_type"] == "CT"
+
+        # Hydrating from persistence and dumping back via to_persistence() must also be BSON-safe
+        hydrated = PatientMDTOncologicForm.from_persistence(stored_doc)
+        assert isinstance(
+            hydrated.sections["RadiologicExams"],
+            PatientMDTOncologicForm.RadiologicExams,
+        )
+        assert hydrated.sections["RadiologicExams"].exams_list[0].exam_date == date(
+            2023, 1, 23
+        )
+        re_persisted = hydrated.to_persistence()
+        assert bson.BSON.encode(re_persisted) is not None
+
+        # Even direct calls to MongoPatientMDTFormRepository.upsert_fields with raw date/Enum must be BSON-safe
+        captured_updates: list[dict] = []
+        mock_col = MagicMock()
+        mock_col.update_one.side_effect = lambda flt, upd, upsert=False: (
+            captured_updates.append(bson.BSON.encode(upd))
+        )
+        mock_db_client = MagicMock()
+        mock_db_client.database = {"rcp_info": mock_col}
+        mongo_repo = MongoPatientMDTFormRepository(db_client=mock_db_client)
+        mongo_repo.upsert_fields(
+            "dossier_pancreas.pdf",
+            fields={
+                "RadiologicExams": {
+                    "exams_list": [
+                        {
+                            "exam_name": "Scanner",
+                            "exam_date": date(2023, 1, 23),
+                            "exam_type": RadiologicExamType.CT,
+                        }
+                    ]
+                }
+            },
+        )
+        assert len(captured_updates) == 1

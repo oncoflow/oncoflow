@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 
 import inspect
@@ -32,14 +32,33 @@ def _serialize_domain_value(val: Any) -> Any:
         return _serialize_domain_value(val.model_dump())
     if isinstance(val, dict):
         return {
-            k: _serialize_domain_value(v)
+            str(k): _serialize_domain_value(v)
             for k, v in val.items()
             if k != "reasoning_thinking"
         }
-    if isinstance(val, list):
+    if isinstance(val, (list, tuple, set)):
         return [_serialize_domain_value(item) for item in val]
     if isinstance(val, datetime):
         return val.strftime("%Y-%m-%d")
+    if isinstance(val, date):
+        return val.isoformat()
+    if isinstance(val, Enum):
+        return val.value
+    return val
+
+
+def _serialize_persistence_value(val: Any) -> Any:
+    """Recursively convert domain section values into BSON-compatible primitives."""
+    if isinstance(val, BaseModel):
+        return _serialize_persistence_value(val.model_dump())
+    if isinstance(val, dict):
+        return {str(k): _serialize_persistence_value(v) for k, v in val.items()}
+    if isinstance(val, (list, tuple, set)):
+        return [_serialize_persistence_value(item) for item in val]
+    if isinstance(val, datetime):
+        return _to_naive_paris(val)
+    if isinstance(val, date):
+        return val.isoformat()
     if isinstance(val, Enum):
         return val.value
     return val
@@ -294,15 +313,7 @@ class PatientMDTForm:
             payload["processing_progress_pct"] = self.processing_progress_pct
 
         for section_name, section_val in self.sections.items():
-            if isinstance(section_val, BaseModel):
-                payload[section_name] = section_val.model_dump()
-            elif isinstance(section_val, dict):
-                payload[section_name] = {
-                    k: (v.model_dump() if isinstance(v, BaseModel) else v)
-                    for k, v in section_val.items()
-                }
-            else:
-                payload[section_name] = section_val
+            payload[section_name] = _serialize_persistence_value(section_val)
         return payload
 
     # ------------------------------------------------------------------
