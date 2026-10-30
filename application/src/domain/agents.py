@@ -1,4 +1,3 @@
-from src.application.config import AppConfig
 from src.domain.oncology.agents import Agents as OncologyAgents
 from src.domain.sma.agents import Agents as SmaAgents
 
@@ -9,7 +8,7 @@ _DOMAIN_AGENTS_MAP = {
 
 
 def get_domain_agents_cls(domain: str | None = None):
-    target = (domain or AppConfig().domain).strip().lower()
+    target = (domain or "oncology").strip().lower()
     if target not in _DOMAIN_AGENTS_MAP:
         raise ValueError(
             f"Domain '{target}' not found. Available domains: {list(_DOMAIN_AGENTS_MAP.keys())}"
@@ -22,5 +21,4 @@ def get_domain_agents(domain: str | None = None):
     return cls()
 
 
-config = AppConfig()
-Agents = get_domain_agents_cls(config.domain)
+Agents = OncologyAgents

@@ -10,7 +10,8 @@ from typing import Any, Callable
 import httpx
 
 from src.application.config import AppConfig
-from src.domain.patient_mdt_form import get_domain_mdt_form_cls
+from src.domain.patient_mdt_form import NonPatientMDTFormError
+from src.domain.repositories import QueueJobExecutor
 from src.domain.worker import (
     JobPriority,
     JobStatus,
@@ -18,7 +19,6 @@ from src.domain.worker import (
     QueueJob,
     RCPProcessingStatus,
 )
-from src.infrastructure.documents.mongodb import Mongodb
 
 # Execution slot (GPU lease) time-to-live. A running job refreshes its lease from a
 # heartbeat thread every `LEASE_HEARTBEAT_SECONDS`; a lease that is not refreshed
@@ -40,12 +40,6 @@ def unload_active_models(app_conf: AppConfig) -> None:
     _unload(app_conf)
 
 
-def process_patient_association(*args: Any, **kwargs: Any):
-    from src.application.patient import process_patient_association as _assoc
-
-    return _assoc(*args, **kwargs)
-
-
 class InMemoryQueueManager:
     """
     Cross-domain in-memory task queue manager powered by Python's standard library
@@ -65,9 +59,11 @@ class InMemoryQueueManager:
         self,
         base_config: AppConfig | None = None,
         auto_start_workers: bool = False,
+        executor: QueueJobExecutor | None = None,
     ) -> None:
         self.base_config = base_config or AppConfig()
         self.logger = self.base_config.set_logger("oncoflow.queue")
+        self._executor = executor
         self._pq: queue.PriorityQueue[tuple[int, float, int, str]] = (
             queue.PriorityQueue()
         )
@@ -85,6 +81,16 @@ class InMemoryQueueManager:
 
         if auto_start_workers:
             self.start_workers()
+
+    @property
+    def executor(self) -> QueueJobExecutor:
+        if self._executor is None:
+            from src.application.use_cases.queue_executor import (
+                PatientMDTFormQueueJobExecutor,
+            )
+
+            self._executor = PatientMDTFormQueueJobExecutor(self.base_config)
+        return self._executor
 
     # ------------------------------------------------------------------
     # Internal Helpers
@@ -141,64 +147,15 @@ class InMemoryQueueManager:
         processing_status: RCPProcessingStatus | str,
         extra_fields: dict[str, Any] | None = None,
     ) -> None:
-        domain_conf = self._resolve_domain_config(domain)
-        if domain_conf.rcp.display_type != "mongodb":
-            return
-        status_val = (
-            processing_status.value
-            if isinstance(processing_status, RCPProcessingStatus)
-            else str(processing_status)
+        self.executor.on_job_enqueued(
+            domain=domain,
+            filename=filename,
+            status=processing_status,
+            extra_fields=extra_fields,
         )
-        now = datetime.now()
-        update_payload: dict[str, Any] = {
-            "processing_status": status_val,
-            "processing_updated_at": now,
-        }
-        if extra_fields:
-            update_payload.update(extra_fields)
-
-        db_client = Mongodb(domain_conf)
-        try:
-            db_client.database["rcp_info"].update_one(
-                {"file": filename},
-                {
-                    "$set": update_payload,
-                    "$setOnInsert": {
-                        "file": filename,
-                        "date_refresh": now,
-                    },
-                },
-                upsert=True,
-            )
-        finally:
-            db_client.close()
 
     def _stabilize_rcp_status_for_file(self, domain: str, filename: str) -> None:
-        domain_conf = self._resolve_domain_config(domain)
-        if domain_conf.rcp.display_type != "mongodb":
-            return
-        db_client = Mongodb(domain_conf)
-        try:
-            doc = db_client.database["rcp_info"].find_one({"file": filename})
-            if not doc:
-                return
-            has_admin = bool(doc.get("PatientAdministrative"))
-            target_status = (
-                RCPProcessingStatus.COMPLETED.value
-                if has_admin
-                else RCPProcessingStatus.FAILED.value
-            )
-            db_client.database["rcp_info"].update_one(
-                {"file": filename},
-                {
-                    "$set": {
-                        "processing_status": target_status,
-                        "processing_updated_at": datetime.now(),
-                    }
-                },
-            )
-        finally:
-            db_client.close()
+        self.executor.stabilize_status(domain=domain, filename=filename)
 
     @staticmethod
     def _clone_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -344,18 +301,14 @@ class InMemoryQueueManager:
         domain: str | None = None,
     ) -> dict[str, Any]:
         target_domain = self._normalize_domain(domain)
-        domain_conf = self._resolve_domain_config(target_domain)
         now = datetime.now()
 
-        # Mongo I/O is done before taking the queue lock (never block workers on DB).
-        has_admin = False
-        if not model_name and domain_conf.rcp.display_type == "mongodb":
-            db_client = Mongodb(domain_conf)
-            try:
-                rcp_doc = db_client.database["rcp_info"].find_one({"file": filename})
-                has_admin = bool(rcp_doc and rcp_doc.get("PatientAdministrative"))
-            finally:
-                db_client.close()
+        # Repository check is done before taking the queue lock (never block workers on DB).
+        has_admin = (
+            self.executor.has_administrative_data(target_domain, filename)
+            if not model_name
+            else False
+        )
 
         with self._lock:
             active_for_file = [
@@ -676,6 +629,11 @@ class InMemoryQueueManager:
             claimed_job["lease_id"] = lease_id
             claimed_job["started_at"] = now
             claimed_job["heartbeat_at"] = now
+            claimed_job["active_agent"] = None
+            claimed_job["current_thinking"] = ""
+            claimed_job["thinking_seq"] = 0
+            claimed_job["thinking_updated_at"] = None
+            self._notify_waiters()
             return self._clone_job(claimed_job), lease_id
 
     # ------------------------------------------------------------------
@@ -709,7 +667,198 @@ class InMemoryQueueManager:
                 job["progress_pct"] = round(float(progress_pct), 1)
             if resolved_patient_id is not None:
                 job["resolved_patient_id"] = resolved_patient_id
+            self._notify_waiters()
             return self._clone_job(job)
+
+    def append_job_thinking(
+        self,
+        job_id: str,
+        token: str = "",
+        agent_name: str | None = None,
+        reset: bool = False,
+        run_id: str | None = None,
+        lease_id: str | None = None,
+        max_chars: int = 32000,
+    ) -> dict[str, Any] | None:
+        """
+        Append live AI reasoning tokens (`<think>` or `reasoning_content`) to a running task
+        and wake up any active thinking stream consumers immediately.
+        """
+        now = datetime.now()
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job or self._is_stale_run(job, run_id, lease_id):
+                return None
+            if agent_name is not None:
+                job["active_agent"] = agent_name
+            current = "" if reset else str(job.get("current_thinking") or "")
+            if token:
+                current = current + token
+                if len(current) > max_chars:
+                    current = current[-max_chars:]
+            job["current_thinking"] = current
+            job["thinking_seq"] = int(job.get("thinking_seq") or 0) + 1
+            job["thinking_updated_at"] = now
+            job["heartbeat_at"] = now
+            self._notify_waiters()
+            return self._clone_job(job)
+
+    @staticmethod
+    def _format_thinking_snapshot(job: dict[str, Any] | None) -> dict[str, Any]:
+        """Build a normalized thinking payload from a queue job dictionary."""
+        if not job:
+            return {
+                "active": False,
+                "job_id": None,
+                "domain": None,
+                "filename": None,
+                "job_type": None,
+                "status": None,
+                "current_step": None,
+                "active_agent": None,
+                "current_thinking": "",
+                "thinking_seq": 0,
+                "progress_pct": None,
+                "thinking_updated_at": None,
+            }
+        status = job.get("status")
+        return {
+            "active": status == JobStatus.PROCESSING.value,
+            "job_id": job.get("job_id"),
+            "domain": job.get("domain"),
+            "filename": job.get("filename"),
+            "job_type": job.get("job_type"),
+            "status": status,
+            "current_step": job.get("current_step"),
+            "active_agent": job.get("active_agent"),
+            "current_thinking": str(job.get("current_thinking") or ""),
+            "thinking_seq": int(job.get("thinking_seq") or 0),
+            "progress_pct": job.get("progress_pct"),
+            "thinking_updated_at": job.get("thinking_updated_at"),
+        }
+
+    def _find_active_processing_job_locked(
+        self, domain: str | None = None
+    ) -> dict[str, Any] | None:
+        """Return the currently PROCESSING job (most recently active first). Must hold `_lock`."""
+        target_domain = domain.strip().lower() if domain else None
+        processing_jobs = [
+            j
+            for j in self._jobs.values()
+            if j.get("status") == JobStatus.PROCESSING.value
+            and (not target_domain or j.get("domain") == target_domain)
+        ]
+        if not processing_jobs:
+            return None
+        processing_jobs.sort(
+            key=lambda j: (
+                j.get("thinking_updated_at") or j.get("started_at") or datetime.min
+            ),
+            reverse=True,
+        )
+        return processing_jobs[0]
+
+    def get_job_thinking(
+        self, job_id: str | None = None, domain: str | None = None
+    ) -> dict[str, Any]:
+        """
+        Return the live AI reasoning snapshot for `job_id` or, when omitted,
+        for the currently `PROCESSING` task in the queue.
+        """
+        with self._lock:
+            if job_id:
+                job = self._jobs.get(job_id)
+            else:
+                job = self._find_active_processing_job_locked(domain=domain)
+            return self._format_thinking_snapshot(job)
+
+    def stream_job_thinking(
+        self,
+        job_id: str | None = None,
+        domain: str | None = None,
+        timeout: float = 30.0,
+        heartbeat_interval: float = 2.0,
+    ):
+        """
+        Yield live AI reasoning events (`thinking`, `heartbeat`, `done`) for a specific
+        `job_id` or for the currently `PROCESSING` task using condition-variable wakeups.
+        """
+        deadline = datetime.now() + timedelta(seconds=max(0.5, float(timeout)))
+        last_seq = -1
+        last_text = ""
+        last_step = None
+        last_agent = None
+        tracked_job_id = job_id
+
+        while not self._stop_event.is_set():
+            with self._cond:
+                job = (
+                    self._jobs.get(tracked_job_id)
+                    if tracked_job_id
+                    else self._find_active_processing_job_locked(domain=domain)
+                )
+                if job and not tracked_job_id:
+                    tracked_job_id = job.get("job_id")
+
+                snap = self._format_thinking_snapshot(job)
+                if not job:
+                    yield {
+                        **snap,
+                        "event": "done",
+                        "delta": "",
+                    }
+                    return
+
+                seq = snap["thinking_seq"]
+                text = snap["current_thinking"]
+                step = snap["current_step"]
+                agent = snap["active_agent"]
+                status = snap["status"]
+
+                changed = (
+                    seq != last_seq
+                    or step != last_step
+                    or agent != last_agent
+                    or status != JobStatus.PROCESSING.value
+                )
+
+                if changed:
+                    if text.startswith(last_text):
+                        delta = text[len(last_text) :]
+                    else:
+                        delta = text
+                    last_seq = seq
+                    last_text = text
+                    last_step = step
+                    last_agent = agent
+
+                    if status != JobStatus.PROCESSING.value:
+                        yield {
+                            **snap,
+                            "event": "done",
+                            "delta": delta,
+                        }
+                        return
+
+                    yield {
+                        **snap,
+                        "event": "thinking",
+                        "delta": delta,
+                    }
+                    continue
+
+                now = datetime.now()
+                if now >= deadline:
+                    yield {
+                        **snap,
+                        "event": "done",
+                        "delta": "",
+                    }
+                    return
+
+                remaining = (deadline - now).total_seconds()
+                wait_time = min(max(0.05, heartbeat_interval), max(0.05, remaining))
+                self._cond.wait(timeout=wait_time)
 
     def complete_job(
         self,
@@ -756,6 +905,7 @@ class InMemoryQueueManager:
                     self._push_to_pq(candidate)
 
             self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
+            self._notify_waiters()
             return self._clone_job(job)
 
     def fail_job(
@@ -764,6 +914,8 @@ class InMemoryQueueManager:
         error_message: str,
         lease_id: str | None = None,
         run_id: str | None = None,
+        no_retry: bool = False,
+        skip_rcp_status_update: bool = False,
     ) -> dict[str, Any] | None:
         now = datetime.now()
         job_to_fail_rcp: tuple[str, str] | None = None
@@ -783,7 +935,7 @@ class InMemoryQueueManager:
             max_retries = int(
                 job.get("max_retries", self.base_config.queue.max_retries)
             )
-            if attempts <= max_retries:
+            if not no_retry and attempts <= max_retries:
                 job["status"] = JobStatus.PENDING.value
                 job["attempts"] = attempts
                 job["error_message"] = error_message
@@ -799,7 +951,9 @@ class InMemoryQueueManager:
                 job["error_message"] = error_message
                 job["completed_at"] = now
                 job["heartbeat_at"] = now
-                job["current_step"] = "Échec du traitement"
+                job["current_step"] = (
+                    "Document refusé (non-RCP)" if no_retry else "Échec du traitement"
+                )
                 for dep in self._jobs.values():
                     if (
                         dep.get("depends_on_job_id") == job_id
@@ -808,21 +962,24 @@ class InMemoryQueueManager:
                         dep["status"] = JobStatus.CANCELLED.value
                         dep["completed_at"] = now
                         dep["error_message"] = (
-                            "Annulé suite à l'échec de l'identification patient"
+                            "Annulé : le document importé n'est pas une fiche RCP"
+                            if no_retry
+                            else "Annulé suite à l'échec de l'identification patient"
                         )
                         dep["current_step"] = "Annulé"
                         self._cancelled_job_ids.add(dep["job_id"])
-                job_to_fail_rcp = (job["domain"], job["filename"])
+                if not skip_rcp_status_update:
+                    job_to_fail_rcp = (job["domain"], job["filename"])
 
             self.release_gpu_lease(lease_id=lease_id, job_id=job_id)
+            self._notify_waiters()
             result = self._clone_job(job)
 
         if job_to_fail_rcp:
-            self._set_rcp_processing_status(
+            self.executor.on_job_failed(
                 job_to_fail_rcp[0],
                 job_to_fail_rcp[1],
-                RCPProcessingStatus.FAILED,
-                extra_fields={"processing_error": error_message},
+                error_message,
             )
         return result
 
@@ -1119,179 +1276,13 @@ class InMemoryQueueManager:
             return False
 
     def _execute_wave1_admin(self, job: dict[str, Any], lease_id: str) -> str | None:
-        job_id = job["job_id"]
-        domain = job["domain"]
-        filename = job["filename"]
-        target_patient_id = job.get("target_patient_id")
-        domain_conf = self._resolve_domain_config(domain)
-        form_cls = get_domain_mdt_form_cls(domain)
-
-        self._set_rcp_processing_status(
-            domain, filename, RCPProcessingStatus.PROCESSING_ADMIN
-        )
-        self.update_job_progress(
-            job_id=job_id,
-            current_step="Identification du patient en cours",
-            progress_pct=20.0,
-        )
-        self.refresh_gpu_lease(lease_id, job_id=job_id)
-
-        form = form_cls(config=domain_conf, document=filename)
-        try:
-            patient = process_patient_association(
-                form=form,
-                target_patient_id=target_patient_id,
-                run_admin_ai=True,
-            )
-            resolved_pid = patient.patient_id if patient else target_patient_id
-
-            with self._lock:
-                has_wave2 = any(
-                    j.get("depends_on_job_id") == job_id
-                    and j["status"] == JobStatus.PENDING.value
-                    for j in self._jobs.values()
-                )
-            next_rcp_status = (
-                RCPProcessingStatus.PENDING_CLINICAL
-                if has_wave2
-                else RCPProcessingStatus.COMPLETED
-            )
-            self._set_rcp_processing_status(
-                domain,
-                filename,
-                next_rcp_status,
-                extra_fields=({"patient_id": resolved_pid} if resolved_pid else None),
-            )
-            return resolved_pid
-        finally:
-            del form
+        return self.executor.execute_wave1_admin(job, lease_id, self)
 
     def _execute_wave2_clinical(self, job: dict[str, Any], lease_id: str) -> None:
-        job_id = job["job_id"]
-        domain = job["domain"]
-        filename = job["filename"]
-        domain_conf = self._resolve_domain_config(domain)
-        form_cls = get_domain_mdt_form_cls(domain)
-
-        self._set_rcp_processing_status(
-            domain, filename, RCPProcessingStatus.PROCESSING_CLINICAL
-        )
-
-        # Dynamically collect clinical models for this domain's PatientMDTForm
-        import inspect
-        from pydantic import BaseModel
-
-        clinical_models = [
-            obj
-            for name, obj in inspect.getmembers(form_cls)
-            if inspect.isclass(obj)
-            and issubclass(obj, BaseModel)
-            and name not in ("default_model", "PatientAdministrative")
-        ]
-        total = max(1, len(clinical_models))
-        completed_models: list[str] = list(job.get("completed_models") or [])
-
-        form = form_cls(config=domain_conf, document=filename)
-        try:
-            run_id = job.get("run_id")
-            for idx, model_cls in enumerate(clinical_models, start=1):
-                if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
-                    return
-                model_name = model_cls.__name__
-                self.refresh_gpu_lease(lease_id, job_id=job_id)
-                self.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Analyse clinique ({idx}/{total})",
-                    completed_models=completed_models,
-                    progress_pct=round(((idx - 1) / total) * 100.0, 1),
-                )
-                form.read_model(model_cls, upsert=True)
-                if model_name not in completed_models:
-                    completed_models.append(model_name)
-                self.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Analyse clinique ({idx}/{total})",
-                    completed_models=completed_models,
-                    progress_pct=round((idx / total) * 100.0, 1),
-                )
-
-            if hasattr(form, "read_experts"):
-                if self._is_job_aborted(job_id, run_id=run_id, lease_id=lease_id):
-                    return
-                self.refresh_gpu_lease(lease_id, job_id=job_id)
-                self.update_job_progress(
-                    job_id=job_id,
-                    current_step="Synthèse collégiale en cours",
-                    completed_models=completed_models,
-                    progress_pct=95.0,
-                )
-                form.read_experts()
-                if domain_conf.rcp.display_type == "mongodb":
-                    db_client = Mongodb(domain_conf)
-                    try:
-                        db_client.database["rcp_info"].update_one(
-                            {"file": filename},
-                            {
-                                "$set": {
-                                    "experts": form.mtd_datas.get("experts", {}),
-                                    "date_refresh": datetime.now(),
-                                }
-                            },
-                            upsert=True,
-                        )
-                    finally:
-                        db_client.close()
-
-            self._set_rcp_processing_status(
-                domain, filename, RCPProcessingStatus.COMPLETED
-            )
-        finally:
-            del form
+        self.executor.execute_wave2_clinical(job, lease_id, self)
 
     def _execute_single_model(self, job: dict[str, Any], lease_id: str) -> None:
-        job_id = job["job_id"]
-        domain = job["domain"]
-        filename = job["filename"]
-        target_model_name = job.get("model_name")
-        if not target_model_name:
-            raise ValueError("Missing model_name for SINGLE_MODEL job")
-
-        domain_conf = self._resolve_domain_config(domain)
-        form_cls = get_domain_mdt_form_cls(domain)
-
-        self.refresh_gpu_lease(lease_id, job_id=job_id)
-        self.update_job_progress(
-            job_id=job_id,
-            current_step=f"Mise à jour de la rubrique ({target_model_name})",
-            progress_pct=30.0,
-        )
-
-        form = form_cls(config=domain_conf, document=filename)
-        try:
-            target_cls = getattr(form_cls, target_model_name, None)
-            if target_cls is None:
-                import inspect
-                from pydantic import BaseModel
-
-                for name, obj in inspect.getmembers(form_cls):
-                    if (
-                        inspect.isclass(obj)
-                        and issubclass(obj, BaseModel)
-                        and name.lower() == target_model_name.lower()
-                    ):
-                        target_cls = obj
-                        break
-            if target_cls is None:
-                raise ValueError(
-                    f"Rubrique '{target_model_name}' introuvable pour le domaine '{domain}'."
-                )
-
-            if target_cls.__name__ == "PatientAdministrative":
-                process_patient_association(form=form, run_admin_ai=True)
-            else:
-                form.read_model(target_cls, upsert=True)
-        finally:
-            del form
+        self.executor.execute_single_model(job, lease_id, self)
 
     def execute_claimed_job(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
@@ -1333,12 +1324,20 @@ class InMemoryQueueManager:
                 run_id=run_id,
             )
         except Exception as exc:
-            self.logger.exception("Job %s failed: %s", job_id, exc)
+            is_non_mdt_form = isinstance(exc, NonPatientMDTFormError)
+            if is_non_mdt_form:
+                self.logger.warning(
+                    "Job %s rejected (non-PatientMDTForm): %s", job_id, exc
+                )
+            else:
+                self.logger.exception("Job %s failed: %s", job_id, exc)
             self.fail_job(
                 job_id=job_id,
                 error_message=str(exc),
                 lease_id=lease_id,
                 run_id=run_id,
+                no_retry=is_non_mdt_form,
+                skip_rcp_status_update=is_non_mdt_form,
             )
         finally:
             hb_stop.set()
@@ -1347,10 +1346,7 @@ class InMemoryQueueManager:
     def _maybe_unload_models_if_idle(self) -> None:
         stats = self.get_queue_stats()
         if stats["pending"] == 0 and stats["processing"] == 0:
-            try:
-                unload_active_models(self.base_config)
-            except Exception:
-                pass
+            self.executor.on_queue_idle()
 
     def run_once(
         self,
@@ -1429,74 +1425,7 @@ class InMemoryQueueManager:
         Scan `rcp_info` across all enabled domains (`APP_ALLOWED_DOMAINS`) on startup
         and re-enqueue any document that was interrupted before `COMPLETED` or `FAILED`.
         """
-        recovered = 0
-        for domain in self.base_config.enabled_domains_list:
-            try:
-                domain_conf = self._resolve_domain_config(domain)
-                if domain_conf.rcp.display_type != "mongodb":
-                    continue
-                form_cls = get_domain_mdt_form_cls(domain)
-                import inspect
-                from pydantic import BaseModel
-
-                clinical_count = sum(
-                    1
-                    for name, obj in inspect.getmembers(form_cls)
-                    if inspect.isclass(obj)
-                    and issubclass(obj, BaseModel)
-                    and name not in ("default_model", "PatientAdministrative")
-                )
-
-                db_client = Mongodb(domain_conf)
-                try:
-                    unfinished_docs = list(
-                        db_client.database["rcp_info"].find(
-                            {
-                                "processing_status": {
-                                    "$in": [
-                                        RCPProcessingStatus.PENDING_ADMIN.value,
-                                        RCPProcessingStatus.PROCESSING_ADMIN.value,
-                                        RCPProcessingStatus.PENDING_CLINICAL.value,
-                                        RCPProcessingStatus.PROCESSING_CLINICAL.value,
-                                    ]
-                                }
-                            }
-                        )
-                    )
-                finally:
-                    db_client.close()
-
-                for doc in unfinished_docs:
-                    filename = doc.get("file")
-                    if not filename:
-                        continue
-                    status = doc.get("processing_status")
-                    if status in (
-                        RCPProcessingStatus.PENDING_ADMIN.value,
-                        RCPProcessingStatus.PROCESSING_ADMIN.value,
-                    ):
-                        res = self.enqueue_import_file(
-                            filename=filename,
-                            target_patient_id=doc.get("target_patient_id")
-                            or doc.get("patient_id"),
-                            include_clinical=True,
-                            total_clinical_models=max(1, clinical_count),
-                            domain=domain,
-                        )
-                    else:
-                        res = self.enqueue_rcp_rerun(
-                            filename=filename,
-                            model_name=None,
-                            total_clinical_models=max(1, clinical_count),
-                            domain=domain,
-                        )
-                    if not res.get("already_queued"):
-                        recovered += 1
-            except Exception as exc:
-                self.logger.warning(
-                    f"Could not recover unfinished jobs for domain '{domain}': {exc}"
-                )
-        return recovered
+        return self.executor.recover_unfinished_jobs(self)
 
 
 # ----------------------------------------------------------------------
@@ -1889,6 +1818,73 @@ class QueueBroker:
             except Exception:
                 pass
         return self._manager.clean_queue(mode=mode, domain=target_domain)
+
+    def get_job_thinking(
+        self, job_id: str | None = None, cross_domain: bool = False
+    ) -> dict[str, Any]:
+        """Return live AI reasoning state for a specific job or the active processing job."""
+        target_domain = None if cross_domain else self.domain
+        if self._use_remote_api():
+            try:
+                if job_id:
+                    url = f"{self.api_url}/api/v1/queue/jobs/{job_id}/thinking"
+                    params: dict[str, Any] = {}
+                else:
+                    url = f"{self.api_url}/api/v1/queue/thinking"
+                    params = {"domain": target_domain} if target_domain else {}
+                resp = httpx.get(
+                    url,
+                    params=params,
+                    headers=self._auth_headers(),
+                    timeout=3.0,
+                )
+                if resp.status_code == 200:
+                    return resp.json()
+            except Exception:
+                pass
+        return self._manager.get_job_thinking(job_id=job_id, domain=target_domain)
+
+    def stream_job_thinking(
+        self,
+        job_id: str | None = None,
+        cross_domain: bool = False,
+        timeout: float = 30.0,
+    ):
+        """Stream live AI reasoning events (`thinking`, `done`) for the active or specified task."""
+        import json
+
+        target_domain = None if cross_domain else self.domain
+        if self._use_remote_api():
+            try:
+                if job_id:
+                    url = f"{self.api_url}/api/v1/queue/jobs/{job_id}/thinking/stream"
+                    params: dict[str, Any] = {"timeout": timeout}
+                else:
+                    url = f"{self.api_url}/api/v1/queue/thinking/stream"
+                    params = {"timeout": timeout}
+                    if target_domain:
+                        params["domain"] = target_domain
+                with httpx.stream(
+                    "GET",
+                    url,
+                    params=params,
+                    headers=self._auth_headers(),
+                    timeout=timeout + 5.0,
+                ) as resp:
+                    if resp.status_code == 200:
+                        for line in resp.iter_lines():
+                            if line.startswith("data:"):
+                                raw = line[5:].strip()
+                                if raw:
+                                    yield json.loads(raw)
+                        return
+            except Exception:
+                pass
+        yield from self._manager.stream_job_thinking(
+            job_id=job_id,
+            domain=target_domain,
+            timeout=timeout,
+        )
 
 
 # Backward-compatible alias

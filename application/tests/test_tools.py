@@ -20,7 +20,7 @@ class TestAgentTools(unittest.TestCase):
         # Create a mock reader
         self.mock_reader = MagicMock()
         self.mock_reader.document = "rcp1.pdf"
-        self.mock_reader.mtd_datas = {
+        self.mock_reader.sections = {
             "file": "rcp1.pdf",
             "PatientAdministrative": {
                 "first_name": "Jean",
@@ -33,10 +33,10 @@ class TestAgentTools(unittest.TestCase):
         self.mock_exporter_doc.page_content = "# Mock Markdown Patient Record"
         self.mock_reader.markdown_exporter = [self.mock_exporter_doc]
 
-        # Create a second mock reader for patient dossier tests
+        # Create a second mock reader for patient record tests
         self.mock_reader2 = MagicMock()
         self.mock_reader2.document = "rcp2.pdf"
-        self.mock_reader2.mtd_datas = {
+        self.mock_reader2.sections = {
             "file": "rcp2.pdf",
             "PatientAdministrative": {
                 "first_name": "Jean",
@@ -84,6 +84,45 @@ class TestAgentTools(unittest.TestCase):
         result = get_mtd_markdown.func(self.mock_runtime)
         self.assertEqual(result, "# Mock Markdown Patient Record")
         self.mock_logger.info.assert_called_with("tool get_mtd_markdown called")
+
+    def test_get_mtd_markdown_lazy_reads_document_when_exporter_empty(self):
+        """Ensure get_mtd_markdown calls reader.read_document() if markdown_exporter is initially empty."""
+        unloaded_reader = MagicMock()
+        unloaded_reader.document = "unloaded.pdf"
+        unloaded_reader.markdown_exporter = []
+
+        def _populate_exporter():
+            doc = MagicMock()
+            doc.page_content = "# Lazily Loaded PatientMDTForm Content"
+            unloaded_reader.markdown_exporter = [doc]
+
+        unloaded_reader.read_document.side_effect = _populate_exporter
+        self.mock_runtime.context["reader"] = unloaded_reader
+
+        result = get_mtd_markdown.func(self.mock_runtime)
+        unloaded_reader.read_document.assert_called_once()
+        self.assertEqual(result, "# Lazily Loaded PatientMDTForm Content")
+
+    def test_get_patient_mtds_markdown_lazy_reads_documents_when_exporter_empty(self):
+        """Ensure get_patient_mtds_markdown calls read_document() on any reader whose markdown_exporter is empty."""
+        unloaded_reader = MagicMock()
+        unloaded_reader.document = "rcp_lazy.pdf"
+        unloaded_reader.markdown_exporter = []
+
+        def _populate_exporter():
+            doc = MagicMock()
+            doc.page_content = "# Lazily Loaded PatientRecord Entry"
+            unloaded_reader.markdown_exporter = [doc]
+
+        unloaded_reader.read_document.side_effect = _populate_exporter
+        self.mock_patient_runtime.context["patient_readers"] = [unloaded_reader]
+
+        result = get_patient_mtds_markdown.func(self.mock_patient_runtime)
+        unloaded_reader.read_document.assert_called_once()
+        self.assertEqual(
+            result,
+            "=== FICHE RCP : rcp_lazy.pdf ===\n# Lazily Loaded PatientRecord Entry",
+        )
 
     def test_get_patient_mtds_markdown_success(self):
         result = get_patient_mtds_markdown.func(self.mock_patient_runtime)

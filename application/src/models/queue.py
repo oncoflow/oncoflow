@@ -1,4 +1,4 @@
-"""Schémas d'entrée/sortie de l'API de la file de traitement (`/api/v1/queue`)."""
+"""Input/output schemas for the processing queue API (`/api/v1/queue`)."""
 
 from datetime import datetime
 from typing import Literal
@@ -16,7 +16,7 @@ QueueCleanMode = Literal[
 class QueueCleanRequest(BaseModel):
     mode: QueueCleanMode = Field(
         default="completed",
-        description="Mode de nettoyage : completed, failed, reset_stuck, retry_failed, pending, all",
+        description="Cleanup mode: completed, failed, reset_stuck, retry_failed, pending, all",
     )
 
 
@@ -38,7 +38,7 @@ class EnqueueRerunRequest(BaseModel):
 
 
 class QueueJobResponse(BaseModel):
-    """Représentation API d'une tâche de la file (miroir permissif de `QueueJob`)."""
+    """API representation of a queue task (permissive mirror of `QueueJob`)."""
 
     job_id: str
     batch_id: str | None = None
@@ -65,6 +65,45 @@ class QueueJobResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     heartbeat_at: datetime | None = None
+    active_agent: str | None = None
+    current_thinking: str | None = None
+    thinking_updated_at: datetime | None = None
+
+
+class QueueThinkingResponse(BaseModel):
+    """Snapshot of the live AI reasoning state for an active or specific queue task."""
+
+    active: bool = False
+    job_id: str | None = None
+    domain: str | None = None
+    filename: str | None = None
+    job_type: str | None = None
+    status: str | None = None
+    current_step: str | None = None
+    active_agent: str | None = None
+    current_thinking: str = ""
+    thinking_seq: int = 0
+    progress_pct: float | None = None
+    thinking_updated_at: datetime | None = None
+
+
+class QueueThinkingStreamEvent(BaseModel):
+    """Server-Sent Event payload emitted while streaming live AI reasoning for a queue task."""
+
+    event: Literal["thinking", "done", "heartbeat"] = "thinking"
+    active: bool = False
+    job_id: str | None = None
+    domain: str | None = None
+    filename: str | None = None
+    job_type: str | None = None
+    status: str | None = None
+    current_step: str | None = None
+    active_agent: str | None = None
+    delta: str = ""
+    current_thinking: str = ""
+    thinking_seq: int = 0
+    progress_pct: float | None = None
+    thinking_updated_at: datetime | None = None
 
 
 class EnqueueResponse(BaseModel):

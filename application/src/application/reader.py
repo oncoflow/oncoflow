@@ -79,6 +79,9 @@ class DocumentReader:
             with cls._docling_lock:
                 if cls._docling_converter is None or cls._docling_chunker is None:
                     from docling.chunking import HybridChunker
+                    from docling_core.transforms.chunker.tokenizer.huggingface import (
+                        HuggingFaceTokenizer,
+                    )
                     from docling.datamodel.accelerator_options import AcceleratorOptions
                     from docling.datamodel.base_models import InputFormat
                     from docling.datamodel.pipeline_options import (
@@ -106,7 +109,11 @@ class DocumentReader:
                             ),
                         },
                     )
-                    chunker = HybridChunker(tokenizer="intfloat/multilingual-e5-base")
+                    chunker = HybridChunker(
+                        tokenizer=HuggingFaceTokenizer.from_pretrained(
+                            model_name="intfloat/multilingual-e5-base"
+                        )
+                    )
                     cls._docling_chunker = chunker
                     cls._docling_converter = converter
         return cls._docling_converter, cls._docling_chunker
@@ -384,6 +391,17 @@ class DocumentReader:
             self.default_loader,
         )
         self.chunked_documents = self._load_document(self.document_path)
+        if not self.markdown_exporter and self.chunked_documents:
+            self.markdown_exporter = [
+                Document(
+                    page_content="\n\n".join(
+                        doc.page_content
+                        for doc in self.chunked_documents
+                        if doc.page_content
+                    ),
+                    metadata={"source": self.document_path, "file": self.document},
+                )
+            ]
 
         # pyrefly: ignore [missing-attribute]
         self.vecdb.add_chunked_to_collection(self.chunked_documents, flush_before=True)

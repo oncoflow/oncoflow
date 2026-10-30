@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class RCPProcessingStatus(str, Enum):
-    """Statut de traitement d'une fiche RCP dans rcp_info."""
+    """Processing status of a `PatientMDTForm` record in persistence."""
 
     PENDING_ADMIN = "PENDING_ADMIN"
     PROCESSING_ADMIN = "PROCESSING_ADMIN"
@@ -27,8 +27,11 @@ class RCPProcessingStatus(str, Enum):
         }
 
 
+PatientMDTFormProcessingStatus = RCPProcessingStatus
+
+
 class JobStatus(str, Enum):
-    """Statut d'une tâche dans la file de traitement (ai_jobs_queue)."""
+    """Execution status of a task in the priority processing queue."""
 
     PENDING = "PENDING"
     PROCESSING = "PROCESSING"
@@ -48,7 +51,7 @@ class JobStatus(str, Enum):
 
 
 class JobType(str, Enum):
-    """Type de tâche dans la file de traitement en 2 étapes."""
+    """Task type in the two-wave priority processing queue."""
 
     WAVE1_ADMIN = "WAVE1_ADMIN"
     WAVE2_CLINICAL = "WAVE2_CLINICAL"
@@ -64,7 +67,7 @@ class JobType(str, Enum):
 
 
 class JobPriority:
-    """Priorités standards d'ordonnancement (plus grand = plus prioritaire)."""
+    """Standard scheduling priorities (higher value = higher priority)."""
 
     WAVE1_ADMIN = 100
     WAVE1_ADMIN_IMPORT = 100
@@ -77,7 +80,7 @@ class JobPriority:
 
 
 class QueueJob(BaseModel):
-    """Modèle domaine représentant une tâche dans la file de traitement."""
+    """Domain model representing a task in the priority processing queue."""
 
     job_id: str = Field(
         default_factory=lambda: f"job_{uuid.uuid4().hex[:12]}",
@@ -183,10 +186,22 @@ class QueueJob(BaseModel):
         default=None,
         description="Dernier signal de vie du worker",
     )
+    active_agent: str | None = Field(
+        default=None,
+        description="Active AI agent currently generating reasoning tokens",
+    )
+    current_thinking: str = Field(
+        default="",
+        description="Live AI reasoning buffer captured during task execution",
+    )
+    thinking_updated_at: datetime | None = Field(
+        default=None,
+        description="Timestamp of the most recent AI reasoning token",
+    )
 
 
 class GpuLease(BaseModel):
-    """Modèle domaine représentant un verrou de traitement actif dans Oncoflow_system.gpu_leases."""
+    """Domain model representing an active hardware execution lease."""
 
     lease_id: str = Field(
         default_factory=lambda: f"lease_{uuid.uuid4().hex[:10]}",

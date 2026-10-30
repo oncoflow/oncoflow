@@ -12,8 +12,8 @@ from src.routers.dependencies import (
     get_base_config,
     verify_api_token,
 )
+from src.routers.patientmdtform import router as patientmdtform_router
 from src.routers.queue import router as queue_router
-from src.routers.rcp import router as rcp_router
 from src.routers.resources import router as resources_router
 
 app_conf = get_base_config()
@@ -88,7 +88,7 @@ def healthcheck():
 
 # Include versioned routers (all protected by the shared API token)
 _protected = [Depends(verify_api_token)]
-app.include_router(rcp_router, prefix="/api/v1", dependencies=_protected)
+app.include_router(patientmdtform_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(agents_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(resources_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(queue_router, prefix="/api/v1", dependencies=_protected)

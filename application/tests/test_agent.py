@@ -392,3 +392,33 @@ class TestOncowflowAgent(unittest.TestCase):
             repaired = extract_json_str(raw)
             parsed = self.output_format.model_validate_json(repaired)
             self.assertTrue(parsed.response)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_handles_orphan_think_and_multiple_json_candidates(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        # Orphan closing </think> with braces inside thinking + intermediate JSON snippet
+        # before the final schema-valid JSON object.
+        content = (
+            'Thinking about format {"draft": "ignore"} and {Sexe} [Age]\n'
+            "</think>\n"
+            'Note: intermediate {"wrong_key": 123}\n'
+            '{"response": "Valid final answer"}'
+        )
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("q"), AIMessage(content=content)]
+        }
+
+        result = agent.ask("My question")
+        self.assertEqual(result, self.output_format(response="Valid final answer"))
+        mock_agent_executor.invoke.assert_called_once()

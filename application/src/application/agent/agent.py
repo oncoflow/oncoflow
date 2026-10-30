@@ -22,58 +22,106 @@ from src.application.agent.tools import (
 from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
 
 
+def _strip_thinking(text: str) -> str:
+    """
+    Strip ``<think>...</think>`` blocks, orphan prefixes before ``</think>``
+    (when ``<think>`` was injected by the chat template), and unclosed ``<think>`` tails.
+    """
+    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    if "</think>" in text_clean:
+        after_close = text_clean.rsplit("</think>", 1)[-1].strip()
+        if after_close:
+            text_clean = after_close
+    if "<think>" in text_clean:
+        before_open = text_clean.split("<think>", 1)[0].strip()
+        text_clean = before_open
+    return text_clean.strip()
+
+
+def extract_json_candidates(text: str, *, allow_repair: bool = True) -> list[str]:
+    """
+    Return candidate JSON object substrings found in ``text``, ordered from most
+    likely (fenced blocks, then final top-level ``{...}`` object) to least likely.
+    """
+    text_clean = _strip_thinking(text)
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(candidate_str: str) -> None:
+        c = candidate_str.strip()
+        if c and c not in seen:
+            seen.add(c)
+            candidates.append(c)
+
+    # 1. Content inside ```json ... ``` blocks (final block first)
+    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
+    for block in reversed(json_blocks):
+        block_clean = block.strip()
+        try:
+            if isinstance(json.loads(block_clean), dict):
+                _add(block_clean)
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Content inside general ``` ... ``` blocks (final block first)
+    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
+    for block in reversed(code_blocks):
+        block_clean = block.strip()
+        try:
+            if isinstance(json.loads(block_clean), dict):
+                _add(block_clean)
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Scan top-level brace blocks in O(n) using JSONDecoder.raw_decode.
+    # Reverse order so the final JSON object in the message is tried first.
+    decoder = json.JSONDecoder()
+    brace_matches: list[str] = []
+    pos = 0
+    for match in re.finditer(r"\{", text_clean):
+        start = match.start()
+        if start < pos:
+            continue
+        try:
+            parsed, end = decoder.raw_decode(text_clean, start)
+            if isinstance(parsed, dict):
+                brace_matches.append(text_clean[start:end])
+                pos = end
+        except json.JSONDecodeError:
+            continue
+    for bm in reversed(brace_matches):
+        _add(bm)
+
+    # 4. Last resort: repair malformed JSON (trailing comma, single quotes, unclosed brace)
+    # Only attempted when no strict JSON object was found and the candidate looks like JSON key/value data.
+    if allow_repair and not candidates and "{" in text_clean and ":" in text_clean:
+        for brace_idx in dict.fromkeys((text_clean.rfind("{"), text_clean.find("{"))):
+            if brace_idx < 0:
+                continue
+            candidate = text_clean[brace_idx:]
+            try:
+                from json_repair import repair_json
+
+                repaired = repair_json(candidate, return_objects=False)
+                if isinstance(repaired, str) and repaired.strip():
+                    parsed = json.loads(repaired)
+                    if isinstance(parsed, dict) and parsed:
+                        _add(repaired)
+                        break
+            except Exception:
+                pass
+
+    return candidates
+
+
 def extract_json_str(text: str) -> str:
     """
     Extract the most likely valid JSON substring from text.
     """
-    # 0. Clean thinking blocks (<think>...</think>) from the text to isolate target JSON
-    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
-    # 1. Try to find content inside ```json ... ``` blocks first
-    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
-    for block in json_blocks:
-        block_clean = block.strip()
-        try:
-            json.loads(block_clean)
-            return block_clean
-        except json.JSONDecodeError:
-            pass
-
-    # 2. Try to find content inside general ``` ... ``` blocks
-    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
-    for block in code_blocks:
-        block_clean = block.strip()
-        try:
-            json.loads(block_clean)
-            return block_clean
-        except json.JSONDecodeError:
-            pass
-
-    # 3. Scan from each opening brace in O(n) using JSONDecoder.raw_decode
-    decoder = json.JSONDecoder()
-    for match in re.finditer(r"\{", text_clean):
-        start = match.start()
-        try:
-            _, end = decoder.raw_decode(text_clean, start)
-            return text_clean[start:end]
-        except json.JSONDecodeError:
-            continue
-
-    # 4. Last resort: repair malformed JSON (trailing comma, single quotes, truncated)
-    if "{" in text_clean:
-        candidate = text_clean[text_clean.find("{") :]
-        try:
-            from json_repair import repair_json
-
-            repaired = repair_json(candidate, return_objects=False)
-            if isinstance(repaired, str) and repaired.strip():
-                parsed = json.loads(repaired)
-                if isinstance(parsed, dict):
-                    return repaired
-        except Exception:
-            pass
-
-    return text_clean
+    candidates = extract_json_candidates(text, allow_repair=True)
+    if candidates:
+        return candidates[0]
+    return _strip_thinking(text)
 
 
 class ChatResponse(BaseModel):
@@ -103,7 +151,7 @@ class OncowflowAgent:
     agent_name: str = ""
     additionnal_readers: list[DocumentReader] = []
     patient_readers: list[DocumentReader] = []
-    reasoning_budget: int | None = 1024
+    reasoning_budget: int | None = 2048
     # Retry prompt budget (characters, ~3.5 chars/token): keeps corrections small
     # enough for local models with a limited context window.
     RETRY_MAX_OUTPUT_CHARS: ClassVar[int] = 2000
@@ -252,8 +300,8 @@ class OncowflowAgent:
                 ),
             ],
             # response_format=ToolStrategy(schema=self.output_format, handle_errors=True),
-            # response_format=self.output_format,
-            response_format=None,
+            response_format=self.output_format,
+            # response_format=None,
             context_schema=active_context_schema,
             system_prompt=system_prompt,
         )
@@ -323,18 +371,13 @@ class OncowflowAgent:
         Raises:
             ValueError: If the agent fails to provide a valid response matching the schema.
         """
-        self.logger.info(
-            "Ask agent %s (question_len=%d)",
-            self.agent_name or self.__class__.__name__,
-            len(question or self.question or ""),
-        )
-        self.logger.debug('Ask "%s" to agent ...', question)
-
         if question is None:
             question = self.question
 
         if output_format is None:
             output_format = self.output_format
+
+        self.logger.info('Ask "%s" to agent ...', question)
 
         retry = 3
         validation_error = None
@@ -389,29 +432,64 @@ class OncowflowAgent:
                     or getattr(msg, "type", None) == "ai"
                 ):
                     continue
-                content = self._message_text(msg.content)
-                if not content.strip():
+                raw_content = self._message_text(msg.content)
+                if not raw_content.strip():
                     continue
-                content = extract_json_str(content)
-                try:
-                    # Validate the content against the Pydantic model
-                    if self.output_format is not None and issubclass(
-                        self.output_format, BaseModel
-                    ):
-                        return self.output_format.model_validate_json(content)
-                    return json.loads(content)
-                except (ValidationError, ValueError, json.JSONDecodeError) as e:
-                    # Keep the error of the most recent AI message only
-                    if round_error is None:
-                        round_error = e
-                        last_failed_output = content
+                strict_candidates = extract_json_candidates(
+                    raw_content, allow_repair=False
+                )
+                candidates_to_try = (
+                    strict_candidates
+                    if strict_candidates
+                    else [_strip_thinking(raw_content)]
+                )
+                for candidate in candidates_to_try:
+                    try:
+                        # Validate the content against the Pydantic model
+                        if self.output_format is not None and issubclass(
+                            self.output_format, BaseModel
+                        ):
+                            validated = self.output_format.model_validate_json(
+                                candidate
+                            )
+                        else:
+                            validated = json.loads(candidate)
+                        self.logger.info("AI response : %s", validated)
+                        return validated
+                    except (ValidationError, ValueError, json.JSONDecodeError) as e:
+                        # Keep the error of the most recent AI message's primary candidate only
+                        if round_error is None:
+                            round_error = e
+                            last_failed_output = candidate
+
+                # Only fall back to json_repair if strict parsing failed AND repaired JSON
+                # passes full schema validation (never pollute last_failed_output with repaired text).
+                for repaired_cand in extract_json_candidates(
+                    raw_content, allow_repair=True
+                ):
+                    if repaired_cand in strict_candidates:
+                        continue
+                    try:
+                        if self.output_format is not None and issubclass(
+                            self.output_format, BaseModel
+                        ):
+                            validated = self.output_format.model_validate_json(
+                                repaired_cand
+                            )
+                        else:
+                            validated = json.loads(repaired_cand)
+                        self.logger.info("AI response : %s", validated)
+                        return validated
+                    except (ValidationError, ValueError, json.JSONDecodeError):
+                        continue
             validation_error = round_error or validation_error
 
             self.logger.info(
-                "Invalid agent output (attempt %d/%d, %d chars)",
+                "Error, previous result (attempt %d/%d) : %s - error : %s",
                 r + 1,
                 retry,
-                len(last_failed_output or ""),
+                self._truncate(last_failed_output or "<empty>", 500),
+                self._truncate(str(validation_error), 500),
             )
             question = self._build_correction_prompt(
                 original_question=original_question,

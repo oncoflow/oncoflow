@@ -15,11 +15,11 @@ repos:
     hooks:
     -   id: ruff-check
         name: ruff check
-        entry: uv run --frozen ruff check --fix
+        entry: bash -c 'if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff check --config application/pyproject.toml --fix "$@"; else exec uv run --project application --frozen ruff check --config application/pyproject.toml --fix "$@"; fi' --
         language: system
         types: [python]
     -   id: ruff-format
         name: ruff format
-        entry: uv run --frozen ruff format
+        entry: bash -c 'if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff format --config application/pyproject.toml "$@"; else exec uv run --project application --frozen ruff format --config application/pyproject.toml "$@"; fi' --
         language: system
         types: [python]

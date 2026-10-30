@@ -1,15 +1,13 @@
 import inspect
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
-
-from src.application.config import AppConfig
-from src.application.reader import DocumentReader
 from src.application.agent.agent import OncowflowAgent
+from src.application.config import AppConfig
 
 
 class Agents:
     def __init__(self) -> None:
-        self.list = {}
+        self.list: dict[str, type[OncowflowAgent]] = {}
         for name in dir(self.__class__):
             if name.startswith("__"):
                 continue
@@ -101,15 +99,16 @@ class Agents:
         def __init__(
             self,
             config: AppConfig,
-            mtd: DocumentReader | None = None,
+            mtd: Any = None,
             output_format: Any = None,
             reasoning: bool = True,
             reasoning_budget: int | None = None,
-            reader: DocumentReader | None = None,
-            additionnal_readers: list[DocumentReader] | None = None,
-            patient_readers: list[DocumentReader] | None = None,
+            reader: Any = None,
+            additionnal_readers: list[Any] | None = None,
+            patient_readers: list[Any] | None = None,
         ) -> None:
-            self.__class__.system_prompt = self.get_system_prompt()
+            # Set on the instance (`self`), never mutating `self.__class__.system_prompt`
+            self.system_prompt = self.get_system_prompt()
             super(Agents.Expert_model, self).__init__(
                 config=config,
                 mtd=mtd,

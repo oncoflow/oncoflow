@@ -3,8 +3,14 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import BaseModel, Field
 
-from src.domain.oncology.patient_mdt_oncologic_form import PatientMDTOncologicForm
 from src.application.agent.agent import DebateTurn
+from src.application.use_cases import PatientMDTFormExtractionService
+from src.domain.oncology.patient_mdt_oncologic_form import PatientMDTOncologicForm
+from src.infrastructure.documents.repositories import (
+    InMemoryDocumentCacheRepository,
+    InMemoryPatientMDTFormRepository,
+    InMemoryPatientRepository,
+)
 
 
 # Mock Output Schema for testing
@@ -42,15 +48,8 @@ class TestCollaborativeDebate(unittest.TestCase):
 
         MockDebateModel.agents = [self.mock_agent1_cls, self.mock_agent2_cls]
 
-    @patch("src.application.reader.get_llm_client")
-    @patch("src.domain.common.patient_mdt_common_form.Mongodb")
-    @patch("src.domain.common.patient_mdt_common_form.DocumentReader.read_document")
-    @patch("src.application.reader.VectorialDataBaseClient")
-    def test_dict_to_models_collaborative(
-        self, mock_vecdb, mock_read_doc, mock_mongodb, mock_get_llm
-    ):
-        mock_get_llm.return_value = MagicMock()
-        form = PatientMDTOncologicForm(self.mock_config, "test_doc.pdf")
+    def test_hydrate_sections_collaborative(self):
+        form = PatientMDTOncologicForm(file="test_doc.pdf")
         form.basemodel_list = [MockDebateModel]
 
         # In collaborative mode, DB data is single structured dict matching the model
@@ -59,63 +58,31 @@ class TestCollaborativeDebate(unittest.TestCase):
                 "complete_data": {"complete": True, "comment": "All good"}
             }
         }
-        form.dict_to_models(db_data)
+        form.hydrate_sections(db_data)
 
         # Assert that it populated the form without nesting by agent
-        self.assertIn("MockDebateModel", form.mtd_datas)
-        self.assertEqual(form.mtd_datas["MockDebateModel"].complete_data.complete, True)
+        self.assertIn("MockDebateModel", form.sections)
+        self.assertEqual(form.sections["MockDebateModel"].complete_data.complete, True)
         self.assertEqual(
-            form.mtd_datas["MockDebateModel"].complete_data.comment, "All good"
-        )
-
-    @patch("src.application.reader.get_llm_client")
-    @patch("src.domain.common.patient_mdt_common_form.Mongodb")
-    @patch("src.domain.common.patient_mdt_common_form.DocumentReader.read_document")
-    @patch("src.application.reader.VectorialDataBaseClient")
-    def test_dict_to_models_collaborative_backward_compatibility(
-        self, mock_vecdb, mock_read_doc, mock_mongodb, mock_get_ll
-    ):
-        mock_get_ll.return_value = MagicMock()
-        form = PatientMDTOncologicForm(self.mock_config, "test_doc.pdf")
-        form.basemodel_list = [MockDebateModel]
-
-        # Old nested format keyed by agent name
-        db_data = {
-            "MockDebateModel": {
-                "Agent 1": {
-                    "complete_data": {
-                        "complete": True,
-                        "comment": "Anticipated nested comment",
-                    }
-                }
-            }
-        }
-        form.dict_to_models(db_data)
-
-        # Assert that it extracted and populated it successfully
-        self.assertIn("MockDebateModel", form.mtd_datas)
-        self.assertEqual(form.mtd_datas["MockDebateModel"].complete_data.complete, True)
-        self.assertEqual(
-            form.mtd_datas["MockDebateModel"].complete_data.comment,
-            "Anticipated nested comment",
+            form.sections["MockDebateModel"].complete_data.comment, "All good"
         )
 
     @patch("src.application.agent.collaborate.Agents.Coordinator_agent")
-    @patch("src.application.reader.get_llm_client")
-    @patch("src.domain.common.patient_mdt_common_form.Mongodb")
-    @patch("src.domain.common.patient_mdt_common_form.DocumentReader.read_document")
-    @patch("src.application.reader.VectorialDataBaseClient")
-    def test_read_model_collaborative_debate_flow(
+    def test_extract_section_collaborative_debate_flow(
         self,
-        mock_vecdb,
-        mock_read_doc,
-        mock_mongodb,
-        mock_get_llm,
         mock_coordinator_cls,
     ):
-        mock_get_llm.return_value = MagicMock()
         mock_coordinator_cls.return_value = coordinator_instance = MagicMock()
-        form = PatientMDTOncologicForm(self.mock_config, "test_doc.pdf")
+        form = PatientMDTOncologicForm(file="test_doc.pdf")
+        mock_reader = MagicMock()
+        mock_reader.document = "test_doc.pdf"
+
+        extraction_service = PatientMDTFormExtractionService(
+            config=self.mock_config,
+            patient_repo=InMemoryPatientRepository(),
+            mdt_form_repo=InMemoryPatientMDTFormRepository(),
+            cache_repo=InMemoryDocumentCacheRepository(),
+        )
 
         # Create instances of mocked agents
         agent1_instance = MagicMock()
@@ -152,7 +119,12 @@ class TestCollaborativeDebate(unittest.TestCase):
         coordinator_instance.ask.return_value = final_consensus
 
         # Execute
-        form.read_model(MockDebateModel, upsert=False)
+        extraction_service.extract_section(
+            form=form,
+            reader=mock_reader,
+            model_cls=MockDebateModel,
+            upsert=False,
+        )
 
         # Assertions
         # 1. 5 calls in total to ask (Round 1: 2, Round 2: 2, Round 3: 1)
@@ -165,12 +137,12 @@ class TestCollaborativeDebate(unittest.TestCase):
         self.assertIn("Refined opinion from Agent 1", synthesis_prompt)
         self.assertIn("Refined opinion from Agent 2", synthesis_prompt)
 
-        # Verify mtd_datas has the final synthesized non-nested consensus dict
-        self.assertIn("MockDebateModel", form.mtd_datas)
+        # Verify sections has the final synthesized non-nested consensus dict
+        self.assertIn("MockDebateModel", form.sections)
         self.assertEqual(
-            form.mtd_datas["MockDebateModel"]["complete_data"]["complete"], True
+            form.sections["MockDebateModel"]["complete_data"]["complete"], True
         )
         self.assertEqual(
-            form.mtd_datas["MockDebateModel"]["complete_data"]["comment"],
+            form.sections["MockDebateModel"]["complete_data"]["comment"],
             "Consensus reached",
         )

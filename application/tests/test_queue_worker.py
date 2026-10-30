@@ -7,20 +7,35 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from src.application.app_functions import (
-    enqueue_rcp_batch,
-    enqueue_rcp_rerun,
-    get_rcp_active_jobs_state,
-)
 from src.application.config import AppConfig
-from src.application.patient import extract_card_metrics, is_rcp_visible_in_cards
+from src.application.use_cases import (
+    PatientMDTFormExtractionService,
+    PatientRecordService,
+)
 from src.domain.patient import Patient
+from src.domain.patient_mdt_form import PatientMDTForm
 from src.domain.worker import JobStatus, JobType, RCPProcessingStatus
+from src.infrastructure.documents.repositories import (
+    MongoDocumentCacheRepository,
+    MongoPatientMDTFormRepository,
+    MongoPatientRepository,
+)
 from src.infrastructure.queue import (
     InMemoryQueueManager,
     QueueBroker,
     reset_global_queue_manager,
 )
+
+
+def _make_extraction_service(conf: AppConfig) -> PatientMDTFormExtractionService:
+    record_service = PatientRecordService.from_config(conf)
+    return PatientMDTFormExtractionService(
+        config=conf,
+        patient_repo=MongoPatientRepository(conf),
+        mdt_form_repo=MongoPatientMDTFormRepository(conf),
+        cache_repo=MongoDocumentCacheRepository(conf),
+        patient_record_service=record_service,
+    )
 
 
 class _FakeCollection:
@@ -65,6 +80,17 @@ class _FakeCollection:
             if "$set" in update:
                 new_doc.update(update["$set"])
             self._docs.append(new_doc)
+
+    def delete_many(self, query: dict):
+        self._docs = [
+            doc
+            for doc in self._docs
+            if not all(doc.get(k) == v for k, v in query.items())
+        ]
+        return MagicMock(deleted_count=1)
+
+    def delete_one(self, query: dict):
+        return self.delete_many(query)
 
 
 class _FakeDatabase:
@@ -174,9 +200,9 @@ class TestPriorityQueueAndCrossDomainAPI:
 
     def test_strict_deduplication_on_import_and_rerun(self, mock_mongo_Env):
         conf, _ = mock_mongo_Env
+        extraction_service = _make_extraction_service(conf)
 
-        batch_res1 = enqueue_rcp_batch(
-            conf,
+        batch_res1 = extraction_service.enqueue_batch(
             [{"filename": "dup_test.pdf", "patient_id": None}],
             run_full_ai=True,
         )
@@ -184,8 +210,7 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert batch_res1["already_queued_count"] == 0
 
         # Re-importing the same file while already PENDING must NOT create duplicate jobs
-        batch_res2 = enqueue_rcp_batch(
-            conf,
+        batch_res2 = extraction_service.enqueue_batch(
             [{"filename": "dup_test.pdf", "patient_id": None}],
             run_full_ai=True,
         )
@@ -193,15 +218,15 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert batch_res2["already_queued_count"] == 1
 
         # Triggering a full rerun or single-model rerun while full job is active must be rejected
-        rerun_full = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name=None)
+        rerun_full = extraction_service.enqueue_rerun("dup_test.pdf", model_name=None)
         assert rerun_full["already_queued"] is True
 
-        rerun_single = enqueue_rcp_rerun(
-            conf, "dup_test.pdf", model_name="TumorLocation"
+        rerun_single = extraction_service.enqueue_rerun(
+            "dup_test.pdf", model_name="TumorLocation"
         )
         assert rerun_single["already_queued"] is True
 
-        state = get_rcp_active_jobs_state(conf, "dup_test.pdf")
+        state = extraction_service.get_active_jobs_state("dup_test.pdf")
         assert state["has_full_job"] is True
         assert state["has_any_job"] is True
 
@@ -209,12 +234,16 @@ class TestPriorityQueueAndCrossDomainAPI:
         broker = QueueBroker(conf)
         broker.clean_queue(mode="all")
 
-        s1 = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name="TumorLocation")
+        s1 = extraction_service.enqueue_rerun(
+            "dup_test.pdf", model_name="TumorLocation"
+        )
         assert s1["already_queued"] is False
-        s2 = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name="TumorLocation")
+        s2 = extraction_service.enqueue_rerun(
+            "dup_test.pdf", model_name="TumorLocation"
+        )
         assert s2["already_queued"] is True
         # A different section on the same file is allowed
-        s3 = enqueue_rcp_rerun(conf, "dup_test.pdf", model_name="TumorBiology")
+        s3 = extraction_service.enqueue_rerun("dup_test.pdf", model_name="TumorBiology")
         assert s3["already_queued"] is False
 
     def test_cross_domain_priority_queue_respects_batch_size(self, mock_mongo_Env):
@@ -278,7 +307,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             "file": "patient_x.pdf",
             "processing_status": RCPProcessingStatus.PENDING_ADMIN.value,
         }
-        assert is_rcp_visible_in_cards(doc_pending_admin) is False
+        assert PatientMDTForm.is_visible_in_cards(doc_pending_admin) is False
 
         # 2. File after Wave 1 (PENDING_CLINICAL with PatientAdministrative) IS visible in cards
         doc_after_wave1 = {
@@ -292,44 +321,58 @@ class TestPriorityQueueAndCrossDomainAPI:
                 "gender": "Male",
             },
         }
-        assert is_rcp_visible_in_cards(doc_after_wave1) is True
-        metrics = extract_card_metrics(doc_after_wave1)
+        assert PatientMDTForm.is_visible_in_cards(doc_after_wave1) is True
+        metrics = PatientMDTForm.extract_card_metrics(doc_after_wave1)
         assert (
             metrics["processing_status"] == RCPProcessingStatus.PENDING_CLINICAL.value
         )
         assert metrics["missing"] == []
 
-        # 3. Test InMemoryQueueManager Wave 1 + Wave 2 execution with mocked form
-        fake_form = MagicMock()
-        fake_form.mtd_datas = {"experts": {}}
+        # 3. Test InMemoryQueueManager Wave 1 + Wave 2 execution with mocked extraction service
+        def _fake_process_patient_association(
+            self_svc,
+            form,
+            reader,
+            target_patient_id=None,
+            run_admin_ai=True,
+            verify_patient_mdt_form=False,
+            callbacks=None,
+        ):
+            return Patient(
+                patient_id="jean_dupont_1960-01-01",
+                first_name="Jean",
+                last_name="Dupont",
+                files=["patient_x.pdf"],
+            )
 
-        def _fake_read_model(model_cls, upsert=False):
+        def _fake_extract_section(
+            self_svc, form, reader, model_cls, upsert=False, callbacks=None
+        ):
             db["rcp_info"].update_one(
                 {"file": "patient_x.pdf"},
                 {"$set": {model_cls.__name__: {"mocked": True}}},
                 upsert=True,
             )
 
-        fake_form.read_model.side_effect = _fake_read_model
-
         with (
             patch(
-                "src.infrastructure.queue.memory_queue.get_domain_mdt_form_cls",
-                return_value=MagicMock(return_value=fake_form),
+                "src.application.use_cases.queue_executor.DocumentReader",
+                return_value=MagicMock(document="patient_x.pdf"),
             ),
-            patch(
-                "src.infrastructure.queue.memory_queue.process_patient_association",
-                return_value=Patient(
-                    patient_id="jean_dupont_1960-01-01",
-                    first_name="Jean",
-                    last_name="Dupont",
-                    files=["patient_x.pdf"],
-                ),
+            patch.object(
+                PatientMDTFormExtractionService,
+                "process_patient_association",
+                new=_fake_process_patient_association,
             ),
-            patch("src.infrastructure.queue.memory_queue.unload_active_models"),
+            patch.object(
+                PatientMDTFormExtractionService,
+                "extract_section",
+                new=_fake_extract_section,
+            ),
+            patch("src.application.use_cases.queue_executor.unload_active_models"),
         ):
-            enqueue_rcp_batch(
-                conf,
+            extraction_service = _make_extraction_service(conf)
+            extraction_service.enqueue_batch(
                 [{"filename": "patient_x.pdf", "patient_id": None}],
                 run_full_ai=True,
             )
@@ -381,7 +424,7 @@ class TestPriorityQueueAndCrossDomainAPI:
 
         # Check X-Oncoflow-Domain header validation in AllowedDomainMiddleware
         resp_invalid_header = client.get(
-            "/api/v1/rcp", headers={"X-Oncoflow-Domain": "neurology"}
+            "/api/v1/patientmdtform", headers={"X-Oncoflow-Domain": "neurology"}
         )
         assert resp_invalid_header.status_code == 400
         assert resp_sma_agents.headers.get("X-Oncoflow-Domain") == "sma"
@@ -407,7 +450,7 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert stats_sma["pending"] == 2
         assert stats_onco["pending"] == 0
 
-        # 4. Check /health, /api/v1/queue/jobs, /api/v1/queue/rerun, /api/v1/queue/clean, /api/v1/rcp
+        # 4. Check /health, /api/v1/queue/jobs, /api/v1/queue/rerun, /api/v1/queue/clean, /api/v1/patientmdtform
         resp_health = client.get("/health")
         assert resp_health.status_code == 200
         assert resp_health.json()["status"] == "ok"
@@ -420,7 +463,7 @@ class TestPriorityQueueAndCrossDomainAPI:
         assert len(resp_jobs_sma.json()) == 2
 
         resp_rcp_onco = client.get(
-            "/api/v1/rcp", headers={"X-Oncoflow-Domain": "oncology"}
+            "/api/v1/patientmdtform", headers={"X-Oncoflow-Domain": "oncology"}
         )
         assert resp_rcp_onco.status_code == 200
         assert resp_rcp_onco.headers.get("X-Oncoflow-Domain") == "oncology"
@@ -471,12 +514,13 @@ class TestPriorityQueueAndCrossDomainAPI:
         dev_conf = conf.model_copy(deep=True)
         dev_conf.queue.api_url = "http://127.0.0.1:59999"
         dev_broker = QueueBroker(dev_conf)
-        res = dev_broker.enqueue_import_file(
-            "standalone_dev.pdf", include_clinical=False
-        )
-        assert res["already_queued"] is False
-        assert manager._workers_started is True
-        manager.shutdown()
+        with patch.object(manager, "execute_claimed_job"):
+            res = dev_broker.enqueue_import_file(
+                "standalone_dev.pdf", include_clinical=False
+            )
+            assert res["already_queued"] is False
+            assert manager._workers_started is True
+            manager.shutdown()
 
     def test_fresh_process_imports_no_circular_dependency(self):
         """
@@ -489,7 +533,7 @@ class TestPriorityQueueAndCrossDomainAPI:
             "import importlib; importlib.import_module('app-api')",
             "import src.infrastructure.queue; import src.application.app_functions",
             "import src.application.app_functions; import src.infrastructure.queue",
-            "import src.routers.queue; import src.routers.rcp; import src.routers.agents; import src.routers.resources",
+            "import src.routers.queue; import src.routers.patientmdtform; import src.routers.agents; import src.routers.resources",
         ]
         for snippet in import_snippets:
             proc = subprocess.run(
@@ -701,3 +745,225 @@ class TestPriorityQueueAndCrossDomainAPI:
         resp = client.delete("/api/v1/queue/locks")
         assert resp.status_code == 400
         assert client.delete("/api/v1/queue/locks?force_all=true").status_code == 200
+
+    def test_non_patient_mdt_form_document_fails_without_retry_and_cancels_wave2(
+        self, mock_mongo_Env
+    ):
+        conf, mongo_client = mock_mongo_Env
+        conf.queue.max_retries = 3
+        db = mongo_client[conf.mongodb.database]
+
+        with (
+            patch(
+                "src.application.use_cases.queue_executor.DocumentReader",
+                return_value=MagicMock(document="courrier_non_rcp.pdf"),
+            ),
+            patch.object(
+                PatientMDTFormExtractionService,
+                "verify_is_patient_mdt_form",
+                return_value=(
+                    False,
+                    {
+                        "is_patient_mdt_form": False,
+                        "detected_document_type": "Courrier médical",
+                        "justification": "Ce document n'est pas une fiche de RCP.",
+                    },
+                ),
+            ),
+            patch("src.application.use_cases.queue_executor.unload_active_models"),
+        ):
+            extraction_service = _make_extraction_service(conf)
+            res = extraction_service.enqueue_batch(
+                [{"filename": "courrier_non_rcp.pdf", "patient_id": None}],
+                run_full_ai=True,
+            )
+            wave1_id = res["results"][0]["jobs"][0]["job_id"]
+            wave2_id = res["results"][0]["jobs"][1]["job_id"]
+
+            manager: InMemoryQueueManager = QueueBroker(conf)._manager
+            assert manager.run_once() is True
+
+            w1_job = manager.get_job(wave1_id)
+            w2_job = manager.get_job(wave2_id)
+            assert w1_job["status"] == JobStatus.FAILED.value
+            assert w1_job["attempts"] == 1
+            assert w1_job["current_step"] == "Document refusé (non-RCP)"
+            assert "n'est pas une fiche RCP" in w1_job["error_message"]
+
+            assert w2_job["status"] == JobStatus.CANCELLED.value
+            assert "n'est pas une fiche RCP" in w2_job["error_message"]
+
+            # No orphan document must be recreated in rcp_info after rejection
+            assert db["rcp_info"].find_one({"file": "courrier_non_rcp.pdf"}) is None
+
+    def test_in_memory_queue_thinking_stream_and_snapshot(self, mock_mongo_Env):
+        import threading
+
+        conf, _ = mock_mongo_Env
+        manager: InMemoryQueueManager = QueueBroker(conf)._manager
+        res = manager.enqueue_import_file(
+            filename="thinking_test.pdf",
+            include_clinical=False,
+            domain="oncology",
+        )
+        job_id = res["jobs"][0]["job_id"]
+
+        # Before processing starts, active thinking is idle
+        idle_snapshot = manager.get_job_thinking()
+        assert idle_snapshot["active"] is False
+        assert idle_snapshot["job_id"] is None
+
+        leased, lease_id = manager.claim_next_job(worker_id="w1")
+        assert leased is not None
+        assert leased["job_id"] == job_id
+
+        events = []
+
+        def _consume_stream():
+            for ev in manager.stream_job_thinking(job_id=job_id, timeout=2.0):
+                events.append(ev)
+
+        consumer_thread = threading.Thread(target=_consume_stream)
+        consumer_thread.start()
+
+        manager.append_job_thinking(
+            job_id,
+            "Analyse de la date RCP... ",
+            agent_name="Date de la RCP",
+            run_id=leased["run_id"],
+            lease_id=lease_id,
+        )
+        manager.append_job_thinking(
+            job_id,
+            "Date trouvée: 2026-03-15.",
+            agent_name="Date de la RCP",
+            run_id=leased["run_id"],
+            lease_id=lease_id,
+        )
+
+        active_snapshot = manager.get_job_thinking()
+        assert active_snapshot["active"] is True
+        assert active_snapshot["job_id"] == job_id
+        assert active_snapshot["active_agent"] == "Date de la RCP"
+        assert (
+            "Analyse de la date RCP... Date trouvée: 2026-03-15."
+            in active_snapshot["current_thinking"]
+        )
+
+        manager.complete_job(
+            job_id,
+            run_id=leased["run_id"],
+            lease_id=lease_id,
+        )
+        consumer_thread.join(timeout=3.0)
+
+        assert any(e["event"] == "thinking" for e in events)
+        assert events[-1]["event"] == "done"
+        assert events[-1]["status"] == JobStatus.COMPLETED.value
+        assert "Date trouvée: 2026-03-15." in events[-1]["current_thinking"]
+
+    def test_queue_thinking_callback_handler_and_executor_wiring(self, mock_mongo_Env):
+        from types import SimpleNamespace
+        from src.application.use_cases.queue_executor import (
+            QueueThinkingCallbackHandler,
+        )
+
+        conf, _ = mock_mongo_Env
+        manager: InMemoryQueueManager = QueueBroker(conf)._manager
+        res = manager.enqueue_rcp_rerun(
+            filename="callback_test.pdf",
+            model_name="date_rcp",
+            domain="oncology",
+        )
+        job_id = res["jobs"][0]["job_id"]
+        leased, lease_id = manager.claim_next_job(worker_id="w1")
+        assert leased is not None
+
+        cb = QueueThinkingCallbackHandler(
+            queue_manager=manager,
+            job_id=job_id,
+            run_id=leased["run_id"],
+            lease_id=lease_id,
+            section_name="date_rcp",
+        )
+
+        # 1. Test reasoning_content chunk (OpenAI / LiteLLM / DeepSeek reasoning format)
+        cb.on_llm_start({"name": "ChatOpenAI"}, ["prompt"], tags=["Agent Date RCP"])
+        chunk1 = SimpleNamespace(
+            message=SimpleNamespace(
+                reasoning_content="Réflexion via reasoning_content. ",
+                additional_kwargs={},
+            )
+        )
+        cb.on_llm_new_token("", chunk=chunk1)
+
+        # 2. Test <think>...</think> inline tags
+        cb.on_llm_new_token("<think>Réflexion via balise think.</think>Réponse finale")
+
+        snap = manager.get_job_thinking(job_id=job_id)
+        assert snap["active_agent"] == "Agent Date RCP"
+        assert "Réflexion via reasoning_content." in snap["current_thinking"]
+        assert "Réflexion via balise think." in snap["current_thinking"]
+        assert "Réponse finale" not in snap["current_thinking"]
+
+    def test_fastapi_queue_thinking_and_sse_stream_endpoints(self, mock_mongo_Env):
+        from fastapi import FastAPI
+        from src.routers.queue import get_queue_manager, router as queue_router
+
+        conf, _ = mock_mongo_Env
+        queue_manager = QueueBroker(conf)._manager
+
+        test_app = FastAPI()
+        test_app.dependency_overrides[get_queue_manager] = lambda: queue_manager
+        test_app.include_router(queue_router, prefix="/api/v1")
+        client = TestClient(test_app)
+
+        # Idle state when no job is processing
+        resp_idle = client.get("/api/v1/queue/thinking")
+        assert resp_idle.status_code == 200
+        assert resp_idle.json()["active"] is False
+
+        res = queue_manager.enqueue_import_file(
+            filename="sse_stream.pdf",
+            include_clinical=False,
+            domain="oncology",
+        )
+        job_id = res["jobs"][0]["job_id"]
+        leased, lease_id = queue_manager.claim_next_job(worker_id="w1")
+        assert leased is not None
+
+        queue_manager.append_job_thinking(
+            job_id,
+            "Étape 1 du raisonnement clinique...",
+            agent_name="Agent TNM",
+            run_id=leased["run_id"],
+            lease_id=lease_id,
+        )
+
+        # Snapshot endpoint (active job & specific job_id)
+        resp_active = client.get("/api/v1/queue/thinking")
+        assert resp_active.status_code == 200
+        data_active = resp_active.json()
+        assert data_active["active"] is True
+        assert data_active["job_id"] == job_id
+        assert data_active["active_agent"] == "Agent TNM"
+        assert "Étape 1 du raisonnement clinique..." in data_active["current_thinking"]
+
+        resp_job = client.get(f"/api/v1/queue/jobs/{job_id}/thinking")
+        assert resp_job.status_code == 200
+        assert resp_job.json()["job_id"] == job_id
+
+        # Complete the job so the SSE stream sends the snapshot + done event and closes cleanly
+        queue_manager.complete_job(
+            job_id,
+            run_id=leased["run_id"],
+            lease_id=lease_id,
+        )
+
+        with client.stream(
+            "GET", f"/api/v1/queue/jobs/{job_id}/thinking/stream"
+        ) as sse_resp:
+            assert sse_resp.status_code == 200
+            body = "".join(sse_resp.iter_text())
+            assert "event: done" in body
+            assert "Étape 1 du raisonnement clinique..." in body

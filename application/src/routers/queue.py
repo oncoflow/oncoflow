@@ -1,11 +1,12 @@
+from collections.abc import Iterable
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from src.application.config import AppConfig
 from src.application.paths import is_safe_filename
 from src.infrastructure.queue import InMemoryQueueManager, get_global_queue_manager
-from src.routers.dependencies import DomainConfigDep
 from src.models.queue import (
     EnqueueImportRequest,
     EnqueueRerunRequest,
@@ -17,8 +18,11 @@ from src.models.queue import (
     QueueDomainsResponse,
     QueueJobResponse,
     QueueStatsResponse,
+    QueueThinkingResponse,
+    QueueThinkingStreamEvent,
     ReleaseLocksResponse,
 )
+from src.routers.dependencies import DomainConfigDep
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -32,7 +36,7 @@ QueueManagerDep = Annotated[InMemoryQueueManager, Depends(get_queue_manager)]
 
 @router.get("/domains", response_model=QueueDomainsResponse)
 def get_allowed_domains():
-    """Retourne les domaines médicaux actifs configurés sur l'API Cross-Domains."""
+    """Return active medical domains configured on the cross-domain API."""
     base_conf = AppConfig()
     return {
         "default_domain": base_conf.domain,
@@ -51,7 +55,7 @@ def get_queue_stats_endpoint(
         ),
     ] = None,
 ):
-    """Récupère les statistiques de la file de traitement `PriorityQueue` et des tâches actives."""
+    """Retrieve statistics for the `PriorityQueue` and active execution slots."""
     target_domain = getattr(request.state, "requested_domain", domain)
     return manager.get_queue_stats(domain=target_domain)
 
@@ -66,7 +70,7 @@ def get_queue_jobs_endpoint(
     filename: Annotated[Optional[str], Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ):
-    """Liste les tâches de la file de traitement (filtrables par domaine, statut, lot ou fichier)."""
+    """List tasks in the processing queue (filterable by domain, status, batch, or filename)."""
     target_domain = getattr(request.state, "requested_domain", domain)
     jobs = manager.get_queue_jobs(
         status=status_filter,
@@ -79,13 +83,72 @@ def get_queue_jobs_endpoint(
     return jobs
 
 
+@router.get("/thinking", response_model=QueueThinkingResponse)
+def get_active_thinking_endpoint(
+    request: Request,
+    manager: QueueManagerDep,
+    domain: Annotated[Optional[str], Query()] = None,
+):
+    """Return a snapshot of the live AI reasoning for the currently running task."""
+    target_domain = getattr(request.state, "requested_domain", domain)
+    return manager.get_job_thinking(job_id=None, domain=target_domain)
+
+
+@router.get("/thinking/stream", response_class=EventSourceResponse)
+def stream_active_thinking_endpoint(
+    request: Request,
+    manager: QueueManagerDep,
+    domain: Annotated[Optional[str], Query()] = None,
+    timeout: Annotated[float, Query(ge=1.0, le=300.0)] = 30.0,
+) -> Iterable[ServerSentEvent]:
+    """Stream live AI reasoning tokens (SSE) for the currently running task in the queue."""
+    target_domain = getattr(request.state, "requested_domain", domain)
+    for ev in manager.stream_job_thinking(
+        job_id=None, domain=target_domain, timeout=timeout
+    ):
+        payload = QueueThinkingStreamEvent(**ev)
+        yield ServerSentEvent(data=payload, event=payload.event)
+
+
+@router.get("/jobs/{job_id}/thinking", response_model=QueueThinkingResponse)
+def get_job_thinking_endpoint(
+    job_id: str,
+    manager: QueueManagerDep,
+):
+    """Return a snapshot of the live AI reasoning for a specific task `job_id`."""
+    snap = manager.get_job_thinking(job_id=job_id)
+    if not snap.get("job_id"):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tâche '{job_id}' introuvable.",
+        )
+    return snap
+
+
+@router.get("/jobs/{job_id}/thinking/stream", response_class=EventSourceResponse)
+def stream_job_thinking_endpoint(
+    job_id: str,
+    manager: QueueManagerDep,
+    timeout: Annotated[float, Query(ge=1.0, le=300.0)] = 30.0,
+) -> Iterable[ServerSentEvent]:
+    """Stream live AI reasoning tokens (SSE) for a specific task `job_id`."""
+    if not manager.get_job(job_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Tâche '{job_id}' introuvable.",
+        )
+    for ev in manager.stream_job_thinking(job_id=job_id, timeout=timeout):
+        payload = QueueThinkingStreamEvent(**ev)
+        yield ServerSentEvent(data=payload, event=payload.event)
+
+
 @router.post("/enqueue-import", response_model=EnqueueResponse)
 def enqueue_import_endpoint(
     request: EnqueueImportRequest,
     config: DomainConfigDep,
     manager: QueueManagerDep,
 ):
-    """Enfile une fiche importée (Étape 1 Identification + Étape 2 Clinique) dans la `PriorityQueue`."""
+    """Enqueue an imported `PatientMDTForm` file (Wave 1 Identification + Wave 2 Clinical) into the `PriorityQueue`."""
     if not is_safe_filename(request.filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -107,7 +170,7 @@ def enqueue_rerun_endpoint(
     config: DomainConfigDep,
     manager: QueueManagerDep,
 ):
-    """Enfile une relance complète ou unitaire dans la `PriorityQueue` pour le domaine cible."""
+    """Enqueue a full or single-section rerun into the `PriorityQueue` for the target domain."""
     if not is_safe_filename(request.filename):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -123,7 +186,7 @@ def enqueue_rerun_endpoint(
 
 @router.post("/jobs/{job_id}/retry", response_model=QueueJobResponse)
 def retry_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
-    """Remet en file d'attente une tâche spécifique."""
+    """Re-enqueue a specific task for execution."""
     updated = manager.retry_job(job_id)
     if not updated:
         raise HTTPException(
@@ -135,7 +198,7 @@ def retry_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
 
 @router.delete("/jobs/{job_id}", response_model=JobDeletedResponse)
 def delete_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
-    """Annule ou supprime une tâche et libère son emplacement d'exécution éventuel."""
+    """Cancel or delete a task and release any associated execution lease."""
     deleted = manager.cancel_or_delete_job(job_id)
     if not deleted:
         raise HTTPException(
@@ -152,15 +215,15 @@ def clean_queue_endpoint(
     manager: QueueManagerDep,
     domain: Annotated[Optional[str], Query()] = None,
 ):
-    """Nettoie la file de traitement selon le mode demandé (par domaine ou globalement)."""
-    # `mode` est validé par `QueueCleanMode` (Literal) : 422 si invalide.
+    """Clean the processing queue according to the requested mode (per domain or globally)."""
+    # `mode` is validated by `QueueCleanMode` (Literal): 422 if invalid.
     target_domain = getattr(http_request.state, "requested_domain", domain)
     return manager.clean_queue(mode=request.mode, domain=target_domain)
 
 
 @router.get("/locks", response_model=list[GpuLeaseResponse])
 def get_queue_locks_endpoint(manager: QueueManagerDep):
-    """Liste les emplacements d'exécution (verrous) actifs."""
+    """List active hardware execution slots (leases)."""
     return manager.get_all_gpu_leases()
 
 
@@ -173,7 +236,7 @@ def release_queue_locks_endpoint(
     domain: Annotated[Optional[str], Query()] = None,
     force_all: Annotated[bool, Query()] = False,
 ):
-    """Lève un verrou spécifique, ceux d'un domaine, ou tous les verrous actifs (requiert force_all=true)."""
+    """Release a specific lease, leases for a domain, or all active leases (requires `force_all=true`)."""
     target_domain = getattr(request.state, "requested_domain", domain)
     if not lease_id and not job_id and not target_domain and not force_all:
         raise HTTPException(

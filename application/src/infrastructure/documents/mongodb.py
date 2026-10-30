@@ -219,9 +219,9 @@ class Mongodb:
         Finds an existing patient by normalized identity (last_name + first_name + date_birth),
         with a fallback to (last_name + first_name) if date_birth is missing on either side.
         """
-        from src.application.patient import build_name_key, build_patient_id
+        from src.domain.patient import Patient
 
-        exact_id = build_patient_id(
+        exact_id = Patient.build_id(
             first_name=first_name,
             last_name=last_name,
             date_birth=date_birth,
@@ -231,7 +231,7 @@ class Mongodb:
         if found is not None:
             return found
 
-        name_key = build_name_key(first_name=first_name, last_name=last_name)
+        name_key = Patient.build_name_key(first_name=first_name, last_name=last_name)
         if not name_key:
             return None
 
@@ -250,13 +250,13 @@ class Mongodb:
         Ensures a unique index on 'patient_id' and maintains the list of associated RCP files.
         """
         from datetime import datetime
-        from src.application.patient import build_name_key, build_patient_id
+        from src.domain.patient import Patient
 
         self.set_uniq_index("patients", "patient_id")
 
         patient_id = patient_data.get("patient_id")
         if not patient_id:
-            patient_id = build_patient_id(
+            patient_id = Patient.build_id(
                 first_name=patient_data.get("first_name"),
                 last_name=patient_data.get("last_name"),
                 date_birth=patient_data.get("date_birth"),
@@ -277,7 +277,7 @@ class Mongodb:
         if filename and filename not in files:
             files.append(filename)
 
-        name_key = build_name_key(
+        name_key = Patient.build_name_key(
             first_name=patient_data.get("first_name"),
             last_name=patient_data.get("last_name"),
         )

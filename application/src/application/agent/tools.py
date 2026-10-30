@@ -7,7 +7,7 @@ from src.application.reader import DocumentReader
 
 class Context(TypedDict):
     """
-    Type definition for the context passed to single-document RCP tools at runtime.
+    Type definition for the context passed to single-document PatientMDTForm tools at runtime.
     """
 
     reader: Optional[DocumentReader]
@@ -17,7 +17,7 @@ class Context(TypedDict):
 
 class PatientContext(TypedDict):
     """
-    Type definition for the context passed to multi-document patient dossier tools at runtime.
+    Type definition for the context passed to multi-document PatientRecord tools at runtime.
     """
 
     patient_readers: List[DocumentReader]
@@ -27,22 +27,33 @@ class PatientContext(TypedDict):
 
 @tool(response_format="content")
 def get_mtd_markdown(runtime: ToolRuntime[Context]):
-    """Get the Medical Technical Documents (MTD) / Patient Records in Markdown format."""
+    """Get the Medical Technical Documents (MTD) / PatientMDTForm content in Markdown format."""
     runtime.context["logger"].info("tool get_mtd_markdown called")
-    if runtime.context["reader"] is None:
+    reader = runtime.context["reader"]
+    if reader is None:
         raise ValueError("No main document reader (mtd) provided in Context.")
-    return runtime.context["reader"].markdown_exporter[0].page_content
+    if not getattr(reader, "markdown_exporter", None) and hasattr(
+        reader, "read_document"
+    ):
+        reader.read_document()
+    return reader.markdown_exporter[0].page_content
 
 
 @tool(response_format="content")
 def get_patient_mtds_markdown(runtime: ToolRuntime[PatientContext]):
-    """Get all Medical Technical Documents (MTD) / RCP records of the patient dossier in Markdown format."""
+    """Get all Medical Technical Documents (MTD) / PatientMDTForm records of the PatientRecord in Markdown format."""
     runtime.context["logger"].info("tool get_patient_mtds_markdown called")
     patient_readers = runtime.context.get("patient_readers")
     if not patient_readers:
         raise ValueError(
             "No patient document readers (patient_readers) provided in PatientContext."
         )
+    for r in patient_readers:
+        if not getattr(r, "markdown_exporter", None) and hasattr(r, "read_document"):
+            r.read_document()
+    for r in patient_readers:
+        if not getattr(r, "markdown_exporter", None) and hasattr(r, "read_document"):
+            r.read_document()
     return "\n\n".join(
         f"=== FICHE RCP : {r.document} ===\n{r.markdown_exporter[0].page_content}"
         for r in patient_readers
@@ -51,16 +62,19 @@ def get_patient_mtds_markdown(runtime: ToolRuntime[PatientContext]):
 
 @tool(response_format="content")
 def get_patient_ai_history(runtime: ToolRuntime[PatientContext]):
-    """Get the chronological history of all AI-extracted clinical, administrative, and expert data across all RCP records of the patient dossier."""
+    """Get the chronological history of all AI-extracted clinical, administrative, and expert data across all PatientMDTForm records of the PatientRecord."""
     runtime.context["logger"].info("tool get_patient_ai_history called")
     patient_readers = runtime.context.get("patient_readers")
     if not patient_readers:
         raise ValueError(
             "No patient document readers (patient_readers) provided in PatientContext."
         )
-    from src.application.patient import format_patient_ai_history
+    from src.domain.patient_mdt_form import PatientMDTForm
 
-    return format_patient_ai_history(patient_readers)
+    entries = [
+        (r.document, getattr(r, "sections", None) or {}) for r in patient_readers
+    ]
+    return PatientMDTForm.format_ai_history_entries(entries)
 
 
 @tool(response_format="content_and_artifact")
@@ -129,8 +143,8 @@ def search_on_patient_mtds(
     expr: Optional[str] = None,
     timeout: Optional[float] = None,
 ):
-    """Search within all Medical Technical Documents (MTD) / RCP records of the patient dossier.
-    This tool uses VectorStore similarity_search options across all RCPs of the patient.
+    """Search within all Medical Technical Documents (MTD) / PatientMDTForm records of the PatientRecord.
+    This tool uses VectorStore similarity_search options across all PatientMDTForm records of the patient.
 
     Args:
         runtime (ToolRuntime): The runtime context containing the patient document readers.
