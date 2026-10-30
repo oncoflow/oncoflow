@@ -4,8 +4,12 @@ import streamlit as st
 
 from src.application.config import AppConfig
 from src.domain.bug_report import BugCategory, BugReport, BugSeverity, BugStatus
-from src.domain.patient import Patient
 from src.infrastructure.documents.mongodb import Mongodb
+from src.infrastructure.documents.repositories import (
+    MongoBugReportRepository,
+    MongoPatientMDTFormRepository,
+    MongoPatientRepository,
+)
 
 app_conf = AppConfig()
 logger = app_conf.set_logger("ui", default_context={"page": "bugs"})
@@ -44,7 +48,7 @@ def _get_db_client() -> Mongodb | None:
 def _load_context_options(
     db_client: Mongodb | None,
 ) -> tuple[dict[str, str | None], list[str]]:
-    """Charge la liste des patients et des fichiers RCP disponibles pour enrichir le rapport de bug."""
+    """Load the list of available patients and PatientMDTForm files to enrich the bug report."""
     patient_map: dict[str, str | None] = {"Aucun": None}
     rcp_files: list[str] = ["Aucune"]
 
@@ -52,14 +56,12 @@ def _load_context_options(
         return patient_map, rcp_files
 
     try:
-        for raw_p in db_client.get_all_patients():
-            try:
-                p = Patient.model_validate(raw_p)
-                patient_map[f"{p.display_label} ({p.patient_id})"] = p.patient_id
-            except Exception:
-                continue
+        patient_repo = MongoPatientRepository(app_conf, db_client=db_client)
+        for p in patient_repo.list_all():
+            patient_map[f"{p.display_label} ({p.patient_id})"] = p.patient_id
 
-        rcp_docs = list(db_client.database["rcp_info"].find({}, {"file": 1}))
+        mdt_repo = MongoPatientMDTFormRepository(app_conf, db_client=db_client)
+        rcp_docs = mdt_repo.list_all(projection={"file": 1})
         files = sorted({d["file"] for d in rcp_docs if d.get("file")})
         rcp_files.extend(files)
     except Exception as e:
@@ -78,7 +80,8 @@ def confirm_delete_bug(bug_id: str, title: str):
         client = _get_db_client()
         if client is not None:
             try:
-                client.delete_bug_report(bug_id)
+                bug_repo = MongoBugReportRepository(app_conf, db_client=client)
+                bug_repo.delete(bug_id)
                 st.toast(f"Signalement {bug_id} supprimé.", icon="🗑️")
             finally:
                 client.close()
@@ -86,7 +89,7 @@ def confirm_delete_bug(bug_id: str, title: str):
 
 
 def render_bug_form(db_client: Mongodb | None):
-    """Affiche le formulaire de création d'un nouveau rapport de bug."""
+    """Render the form for creating a new bug report."""
     st.subheader("📝 Nouveau signalement")
     st.caption(
         "Signalez une anomalie technique, une erreur d'extraction IA ou proposez une amélioration clinique."
@@ -188,7 +191,8 @@ def render_bug_form(db_client: Mongodb | None):
                         steps_to_reproduce=steps_to_reproduce.strip() or None,
                         reporter=reporter.strip() or "Anonyme",
                     )
-                    saved = db_client.create_bug_report(report.model_dump())
+                    bug_repo = MongoBugReportRepository(app_conf, db_client=db_client)
+                    saved = bug_repo.create(report)
                     st.toast(
                         f"Signalement {saved['bug_id']} enregistré avec succès !",
                         icon="✅",
@@ -202,13 +206,14 @@ def render_bug_form(db_client: Mongodb | None):
 
 
 def render_bug_list(db_client: Mongodb | None):
-    """Affiche la liste filtrable des rapports de bugs stockés dans MongoDB."""
+    """Render the filterable list of bug reports stored in MongoDB."""
     if db_client is None:
         st.warning("La base de données MongoDB n'est pas configurée.")
         return
 
+    bug_repo = MongoBugReportRepository(app_conf, db_client=db_client)
     try:
-        all_bugs = db_client.get_all_bug_reports()
+        all_bugs = bug_repo.list_all()
     except Exception as e:
         logger.error(f"Erreur lors de la lecture des bugs depuis MongoDB : {e}")
         st.error(f"Impossible de récupérer les signalements depuis MongoDB : {e}")
@@ -218,7 +223,7 @@ def render_bug_list(db_client: Mongodb | None):
     severity_labels = {k.value: v for k, v in BugSeverity.labels().items()}
     status_labels = {k.value: v for k, v in BugStatus.labels().items()}
 
-    # --- Métriques synthétiques ---
+    # --- Summary metrics ---
     total_count = len(all_bugs)
     open_count = sum(1 for b in all_bugs if b.get("status") == BugStatus.open.value)
     progress_count = sum(
@@ -231,12 +236,10 @@ def render_bug_list(db_client: Mongodb | None):
     )
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Total signalements", total_count)
-    m2.metric("🔴 Ouverts", open_count)
-    m3.metric("⏳ En cours", progress_count)
-    m4.metric("✅ Résolus / Fermés", resolved_count)
-
-    st.divider()
+    m1.metric("Total signalements", total_count, border=True, height="stretch")
+    m2.metric("🔴 Ouverts", open_count, border=True, height="stretch")
+    m3.metric("⏳ En cours", progress_count, border=True, height="stretch")
+    m4.metric("✅ Résolus / Fermés", resolved_count, border=True, height="stretch")
 
     if not all_bugs:
         st.info("Aucun signalement de bug enregistré pour le moment.")
@@ -352,7 +355,7 @@ def render_bug_list(db_client: Mongodb | None):
                     label_visibility="collapsed",
                 )
                 if new_status != stat:
-                    db_client.update_bug_report(bug_id, {"status": new_status})
+                    bug_repo.update(bug_id, {"status": new_status})
                     st.toast(
                         f"Statut de {bug_id} mis à jour : {status_labels.get(new_status, new_status)}",
                         icon="🔄",
@@ -360,9 +363,9 @@ def render_bug_list(db_client: Mongodb | None):
                     st.rerun()
 
                 if act2.button(
-                    "🗑️",
+                    ":red[:material/delete:]",
                     key=f"del_bug_{bug_id}",
-                    type="primary",
+                    type="secondary",
                     width="stretch",
                     help="Supprimer ce signalement",
                 ):

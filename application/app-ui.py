@@ -37,17 +37,23 @@ navigation = {}
 
 # Configuration de l'authentification
 from src.application.config import AppConfig
-from src.ui.patient_mdt.translations import get_logo_svg, translate_domain_fr
+from src.ui.patient_mdt.translations import (
+    apply_card_surface_style,
+    get_icon_svg,
+    get_logo_svg,
+    translate_domain_fr,
+)
 
 app_config = AppConfig()
 domain_fr = translate_domain_fr(app_config.domain)
-app_title = f"MedDataSyntis - {domain_fr}" if domain_fr else "MedDataSyntis"
+app_title = f"DataSyntis — {domain_fr}" if domain_fr else "DataSyntis"
 
 st.set_page_config(
     page_title=app_title,
-    page_icon="static/icon.png",
+    page_icon="static/icon.svg",
     layout="wide",
 )
+apply_card_surface_style()
 
 if app_config.dev_mode:
     logger = app_config.set_logger("oncoflow.ui")
@@ -55,7 +61,7 @@ if app_config.dev_mode:
         "\n"
         + "=" * 60
         + "\n"
-        + "⚠️  MEDDATASYNTIS EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
+        + "⚠️  DATASYNTIS EST EN MODE DÉVELOPPEMENT (DEV MODE)  ⚠️".center(60)
         + "\n"
         + "=" * 60
         + "\n"
@@ -116,20 +122,15 @@ else:
 st.logo(
     get_logo_svg(app_config.domain),
     size="large",
-    icon_image="static/icon.png",
+    icon_image=get_icon_svg(),
 )
 
 
 if "language" not in st.session_state:
     st.session_state["language"] = "Français"
 
-st.sidebar.selectbox(
-    "🌐 Langue / Language",
-    options=["Français", "English"],
-    key="language",
-)
-
-if st.session_state.get("language") == "English":
+is_en = st.session_state.get("language") == "English"
+if is_en:
     AppConfig.set_runtime_override(language="english")
     app_config.language = "english"
 else:
@@ -142,26 +143,30 @@ pages = {}
 pages[app_title] = [
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/cards.py",
-        title="Dossiers Patients",
+        title="MDT preparation & triage"
+        if is_en
+        else "Préparation & ordonnancement RCP",
         icon="📇",
         default=True,
     ),
     st.Page(
-        f"{PAGES_DIR_SRC}/patient_mdt/datas.py", title="Dossier Patient", icon="📝"
+        f"{PAGES_DIR_SRC}/patient_mdt/datas.py",
+        title="Patient clinical file" if is_en else "Dossier clinique patient",
+        icon="👤",
     ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/upload.py",
-        title="Charger le/les fichier(s)",
-        icon="🚀",
+        title="Document ingestion" if is_en else "Intégration documentaire",
+        icon="📥",
     ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/agents.py",
-        title="Agents and ressources",
-        icon="🤖",
+        title="Specialty modules" if is_en else "Modules d'expertise",
+        icon="🩺",
     ),
     st.Page(
         f"{PAGES_DIR_SRC}/patient_mdt/ressources.py",
-        title="Ressources",
+        title="Clinical guidelines" if is_en else "Référentiels cliniques",
         icon="📚",
     ),
 ]
@@ -171,51 +176,87 @@ st.session_state["is_admin"] = bool(
     st.session_state.get("username"), st.session_state.get("name")
 )
 
-pages["Reports"] = [
+support_section_title = (
+    "Quality & administration" if is_en else "Qualité & administration"
+)
+pages[support_section_title] = [
     st.Page(
         f"{PAGES_DIR_SRC}/reports/bugs.py",
-        title="Bug reports",
-        icon="🐛",
+        title="Quality feedback" if is_en else "Signalements & conformité",
+        icon="📋",
     ),
 ]
 if st.session_state["is_admin"]:
-    pages["Reports"].append(
+    pages[support_section_title].append(
         st.Page(
             f"{PAGES_DIR_SRC}/reports/queue_admin.py",
-            title="File de traitement & Verrous",
+            title="Processing queue & locks" if is_en else "Supervision de la file",
             icon="⚙️",
         )
     )
 
 
 if st.session_state.get("authentication_status"):
+    pg = st.navigation(pages)
+
     with st.sidebar:
+        st.caption(
+            "Préparation documentaire et contrôle de complétude pour la décision collégiale en RCP."
+            if not is_en
+            else "Structured document synthesis and completeness verification for MDT preparation."
+        )
+        st.segmented_control(
+            "Langue / Language",
+            options=["Français", "English"],
+            key="language",
+            width="stretch",
+        )
+        if st.session_state.get("language") == "English":
+            AppConfig.set_runtime_override(language="english")
+            app_config.language = "english"
+        else:
+            AppConfig.set_runtime_override(language="french")
+            app_config.language = "french"
+
         if auth_mode == "oauth_proxy":
             user_display = st.session_state.get("username") or st.session_state.get(
                 "name"
             )
             if user_display:
-                st.caption(f"👤 Connecté : **{user_display}**")
+                st.caption(
+                    f":primary[:material/account_circle:] Praticien : **{user_display}**"
+                )
             st.link_button(
-                "Se déconnecter",
+                ":red[:material/logout:] Déconnexion",
                 "/oauth2/sign_out",
-                icon="🚪",
                 width="stretch",
             )
         elif authenticator is not None:
-            if st.button("Se déconnecter", key="logout_btn", icon="🚪"):
+            user_display = st.session_state.get("name") or st.session_state.get(
+                "username"
+            )
+            if user_display:
+                st.caption(
+                    f":primary[:material/account_circle:] Praticien : **{user_display}**"
+                )
+            if st.button(
+                ":red[:material/logout:] Déconnexion",
+                key="logout_btn",
+                width="stretch",
+            ):
                 try:
                     authenticator.logout(location="unrendered")
                 except KeyError:
                     pass
                 st.rerun()
 
-    pg = st.navigation(pages)
-
     # Redirection automatique vers le dossier patient si spécifié dans l'URL
     if (
         "patient_id" in st.query_params or "file" in st.query_params
-    ) and pg.title != "Dossier Patient":
+    ) and pg.title not in (
+        "Dossier clinique patient",
+        "Patient clinical file",
+    ):
         redirect_params = {}
         if "patient_id" in st.query_params:
             redirect_params["patient_id"] = st.query_params["patient_id"]

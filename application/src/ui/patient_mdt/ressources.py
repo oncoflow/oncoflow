@@ -5,9 +5,9 @@ from src.application.config import AppConfig
 from src.application.ressources import Ressources
 
 # Page configurations
-st.title("📚 Ressources de Référence Clinique")
-st.markdown(
-    "Gérez et consultez les guides de référence scientifiques et cliniques (ex: TNCD) utilisés par les agents IA."
+st.title("📚 Référentiels cliniques & recommandations")
+st.caption(
+    "Conformité aux recommandations : consultez et indexez les référentiels scientifiques et cliniques (ex. TNCD) servant de base au contrôle de complétude et aux propositions cadrées."
 )
 
 app_conf = AppConfig()
@@ -38,156 +38,166 @@ def get_resource_preview(resource_name: str, doc_type: str):
     return markdown_content, serialized_chunks
 
 
-# List resources
 available_resources = ressources_manager.list_ressources()
 
 if not available_resources:
-    st.info("Aucune ressource disponible dans le dossier de configuration.")
+    st.info(
+        "Aucune ressource disponible dans le dossier de configuration.",
+        icon=":material/info:",
+    )
 else:
-    # Handle pre-selected resource from query parameters
     default_index = 0
     query_resource = st.query_params.get("resource")
     if query_resource in available_resources:
         default_index = available_resources.index(str(query_resource))
 
-    # UI Layout: Sidebar for selection and index status, Main area for viewer
-    st.sidebar.subheader("🗂️ Sélectionner une ressource")
-    selected_resource = st.sidebar.selectbox(
-        "Ressource",
-        options=available_resources,
-        index=default_index,
-        label_visibility="collapsed",
-    )
+    with st.container(border=True):
+        top_c1, top_c2, top_c3, top_c4 = st.columns(
+            [3, 1.5, 1.5, 1.2], vertical_alignment="bottom"
+        )
+        with top_c1:
+            selected_resource = st.selectbox(
+                "Sélectionner un référentiel clinique",
+                options=available_resources,
+                index=default_index,
+            )
+        st.query_params["resource"] = selected_resource
 
-    # Keep query parameters in sync
-    st.query_params["resource"] = selected_resource
+        # Reset chat if selected resource changes
+        if "chat_resource" not in st.session_state:
+            st.session_state["chat_resource"] = selected_resource
+        elif st.session_state["chat_resource"] != selected_resource:
+            st.session_state["chat_resource"] = selected_resource
+            st.session_state["chat_active_res"] = False
+            if "agent_res" in st.session_state:
+                del st.session_state["agent_res"]
+            if "messages_res" in st.session_state:
+                del st.session_state["messages_res"]
 
-    # Reset chat if selected resource changes
-    if "chat_resource" not in st.session_state:
-        st.session_state["chat_resource"] = selected_resource
-    elif st.session_state["chat_resource"] != selected_resource:
-        st.session_state["chat_resource"] = selected_resource
-        st.session_state["chat_active_res"] = False
-        if "agent_res" in st.session_state:
-            del st.session_state["agent_res"]
-        if "messages_res" in st.session_state:
-            del st.session_state["messages_res"]
+        is_indexed = ressources_manager.is_indexed(selected_resource)
 
-    # Check status
-    is_indexed = ressources_manager.is_indexed(selected_resource)
+        with top_c2:
+            btn_label = "🔄 Ré-indexer (RAG)" if is_indexed else "🚀 Indexer (RAG)"
+            if st.button(
+                btn_label,
+                width="stretch",
+                type="secondary" if is_indexed else "primary",
+            ):
+                with st.spinner(f"Indexation de {selected_resource} en cours..."):
+                    try:
+                        ressources_manager.index_ressource(selected_resource)
+                        st.toast(
+                            f"Ressource '{selected_resource}' indexée avec succès !",
+                            icon="✅",
+                        )
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erreur d'indexation : {e}")
 
-    # Sidebar Resource Details & Actions
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(f"**Fichier :** `{selected_resource}`")
+        chat_active = st.session_state.get("chat_active_res", False)
 
-    if is_indexed:
-        st.sidebar.success("✅ Indexé dans la base vectorielle")
-    else:
-        st.sidebar.warning("⚠️ Non indexé dans la base vectorielle")
+        with top_c3:
+            if is_indexed:
+                if not chat_active:
+                    if st.button(
+                        "💬 Interroger l'IA",
+                        width="stretch",
+                        type="primary",
+                    ):
+                        st.session_state["chat_active_res"] = True
+                        st.session_state["messages_res"] = [
+                            {
+                                "role": "assistant",
+                                "content": (
+                                    f"Bonjour ! Je suis prêt à répondre à vos questions concernant "
+                                    f"le référentiel **`{selected_resource}`**."
+                                ),
+                            }
+                        ]
+                        with st.spinner("Initialisation de l'agent IA..."):
+                            from src.domain.agents import Agents
+                            from src.application.reader import DocumentReader
 
-    # Indexation button
-    btn_label = (
-        "Re-indexer dans la base vectorielle"
-        if is_indexed
-        else "Indexer dans la base vectorielle"
-    )
-    if st.sidebar.button(btn_label, width="stretch", type="primary"):
-        with st.spinner(f"Indexation de {selected_resource} en cours..."):
-            try:
-                ressources_manager.index_ressource(selected_resource)
-                st.toast(
-                    f"Ressource '{selected_resource}' indexée avec succès !",
-                    icon="✅",
+                            reader = DocumentReader(
+                                app_conf,
+                                document=selected_resource,
+                                document_type="ressource",
+                            )
+                            agents = Agents()
+                            agent_cls = agents.list["Ressource Assistant"]
+                            st.session_state["agent_res"] = agent_cls(
+                                config=app_conf, additionnal_readers=[reader]
+                            )
+                        st.rerun()
+                else:
+                    if st.button(
+                        "❌ Fermer l'Assistant IA",
+                        width="stretch",
+                        type="secondary",
+                    ):
+                        st.session_state["chat_active_res"] = False
+                        if "agent_res" in st.session_state:
+                            del st.session_state["agent_res"]
+                        if "messages_res" in st.session_state:
+                            del st.session_state["messages_res"]
+                        try:
+                            from src.application.app_functions import (
+                                unload_active_models,
+                            )
+
+                            unload_active_models(app_conf)
+                        except Exception:
+                            pass
+                        st.rerun()
+            else:
+                st.button(
+                    "💬 Interroger l'IA",
+                    width="stretch",
+                    disabled=True,
+                    help="Indexez d'abord ce référentiel pour activer l'Assistant IA.",
                 )
-                st.rerun()
-            except Exception as e:
-                st.sidebar.error(f"Erreur d'indexation : {e}")
 
-    # Check if chat is active
-    chat_active = st.session_state.get("chat_active_res", False)
+        with top_c4:
+            if st.button(
+                "🩺 Modules d'expertise",
+                width="stretch",
+            ):
+                st.query_params.clear()
+                st.switch_page("src/ui/patient_mdt/agents.py")
 
-    # Back button to agents page
-    st.sidebar.markdown("---")
-    if st.sidebar.button("◀ Retour aux agents", width="stretch"):
-        st.query_params.clear()
-        st.switch_page("src/ui/patient_mdt/agents.py")
-
-    file_path = os.path.join(app_conf.rcp.additional_path, selected_resource)
+        status_badge = (
+            ":green-badge[✅ Indexé dans la base vectorielle]"
+            if is_indexed
+            else ":orange-badge[⚠️ Non indexé — indexation requise pour le RAG]"
+        )
+        file_path = os.path.join(app_conf.rcp.additional_path, selected_resource)
+        meta_c1, meta_c2 = st.columns([4, 1], vertical_alignment="center")
+        meta_c1.markdown(
+            f"📖 **Fichier actif :** `{selected_resource}` · {status_badge}"
+        )
+        if os.path.exists(file_path):
+            with open(file_path, "rb") as f:
+                meta_c2.download_button(
+                    "⏬ Télécharger PDF",
+                    f,
+                    file_name=selected_resource,
+                    mime="application/pdf",
+                    width="stretch",
+                )
 
     if os.path.exists(file_path):
-        st.subheader(f"📄 Lecture : {selected_resource}")
-
-        c1, c2 = st.columns([1, 1])
-        # Allow downloading
-        with open(file_path, "rb") as f:
-            c1.download_button(
-                "⏬ Télécharger le document",
-                f,
-                file_name=selected_resource,
-                mime="application/pdf",
-                width="stretch",
-            )
-
-        # Chat toggle button next to download
-        if is_indexed:
-            if not chat_active:
-                if c2.button(
-                    "💬 Interroger l'Assistant IA",
-                    width="stretch",
-                    type="secondary",
-                ):
-                    st.session_state["chat_active_res"] = True
-                    st.session_state["messages_res"] = []
-                    with st.spinner("Initialisation de l'agent IA..."):
-                        from src.domain.agents import Agents
-                        from src.application.reader import DocumentReader
-
-                        # Initialize the reader for the resource document
-                        reader = DocumentReader(
-                            app_conf,
-                            document=selected_resource,
-                            document_type="ressource",
-                        )
-
-                        # Retrieve the Resource Agent
-                        agents = Agents()
-                        agent_cls = agents.list["Ressource Assistant"]
-
-                        # Initialize agent with this reader as mtd (main tool source)
-                        st.session_state["agent_res"] = agent_cls(
-                            config=app_conf, additionnal_readers=[reader]
-                        )
-                    st.rerun()
-            else:
-                if c2.button(
-                    "❌ Fermer l'Assistant IA",
-                    width="stretch",
-                    type="secondary",
-                ):
-                    st.session_state["chat_active_res"] = False
-                    if "agent_res" in st.session_state:
-                        del st.session_state["agent_res"]
-                    if "messages_res" in st.session_state:
-                        del st.session_state["messages_res"]
-                    try:
-                        from src.application.app_functions import unload_active_models
-
-                        unload_active_models(app_conf)
-                    except Exception:
-                        pass
-                    st.rerun()
-
-        st.markdown("---")
-
         if chat_active:
             col_doc, col_chat = st.columns([3, 2], gap="large")
         else:
-            col_doc = st.container()
+            col_doc = st.container(key="clinical_scroll_res_doc")
 
         with col_doc:
-            # Preview tabs
             tab_pdf, tab_markdown, tab_chunks = st.tabs(
-                ["📄 Aperçu PDF", "📝 Format Markdown", "🧱 Format Chunks"]
+                [
+                    "📄 Aperçu PDF",
+                    "📝 Format Markdown",
+                    "🧱 Blocs vectoriels (Chunks)",
+                ]
             )
 
             with tab_pdf:
@@ -197,13 +207,14 @@ else:
                     st.info("Aperçu PDF non disponible pour ce type de fichier.")
 
             with tab_markdown:
-                with st.spinner("Génération de l'aperçu markdown..."):
+                with st.spinner("Génération de l'aperçu Markdown..."):
                     try:
                         markdown_content, _ = get_resource_preview(
                             selected_resource, app_conf.rcp.doc_type
                         )
                         if markdown_content:
-                            st.markdown(markdown_content)
+                            with st.container(height=750, border=True):
+                                st.markdown(markdown_content)
                         else:
                             st.warning(
                                 "Aucun contenu Markdown disponible pour cette ressource."
@@ -218,14 +229,17 @@ else:
                             selected_resource, app_conf.rcp.doc_type
                         )
                         if chunks:
-                            st.success(f"{len(chunks)} chunks trouvés.")
-                            for i, chunk in enumerate(chunks):
-                                st.subheader(f"Chunk #{i + 1}")
-                                st.write(chunk["page_content"])
-                                if chunk["metadata"]:
-                                    with st.expander("Métadonnées", expanded=False):
-                                        st.json(chunk["metadata"])
-                                st.divider()
+                            st.success(
+                                f"{len(chunks)} chunks trouvés.",
+                                icon=":material/check_circle:",
+                            )
+                            with st.container(height=700, border=True):
+                                for i, chunk in enumerate(chunks):
+                                    st.markdown(f"**Chunk #{i + 1}**")
+                                    st.write(chunk["page_content"])
+                                    if chunk["metadata"]:
+                                        with st.expander("Métadonnées", expanded=False):
+                                            st.json(chunk["metadata"])
                         else:
                             st.warning("Aucun chunk disponible pour cette ressource.")
                     except Exception as e:
@@ -233,36 +247,26 @@ else:
 
         if chat_active:
             with col_chat:
-                st.subheader("💬 Assistant IA (Ressource)")
+                st.subheader(":material/chat: Assistant IA (Référentiel)")
                 st.caption(
-                    "L'agent IA (Ressource Assistant) utilise ce document de référence pour répondre à vos questions."
+                    f"Interrogez directement le contenu du référentiel `{selected_resource}`."
                 )
 
-                messages_container = st.container(height=500)
+                messages_container = st.container(height=620, border=True)
 
-                # Render messages history
-                st.session_state["messages_res"].append(
-                    {
-                        "role": "assistant",
-                        "content": "Bonjour ! Je suis là pour répondre à vos questions concernant ce document de référence",
-                    }
-                )
                 for message in st.session_state.get("messages_res", []):
                     with messages_container.chat_message(message["role"]):
                         st.markdown(message["content"])
 
-                # Chat input
-                if prompt := st.chat_input("Posez une question sur ce document..."):
-                    # Add user message
+                if prompt := st.chat_input("Posez une question sur ce référentiel..."):
                     st.session_state["messages_res"].append(
                         {"role": "user", "content": prompt}
                     )
                     with messages_container.chat_message("user"):
                         st.markdown(prompt)
 
-                    # Generate agent response
                     with messages_container.chat_message("assistant"):
-                        with st.spinner("Analyse en cours..."):
+                        with st.spinner("Recherche dans le référentiel en cours..."):
                             try:
                                 agent = st.session_state["agent_res"]
                                 resp = agent.ask(prompt)

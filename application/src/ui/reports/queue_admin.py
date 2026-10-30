@@ -50,6 +50,41 @@ def confirm_full_queue_purge(cross_domain: bool = True):
         st.rerun()
 
 
+@st.fragment(run_every="2s")
+def render_live_thinking_section(cross_domain: bool = True):
+    """Render a live auto-refreshing panel streaming the AI reasoning of the active queue task."""
+    broker = _get_broker()
+    try:
+        thinking_snap = broker.get_job_thinking(cross_domain=cross_domain)
+    finally:
+        broker.close()
+
+    st.subheader("💭 Réflexion IA en direct (Tâche en cours)")
+    if not thinking_snap.get("active"):
+        st.info("Aucune tâche en cours de raisonnement IA actuellement.")
+        return
+
+    filename = thinking_snap.get("filename") or "-"
+    domain = thinking_snap.get("domain") or app_conf.domain
+    job_id = thinking_snap.get("job_id") or "-"
+    step = thinking_snap.get("current_step") or "-"
+    active_agent = thinking_snap.get("active_agent") or "Initialisation de l'agent..."
+    progress_pct = int(thinking_snap.get("progress_pct") or 0)
+    thinking_text = thinking_snap.get("current_thinking") or ""
+
+    with st.container(border=True):
+        c1, c2, c3 = st.columns([3, 3, 2], vertical_alignment="center")
+        c1.markdown(f"📄 **`{filename}`** (`{domain}`) · 🆔 `{job_id}`")
+        c2.markdown(f"🤖 **Agent actif :** `{active_agent}`")
+        c3.markdown(f":orange-badge[🔄 {step} ({progress_pct}%)]")
+        st.progress(min(max(progress_pct, 5), 100) / 100.0)
+        with st.container(height=220, border=True):
+            if thinking_text:
+                st.caption(thinking_text)
+            else:
+                st.caption("_En attente des premiers jetons de réflexion IA..._")
+
+
 def render_locks_section(db_client: QueueBroker):
     st.subheader("🔒 Gestion des Verrous d'Exécution")
     st.caption(
@@ -245,7 +280,7 @@ def render_jobs_table(db_client: QueueBroker, cross_domain: bool = True):
             with c4:
                 b1, b2 = st.columns(2)
                 if b1.button(
-                    "🔁",
+                    ":blue[:material/refresh:]",
                     key=f"retry_{job_id}",
                     help="Relancer cette tâche",
                     width="stretch",
@@ -255,9 +290,9 @@ def render_jobs_table(db_client: QueueBroker, cross_domain: bool = True):
                     st.toast(f"Tâche {job_id} remise en file d'attente.", icon="🔁")
                     st.rerun()
                 if b2.button(
-                    "🗑️",
+                    ":red[:material/delete:]",
                     key=f"del_{job_id}",
-                    type="primary",
+                    type="secondary",
                     help="Supprimer cette tâche et lever son verrou éventuel",
                     width="stretch",
                 ):
@@ -267,6 +302,16 @@ def render_jobs_table(db_client: QueueBroker, cross_domain: bool = True):
 
             if error_msg:
                 st.error(f"Erreur : {error_msg}")
+
+            job_thinking = job.get("current_thinking")
+            if job_thinking:
+                agent_lbl = job.get("active_agent") or "Agent IA"
+                with st.expander(
+                    f"💭 Réflexion IA ({agent_lbl})",
+                    expanded=(status == JobStatus.PROCESSING.value),
+                ):
+                    with st.container(height=180, border=True):
+                        st.caption(job_thinking)
 
 
 def queue_admin_view():
@@ -284,15 +329,25 @@ def queue_admin_view():
     try:
         stats = broker.get_queue_stats(cross_domain=cross_domain)
         m1, m2, m3, m4, m5 = st.columns(5)
-        m1.metric("⏳ En attente", stats.get("pending", 0))
-        m2.metric("🔄 En cours", stats.get("processing", 0))
-        m3.metric("✅ Terminées", stats.get("completed", 0))
-        m4.metric("❌ En échec", stats.get("failed", 0))
+        m1.metric(
+            "⏳ En attente", stats.get("pending", 0), border=True, height="stretch"
+        )
+        m2.metric(
+            "🔄 En cours", stats.get("processing", 0), border=True, height="stretch"
+        )
+        m3.metric(
+            "✅ Terminées", stats.get("completed", 0), border=True, height="stretch"
+        )
+        m4.metric("❌ En échec", stats.get("failed", 0), border=True, height="stretch")
         m5.metric(
             "🔒 Emplacements actifs",
             f"{stats.get('active_locks', 0)} / {stats.get('batch_size', 1)}",
+            border=True,
+            height="stretch",
         )
 
+        st.divider()
+        render_live_thinking_section(cross_domain=cross_domain)
         st.divider()
         render_locks_section(broker)
         st.divider()

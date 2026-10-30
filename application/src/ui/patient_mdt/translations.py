@@ -135,7 +135,7 @@ TRANSLATIONS = {
     "is_mtd_complete": "Dossier complet ?",
     "what_missing": "Éléments manquants",
     "reflection": "Réflexion / Synthèse du débat",
-    "intervention_required": "Intervention Conseillé",
+    "intervention_required": "Intervention conseillée",
     "intervention_type": "Type d'intervention",
     "justification": "Justification du consensus",
     # SMA Field Name translations
@@ -205,7 +205,42 @@ TRANSLATIONS = {
     # Domains
     "oncology": "Oncologie",
     "sma": "Amyotrophie spinale",
+    # Clinical & Technical Agents
+    "Administrative": "Extraction administrative & clinique",
+    "MDT Coordinator": "Coordinateur RCP",
+    "Ressource Assistant": "Assistant référentiels",
+    "pancreas expert": "Expert Pancréas",
+    "oesophagus expert": "Expert Œsophage",
+    "hepatocellular expert": "Expert Foie / CHC",
+    "neurologist expert": "Expert Neurologue",
+    "geneticist expert": "Expert Généticien",
+    "pulmonologist expert": "Expert Pneumologue",
+    "physiotherapy expert": "Expert MPR / Rééducation",
+    "orthopedist expert": "Expert Orthopédiste",
 }
+
+AGENT_ICONS: dict[str, str] = {
+    "administrative": "🗂️",
+    "mdt coordinator": "⚖️",
+    "ressource assistant": "📚",
+    "pancreas expert": "🩺",
+    "oesophagus expert": "🩺",
+    "hepatocellular expert": "🩺",
+    "neurologist expert": "🧠",
+    "geneticist expert": "🧬",
+    "pulmonologist expert": "🫁",
+    "physiotherapy expert": "🦿",
+    "orthopedist expert": "🦴",
+}
+
+
+def get_agent_icon_and_label(agent_name: str) -> tuple[str, str]:
+    """Return a clinical icon and translated display label for a given agent identifier."""
+    clean = (agent_name or "").strip().lower()
+    icon = AGENT_ICONS.get(clean, "🩺")
+    label = str(translate(agent_name))
+    return icon, label
+
 
 DOMAIN_FR_LABELS: dict[str, str] = {
     "oncology": "Oncologie",
@@ -221,41 +256,140 @@ def translate_domain_fr(domain: str) -> str:
     return DOMAIN_FR_LABELS.get(clean, domain.strip().capitalize())
 
 
+def get_icon_svg() -> str:
+    """
+    Génère l'icône d'application DataSyntis (favicon et raccourci bureau hospitalier) :
+    assemblage géométrique ordonné, croisement pluridisciplinaire et point de focalisation central.
+    """
+    return (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">\n'
+        "  <defs>\n"
+        '    <linearGradient id="dsSlate" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#1E293B" />\n'
+        '      <stop offset="100%" stop-color="#0F172A" />\n'
+        "    </linearGradient>\n"
+        '    <linearGradient id="dsTeal" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#72A8A2" />\n'
+        '      <stop offset="100%" stop-color="#3E7B76" />\n'
+        "    </linearGradient>\n"
+        '    <linearGradient id="dsSage" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#84A98C" />\n'
+        '      <stop offset="100%" stop-color="#52796F" />\n'
+        "    </linearGradient>\n"
+        "  </defs>\n"
+        '  <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#dsSlate)" stroke="#334155" stroke-width="2" />\n'
+        "  <!-- Assemblage ordonné : 4 faisceaux documentaires convergeant vers le centre -->\n"
+        '  <rect x="20" y="22" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
+        '  <rect x="46" y="64" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
+        '  <rect x="64" y="20" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
+        '  <rect x="22" y="46" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
+        "  <!-- Cadre de synthèse et point de focalisation clinique (Rose) -->\n"
+        '  <rect x="36" y="36" width="28" height="28" rx="6" fill="none" stroke="#F8FAFC" stroke-width="2.5" opacity="0.9" />\n'
+        '  <circle cx="50" cy="50" r="6.5" fill="#D94668" />\n'
+        '  <circle cx="50" cy="50" r="2.5" fill="#FFF1F2" />\n'
+        "</svg>"
+    )
+
+
 def get_logo_svg(domain: str) -> str:
-    """Génère le logo SVG MedDataSyntis intégrant dynamiquement le domaine en français."""
+    """Génère le logotype SVG DataSyntis intégrant dynamiquement le domaine médical en français."""
     domain_fr = translate_domain_fr(domain)
     subtitle_line = (
-        f"  <text x=\"118\" y=\"93\" font-family=\"'Open Sans', 'DejaVu Sans', 'Liberation Sans', Arial, sans-serif\" "
-        f'font-size="30" font-weight="600" fill="#0EA5E9">- {domain_fr}</text>\n'
+        f"  <text x=\"114\" y=\"92\" font-family=\"'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif\" "
+        f'font-size="23" font-weight="600" letter-spacing="1.4" fill="#CBD5E1">- {domain_fr}</text>\n'
         if domain_fr
         else ""
     )
-    brand_y = "54" if domain_fr else "72"
+    brand_y = "59" if domain_fr else "70"
     return (
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 468 110" width="468" height="110">\n'
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 385 106" width="385" height="106">\n'
         "  <defs>\n"
-        '    <linearGradient id="medBlue" x1="0%" y1="0%" x2="100%" y2="100%">\n'
-        '      <stop offset="0%" stop-color="#0EA5E9" />\n'
-        '      <stop offset="100%" stop-color="#0284C7" />\n'
+        '    <linearGradient id="dsSlate" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#1E293B" />\n'
+        '      <stop offset="100%" stop-color="#0F172A" />\n'
         "    </linearGradient>\n"
-        '    <linearGradient id="medTeal" x1="0%" y1="0%" x2="100%" y2="100%">\n'
-        '      <stop offset="0%" stop-color="#14B8A6" />\n'
-        '      <stop offset="100%" stop-color="#0D9488" />\n'
+        '    <linearGradient id="dsTeal" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#88BDBC" />\n'
+        '      <stop offset="100%" stop-color="#4A857F" />\n'
+        "    </linearGradient>\n"
+        '    <linearGradient id="dsSage" x1="0%" y1="0%" x2="100%" y2="100%">\n'
+        '      <stop offset="0%" stop-color="#84A98C" />\n'
+        '      <stop offset="100%" stop-color="#52796F" />\n'
         "    </linearGradient>\n"
         "  </defs>\n"
-        '  <g transform="translate(4, 5)">\n'
-        '    <circle cx="50" cy="50" r="46" fill="none" stroke="url(#medBlue)" stroke-width="5.5" />\n'
-        '    <rect x="37" y="18" width="26" height="64" rx="6.5" fill="url(#medBlue)" />\n'
-        '    <rect x="18" y="37" width="64" height="26" rx="6.5" fill="url(#medTeal)" opacity="0.93" />\n'
-        '    <polyline points="27,50 40,50 46,37 54,63 60,50 73,50" fill="none" stroke="#FFFFFF" stroke-width="3.8" stroke-linecap="round" stroke-linejoin="round" />\n'
-        '    <circle cx="27" cy="50" r="3.8" fill="#FFFFFF" />\n'
-        '    <circle cx="73" cy="50" r="3.8" fill="#FFFFFF" />\n'
+        '  <g transform="translate(2, 3)">\n'
+        '    <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#dsSlate)" stroke="#475569" stroke-width="2" />\n'
+        '    <rect x="20" y="22" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
+        '    <rect x="46" y="64" width="34" height="14" rx="4" fill="url(#dsTeal)" opacity="0.95" />\n'
+        '    <rect x="64" y="20" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
+        '    <rect x="22" y="46" width="14" height="34" rx="4" fill="url(#dsSage)" opacity="0.92" />\n'
+        '    <rect x="36" y="36" width="28" height="28" rx="6" fill="none" stroke="#F8FAFC" stroke-width="2.5" opacity="0.9" />\n'
+        '    <circle cx="50" cy="50" r="6.5" fill="#D94668" />\n'
+        '    <circle cx="50" cy="50" r="2.5" fill="#FFF1F2" />\n'
         "  </g>\n"
-        f'  <text x="116" y="{brand_y}" font-family="\'Open Sans\', \'DejaVu Sans\', \'Liberation Sans\', Arial, sans-serif" font-size="46" font-weight="700" letter-spacing="-0.5">\n'
-        '    <tspan fill="#0EA5E9">MedData</tspan><tspan fill="#14B8A6">Syntis</tspan>\n'
+        f'  <text x="112" y="{brand_y}" font-family="\'Inter\', \'Segoe UI\', \'Helvetica Neue\', Arial, sans-serif" font-size="52" font-weight="800" letter-spacing="-1">\n'
+        '    <tspan fill="#E2E8F0">Data</tspan><tspan fill="#72A8A2">Syntis</tspan>\n'
         "  </text>\n"
         f"{subtitle_line}"
         "</svg>"
+    )
+
+
+def apply_card_surface_style() -> None:
+    """Apply Option 1 matte clinical paper card surfaces (#F8FAFC), larger logo, visible info banners, and compact top page padding."""
+    st.html(
+        """
+        <style>
+        div[data-testid="stMainBlockContainer"],
+        .block-container {
+            padding-top: 1.5rem !important;
+            padding-bottom: 2rem !important;
+        }
+        div[data-testid="stHeadingWithActionElements"] h1,
+        .stMainBlockContainer h1 {
+            padding-top: 0 !important;
+            padding-bottom: 0.2rem !important;
+            margin-top: 0 !important;
+            font-size: 1.85rem !important;
+        }
+        img[data-testid="stLogo"],
+        div[data-testid="stSidebarHeader"] img {
+            height: 3.25rem !important;
+            max-height: 3.25rem !important;
+            width: auto !important;
+        }
+        div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"],
+        div[data-testid="stVerticalBlockBorderWrapper"],
+        div[data-testid="stExpander"],
+        div[data-testid="stMetric"] {
+            background-color: light-dark(#FBFDFF, #162032) !important;
+            border-color: light-dark(#CBD5E1, #334155) !important;
+            box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+        }
+        div[data-testid="stMetric"] {
+            padding: 0.6rem 0.9rem !important;
+        }
+        div[data-testid="stMetricValue"] > div {
+            font-size: 1.65rem !important;
+            line-height: 1.2 !important;
+        }
+        div[data-testid="stAlertContainer"]:has(> div[data-testid="stAlertContentInfo"]) {
+            background-color: light-dark(#E3EFF8, #1E3A5F) !important;
+            color: light-dark(#234B6E, #DBEAFE) !important;
+            border: 1px solid light-dark(#B6D4EC, #2563EB) !important;
+            border-left: 4px solid light-dark(#3B6E9C, #60A5FA) !important;
+            border-radius: 0.5rem !important;
+            padding: 0.65rem 1rem !important;
+        }
+        div[data-testid="stVerticalBlock"]:has(> div[data-testid="stLayoutWrapper"] > div[class*="st-key-clinical_scroll_"]),
+        div[class*="st-key-clinical_scroll_"] > div[data-testid="stVerticalBlock"],
+        div[class*="st-key-clinical_scroll_"] {
+            background-color: transparent !important;
+            box-shadow: none !important;
+            border: none !important;
+        }
+        </style>
+        """
     )
 
 

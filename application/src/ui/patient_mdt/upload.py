@@ -2,15 +2,18 @@ import os
 import streamlit as st
 
 from src.application.config import AppConfig
-from src.application.app_functions import (
-    enqueue_rcp_batch,
-    full_read_mtd_agents,
-    ingest_and_associate_rcp,
-    resolve_rcp_upload,
+from src.application.use_cases import (
+    PatientMDTFormExtractionService,
+    PatientRecordService,
 )
 from src.domain.patient import Patient
+from src.domain.patient_mdt_form import NonPatientMDTFormError
 from src.domain.worker import RCPProcessingStatus
-from src.infrastructure.documents.mongodb import Mongodb
+from src.infrastructure.documents.repositories import (
+    MongoDocumentCacheRepository,
+    MongoPatientMDTFormRepository,
+    MongoPatientRepository,
+)
 from src.infrastructure.queue import QueueBroker
 
 
@@ -19,28 +22,30 @@ PAGES_DIR_SRC = "src/ui"
 logger = app_conf.set_logger("ui", default_context={"page": "upload"})
 
 
+def _get_extraction_service() -> PatientMDTFormExtractionService:
+    """Instantiate a `PatientMDTFormExtractionService` for the active UI configuration."""
+    record_service = PatientRecordService.from_config(app_conf)
+    return PatientMDTFormExtractionService(
+        config=app_conf,
+        patient_repo=MongoPatientRepository(app_conf),
+        mdt_form_repo=MongoPatientMDTFormRepository(app_conf),
+        cache_repo=MongoDocumentCacheRepository(app_conf),
+        patient_record_service=record_service,
+    )
+
+
 def load_existing_patients() -> list[Patient]:
-    """Charge la liste des patients existants depuis MongoDB."""
+    """Load the list of existing patients from MongoDB."""
     if app_conf.rcp.display_type != "mongodb":
         return []
-    db_client = Mongodb(app_conf)
-    try:
-        raw_patients = db_client.get_all_patients()
-        patients = []
-        for raw in raw_patients:
-            try:
-                patients.append(Patient.model_validate(raw))
-            except Exception as e:
-                logger.warning(f"Impossible de valider le patient {raw}: {e}")
-        return patients
-    finally:
-        db_client.close()
+    patient_repo = MongoPatientRepository(app_conf)
+    return patient_repo.list_all()
 
 
 def _format_business_status(rcp_doc: dict | None) -> tuple[str, int, bool]:
     """
-    Traduit l'état du document RCP en libellé purement métier, pourcentage d'avancement
-    et indicateur d'ouverture du dossier patient.
+    Translate the PatientMDTForm processing state into a business label, progress percentage,
+    and an indicator of whether the patient dossier can be opened.
     """
     if not rcp_doc:
         return "⏳ En attente de traitement", 0, False
@@ -92,19 +97,24 @@ def _resolve_patient_display_name(
 @st.fragment(run_every="3s")
 def render_upload_queue_tracker():
     """
-    Affiche en temps réel l'avancement de la file de traitement en langage métier
-    sans aucun élément technique.
+    Display the processing queue progress in real time using business-oriented labels
+    without exposing technical internals.
     """
     if app_conf.rcp.display_type != "mongodb":
         return
 
     broker = QueueBroker(app_conf)
-    db_client = Mongodb(app_conf)
+    mdt_repo = MongoPatientMDTFormRepository(app_conf)
+    patient_repo = MongoPatientRepository(app_conf)
     try:
         stats = broker.get_queue_stats()
         active_jobs = broker.get_queue_jobs(
             status="PENDING", limit=100
         ) + broker.get_queue_jobs(status="PROCESSING", limit=100)
+        failed_jobs = broker.get_queue_jobs(status="FAILED", limit=100)
+        failed_jobs_by_file = {
+            j["filename"]: j for j in failed_jobs if j.get("filename")
+        }
         batch_info = st.session_state.get("last_upload_batch") or {}
         batch_files: list[str] = batch_info.get("files", [])
 
@@ -122,35 +132,29 @@ def render_upload_queue_tracker():
 
         rcp_docs_by_file: dict[str, dict] = {}
         if tracked_files:
-            docs = list(
-                db_client.database["rcp_info"].find(
-                    {"file": {"$in": tracked_files}},
-                    {
-                        "file": 1,
-                        "patient_id": 1,
-                        "PatientAdministrative": 1,
-                        "processing_status": 1,
-                        "processing_step": 1,
-                        "processing_progress_pct": 1,
-                    },
-                )
+            docs = mdt_repo.list_by_filenames(
+                tracked_files,
+                projection={
+                    "file": 1,
+                    "patient_id": 1,
+                    "PatientAdministrative": 1,
+                    "processing_status": 1,
+                    "processing_step": 1,
+                    "processing_progress_pct": 1,
+                },
             )
             rcp_docs_by_file = {d["file"]: d for d in docs if "file" in d}
 
-        raw_patients = db_client.get_all_patients()
-        patients_by_id: dict[str, Patient] = {}
-        for raw in raw_patients:
-            try:
-                p = Patient.model_validate(raw)
-                patients_by_id[p.patient_id] = p
-            except Exception:
-                continue
+        patients_by_id: dict[str, Patient] = {
+            p.patient_id: p for p in patient_repo.list_all()
+        }
+        thinking_snap = broker.get_job_thinking()
     finally:
         broker.close()
-        db_client.close()
 
-    st.divider()
-    st.subheader("⏳ Suivi de la file de traitement")
+    with st.container(key="clinical_scroll_upload_tracker"):
+        st.divider()
+        st.subheader("⏳ Suivi de la file de traitement")
 
     active_total = stats["pending"] + stats["processing"]
     if active_total > 0:
@@ -158,17 +162,78 @@ def render_upload_queue_tracker():
             f"📋 **{stats['processing']}** fiche(s) en cours de traitement • "
             f"**{stats['pending']}** tâche(s) en attente dans la file de traitement"
         )
+        if thinking_snap.get("active"):
+            active_fn = thinking_snap.get("filename") or "-"
+            active_agent = (
+                thinking_snap.get("active_agent") or "Initialisation de l'agent..."
+            )
+            active_step = thinking_snap.get("current_step") or "-"
+            thinking_text = thinking_snap.get("current_thinking") or ""
+            with st.expander(
+                f"💭 Réflexion IA en direct — {active_fn} ({active_agent})",
+                expanded=True,
+            ):
+                st.caption(f"Étape : **{active_step}** · Agent : `{active_agent}`")
+                with st.container(height=160, border=True):
+                    if thinking_text:
+                        st.caption(thinking_text)
+                    else:
+                        st.caption(
+                            "_En attente des premiers jetons de réflexion IA..._"
+                        )
+        if thinking_snap.get("active"):
+            active_fn = thinking_snap.get("filename") or "-"
+            active_agent = (
+                thinking_snap.get("active_agent") or "Initialisation de l'agent..."
+            )
+            active_step = thinking_snap.get("current_step") or "-"
+            thinking_text = thinking_snap.get("current_thinking") or ""
+            with st.expander(
+                f"💭 Réflexion IA en direct — {active_fn} ({active_agent})",
+                expanded=True,
+            ):
+                st.caption(f"Étape : **{active_step}** · Agent : `{active_agent}`")
+                with st.container(height=160, border=True):
+                    if thinking_text:
+                        st.caption(thinking_text)
+                    else:
+                        st.caption(
+                            "_En attente des premiers jetons de réflexion IA..._"
+                        )
     else:
         st.success("✅ Toutes les fiches de la file de traitement sont prêtes.")
 
     if tracked_files:
+        active_files_set = {j.get("filename") for j in active_jobs if j.get("filename")}
         progress_values = []
         rows_data = []
         for fn in tracked_files:
             rcp_doc = rcp_docs_by_file.get(fn)
-            status_label, pct, can_open = _format_business_status(rcp_doc)
-            patient_label = _resolve_patient_display_name(rcp_doc, patients_by_id)
-            pid = rcp_doc.get("patient_id") if rcp_doc else None
+            failed_job = failed_jobs_by_file.get(fn)
+            if rcp_doc is None and failed_job is not None:
+                err_msg = failed_job.get("error_message") or "Échec du traitement"
+                status_label = f"❌ {err_msg}"
+                pct = 100
+                can_open = False
+                patient_label = (
+                    "Document non-RCP"
+                    if "n'est pas une fiche RCP" in err_msg
+                    else "Échec"
+                )
+                pid = None
+                is_rejected = True
+            elif rcp_doc is None and fn not in active_files_set:
+                status_label = "❌ Document refusé (non-RCP)"
+                pct = 100
+                can_open = False
+                patient_label = "Document non-RCP"
+                pid = None
+                is_rejected = True
+            else:
+                status_label, pct, can_open = _format_business_status(rcp_doc)
+                patient_label = _resolve_patient_display_name(rcp_doc, patients_by_id)
+                pid = rcp_doc.get("patient_id") if rcp_doc else None
+                is_rejected = False
             progress_values.append(pct)
             rows_data.append(
                 {
@@ -178,6 +243,7 @@ def render_upload_queue_tracker():
                     "status_label": status_label,
                     "pct": pct,
                     "can_open": can_open,
+                    "is_rejected": is_rejected,
                 }
             )
 
@@ -190,30 +256,42 @@ def render_upload_queue_tracker():
         )
 
         for row in rows_data:
-            c1, c2, c3, c4 = st.columns([3, 3, 3, 2], vertical_alignment="center")
-            c1.markdown(f"📄 `{row['file']}`")
-            c2.markdown(f"👤 **{row['patient_label']}**")
-            c3.markdown(row["status_label"])
-            if row["can_open"]:
-                target_url = (
-                    f"datas?patient_id={row['patient_id']}&file={row['file']}"
-                    if row.get("patient_id")
-                    else f"datas?file={row['file']}"
-                )
-                c4.link_button(
-                    "👁️ Ouvrir le dossier",
-                    target_url,
-                    width="stretch",
-                )
-            else:
-                c4.caption("⏳ Identification...")
+            with st.container(border=True):
+                c1, c2, c3, c4 = st.columns([3, 3, 3, 2], vertical_alignment="center")
+                c1.markdown(f"📄 `{row['file']}`")
+                c2.markdown(f"👤 **{row['patient_label']}**")
+                c3.markdown(row["status_label"])
+                if row["can_open"]:
+                    target_url = (
+                        f"datas?patient_id={row['patient_id']}&file={row['file']}"
+                        if row.get("patient_id")
+                        else f"datas?file={row['file']}"
+                    )
+                    c4.link_button(
+                        ":blue[:material/visibility:] Ouvrir le dossier",
+                        target_url,
+                        width="stretch",
+                    )
+                elif row.get("is_rejected"):
+                    c4.caption("🚫 Document refusé")
+                else:
+                    c4.caption("⏳ Identification...")
 
 
 def upload_view():
-    st.title("🚀 Importer des fiches RCP")
+    title_c1, title_c2 = st.columns([4, 1], vertical_alignment="center")
+    with title_c1:
+        st.title("📥 Intégration documentaire (Multi-PDF)")
+    with title_c2:
+        if st.button(
+            "◀️ Retour aux dossiers",
+            width="stretch",
+        ):
+            st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
+
     st.caption(
-        "Téléversez une ou plusieurs fiches RCP au format PDF. "
-        "Les fiches importées sont ajoutées à la file de traitement : les patients sont d'abord identifiés sur l'ensemble du lot, puis l'analyse clinique complète chaque dossier."
+        "Exhaustivité documentaire : intégrez une ou plusieurs pièces médicales au format PDF. "
+        "Les documents sont traités séquentiellement (identification administrative du patient puis structuration clinique et contrôle de complétude)."
     )
 
     existing_patients = load_existing_patients()
@@ -288,6 +366,7 @@ def upload_view():
 
         if st.button(btn_label, type="primary", width="stretch"):
             os.makedirs(app_conf.rcp.path, exist_ok=True)
+            extraction_service = _get_extraction_service()
             if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
                 files_payload: list[dict] = []
                 for uploaded_file in uploaded_files:
@@ -296,8 +375,8 @@ def upload_view():
                         original_name, global_patient_id
                     )
                     bytes_data = uploaded_file.getvalue()
-                    filename, is_duplicate = resolve_rcp_upload(
-                        app_conf, bytes_data, original_name
+                    filename, is_duplicate = extraction_service.resolve_upload(
+                        bytes_data, original_name
                     )
 
                     if is_duplicate:
@@ -318,8 +397,7 @@ def upload_view():
                     )
 
                 if files_payload:
-                    enqueue_res = enqueue_rcp_batch(
-                        app_conf=app_conf,
+                    enqueue_res = extraction_service.enqueue_batch(
                         files_payload=files_payload,
                         run_full_ai=run_full_ai,
                     )
@@ -353,8 +431,8 @@ def upload_view():
                     )
                     try:
                         bytes_data = uploaded_file.getvalue()
-                        filename, is_duplicate = resolve_rcp_upload(
-                            app_conf, bytes_data, original_name
+                        filename, is_duplicate = extraction_service.resolve_upload(
+                            bytes_data, original_name
                         )
                         if is_duplicate:
                             st.warning(
@@ -378,19 +456,14 @@ def upload_view():
                         with open(target_path, "wb") as pdf:
                             pdf.write(bytes_data)
 
-                        _, patient_dict = ingest_and_associate_rcp(
-                            app_conf=app_conf,
+                        _, patient_dict = extraction_service.ingest_and_associate(
                             filename=filename,
                             patient_id=target_patient_id,
                         )
                         if run_full_ai:
-                            full_read_mtd_agents(
-                                app_conf=app_conf,
-                                filename=filename,
-                                logger=logger,
-                            )
+                            extraction_service.extract_all_sections(filename=filename)
                         patient_obj = (
-                            Patient.model_validate(patient_dict)
+                            Patient.from_persistence(patient_dict)
                             if patient_dict
                             else None
                         )
@@ -410,6 +483,17 @@ def upload_view():
                                 "patient_id": resolved_pid,
                                 "patient_label": patient_label,
                                 "status": "✅ Succès",
+                            }
+                        )
+                    except NonPatientMDTFormError as e:
+                        logger.warning(f"Document refusé ({original_name}): {e}")
+                        st.error(f"🚫 `{original_name}` : {e}")
+                        batch_results.append(
+                            {
+                                "file": original_name,
+                                "patient_id": "",
+                                "patient_label": "Document non-RCP",
+                                "status": "❌ Refusé (non-RCP)",
                             }
                         )
                     except Exception as e:
