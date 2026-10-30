@@ -181,25 +181,6 @@ def render_upload_queue_tracker():
                         st.caption(
                             "_En attente des premiers jetons de réflexion IA..._"
                         )
-        if thinking_snap.get("active"):
-            active_fn = thinking_snap.get("filename") or "-"
-            active_agent = (
-                thinking_snap.get("active_agent") or "Initialisation de l'agent..."
-            )
-            active_step = thinking_snap.get("current_step") or "-"
-            thinking_text = thinking_snap.get("current_thinking") or ""
-            with st.expander(
-                f"💭 Réflexion IA en direct — {active_fn} ({active_agent})",
-                expanded=True,
-            ):
-                st.caption(f"Étape : **{active_step}** · Agent : `{active_agent}`")
-                with st.container(height=160, border=True):
-                    if thinking_text:
-                        st.caption(thinking_text)
-                    else:
-                        st.caption(
-                            "_En attente des premiers jetons de réflexion IA..._"
-                        )
     else:
         st.success("✅ Toutes les fiches de la file de traitement sont prêtes.")
 

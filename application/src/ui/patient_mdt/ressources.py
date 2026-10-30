@@ -7,7 +7,7 @@ from src.application.ressources import Ressources
 # Page configurations
 st.title("📚 Référentiels cliniques & recommandations")
 st.caption(
-    "Conformité aux recommandations : consultez et indexez les référentiels scientifiques et cliniques (ex. TNCD) servant de base au contrôle de complétude et aux propositions cadrées."
+    "Conformité aux recommandations : consultez et indexez les référentiels scientifiques et cliniques (ex. TNCD, PNDS) servant de base au contrôle de complétude et aux propositions cadrées."
 )
 
 app_conf = AppConfig()

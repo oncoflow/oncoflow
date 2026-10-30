@@ -75,7 +75,7 @@ class PatientMDTForm:
 
     def __init__(
         self,
-        file: str,
+        file: str = "",
         patient_id: str | None = None,
         ui_date: datetime | None = None,
         processing_status: RCPProcessingStatus | str = RCPProcessingStatus.COMPLETED,
@@ -83,8 +83,10 @@ class PatientMDTForm:
         processing_progress_pct: float = 0.0,
         sections: dict[str, Any] | None = None,
         execution_times: dict[str, float] | None = None,
+        *,
+        document: str | None = None,
     ) -> None:
-        self.file = file
+        self.file = file or document or ""
         self.patient_id = patient_id
         self.ui_date = ui_date
         self.processing_status = (

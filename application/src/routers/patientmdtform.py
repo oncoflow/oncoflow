@@ -390,7 +390,7 @@ def process_rcp(filename: str, request: ProcessRequest, config: DomainConfigDep)
 
         form_cls = get_domain_mdt_form_cls(config.domain)
         if matched_model_name and matched_model:
-            form = form_cls(document=filename)
+            form = form_cls(file=filename)
             reader = DocumentReader(config=config, document=filename)
             reader.read_document()
             extraction_service.extract_section(

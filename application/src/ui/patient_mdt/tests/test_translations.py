@@ -13,6 +13,7 @@ def test_translation_french():
 
     # Test basic labels
     assert translate("First name of the patient") == "Prénom du patient"
+    assert translate("Name of the patient at birth") == "Nom de naissance du patient"
     assert translate("first_name") == "Prénom"
 
     # Test Enum with class labels (WHOPerformanceStatus)

@@ -788,6 +788,9 @@ def rerun_all_models(filename: str, section_key: str = "default"):
     for model_cls in models:
         model_name = model_cls.__name__
         title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
+        tab_name = SECTION_META.get(model_name, {}).get("tab", "clinical")
+        tab_suffix = "dec" if tab_name == "decision" else "clin"
+        st.session_state[f"run_ai_{section_key}_{tab_suffix}_{filename}_{title}"] = True
         st.session_state[f"run_ai_{section_key}_{filename}_{title}"] = True
     st.session_state["run_full"] = None
     st.rerun()
@@ -937,7 +940,20 @@ def render_unified_patient_banner(
                         )
                     st.rerun()
                 else:
-                    rerun_all_models(default_file, section_key=section_key)
+                    try:
+                        with st.status(
+                            f"Relance de l'analyse complète ({default_file}) ..."
+                        ) as status:
+                            st_callback = ThreadSafeStreamlitCallbackHandler(status)
+                            extraction_service.extract_all_sections(
+                                filename=default_file,
+                                callbacks=[st_callback],
+                            )
+                    except Exception as e:
+                        logger.error(f"Erreur lors de la relance complète : {e}")
+                        st.error(f"Erreur lors de l'exécution de l'IA : {e}")
+                    finally:
+                        st.rerun()
 
         if is_power:
             power_mode(
@@ -1706,7 +1722,7 @@ def _render_form_sections_list(
                             st_callback = ThreadSafeStreamlitCallbackHandler(status)
                             reader = get_mtd_reader(target_filename)
                             form_cls = get_domain_mdt_form_cls(app_conf.domain)
-                            form = form_cls(document=target_filename)
+                            form = form_cls(file=target_filename)
                             extraction_service.extract_section(
                                 form=form,
                                 reader=reader,

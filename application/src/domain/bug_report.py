@@ -21,7 +21,7 @@ class BugCategory(str, Enum):
     def labels(cls) -> dict["BugCategory", str]:
         return {
             cls.ai_extraction: "Extraction IA / Résumé clinique",
-            cls.rag_guidelines: "Référentiels TNCD / RAG",
+            cls.rag_guidelines: "Référentiels cliniques (TNCD, PNDS) / RAG",
             cls.chat_agent: "Assistant IA / Débat d'experts",
             cls.ui: "Interface utilisateur / Affichage",
             cls.import_pdf: "Import PDF / OCR",

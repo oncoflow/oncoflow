@@ -298,6 +298,9 @@ class TestPureDomainEntitiesAndValueObjects:
             PatientMDTSmaForm.select_latest_analyzed([raw_doc])["file"]
             == "sma_patient_2026.pdf"
         )
+        assert PatientMDTSmaForm(document="sma_patient_2026.pdf").file == (
+            "sma_patient_2026.pdf"
+        )
 
 
 class TestRepositoriesAndApplicationUseCases:

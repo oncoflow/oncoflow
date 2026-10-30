@@ -10,7 +10,7 @@ from src.application.config import AppConfig
 # Legacy import to support existing patch-based unit tests
 from src.application.reader import DocumentReader
 from src.application.agent.agent import OncowflowAgent, DebateTurn
-from src.domain.agents import Agents
+from src.domain.agents import Agents, get_domain_agents_cls
 
 
 def collaborative_debate(
@@ -24,7 +24,11 @@ def collaborative_debate(
     callbacks: list | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
-        coordinator_agent_cls = Agents.Coordinator_agent
+        domain = getattr(config, "domain", None)
+        if isinstance(Agents.Coordinator_agent, type) and isinstance(domain, str):
+            coordinator_agent_cls = get_domain_agents_cls(domain).Coordinator_agent
+        else:
+            coordinator_agent_cls = Agents.Coordinator_agent
     logger.info("Running collaborative debate mode...")
     # Step 0 : init agents, name them and assign resources to them
     agents = []
