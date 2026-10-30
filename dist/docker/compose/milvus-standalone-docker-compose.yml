@@ -5,7 +5,33 @@ x-logging: &default-logging
     max-file: "${DOCKER_LOG_MAX_FILE:-5}"
     compress: "true"
 
+x-milvus-image: &milvus-image milvusdb/milvus:v3.0.3
+
 services:
+  milvus-volume-init:
+    container_name: milvus-volume-init
+    image: *milvus-image
+    user: "0:0"
+    network_mode: none
+    read_only: true
+    restart: "no"
+    logging: *default-logging
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        uid="$$(id -u milvus)"
+        gid="$$(id -g milvus)"
+        marker="/var/lib/milvus/.milvus-volume-owner-$${uid}-$${gid}"
+        if [ ! -e "$${marker}" ]; then
+          echo "Preparing /var/lib/milvus for $${uid}:$${gid}"
+          chown -R "$${uid}:$${gid}" /var/lib/milvus
+          touch "$${marker}"
+          chown "$${uid}:$${gid}" "$${marker}"
+        fi
+    volumes:
+      - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/milvus:/var/lib/milvus
+
   etcd:
     container_name: milvus-etcd
     image: quay.io/coreos/etcd:v3.5.25
@@ -47,7 +73,7 @@ services:
 
   standalone:
     container_name: milvus-standalone
-    image: milvusdb/milvus:v2.6.24
+    image: *milvus-image
     restart: unless-stopped
     logging: *default-logging
     command: ["milvus", "run", "standalone"]
@@ -69,8 +95,12 @@ services:
       - "127.0.0.1:19530:19530"
       - "127.0.0.1:9091:9091"
     depends_on:
-      - "etcd"
-      - "minio"
+      etcd:
+        condition: service_started
+      minio:
+        condition: service_started
+      milvus-volume-init:
+        condition: service_completed_successfully
 
 networks:
   default:

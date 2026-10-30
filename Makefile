@@ -43,15 +43,17 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help install upgrade start-api start-ui start-worker start-ui-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-status pull-models clean status get-bugs api ui worker ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
+.PHONY: help init update install upgrade start-api start-ui start-worker start-ui-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui worker ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
 	@echo -e "$(CYAN)Usage: make <commande>$(RESET)"
 	@echo ""
 	@echo -e "$(GREEN)Commandes principales (Développement) :$(RESET)"
+	@echo -e "  $(YELLOW)make init$(RESET)                Initialise l'environnement complet (uv sync + volumes + init Milvus v3.0)"
+	@echo -e "  $(YELLOW)make update$(RESET)              Met à jour les packages Python (uv) et les images Docker (Milvus v3.0, MongoDB)"
 	@echo -e "  $(YELLOW)make install$(RESET)             Installe les dépendances via uv sync"
-	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances (uv lock --upgrade && uv sync)"
+	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances Python (uv lock --upgrade && uv sync)"
 	@echo -e "  $(YELLOW)make start-api$(RESET)           Démarre l'API FastAPI (port $(PORT_API))"
 	@echo -e "  $(YELLOW)make start-ui$(RESET)            Démarre le dashboard Streamlit (port $(PORT_UI))"
 	@echo -e "  $(YELLOW)make start-ui-dev$(RESET)        Démarre Docker en mode proxy, proxy GCP et Streamlit UI"
@@ -60,14 +62,14 @@ help:
 	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI, l'API et le proxy Cloud Run"
 	@echo ""
 	@echo -e "$(GREEN)Commandes de Production (Scaleway L4 24G + OAuth2 Proxy GitHub + Multi-Domaines) :$(RESET)"
-	@echo -e "  $(YELLOW)make init-prod$(RESET)           Initialise l'environnement prod (sudoers, .env.prod, volumes, logrotate, modèles)"
+	@echo -e "  $(YELLOW)make init-prod$(RESET)           Initialise l'environnement prod (sudoers, .env.prod, volumes, init Milvus v3.0, logrotate, modèles)"
 	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
 	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/meddatasyntis)"
 	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Ornith-1.5-35B-A3B (IQ4_XS) et bge-m3 (Q4_K_M)"
 	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre toute la stack prod (Milvus, Mongo, LLM L4, UIs Oncology & SMA, OAuth2, Caddy)"
 	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Arrête tous les conteneurs de la stack prod"
 	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre UIs (Oncology & SMA) + OAuth2 Proxy + Caddy (sans décharger le LLM)"
-	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + pull de l'image UI GHCR + redémarrage sans coupure GPU"
+	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + mise à jour Milvus v3.0 & images UI GHCR + redémarrage sans coupure GPU"
 	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Mise à jour complète de toute la stack Docker prod (y compris LLM/infra)"
 	@echo -e "  $(YELLOW)make status-prod$(RESET)         Affiche l'état des services prod, santé LLM et VRAM GPU (nvidia-smi)"
 	@echo -e "  $(YELLOW)make logs-prod$(RESET)           Affiche les logs en continu de la stack de production"
@@ -82,12 +84,28 @@ help:
 	@echo -e "$(GREEN)Commandes d'infrastructure & Ollama :$(RESET)"
 	@echo -e "  $(YELLOW)make docker-up$(RESET)        Démarre Milvus et MongoDB via Docker Compose"
 	@echo -e "  $(YELLOW)make docker-up-proxy$(RESET)  Démarre Docker en mode proxy (Milvus + MongoDB + embeddings)"
+	@echo -e "  $(YELLOW)make docker-update$(RESET)    Télécharge les dernières images Docker (Milvus v3.0, MongoDB) et met à jour les conteneurs"
 	@echo -e "  $(YELLOW)make docker-down$(RESET)      Arrête les conteneurs Milvus et MongoDB"
 	@echo -e "  $(YELLOW)make docker-status$(RESET)    Vérifie l'état des conteneurs Docker"
 	@echo -e "  $(YELLOW)make pull-models$(RESET)      Télécharge les modèles recommandés dans Ollama local"
 	@echo -e "  $(YELLOW)make status$(RESET)           Affiche l'état des services et des ports"
 	@echo -e "  $(YELLOW)make clean$(RESET)            Nettoie les caches (__pycache__, .pytest_cache, .ruff_cache)"
 	@echo ""
+
+## Initialise l'environnement de développement (dépendances Python, volumes Docker et permissions Milvus v3.0)
+init: install
+	@echo -e "$(CYAN)--> Préparation des volumes Docker de développement ($(DEV_VOLUME_DIR))...$(RESET)"
+	@mkdir -p $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+	@chmod 777 $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
+	@echo -e "$(CYAN)--> Téléchargement des images Docker (Milvus v3.0 & MongoDB) et initialisation du volume Milvus...$(RESET)"
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) pull
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) run --rm milvus-volume-init
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) pull
+	@echo -e "$(GREEN)--> Initialisation de l'environnement terminée.$(RESET)"
+
+## Met à jour les dépendances Python (uv) ainsi que les images et conteneurs Docker (Milvus v3.0, MongoDB)
+update: upgrade docker-update
+	@echo -e "$(GREEN)--> Mise à jour complète (packages Python + infrastructure Docker) terminée.$(RESET)"
 
 ## Installe l'environnement virtuel et les dépendances du projet
 install:
@@ -277,6 +295,23 @@ docker-up-proxy:
 	@echo -e "$(CYAN)--> Démarrage des services en mode proxy (MongoDB + embeddings, sans chat local)...$(RESET)"
 	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) --profile llamacpp up -d
 
+## Met à jour les images Docker de développement (Milvus v3.0 & MongoDB) et recrée les conteneurs si actifs
+docker-update:
+	@mkdir -p $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs}
+	@chmod 777 $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
+	@echo -e "$(CYAN)--> Mise à jour des images Docker (Milvus Standalone v3.0 & MongoDB)...$(RESET)"
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) pull
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) run --rm milvus-volume-init
+	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) pull
+	@if docker ps --format '{{.Names}}' | grep -q '^milvus-standalone$$'; then \
+		echo -e "$(CYAN)--> Recréation des conteneurs Milvus actifs...$(RESET)"; \
+		DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_MILVUS) up -d; \
+	fi
+	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-mongod$$'; then \
+		echo -e "$(CYAN)--> Recréation des conteneurs MongoDB actifs...$(RESET)"; \
+		DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) up -d; \
+	fi
+
 ## Arrête les services d'infrastructure Docker
 docker-down:
 	@echo -e "$(YELLOW)--> Arrêt des conteneurs Docker...$(RESET)"
@@ -336,8 +371,11 @@ init-prod:
 	fi
 	@echo -e "$(CYAN)--> Création des répertoires de volumes persistants et des dossiers de domaines (oncology & sma)...$(RESET)"
 	@mkdir -p dist/docker/compose/volumes/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,caddy_data,caddy_config}
+	@mkdir -p /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,models,logs,queue,caddy_data,caddy_config} 2>/dev/null || true
+	@mkdir -p /data/meddatasyntis/oncologic/{mtd,documents} /data/meddatasyntis/sma/{mtd,documents} 2>/dev/null || true
 	@mkdir -p application/ressources/PatientMDTForm/{oncology,sma} application/ressources/documents/{oncology,sma}
 	@chmod 777 dist/docker/compose/volumes/{mongodb,mongodb_config,logs} 2>/dev/null || true
+	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "$(CYAN)--> Génération de $(ENV_PROD) depuis .env.prod.example...$(RESET)"; \
 		cp .env.prod.example "$(ENV_PROD)"; \
@@ -351,6 +389,9 @@ init-prod:
 	else \
 		echo -e "  [$(GREEN)OK$(RESET)] Fichier $(ENV_PROD) déjà présent."; \
 	fi
+	@echo -e "$(CYAN)--> Initialisation du volume Milvus v3.0 (milvus-volume-init)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) run --rm milvus-volume-init
 	@$(MAKE) logrotate-prod
 	@$(MAKE) pull-models-prod
 	@echo -e "$(GREEN)--> Initialisation de production terminée.$(RESET)"
@@ -487,15 +528,18 @@ restart-prod:
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy
 	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
 
-## Met à jour le dépôt git et l'image Docker UI depuis GHCR sans décharger le modèle LLM du GPU
+## Met à jour le dépôt git, Milvus v3.0 et l'image Docker UI depuis GHCR sans décharger le modèle LLM du GPU
 prod-update:
-	@echo -e "$(CYAN)--> [1/4] Mise à jour du code source (git pull --ff-only)...$(RESET)"
+	@echo -e "$(CYAN)--> [1/5] Mise à jour du code source (git pull --ff-only)...$(RESET)"
 	git pull --ff-only
-	@echo -e "$(CYAN)--> [2/4] Téléchargement des dernières images applicatives (UIs Oncology & SMA, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
+	@echo -e "$(CYAN)--> [2/5] Mise à jour de Milvus Standalone (v3.0)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
+	@echo -e "$(CYAN)--> [3/5] Téléchargement des dernières images applicatives (UIs Oncology & SMA, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
-	@echo -e "$(CYAN)--> [3/4] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
+	@echo -e "$(CYAN)--> [4/5] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
-	@echo -e "$(CYAN)--> [4/4] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
+	@echo -e "$(CYAN)--> [5/5] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
 	@echo -e "$(GREEN)--> Mise à jour de production (prod-update) terminée avec succès !$(RESET)"
@@ -504,7 +548,7 @@ prod-update:
 prod-update-all:
 	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + UIs)...$(RESET)"
 	git pull --ff-only
-	docker compose -f $(COMPOSE_MILVUS) pull
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
