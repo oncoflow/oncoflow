@@ -206,10 +206,12 @@ services:
       - |
         SERVER_BIN="/app/llama-server"
         [ -x "$$SERVER_BIN" ] || SERVER_BIN="llama-server"
-        if [ -f "/models/bge-m3-Q4_K_M.gguf" ]; then
-          MODEL_ARGS="-m /models/bge-m3-Q4_K_M.gguf"
+        if [ -f "/models/bge-m3-F16.gguf" ]; then
+          MODEL_ARGS="-m /models/bge-m3-F16.gguf"
+        elif [ -f "/models/bge-m3-FP16.gguf" ]; then
+          MODEL_ARGS="-m /models/bge-m3-FP16.gguf"
         else
-          MODEL_ARGS="--hf-repo gpustack/bge-m3-GGUF --hf-file bge-m3-Q4_K_M.gguf"
+          MODEL_ARGS="--hf-repo gpustack/bge-m3-GGUF --hf-file bge-m3-FP16.gguf"
         fi
         exec $$SERVER_BIN $$MODEL_ARGS "$$@"
       - --
