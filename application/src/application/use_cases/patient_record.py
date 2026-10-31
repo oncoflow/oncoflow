@@ -516,8 +516,11 @@ class PatientRecordService:
                     "missing": card["missing"],
                     "urgency": card["urgency"],
                     "urgency_score": card["urgency_score"],
+                    "priority_level": card.get("priority_level"),
                     "intervention_required": card["intervention_required"],
                     "intervention_type": card["intervention_type"],
+                    "care_adaptation_suggested": card.get("care_adaptation_suggested"),
+                    "proposed_care_type": card.get("proposed_care_type"),
                     "processing_status": card.get("processing_status"),
                     "processing_step": card.get("processing_step"),
                     "processing_progress_pct": card.get("processing_progress_pct", 100),
@@ -529,6 +532,32 @@ class PatientRecordService:
             reverse=True,
         )
         return patient_cards
+
+    def list_patients(self, identified_only: bool = False) -> list[dict[str, Any]]:
+        """
+        Return the list of raw `Patient` records with `display_label` and `full_name`.
+        When `identified_only=True`, exclude temporary `patient_*` IDs and `"Inconnu"` records.
+        """
+        patients = self.patient_repo.list_all()
+        result: list[dict[str, Any]] = []
+        for p in patients:
+            if identified_only:
+                if p.patient_id.startswith("patient_"):
+                    continue
+                if p.full_name.strip().lower() in ("", "inconnu", "unknown"):
+                    continue
+            dumped = p.model_dump(mode="json")
+            dumped["display_label"] = p.display_label
+            dumped["full_name"] = p.full_name
+            result.append(dumped)
+        return result
+
+    def enrich_form_doc(self, doc: dict[str, Any]) -> dict[str, Any]:
+        """Attach computed `metrics` and `mdt_date` fields to a `PatientMDTForm` document dict."""
+        enriched = dict(doc)
+        enriched["metrics"] = self.form_cls.extract_card_metrics(doc)
+        enriched["mdt_date"] = self.form_cls.extract_mdt_date(doc)
+        return enriched
 
     def _get_patient_and_forms(
         self, patient_id: str
@@ -576,7 +605,7 @@ class PatientRecordService:
         return {
             "patient": patient.model_dump(mode="json"),
             "latest_file": latest_file,
-            "rcps": forms_list,
+            "rcps": [self.enrich_form_doc(d) for d in forms_list],
         }
 
     def resolve_patient_record(

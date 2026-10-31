@@ -409,6 +409,7 @@ class InMemoryQueueManager:
                     priority=int(JobPriority.SINGLE_MODEL_RERUN),
                     current_step=f"Relance en attente ({model_name})",
                     total_models=1,
+                    preserve_manual_edits=preserve_manual_edits,
                     max_retries=self.base_config.queue.max_retries,
                     created_at=now,
                 ).model_dump(mode="python")
@@ -1123,6 +1124,7 @@ class InMemoryQueueManager:
         batch_id: str | None = None,
         limit: int = 100,
         domain: str | None = None,
+        filename: str | None = None,
     ) -> list[dict[str, Any]]:
         target_domain = domain.strip().lower() if domain else None
         with self._lock:
@@ -1132,6 +1134,7 @@ class InMemoryQueueManager:
                 if (not target_domain or j["domain"] == target_domain)
                 and (not status or j["status"] == status)
                 and (not batch_id or j.get("batch_id") == batch_id)
+                and (not filename or j.get("filename") == filename)
             ]
         jobs.sort(key=lambda j: j.get("created_at") or datetime.min, reverse=True)
         return jobs[: int(limit)]
@@ -1874,6 +1877,7 @@ class QueueBroker:
         batch_id: str | None = None,
         limit: int = 100,
         cross_domain: bool = False,
+        filename: str | None = None,
     ) -> list[dict[str, Any]]:
         target_domain = None if cross_domain else self.domain
         if self._use_remote_api():
@@ -1885,6 +1889,8 @@ class QueueBroker:
                     params["status"] = status
                 if batch_id:
                     params["batch_id"] = batch_id
+                if filename:
+                    params["filename"] = filename
                 resp = httpx.get(
                     f"{self.api_url}/api/v1/queue/jobs",
                     params=params,
@@ -1900,6 +1906,7 @@ class QueueBroker:
             batch_id=batch_id,
             limit=limit,
             domain=target_domain,
+            filename=filename,
         )
 
     def cancel_or_delete_job(self, job_id: str) -> bool:

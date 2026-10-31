@@ -1,3 +1,4 @@
+.git/
 */.venv/
 */venv/
 */.chroma/
@@ -15,3 +16,10 @@ application/config/auth_config*.yaml
 application/tests/
 **/.pytest_cache/
 **/.ruff_cache/
+
+# Node.js / Web UI build & test artifacts
+**/node_modules/
+web/dist/
+web/playwright-report/
+web/test-results/
+web/tests/

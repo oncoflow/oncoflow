@@ -43,13 +43,17 @@ oncologic.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
 
     handle {
         route {
-            # Never trust identity headers sent by the client: only forward_auth may set them.
+            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
             request_header -X-Auth-Request-User
             request_header -X-Auth-Request-Email
             request_header -X-Auth-Request-Preferred-Username
             request_header -X-Forwarded-User
             request_header -X-Forwarded-Email
             request_header -X-Forwarded-Preferred-Username
+            request_header -X-Oncoflow-User
+            request_header -X-Oncoflow-User-Name
+            request_header -X-Oncoflow-Proxy-Secret
+            request_header -X-Proxy-Secret
             import oauth_forward
             reverse_proxy oncoflow-ui-oncology:8501 {
                 # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
@@ -68,17 +72,83 @@ sma.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
 
     handle {
         route {
-            # Never trust identity headers sent by the client: only forward_auth may set them.
+            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
             request_header -X-Auth-Request-User
             request_header -X-Auth-Request-Email
             request_header -X-Auth-Request-Preferred-Username
             request_header -X-Forwarded-User
             request_header -X-Forwarded-Email
             request_header -X-Forwarded-Preferred-Username
+            request_header -X-Oncoflow-User
+            request_header -X-Oncoflow-User-Name
+            request_header -X-Oncoflow-Proxy-Secret
+            request_header -X-Proxy-Secret
             import oauth_forward
             reverse_proxy oncoflow-ui-sma:8501 {
                 # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
                 header_up X-Oncoflow-Proxy-Secret {$APP_PROXY_SECRET}
+                header_up Host {host}
+                header_up X-Real-IP {remote_host}
+                header_up X-Forwarded-Uri {uri}
+            }
+        }
+    }
+}
+
+oncologic-new.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
+    encode zstd gzip
+    import oauth_guard
+
+    handle {
+        route {
+            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
+            request_header -X-Auth-Request-User
+            request_header -X-Auth-Request-Email
+            request_header -X-Auth-Request-Preferred-Username
+            request_header -X-Forwarded-User
+            request_header -X-Forwarded-Email
+            request_header -X-Forwarded-Preferred-Username
+            request_header -X-Oncoflow-User
+            request_header -X-Oncoflow-User-Name
+            request_header -X-Oncoflow-Domain
+            request_header -X-Oncoflow-Proxy-Secret
+            request_header -X-Proxy-Secret
+            import oauth_forward
+            reverse_proxy oncoflow-web:3000 {
+                # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
+                header_up X-Oncoflow-Proxy-Secret {$APP_PROXY_SECRET}
+                header_up X-Oncoflow-Domain oncology
+                header_up Host {host}
+                header_up X-Real-IP {remote_host}
+                header_up X-Forwarded-Uri {uri}
+            }
+        }
+    }
+}
+
+sma-new.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
+    encode zstd gzip
+    import oauth_guard
+
+    handle {
+        route {
+            # Never trust identity or proxy headers sent by the client: only forward_auth / Caddy may set them.
+            request_header -X-Auth-Request-User
+            request_header -X-Auth-Request-Email
+            request_header -X-Auth-Request-Preferred-Username
+            request_header -X-Forwarded-User
+            request_header -X-Forwarded-Email
+            request_header -X-Forwarded-Preferred-Username
+            request_header -X-Oncoflow-User
+            request_header -X-Oncoflow-User-Name
+            request_header -X-Oncoflow-Domain
+            request_header -X-Oncoflow-Proxy-Secret
+            request_header -X-Proxy-Secret
+            import oauth_forward
+            reverse_proxy oncoflow-web:3000 {
+                # Shared secret proving the request went through this proxy (APP_PROXY_SECRET)
+                header_up X-Oncoflow-Proxy-Secret {$APP_PROXY_SECRET}
+                header_up X-Oncoflow-Domain sma
                 header_up Host {host}
                 header_up X-Real-IP {remote_host}
                 header_up X-Forwarded-Uri {uri}

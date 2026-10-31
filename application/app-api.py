@@ -1,19 +1,25 @@
 from contextlib import asynccontextmanager
+from typing import Annotated
 
 import uvicorn
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Query
 
 from src.infrastructure.documents.mongodb import close_all_mongo_clients
 from src.infrastructure.queue import get_global_queue_manager
 from src.models.queue import HealthResponse
+from src.models.rcp import MeResponse, PatientListItemResponse
 from src.routers.agents import router as agents_router
 from src.routers.bug_reports import router as bug_reports_router
 from src.routers.dependencies import (
     AllowedDomainMiddleware,
     get_base_config,
+    get_current_user_info,
     verify_api_token,
 )
-from src.routers.patientmdtform import router as patientmdtform_router
+from src.routers.patientmdtform import (
+    RecordServiceDep,
+    router as patientmdtform_router,
+)
 from src.routers.queue import router as queue_router
 from src.routers.resources import router as resources_router
 
@@ -89,6 +95,40 @@ def healthcheck():
 
 # Include versioned routers (all protected by the shared API token)
 _protected = [Depends(verify_api_token)]
+
+
+@app.get(
+    "/api/v1/me",
+    tags=["system"],
+    response_model=MeResponse,
+    dependencies=_protected,
+)
+def get_me(
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
+):
+    """Return the authenticated user identity and admin role resolved from trusted proxy headers."""
+    return user_info
+
+
+@app.get(
+    "/api/v1/patients",
+    tags=["patientmdtform"],
+    response_model=list[PatientListItemResponse],
+    dependencies=_protected,
+)
+def list_raw_patients(
+    record_service: RecordServiceDep,
+    identified_only: Annotated[
+        bool,
+        Query(
+            description="When true, exclude temporary patient_* identifiers and 'Inconnu' records"
+        ),
+    ] = False,
+):
+    """Return the raw list of `Patient` records for the domain."""
+    return record_service.list_patients(identified_only=identified_only)
+
+
 app.include_router(patientmdtform_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(agents_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(resources_router, prefix="/api/v1", dependencies=_protected)

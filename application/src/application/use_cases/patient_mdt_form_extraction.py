@@ -27,7 +27,7 @@ from src.domain.repositories import (
     PatientMDTFormRepository,
     PatientRepository,
 )
-from src.domain.worker import JobType
+from src.domain.worker import JobType, RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb
 from src.infrastructure.documents.repositories import (
     InMemoryDocumentCacheRepository,
@@ -608,13 +608,14 @@ class PatientMDTFormExtractionService:
         self,
         files_payload: list[dict[str, Any]],
         run_full_ai: bool = True,
+        batch_id: str | None = None,
     ) -> dict[str, Any]:
         """Enqueue a batch of `PatientMDTForm` files into the priority processing queue."""
         from src.infrastructure.queue import QueueBroker
 
         clinical_count = max(1, len(self.form_cls.get_factual_clinical_models()))
         expert_count = max(1, len(self.form_cls.get_expert_models()))
-        batch_id = f"batch_{uuid.uuid4().hex[:10]}"
+        resolved_batch_id = (batch_id or "").strip() or f"batch_{uuid.uuid4().hex[:10]}"
 
         broker = QueueBroker(self.config)
         try:
@@ -627,7 +628,7 @@ class PatientMDTFormExtractionService:
                 res = broker.enqueue_import_file(
                     filename=fname,
                     target_patient_id=target_pid,
-                    batch_id=batch_id,
+                    batch_id=resolved_batch_id,
                     include_clinical=run_full_ai,
                     total_clinical_models=clinical_count,
                     total_expert_models=expert_count,
@@ -638,13 +639,173 @@ class PatientMDTFormExtractionService:
                 else:
                     enqueued_count += 1
             return {
-                "batch_id": batch_id,
+                "batch_id": resolved_batch_id,
                 "enqueued_count": enqueued_count,
                 "already_queued_count": already_queued_count,
                 "results": results,
             }
         finally:
             broker.close()
+
+    def get_batch_status(
+        self,
+        batch_id: str,
+        queue_broker: Any | None = None,
+    ) -> dict[str, Any]:
+        """Return per-file processing status and progress for a given `batch_id`."""
+        from src.infrastructure.queue import QueueBroker
+
+        own_broker = queue_broker is None
+        broker = queue_broker if queue_broker is not None else QueueBroker(self.config)
+        try:
+            batch_jobs = broker.get_queue_jobs(batch_id=batch_id, limit=500)
+        finally:
+            if own_broker and hasattr(broker, "close"):
+                broker.close()
+
+        tracked_files: list[str] = []
+        seen_files: set[str] = set()
+        for j in sorted(batch_jobs, key=lambda x: float(x.get("created_at") or 0.0)):
+            fname = j.get("filename")
+            if fname and fname not in seen_files:
+                seen_files.add(fname)
+                tracked_files.append(fname)
+
+        rcp_docs: dict[str, dict[str, Any]] = {}
+        if tracked_files:
+            for d in self.mdt_form_repo.list_by_files(tracked_files):
+                if "file" in d:
+                    rcp_docs[d["file"]] = d
+
+        patients_by_id: dict[str, Patient] = {
+            p.patient_id: p for p in self.patient_repo.list_all()
+        }
+
+        files_out: list[dict[str, Any]] = []
+        for fname in tracked_files:
+            doc = rcp_docs.get(fname, {})
+            file_jobs = [j for j in batch_jobs if j.get("filename") == fname]
+
+            processing_status = doc.get("processing_status")
+            step = doc.get("processing_step")
+            raw_pct = doc.get("processing_progress_pct")
+            pct = float(raw_pct) if raw_pct is not None else 0.0
+            error = doc.get("processing_error")
+
+            active_jobs = [
+                j for j in file_jobs if j.get("status") in ("RUNNING", "PENDING")
+            ]
+            failed_jobs = [j for j in file_jobs if j.get("status") == "FAILED"]
+
+            if active_jobs:
+                running_job = next(
+                    (j for j in active_jobs if j.get("status") == "RUNNING"),
+                    active_jobs[0],
+                )
+                if not processing_status:
+                    processing_status = running_job.get("status")
+                if not step:
+                    step = running_job.get("current_step") or running_job.get(
+                        "step_label"
+                    )
+                pct = max(pct, float(running_job.get("progress_pct") or 0.0))
+            elif failed_jobs and not processing_status:
+                processing_status = "FAILED"
+                if not error:
+                    error = failed_jobs[0].get("error")
+            elif not processing_status and file_jobs:
+                if all(j.get("status") == "COMPLETED" for j in file_jobs):
+                    processing_status = RCPProcessingStatus.COMPLETED.value
+                    pct = 100.0
+                else:
+                    processing_status = file_jobs[0].get("status")
+
+            if processing_status == RCPProcessingStatus.COMPLETED.value:
+                pct = 100.0
+
+            patient_id = doc.get("patient_id")
+            patient_label: str | None = None
+            if patient_id and patient_id in patients_by_id:
+                patient_label = patients_by_id[patient_id].display_label
+            elif isinstance(doc.get("PatientAdministrative"), dict):
+                admin = doc["PatientAdministrative"]
+                if admin.get("first_name") or admin.get("last_name"):
+                    patient_label = Patient.from_administrative(
+                        admin, filename=fname, patient_id=patient_id
+                    ).display_label
+
+            files_out.append(
+                {
+                    "filename": fname,
+                    "processing_status": processing_status,
+                    "step": step,
+                    "pct": round(pct, 1),
+                    "patient_id": patient_id,
+                    "patient_label": patient_label,
+                    "error": error,
+                }
+            )
+
+        overall_pct = (
+            round(sum(f["pct"] for f in files_out) / len(files_out), 1)
+            if files_out
+            else 0.0
+        )
+        return {
+            "batch_id": batch_id,
+            "overall_pct": overall_pct,
+            "files": files_out,
+        }
+
+    def get_form_status(
+        self,
+        filename: str,
+        queue_broker: Any | None = None,
+    ) -> dict[str, Any] | None:
+        """Return lightweight processing status fields for a single `PatientMDTForm` `filename`."""
+        doc = self.mdt_form_repo.get_by_file(filename)
+        if doc is not None:
+            status_val = doc.get("processing_status")
+            raw_pct = doc.get("processing_progress_pct")
+            if raw_pct is None and status_val == RCPProcessingStatus.COMPLETED.value:
+                pct_val = 100.0
+            elif raw_pct is not None:
+                pct_val = float(raw_pct)
+            else:
+                pct_val = 0.0
+            return {
+                "filename": filename,
+                "processing_status": status_val,
+                "processing_step": doc.get("processing_step"),
+                "processing_progress_pct": pct_val,
+                "processing_error": doc.get("processing_error"),
+                "patient_id": doc.get("patient_id"),
+            }
+
+        from src.infrastructure.queue import QueueBroker
+
+        own_broker = queue_broker is None
+        broker = queue_broker if queue_broker is not None else QueueBroker(self.config)
+        try:
+            file_jobs = broker.get_queue_jobs(filename=filename, limit=20)
+        except Exception:
+            file_jobs = []
+        finally:
+            if own_broker and hasattr(broker, "close"):
+                broker.close()
+
+        if not file_jobs:
+            return None
+
+        top_job = file_jobs[0]
+        return {
+            "filename": filename,
+            "processing_status": top_job.get("status"),
+            "processing_step": top_job.get("current_step") or top_job.get("step_label"),
+            "processing_progress_pct": float(top_job.get("progress_pct") or 0.0),
+            "processing_error": top_job.get("error"),
+            "patient_id": top_job.get("target_patient_id"),
+        }
 
     def enqueue_rerun(
         self,

@@ -65,3 +65,35 @@ def test_bug_reports_endpoints_are_registered_in_openapi(client):
     assert "patch" in paths["/api/v1/bug-reports/{report_id}/status"]
     assert "/api/v1/bug-reports/{report_id}" in paths
     assert "delete" in paths["/api/v1/bug-reports/{report_id}"]
+
+
+def test_phase1_node_ui_endpoints_are_registered_in_openapi(client):
+    """Verify all Phase 1 endpoints are registered in the OpenAPI 3.1 contract."""
+    spec = client.get("/api/v1/openapi.json").json()
+    paths = spec["paths"]
+    assert "/api/v1/me" in paths and "get" in paths["/api/v1/me"]
+    assert "/api/v1/patients" in paths and "get" in paths["/api/v1/patients"]
+    assert (
+        "/api/v1/patientmdtform/schema" in paths
+        and "get" in paths["/api/v1/patientmdtform/schema"]
+    )
+    assert (
+        "/api/v1/patientmdtform/resolve" in paths
+        and "get" in paths["/api/v1/patientmdtform/resolve"]
+    )
+    assert (
+        "/api/v1/patientmdtform/batches/{batch_id}" in paths
+        and "get" in paths["/api/v1/patientmdtform/batches/{batch_id}"]
+    )
+    assert (
+        "/api/v1/patientmdtform/{filename}/jobs-state" in paths
+        and "get" in paths["/api/v1/patientmdtform/{filename}/jobs-state"]
+    )
+    assert (
+        "/api/v1/patientmdtform/{filename}/status" in paths
+        and "get" in paths["/api/v1/patientmdtform/{filename}/status"]
+    )
+    assert (
+        "/api/v1/resources/{filename}/file" in paths
+        and "get" in paths["/api/v1/resources/{filename}/file"]
+    )

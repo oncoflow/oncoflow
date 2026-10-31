@@ -11,11 +11,14 @@ UV := $(shell command -v uv 2>/dev/null || echo $(HOME)/.local/bin/uv)
 GCLOUD := $(shell command -v gcloud 2>/dev/null || echo $(HOME)/google-cloud-sdk/bin/gcloud)
 DEPLOY_USER ?= $(shell id -un)
 
-# Dossier de l'application
+# Dossiers de l'application
 APP_DIR := application
+WEB_DIR := web
 
 # Ports et configurations configurables
 PORT_UI ?= 8501
+PORT_WEB ?= 3000
+HOST_WEB ?= 127.0.0.1
 PORT_API ?= 8000
 HOST_API ?= 127.0.0.1
 CLOUDRUN_SERVICE ?= llama-cpp-chat
@@ -43,7 +46,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install upgrade start-api start-ui start-worker start-ui-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test coverage lint format docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui worker ui-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod
+.PHONY: help init update install install-web upgrade start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web e2e-web build-web docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -53,32 +56,39 @@ help:
 	@echo -e "  $(YELLOW)make init$(RESET)                Initialise l'environnement complet (uv sync + volumes + init Milvus v3.0)"
 	@echo -e "  $(YELLOW)make update$(RESET)              Met à jour les packages Python (uv) et les images Docker (Milvus v3.0, MongoDB)"
 	@echo -e "  $(YELLOW)make install$(RESET)             Installe les dépendances via uv sync"
+	@echo -e "  $(YELLOW)make install-web$(RESET)         Installe les dépendances Node.js de l'interface web"
 	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances Python (uv lock --upgrade && uv sync)"
 	@echo -e "  $(YELLOW)make start-api$(RESET)           Démarre l'API FastAPI (port $(PORT_API))"
 	@echo -e "  $(YELLOW)make start-ui$(RESET)            Démarre le dashboard Streamlit (port $(PORT_UI))"
+	@echo -e "  $(YELLOW)make start-web$(RESET)           Démarre l'API FastAPI Cross-Domains et le serveur Web Node.js Fastify (port $(PORT_WEB))"
 	@echo -e "  $(YELLOW)make start-ui-dev$(RESET)        Démarre Docker en mode proxy, proxy GCP et Streamlit UI"
+	@echo -e "  $(YELLOW)make start-web-dev$(RESET)       Démarre Docker en mode proxy, proxy GCP Cloud Run et l'interface Web Node.js"
 	@echo -e "  $(YELLOW)make cloudrun-proxy$(RESET)      Lance le proxy Cloud Run en tâche de fond (port $(CLOUDRUN_PORT))"
 	@echo -e "  $(YELLOW)make cloudrun-proxy-stop$(RESET) Arrête le proxy Cloud Run"
-	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI, l'API et le proxy Cloud Run"
+	@echo -e "  $(YELLOW)make stop$(RESET)                Arrête l'UI (Streamlit/Web), l'API et le proxy Cloud Run"
 	@echo ""
 	@echo -e "$(GREEN)Commandes de Production (Scaleway L4 24G + OAuth2 Proxy GitHub + Multi-Domaines) :$(RESET)"
 	@echo -e "  $(YELLOW)make init-prod$(RESET)           Initialise l'environnement prod (sudoers, .env.prod, volumes, init Milvus v3.0, logrotate, modèles)"
 	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
 	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/meddatasyntis)"
 	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Ornith-1.5-35B-A3B (IQ4_XS) et bge-m3 (Q4_K_M)"
-	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre toute la stack prod (Milvus, Mongo, LLM L4, UIs Oncology & SMA, OAuth2, Caddy)"
+	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre toute la stack prod (Milvus, Mongo, LLM L4, Streamlit & M3 Web UI oncologic-new/sma-new, OAuth2, Caddy)"
 	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Arrête tous les conteneurs de la stack prod"
-	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre UIs (Oncology & SMA) + OAuth2 Proxy + Caddy (sans décharger le LLM)"
-	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + mise à jour Milvus v3.0 & images UI GHCR + redémarrage sans coupure GPU"
+	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre UIs (Streamlit & Web M3 oncologic-new/sma-new) + API + OAuth2 Proxy + Caddy (sans décharger le LLM)"
+	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + mise à jour Milvus v3.0 & images UI/Web M3 + redémarrage sans coupure GPU"
 	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Mise à jour complète de toute la stack Docker prod (y compris LLM/infra)"
 	@echo -e "  $(YELLOW)make status-prod$(RESET)         Affiche l'état des services prod, santé LLM et VRAM GPU (nvidia-smi)"
 	@echo -e "  $(YELLOW)make logs-prod$(RESET)           Affiche les logs en continu de la stack de production"
 	@echo ""
 	@echo -e "$(GREEN)Commandes de qualité & tests :$(RESET)"
 	@echo -e "  $(YELLOW)make test$(RESET)                Exécute la suite de tests Pytest"
+	@echo -e "  $(YELLOW)make test-web$(RESET)            Exécute les tests unitaires et d'intégration Vitest de $(WEB_DIR)/"
 	@echo -e "  $(YELLOW)make coverage$(RESET)            Mesure le pourcentage de couverture de test"
 	@echo -e "  $(YELLOW)make lint$(RESET)                Vérifie le code avec Ruff"
+	@echo -e "  $(YELLOW)make lint-web$(RESET)            Vérifie le code TypeScript/CSS de $(WEB_DIR)/ avec Biome, tsc --noEmit et check-contrast.mjs"
 	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
+	@echo -e "  $(YELLOW)make format-web$(RESET)          Formate le code de $(WEB_DIR)/ avec Biome"
+	@echo -e "  $(YELLOW)make e2e-web$(RESET)             Exécute les tests end-to-end Playwright de $(WEB_DIR)/"
 	@echo -e "  $(YELLOW)make get-bugs$(RESET)            Récupère et affiche les rapports de bugs depuis MongoDB"
 	@echo ""
 	@echo -e "$(GREEN)Commandes d'infrastructure & Ollama :$(RESET)"
@@ -112,6 +122,11 @@ install:
 	@echo -e "$(CYAN)--> Installation des dépendances avec uv sync...$(RESET)"
 	cd $(APP_DIR) && $(UV) sync
 
+## Installe les dépendances Node.js de l'interface web
+install-web:
+	@echo -e "$(CYAN)--> Installation des dépendances Node.js de l'interface web ($(WEB_DIR))...$(RESET)"
+	npm install --prefix $(WEB_DIR)
+
 ## Met à jour l'ensemble des paquets et synchronise l'environnement
 upgrade:
 	@echo -e "$(CYAN)--> Mise à jour des paquets avec uv lock --upgrade && uv sync...$(RESET)"
@@ -134,6 +149,19 @@ start-ui:
 	API_PID=$$!; \
 	trap "kill $$API_PID 2>/dev/null || true" INT TERM EXIT; \
 	$(UV) run streamlit run app-ui.py --server.port=$(PORT_UI)
+
+## Démarre l'API FastAPI Cross-Domains (en tâche de fond) et le serveur Web Node.js Fastify sur http://localhost:$(PORT_WEB)
+start-web:
+	@echo -e "$(CYAN)--> Démarrage de l'API Cross-Domains (Queue PriorityQueue) et du serveur Web Node.js Fastify sur http://localhost:$(PORT_WEB)...$(RESET)"
+	@pkill -f "[p]ython.*app-api.py" 2>/dev/null || true
+	@pkill -f "[t]sx.*src/main.ts" 2>/dev/null || true
+	@unset VIRTUAL_ENV; \
+	export PYTHONUNBUFFERED=1; \
+	export APP_QUEUE_API_URL=http://127.0.0.1:$(PORT_API); \
+	(cd $(APP_DIR) && $(UV) run python -u app-api.py) & \
+	API_PID=$$!; \
+	trap "kill $$API_PID 2>/dev/null || true" INT TERM EXIT; \
+	WEB_FAKE_API_FALLBACK=false APP_API_URL=http://127.0.0.1:$(PORT_API) PORT_WEB=$(PORT_WEB) HOST_WEB=$(HOST_WEB) npm --prefix $(WEB_DIR) run dev
 
 ## Alias start-worker vers start-api (la file est désormais intégrée dans l'API Cross-Domains)
 start-worker: start-api
@@ -161,6 +189,30 @@ start-ui-dev: cloudrun-proxy docker-up-proxy
 	@APP_CONFIGLLM_TYPE=litellm \
 	APP_CONFIGLLM_URL=http://127.0.0.1 \
 	$(MAKE) start-ui
+
+## Démarre Docker en mode proxy, proxy GCP Cloud Run et l'interface Web Node.js (start-web)
+start-web-dev: cloudrun-proxy docker-up-proxy
+	@echo -e "$(CYAN)--> Vérification de la disponibilité du serveur llama.cpp (Cloud Run)...$(RESET)"
+	@READY=0; \
+	for i in {1..30}; do \
+		if curl -s -m 2 http://127.0.0.1:$(CLOUDRUN_PORT)/health 2>/dev/null | grep -q '"status":"ok"'; then \
+			READY=1; \
+			echo -e "  [$(GREEN)PRÊT$(RESET)] Serveur llama.cpp opérationnel."; \
+			break; \
+		fi; \
+		if [ $$i -eq 1 ]; then \
+			echo -n "  Attente de démarrage du modèle sur Cloud Run (cold start possible)"; \
+		else \
+			echo -n "."; \
+		fi; \
+		sleep 2; \
+	done; \
+	if [ $$READY -eq 0 ]; then \
+		echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le serveur llama.cpp n'a pas encore répondu au /health (le chargement du modèle peut encore être en cours)."; \
+	fi
+	@APP_CONFIGLLM_TYPE=litellm \
+	APP_CONFIGLLM_URL=http://127.0.0.1 \
+	$(MAKE) start-web
 
 ## Lance le proxy Cloud Run en arrière-plan (ou le réutilise s'il est déjà actif) après vérification du login GCP
 cloudrun-proxy:
@@ -204,8 +256,10 @@ cloudrun-proxy-stop:
 # Raccourcis et alias
 api: start-api
 ui: start-ui
+web: start-web
 worker: start-worker
 ui-dev: start-ui-dev
+web-dev: start-web-dev
 start-dev: start-ui-dev
 start: start-ui
 proxy: cloudrun-proxy
@@ -220,13 +274,18 @@ dev:
 	@sleep 2
 	@$(MAKE) start-ui
 
-## Arrête les processus actifs (Streamlit, Worker, API FastAPI, proxy Cloud Run)
+## Arrête les processus actifs (Streamlit, Web UI Node.js, Worker, API FastAPI, proxy Cloud Run)
 stop: cloudrun-proxy-stop docker-down
 	@echo -e "$(YELLOW)--> Arrêt des processus applicatifs...$(RESET)"
 	@if pgrep -f "[s]treamlit run app-ui.py" >/dev/null 2>&1; then \
 		pkill -f "[s]treamlit run app-ui.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Streamlit UI"; \
 	else \
 		echo -e "  [$(GREEN)OK$(RESET)] Streamlit UI n'est pas actif"; \
+	fi
+	@if pgrep -f "[t]sx.*src/main.ts|[n]ode.*dist/main.js" >/dev/null 2>&1; then \
+		pkill -f "[t]sx.*src/main.ts|[n]ode.*dist/main.js" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Web UI (Node.js Fastify)"; \
+	else \
+		echo -e "  [$(GREEN)OK$(RESET)] Web UI (Node.js Fastify) n'est pas active"; \
 	fi
 	@if pgrep -f "[p]ython.*app-worker.py" >/dev/null 2>&1; then \
 		pkill -f "[p]ython.*app-worker.py" 2>/dev/null && echo -e "  [$(RED)ARRÊTÉ$(RESET)] Queue Worker"; \
@@ -245,6 +304,11 @@ test:
 	@echo -e "$(CYAN)--> Exécution des tests Pytest...$(RESET)"
 	cd $(APP_DIR) && $(UV) run pytest
 
+## Exécute les tests unitaires et d'intégration Vitest de web/
+test-web:
+	@echo -e "$(CYAN)--> Exécution des tests unitaires et d'intégration Vitest ($(WEB_DIR))...$(RESET)"
+	npm --prefix $(WEB_DIR) run test
+
 ## Mesure le pourcentage de couverture de test du code source
 coverage:
 	@echo -e "$(CYAN)--> Calcul de la couverture de tests (pytest-cov)...$(RESET)"
@@ -256,10 +320,36 @@ lint:
 	@echo -e "$(CYAN)--> Vérification Ruff sur src/...$(RESET)"
 	cd $(APP_DIR) && $(UV) run ruff check src/
 
+## Vérifie le code TypeScript/CSS de web/ avec Biome, tsc --noEmit et check-contrast.mjs
+lint-web:
+	@echo -e "$(CYAN)--> Vérification Biome, TypeScript et contraste WCAG sur $(WEB_DIR)/...$(RESET)"
+	npm --prefix $(WEB_DIR) run lint
+
 ## Applique le formatage automatique avec Ruff
 format:
 	@echo -e "$(CYAN)--> Formatage Ruff sur src/...$(RESET)"
 	cd $(APP_DIR) && $(UV) run ruff format src/
+
+## Formate le code de web/ avec Biome
+format-web:
+	@echo -e "$(CYAN)--> Formatage Biome sur $(WEB_DIR)/...$(RESET)"
+	npm --prefix $(WEB_DIR) run format
+
+## Exécute les tests end-to-end Playwright de web/
+e2e-web:
+	@echo -e "$(CYAN)--> Exécution des tests end-to-end Playwright ($(WEB_DIR))...$(RESET)"
+	npm --prefix $(WEB_DIR) run e2e
+
+## Compile le code TypeScript de web/ vers web/dist/
+build-web:
+	@echo -e "$(CYAN)--> Compilation TypeScript de $(WEB_DIR)/...$(RESET)"
+	npm --prefix $(WEB_DIR) run build
+
+## Construit l'image Docker durcie de l'interface web Node.js (dist/docker/Dockerfile.web)
+docker-build-web:
+	@echo -e "$(CYAN)--> Construction de l'image Docker Web ($${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile.web -t $${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(GREEN)--> Image Docker Web construite avec succès !$(RESET)"
 
 ## Récupère et affiche les rapports de bugs stockés dans MongoDB
 get-bugs:
@@ -336,6 +426,8 @@ status:
 	@ss -tlnp 2>/dev/null | grep -q ":$(PORT_API) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Streamlit (port $(PORT_UI)) : "
 	@ss -tlnp 2>/dev/null | grep -q ":$(PORT_UI) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "Web UI Node.js (port $(PORT_WEB)) : "
+	@ss -tlnp 2>/dev/null | grep -q ":$(PORT_WEB) " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Queue Worker (app-worker.py) : "
 	@pgrep -f "[p]ython.*app-worker.py" >/dev/null 2>&1 && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "Cloud Run Proxy (port $(CLOUDRUN_PORT)) : "
@@ -353,6 +445,7 @@ clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
+	rm -rf $(WEB_DIR)/dist $(WEB_DIR)/playwright-report $(WEB_DIR)/test-results 2>/dev/null || true
 	@echo -e "$(GREEN)Caches nettoyés avec succès.$(RESET)"
 
 # ==============================================================================
@@ -460,13 +553,13 @@ mongo-init-prod:
 		print("  [OK] MongoDB Replica Set (rs0) initialisé."); \
 	' 2>/dev/null || echo -e "  [$(GREEN)OK$(RESET)] MongoDB Replica Set prêt."
 
-## Construit l'image Docker applicative de production (non-root, librairies XCB/GL/système)
-build-prod:
+## Construit les images Docker applicatives de production (Python FastAPI/Streamlit + Node.js Web UI M3)
+build-prod: docker-build-web
 	@echo -e "$(CYAN)--> Construction de l'image Docker de production ($${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
 	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
-	@echo -e "$(GREEN)--> Image Docker construite avec succès !$(RESET)"
+	@echo -e "$(GREEN)--> Images Docker de production (App + Web M3) construites avec succès !$(RESET)"
 
-## Démarre les conteneurs Docker de production (Multi-Domaines Oncology & SMA)
+## Démarre les conteneurs Docker de production (Multi-Domaines Oncology & SMA + Web M3 oncologic-new & sma-new)
 docker-up-prod:
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "  [$(RED)ERREUR$(RESET)] Fichier $(ENV_PROD) introuvable. Lancez d'abord 'make init-prod' et configurez vos identifiants GitHub OAuth."; \
@@ -480,8 +573,11 @@ docker-up-prod:
 	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + UIs Oncology & SMA + OAuth2 Proxy + Caddy)...$(RESET)"
+	@echo -e "$(CYAN)--> Préparation de l'image Web UI M3 (oncoflow-web pour oncologic-new & sma-new)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-web 2>/dev/null || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
+	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + Streamlit & Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
+	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
 
 ## Démarre toute la stack de production et attend la disponibilité des modèles LLM
 start-prod: docker-up-prod
@@ -507,8 +603,10 @@ start-prod: docker-up-prod
 	BASE_DOM=$${BASE_DOM:-$(PROD_BASE_DOMAIN)}; \
 	echo -e "$(GREEN)======================================================================$(RESET)"; \
 	echo -e "  🚀 MedDataSyntis Production actif sur :"; \
-	echo -e "     • Oncologie           : $(CYAN)https://oncologic.$${BASE_DOM}$(RESET)"; \
-	echo -e "     • Amyotrophie spinale : $(CYAN)https://sma.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Oncologie (Streamlit)     : $(CYAN)https://oncologic.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Amyotrophie spinale (UI)  : $(CYAN)https://sma.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Oncologie (Nouvelle M3)   : $(CYAN)https://oncologic-new.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Amyotrophie spinale (M3)  : $(CYAN)https://sma-new.$${BASE_DOM}$(RESET)"; \
 	echo -e "$(GREEN)======================================================================$(RESET)"
 
 ## Arrête tous les conteneurs de la stack de production (conserve les volumes de données)
@@ -521,37 +619,43 @@ stop-prod:
 docker-down-prod: stop-prod
 up-prod: start-prod
 down-prod: stop-prod
+prod: start-prod
+pprod: start-prod
 
 ## Redémarre uniquement les services applicatifs et proxy (sans décharger le LLM de la VRAM L4)
 restart-prod:
-	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs Oncology & SMA, API Cross-Domains, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy
+	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs Streamlit, Web M3 oncologic-new/sma-new, API Cross-Domains, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-web oncoflow-api oauth2-proxy caddy
 	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
 
-## Met à jour le dépôt git, Milvus v3.0 et l'image Docker UI depuis GHCR sans décharger le modèle LLM du GPU
+## Met à jour le dépôt git, Milvus v3.0 et les images Docker UI/Web M3 sans décharger le modèle LLM du GPU
 prod-update:
 	@echo -e "$(CYAN)--> [1/5] Mise à jour du code source (git pull --ff-only)...$(RESET)"
 	git pull --ff-only
 	@echo -e "$(CYAN)--> [2/5] Mise à jour de Milvus Standalone (v3.0)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> [3/5] Téléchargement des dernières images applicatives (UIs Oncology & SMA, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
+	@echo -e "$(CYAN)--> [3/5] Téléchargement / construction des dernières images applicatives (UIs Streamlit, Web M3 oncologic-new/sma-new, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
 	@echo -e "$(CYAN)--> [4/5] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-web oncoflow-api oauth2-proxy caddy litellm
+	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@echo -e "$(CYAN)--> [5/5] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
 	@echo -e "$(GREEN)--> Mise à jour de production (prod-update) terminée avec succès !$(RESET)"
 
-## Met à jour l'intégralité de la stack de production (y compris les images LLM, Milvus et MongoDB)
+## Met à jour l'intégralité de la stack de production (y compris les images LLM, Milvus, MongoDB et Web M3)
 prod-update-all:
-	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + UIs)...$(RESET)"
+	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + UIs Streamlit + Web M3)...$(RESET)"
 	git pull --ff-only
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull --ignore-buildable
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
+	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
 
@@ -562,6 +666,10 @@ status-prod:
 	@ss -tlnp 2>/dev/null | grep -q ":443 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "OAuth2 Proxy GitHub SSO (4180)    : "
 	@ss -tlnp 2>/dev/null | grep -q ":4180 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "API Cross-Domains (port 8000)     : "
+	@ss -tlnp 2>/dev/null | grep -q ":8000 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "Web M3 oncologic-new/sma-new(3000): "
+	@ss -tlnp 2>/dev/null | grep -q ":3000 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "UI Oncology GHCR (port 8501)      : "
 	@ss -tlnp 2>/dev/null | grep -q ":8501 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "UI SMA GHCR (port 8502)           : "

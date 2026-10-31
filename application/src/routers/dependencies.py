@@ -164,3 +164,91 @@ def require_db(db=Depends(get_db)):
             detail="La base de données MongoDB n'est pas configurée ou accessible.",
         )
     return db
+
+
+def get_current_user_info(
+    x_user: Annotated[
+        str | None,
+        Header(
+            alias="X-Oncoflow-User",
+            description="Trusted user identifier forwarded by the reverse proxy / BFF",
+        ),
+    ] = None,
+    x_user_name: Annotated[
+        str | None,
+        Header(
+            alias="X-Oncoflow-User-Name",
+            description="Optional display name forwarded by the reverse proxy / BFF",
+        ),
+    ] = None,
+    x_proxy_secret: Annotated[
+        str | None,
+        Header(
+            alias="X-Oncoflow-Proxy-Secret",
+            description="Shared secret authenticating reverse proxy / BFF identity headers",
+        ),
+    ] = None,
+) -> dict[str, str | bool | None]:
+    """
+    Resolve `{username, display_name, is_admin}` from `X-Oncoflow-User` (+ optional
+    `X-Oncoflow-User-Name`), honoured only when `X-Oncoflow-Proxy-Secret` matches
+    `APP_PROXY_SECRET` via `hmac.compare_digest`.
+    """
+    base_conf = get_base_config()
+    expected_secret = base_conf.proxy_secret
+    proxy_ok = expected_secret is not None and hmac.compare_digest(
+        (x_proxy_secret or "").encode(),
+        expected_secret.get_secret_value().encode(),
+    )
+    username = (x_user or "").strip()
+    if not proxy_ok or not username:
+        return {
+            "username": None,
+            "display_name": None,
+            "is_admin": False,
+        }
+
+    display_name = (x_user_name or "").strip() or username
+    return {
+        "username": username,
+        "display_name": display_name,
+        "is_admin": base_conf.is_admin(username, display_name),
+    }
+
+
+def require_admin(
+    x_user: Annotated[
+        str | None,
+        Header(alias="X-Oncoflow-User"),
+    ] = None,
+    x_user_name: Annotated[
+        str | None,
+        Header(alias="X-Oncoflow-User-Name"),
+    ] = None,
+    x_proxy_secret: Annotated[
+        str | None,
+        Header(alias="X-Oncoflow-Proxy-Secret"),
+    ] = None,
+) -> None:
+    """
+    Enforce admin privileges on destructive endpoints.
+
+    - When user/proxy headers (`X-Oncoflow-User` or `X-Oncoflow-Proxy-Secret`) are present
+      (e.g. requests coming through the BFF / OAuth2 reverse proxy), the proxy secret must be
+      valid AND the user must be listed in `APP_ADMIN_USERS` (`AppConfig.is_admin`).
+    - When no user/proxy headers are present, internal service-to-service calls (`QueueBroker`,
+      worker) already authenticated via `APP_API_TOKEN` are permitted.
+    """
+    if x_user is None and x_proxy_secret is None:
+        return
+
+    user_info = get_current_user_info(
+        x_user=x_user,
+        x_user_name=x_user_name,
+        x_proxy_secret=x_proxy_secret,
+    )
+    if not user_info["is_admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Droits d'administrateur requis.",
+        )

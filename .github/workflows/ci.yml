@@ -99,3 +99,66 @@ jobs:
           if ! (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest); then
             echo "::warning title=GHCR Push Failed::Failed to push Docker image to ghcr.io ($IMAGE_ID:$VERSION / latest). Check GitHub Packages permissions in organization/repository settings."
           fi
+
+  web-quality-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # only used by the push steps (guarded by github.event_name == 'push')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: "web/package-lock.json"
+
+      - name: Install dependencies
+        run: npm ci --prefix web --ignore-scripts=false
+
+      - name: Security Audit (npm audit)
+        run: npm audit --prefix web --audit-level=high
+
+      - name: Lint, Typecheck & WCAG Contrast Check
+        run: npm --prefix web run lint
+
+      - name: Build Production TypeScript Bundle
+        run: npm --prefix web run build
+
+      - name: Run Unit & Integration Tests (Vitest)
+        run: npm --prefix web run test
+
+      - name: Install Playwright Chromium
+        run: npx --prefix web playwright install --with-deps chromium
+
+      - name: Run Playwright E2E Tests
+        run: npm --prefix web run e2e
+
+      - name: Login to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Web Docker image
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository }}-web
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          VERSION=${{ github.sha }}
+          docker build -f dist/docker/Dockerfile.web -t $IMAGE_ID:$VERSION -t $IMAGE_ID:latest .
+
+      - name: Push Web Docker image
+        if: github.event_name == 'push'
+        continue-on-error: true
+        run: |
+          IMAGE_ID=ghcr.io/${{ github.repository }}-web
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          VERSION=${{ github.sha }}
+          if ! (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest); then
+            echo "::warning title=GHCR Push Failed::Failed to push Web Docker image to ghcr.io ($IMAGE_ID:$VERSION / latest). Check GitHub Packages permissions in organization/repository settings."
+          fi

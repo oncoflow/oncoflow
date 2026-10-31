@@ -34,6 +34,7 @@ class EnqueueRerunRequest(BaseModel):
     model_name: str | None = None
     total_clinical_models: int = Field(default=1, ge=1)
     total_expert_models: int = Field(default=3, ge=1)
+    preserve_manual_edits: bool = True
 
 
 # --- Responses ---

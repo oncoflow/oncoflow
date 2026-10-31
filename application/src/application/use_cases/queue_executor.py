@@ -546,13 +546,23 @@ class PatientMDTFormQueueJobExecutor:
                     f"Section '{target_model_name}' not found for domain '{domain}'."
                 )
 
-            if target_cls.__name__ == "PatientAdministrative":
-                service.form.manual_edits = (
-                    service.form_cls.archive_manual_edit_before_ai_rerun(
-                        service.form.manual_edits,
-                        "PatientAdministrative",
-                    )
+            preserve_manual = bool(job.get("preserve_manual_edits", True))
+            if (
+                preserve_manual
+                and service.form_cls.is_section_manually_edited(
+                    service.form, target_cls.__name__
                 )
+                and target_cls.__name__ in service.form.sections
+            ):
+                pass
+            elif target_cls.__name__ == "PatientAdministrative":
+                if not preserve_manual:
+                    service.form.manual_edits = (
+                        service.form_cls.archive_manual_edit_before_ai_rerun(
+                            service.form.manual_edits,
+                            "PatientAdministrative",
+                        )
+                    )
                 service.process_patient_association(
                     run_admin_ai=True,
                     callbacks=[thinking_cb],
@@ -562,7 +572,10 @@ class PatientMDTFormQueueJobExecutor:
             else:
                 extra_kwargs = (
                     {"clear_manual_flag": True}
-                    if target_cls.__name__ in service.form.manual_edits
+                    if (
+                        not preserve_manual
+                        and target_cls.__name__ in service.form.manual_edits
+                    )
                     else {}
                 )
                 service.extract_section(

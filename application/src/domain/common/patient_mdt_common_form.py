@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, Field, PastDatetime, ValidationError, model_validator
 
 from src.application.agent.agent import OncowflowAgent
+from src.domain.common import common_ressources
 from src.domain.common.agents import Agents
 from src.domain.common.common_ressources import *  # noqa: F403
 from src.domain.worker.queue_job import RCPProcessingStatus
@@ -292,6 +293,61 @@ class PatientMDTForm:
         if len(getattr(model_cls, "agents", [])) > 1:
             return False
         return True
+
+    @classmethod
+    def get_domain_schema(cls, domain: str) -> dict[str, Any]:
+        """
+        Build the pure domain form schema for `domain` from `get_clinical_models()`
+        (plus `PatientAdministrative`), `is_section_manually_editable`, and domain enums,
+        free of any UI/presentation attributes.
+        """
+        clinical_models = list(cls.get_clinical_models())
+        admin_cls = getattr(cls, "PatientAdministrative", None)
+        if admin_cls is not None and admin_cls not in clinical_models:
+            all_models = [*clinical_models, admin_cls]
+        else:
+            all_models = clinical_models
+
+        sections: list[dict[str, Any]] = []
+        for model_cls in all_models:
+            name = model_cls.__name__
+            description = (model_cls.__doc__ or "").strip() or name
+            agents_list = list(getattr(model_cls, "agents", []) or [])
+            is_collab = bool(getattr(model_cls, "collaborative", False))
+            is_multi = len(agents_list) > 1 and not is_collab
+            agent_names = [
+                str(getattr(ag, "agent_name", None) or getattr(ag, "__name__", str(ag)))
+                for ag in agents_list
+            ]
+            raw_question = getattr(model_cls, "question", None)
+            question_str = str(raw_question).strip() if raw_question else None
+            sections.append(
+                {
+                    "name": name,
+                    "description": description,
+                    "question": question_str,
+                    "multi_agent": is_multi,
+                    "collaborative": is_collab,
+                    "agents": agent_names,
+                    "editable": cls.is_section_manually_editable(model_cls),
+                    "json_schema": model_cls.model_json_schema(),
+                }
+            )
+
+        enums_dict: dict[str, list[Any]] = {}
+        for attr_name, attr_obj in inspect.getmembers(common_ressources):
+            if (
+                inspect.isclass(attr_obj)
+                and issubclass(attr_obj, Enum)
+                and attr_obj is not Enum
+            ):
+                enums_dict[attr_name] = [member.value for member in attr_obj]
+
+        return {
+            "domain": domain,
+            "sections": sections,
+            "enums": enums_dict,
+        }
 
     @classmethod
     def is_section_manually_edited(

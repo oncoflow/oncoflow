@@ -1,8 +1,10 @@
+import os
 from typing import List
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import FileResponse
 
-from src.application.paths import UnsafePathError, safe_path
+from src.application.paths import UnsafePathError, is_safe_filename, safe_path
 from src.application.reader import DocumentReader
 from src.application.ressources import Ressources
 from src.domain.agents import get_domain_agents
@@ -71,6 +73,40 @@ def index_resource(filename: str, config: DomainConfigDep):
         ) from err
 
 
+@router.get(
+    "/{filename}/file",
+    response_class=FileResponse,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+def get_resource_file(filename: str, config: DomainConfigDep):
+    """Serve a clinical reference resource PDF inline after validating safe path boundaries."""
+    if not is_safe_filename(filename):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nom de fichier invalide.",
+        )
+    try:
+        file_path = safe_path(config.rcp.additional_path, filename)
+    except UnsafePathError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nom de fichier invalide.",
+        ) from err
+
+    if not os.path.isfile(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"La ressource '{filename}' n'a pas été trouvée ({config.domain}).",
+        )
+
+    return FileResponse(
+        str(file_path),
+        media_type="application/pdf",
+        filename=filename,
+        content_disposition_type="inline",
+    )
+
+
 @router.post("/{filename}/chat", response_model=ChatResponse)
 def chat_with_resource_agent(
     filename: str, request: ResourceChatRequest, config: DomainConfigDep
@@ -98,10 +134,17 @@ def chat_with_resource_agent(
         )
 
     try:
-        reader = DocumentReader(config, document=filename, document_type="ressource")
-        agents = get_domain_agents(config.domain)
+        effective_config = (
+            config.model_copy(update={"language": request.language})
+            if request.language
+            else config
+        )
+        reader = DocumentReader(
+            effective_config, document=filename, document_type="ressource"
+        )
+        agents = get_domain_agents(effective_config.domain)
         agent_cls = agents.list["Ressource Assistant"]
-        agent = agent_cls(config=config, additionnal_readers=[reader])
+        agent = agent_cls(config=effective_config, additionnal_readers=[reader])
         resp = agent.ask(request.message)
         return ChatResponse(response=resp.response)
     except Exception as err:

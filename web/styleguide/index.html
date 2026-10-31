@@ -1,0 +1,1202 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DataSyntis — Styleguide Material Design 3</title>
+  <link rel="icon" href="../public/img/datasyntis-icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="../public/css/tokens.css">
+  <link rel="stylesheet" href="../public/css/components.css">
+  <!-- Styleguide-only helpers -->
+  <style>
+    .sg-section { scroll-margin-top: calc(var(--ds-banner-height) + var(--ds-topbar-height) + 1rem); display: flex; flex-direction: column; gap: var(--ds-space-4); }
+    .sg-section > h2 { display: flex; align-items: center; gap: var(--ds-space-2); padding-bottom: var(--ds-space-2); border-bottom: 1px solid var(--ds-color-border); }
+    .sg-lead { color: var(--ds-color-text-muted); max-width: 72ch; }
+    .sg-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(12.5rem, 1fr)); gap: var(--ds-space-3); }
+    .sg-swatch { display: flex; flex-direction: column; border: 1px solid var(--ds-color-border); border-radius: var(--ds-radius-lg); overflow: hidden; background: var(--ds-color-surface); }
+    .sg-swatch__chip { height: 3rem; border-bottom: 1px solid var(--ds-color-border); display: flex; align-items: center; padding: 0 var(--ds-space-3); font-weight: 600; font-size: var(--ds-text-sm); }
+    .sg-swatch__meta { padding: var(--ds-space-2) var(--ds-space-3); font-size: var(--ds-text-xs); display: flex; flex-direction: column; gap: 2px; }
+    .sg-swatch__meta code { font-size: var(--ds-text-xs); }
+    .sg-group-title { font-size: var(--ds-text-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--ds-color-text-muted); margin-top: var(--ds-space-2); }
+    .sg-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-3); }
+    .sg-scale-item { display: flex; align-items: center; gap: var(--ds-space-3); font-size: var(--ds-text-sm); }
+    .sg-scale-item code { min-width: 9rem; }
+    .sg-space-bar { height: .75rem; background: var(--ds-color-primary); border-radius: 4px; }
+    .sg-box { width: 6.5rem; height: 4rem; background: var(--ds-color-surface); border: 1px solid var(--ds-color-border); display: grid; place-items: center; font-size: var(--ds-text-xs); }
+    .sg-specimen { padding: var(--ds-space-5); background: var(--ds-color-surface); border: 1px solid var(--ds-color-border); border-radius: var(--ds-radius-lg); display: flex; flex-direction: column; gap: var(--ds-space-3); }
+    .sg-specimen--canvas { background: var(--ds-color-canvas); }
+    .sg-label { font-size: var(--ds-text-xs); font-family: var(--ds-font-mono); color: var(--ds-color-text-muted); }
+    .sg-do, .sg-dont { padding: var(--ds-space-4) var(--ds-space-5); border-radius: var(--ds-radius-lg); display: flex; flex-direction: column; gap: var(--ds-space-2); }
+    .sg-do { background: var(--ds-color-success-bg); color: var(--ds-color-success-fg); }
+    .sg-dont { background: var(--ds-color-danger-bg); color: var(--ds-color-danger-fg); }
+    .sg-pdf-placeholder { flex: 1; display: grid; place-items: center; text-align: center; padding: var(--ds-space-6); color: var(--ds-color-text-muted); }
+  </style>
+</head>
+<body class="ds-shell">
+  <!-- ===================== Inline M3 SVG Icon Sprite (synced with public/img/icons.svg) ===================== -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <!-- 1. Navigation & Shell -->
+    <symbol id="ic-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+    <symbol id="ic-worklist" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2.5"/><path d="M4 9.5h16M9.5 9.5V20"/></symbol>
+    <symbol id="ic-upload" viewBox="0 0 24 24"><path d="M12 16V4m0 0-4 4m4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></symbol>
+    <symbol id="ic-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4.2a2 2 0 0 1 1.4.6l1.4 1.4H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></symbol>
+    <symbol id="ic-folder-open" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H6.5a2 2 0 0 0-1.9 1.4L3 17V7Z"/><path d="m4.6 11.4 1.9-1.4H21l-2.1 7.6a2 2 0 0 1-1.9 1.4H5a2 2 0 0 1-1.9-2.5l1.5-5.1Z"/></symbol>
+    <symbol id="ic-book" viewBox="0 0 24 24"><path d="M12 6.5C10.2 5.2 7.5 4.8 4.5 5.2A1.5 1.5 0 0 0 3 6.7v11.1c0 .9.8 1.6 1.7 1.5 2.8-.3 5.4.2 7.3 1.5m0-14.3c1.8-1.3 4.5-1.7 7.5-1.3.9.1 1.5.8 1.5 1.7v11.1c0 .9-.8 1.6-1.7 1.5-2.8-.3-5.4.2-7.3 1.5m0-14.5v14.5"/></symbol>
+    <symbol id="ic-layers" viewBox="0 0 24 24"><path d="m12 3 9 4.5-9 4.5-9-4.5L12 3Z"/><path d="m3 12 9 4.5 9-4.5"/><path d="m3 16.5 9 4.5 9-4.5"/></symbol>
+    <symbol id="ic-chat" viewBox="0 0 24 24"><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/><path d="M8 9.5h8M8 13h5"/></symbol>
+    <symbol id="ic-bug" viewBox="0 0 24 24"><rect x="7" y="8" width="10" height="12" rx="5"/><path d="M9.5 8V6.5a2.5 2.5 0 0 1 5 0V8M4 13h3m10 0h3M5 8.5l2.5 1.5m9 0L19 8.5M5 18.5 7.5 17m9 0 2.5 1.5M12 11v9"/></symbol>
+    <symbol id="ic-chevron-left" viewBox="0 0 24 24"><path d="m14.5 6-6 6 6 6"/></symbol>
+    <symbol id="ic-chevron-right" viewBox="0 0 24 24"><path d="m9.5 6 6 6-6 6"/></symbol>
+    <symbol id="ic-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <!-- 2. Actions & Édition RCP -->
+    <symbol id="ic-play" viewBox="0 0 24 24"><polygon points="7,5 19,12 7,19" fill="currentColor" stroke="currentColor" stroke-width="1.5"/></symbol>
+    <symbol id="ic-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-1.9 5.2"/><path d="M20 4v7h-7"/></symbol>
+    <symbol id="ic-undo" viewBox="0 0 24 24"><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/><path d="M8 5 4 9l4 4"/></symbol>
+    <symbol id="ic-edit" viewBox="0 0 24 24"><path d="M15.5 4.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 10.5-10.5Z"/><path d="m13.5 6.5 3 3"/></symbol>
+    <symbol id="ic-edit-note" viewBox="0 0 24 24"><path d="M4 7h9M4 12h7M4 17h5"/><path d="m14.5 11.5 3-3a1.6 1.6 0 0 1 2.3 2.3l-5.3 5.3L12 17l.9-2.5 1.6-3Z"/></symbol>
+    <symbol id="ic-delete" viewBox="0 0 24 24"><path d="M4 7h16M9.5 7V4.8c0-.5.4-.8.8-.8h3.4c.5 0 .8.3.8.8V7"/><path d="M6.5 7l.8 11.5a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8L17.5 7"/><path d="M10 11v5M14 11v5"/></symbol>
+    <symbol id="ic-add" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></symbol>
+    <symbol id="ic-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4-4m4 4 4-4"/><path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/></symbol>
+    <symbol id="ic-link" viewBox="0 0 24 24"><path d="M10 13a4.5 4.5 0 0 0 6.4 0l2.3-2.3a4.5 4.5 0 0 0-6.4-6.4L11 5.6"/><path d="M14 11a4.5 4.5 0 0 0-6.4 0l-2.3 2.3a4.5 4.5 0 0 0 6.4 6.4L13 18.4"/></symbol>
+    <symbol id="ic-send" viewBox="0 0 24 24"><path d="m21 3-9.5 18-2.8-7.7L1 10.5 21 3Z"/><path d="M21 3 8.7 13.3"/></symbol>
+    <symbol id="ic-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></symbol>
+    <!-- 3. Statuts, Priorités & Orientation -->
+    <symbol id="ic-priority-high" viewBox="0 0 24 24"><path d="M12 3 21 12l-9 9-9-9 9-9Z"/><path d="M12 8v5M12 16h.01"/></symbol>
+    <symbol id="ic-priority-medium" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 13 3.5-3.5 3.5 3.5"/></symbol>
+    <symbol id="ic-priority-low" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.3 2.3 4.7-4.7"/></symbol>
+    <symbol id="ic-priority-none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12h7"/></symbol>
+    <symbol id="ic-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5 9.5-9.5"/></symbol>
+    <symbol id="ic-check-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.2 2.4 2.4 4.8-4.8"/></symbol>
+    <symbol id="ic-warning" viewBox="0 0 24 24"><path d="M10.4 4.4 2.8 17.5a1.8 1.8 0 0 0 1.6 2.7h15.2a1.8 1.8 0 0 0 1.6-2.7L13.6 4.4a1.8 1.8 0 0 0-3.2 0Z"/><path d="M12 9.5v4M12 16.8h.01"/></symbol>
+    <symbol id="ic-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m9.2 9.2 5.6 5.6m0-5.6-5.6 5.6"/></symbol>
+    <symbol id="ic-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11.5v5M12 8.2h.01"/></symbol>
+    <symbol id="ic-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><polygon points="15.8,8.2 13.6,13.6 8.2,15.8 10.4,10.4"/></symbol>
+    <symbol id="ic-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+    <symbol id="ic-sparkle" viewBox="0 0 24 24"><path d="m12 3 2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3Z"/><path d="m19 3 .7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2Z"/></symbol>
+    <symbol id="ic-wifi-off" viewBox="0 0 24 24"><path d="m3 3 18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8m4.8.4A10 10 0 0 1 19 13M2 9.5A14.5 14.5 0 0 1 9 6.2m5.8.2A14.5 14.5 0 0 1 22 9.5M12 20h.01"/></symbol>
+    <!-- 4. Clinique, Spécialités & Domaines -->
+    <symbol id="ic-stethoscope" viewBox="0 0 24 24"><path d="M5 4v5a5 5 0 0 0 10 0V4M3.5 4h3M13.5 4h3"/><path d="M10 14v2a4 4 0 0 0 8 0v-3"/><circle cx="18" cy="11" r="2"/></symbol>
+    <symbol id="ic-microscope" viewBox="0 0 24 24"><path d="M6 18h8M4 21h16M10 4l4 2-3 6-4-2 3-6Z"/><path d="M12 9a6 6 0 0 1 4 10.5M9 12l-2 1.5"/></symbol>
+    <symbol id="ic-flask" viewBox="0 0 24 24"><path d="M9 3h6M10 3v5.5L5.2 17A2.2 2.2 0 0 0 7.1 20h9.8a2.2 2.2 0 0 0 1.9-3L14 8.5V3"/><path d="M7.5 14.5h9"/></symbol>
+    <symbol id="ic-radiation" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2"/><path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4"/></symbol>
+    <symbol id="ic-pill" viewBox="0 0 24 24"><path d="m8.5 19.5 11-11a4.2 4.2 0 0 0-6-6l-11 11a4.2 4.2 0 0 0 6 6Z"/><path d="m8.5 8.5 6 6"/></symbol>
+    <symbol id="ic-brain" viewBox="0 0 24 24"><path d="M12 5a3 3 0 0 0-5.8 1A3.2 3.2 0 0 0 4 9.2c0 1.1.5 2.1 1.4 2.7A3.2 3.2 0 0 0 5 16.5 3 3 0 0 0 9 19a3 3 0 0 0 3-2.5V5Z"/><path d="M12 5a3 3 0 0 1 5.8 1A3.2 3.2 0 0 1 20 9.2c0 1.1-.5 2.1-1.4 2.7.9.8 1.2 2.1.4 4.6A3 3 0 0 1 15 19a3 3 0 0 1-3-2.5V5Z"/></symbol>
+    <symbol id="ic-lungs" viewBox="0 0 24 24"><path d="M12 3v7m0 0-3 2.5m3-2.5 3 2.5"/><path d="M9 8C6 8 4 11 4 15.5 4 18 5.5 19.5 7.5 19.5c2 0 3-1.2 3-3.5V9.5C10.5 8.5 9.8 8 9 8Z"/><path d="M15 8c3 0 5 3 5 7.5 0 2.5-1.5 4-3.5 4-2 0-3-1.2-3-3.5V9.5c0-1 .7-1.5 1.5-1.5Z"/></symbol>
+    <symbol id="ic-dna" viewBox="0 0 24 24"><path d="M6 3c0 6 12 6 12 12s-12 6-12 6M18 3c0 6-12 6-12 12s12 6 12 6"/><path d="M7.5 6h9M8.5 12h7M7.5 18h9"/></symbol>
+    <symbol id="ic-ribbon" viewBox="0 0 24 24"><path d="M12 3a4.5 4.5 0 0 0-3.8 6.9L15.5 21M12 3a4.5 4.5 0 0 1 3.8 6.9L8.5 21"/></symbol>
+    <symbol id="ic-users" viewBox="0 0 24 24"><circle cx="9" cy="8.5" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M15.5 5.6a3 3 0 0 1 0 5.8M17 19a5 5 0 0 0-3-4.6"/></symbol>
+    <symbol id="ic-scale" viewBox="0 0 24 24"><path d="M12 3v17M8 20h8M5 7h14"/><path d="m5 7-2.8 6h5.6L5 7Zm14 0-2.8 6h5.6L19 7Z"/></symbol>
+    <symbol id="ic-file-pdf" viewBox="0 0 24 24"><path d="M6 3h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v4h4M8 13h8M8 16.5h5"/></symbol>
+    <!-- 5. Thème, Design System & Indicateurs -->
+    <symbol id="ic-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M4.7 4.7l1.6 1.6M17.7 17.7l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.7 19.3l1.6-1.6M17.7 6.3l1.6-1.6"/></symbol>
+    <symbol id="ic-moon" viewBox="0 0 24 24"><path d="M20.2 14.8A8.2 8.2 0 0 1 9.2 3.8a8.2 8.2 0 1 0 11 11Z"/></symbol>
+    <symbol id="ic-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18h1.5a2.2 2.2 0 0 0 0-4.4H12a2 2 0 0 1 0-4h4.5A4.5 4.5 0 0 0 21 8.1C20.2 5.1 16.5 3 12 3Z"/><circle cx="8" cy="10" r="1" fill="currentColor"/><circle cx="11" cy="7.5" r="1" fill="currentColor"/><circle cx="15" cy="8.5" r="1" fill="currentColor"/><circle cx="7.5" cy="14" r="1" fill="currentColor"/></symbol>
+    <symbol id="ic-type" viewBox="0 0 24 24"><path d="M4 6V4h14v2M11 4v16M8 20h6M15 11h5M17.5 11v9"/></symbol>
+    <symbol id="ic-ruler" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 7v4M11 7v3M15 7v4M19 7v3"/></symbol>
+    <symbol id="ic-shapes" viewBox="0 0 24 24"><polygon points="12,3 17,11 7,11"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><circle cx="17" cy="17" r="3.5"/></symbol>
+    <symbol id="ic-split" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M11 4v16"/></symbol>
+    <symbol id="ic-star" viewBox="0 0 24 24"><polygon points="12,3.5 14.6,8.8 20.5,9.6 16.2,13.7 17.2,19.5 12,16.8 6.8,19.5 7.8,13.7 3.5,9.6 9.4,8.8"/></symbol>
+    <symbol id="ic-trend-up" viewBox="0 0 24 24"><path d="m4 16 6-6 4 4 6-6"/><path d="M15 8h5v5"/></symbol>
+    <symbol id="ic-trend-down" viewBox="0 0 24 24"><path d="m4 8 6 6 4-4 6 6"/><path d="M15 16h5v-5"/></symbol>
+    <symbol id="ic-more-vert" viewBox="0 0 24 24"><circle cx="12" cy="5.5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="18.5" r="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="ic-more-horiz" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="ic-calendar" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.2"/><path d="M8 3.5v3M16 3.5v3M3.5 9.5h17"/></symbol>
+    <symbol id="ic-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.8"/></symbol>
+    <symbol id="ic-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
+    <symbol id="ic-expand" viewBox="0 0 24 24"><path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"/></symbol>
+  </svg>
+
+  <a class="ds-skip-link" href="#main">Aller au contenu</a>
+
+  <!-- ===================== Sidebar (Material Design 3 Navigation Rail) ===================== -->
+  <aside class="ds-sidebar ds-nav-rail" aria-label="Navigation principale" data-testid="sidebar">
+    <a class="ds-brand" href="#top">
+      <img class="ds-brand__logo" src="../public/img/datasyntis-icon.svg" alt="" width="32" height="32">
+      <span class="ds-brand__text">
+        <span class="ds-brand__name">Data<b>Syntis</b></span>
+        <span class="ds-brand__domain">Material Design 3 · Styleguide</span>
+      </span>
+    </a>
+    <a class="ds-rail__fab" href="/worklist" title="Retour à la Worklist RCP">
+      <svg class="ds-icon" aria-hidden="true"><use href="#ic-worklist"/></svg>
+      <span class="ds-rail__fab-label">Retour Worklist</span>
+    </a>
+    <nav aria-label="Sections du styleguide">
+      <p class="ds-nav__heading">Fondations M3</p>
+      <ul class="ds-nav">
+        <li><a class="ds-nav__link" href="#tokens-colors" aria-current="page" data-rail-label="Couleurs & Thèmes"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-palette"/></svg></span><span class="ds-nav__label">Couleurs &amp; Thèmes</span></a></li>
+        <li><a class="ds-nav__link" href="#tokens-icons" data-rail-label="Catalogue d'icônes"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-shapes"/></svg></span><span class="ds-nav__label">Catalogue d'icônes</span><span class="ds-nav__count">64</span></a></li>
+        <li><a class="ds-nav__link" href="#tokens-type" data-rail-label="Typographie"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-type"/></svg></span><span class="ds-nav__label">Typographie</span></a></li>
+        <li><a class="ds-nav__link" href="#tokens-space" data-rail-label="Espaces & Rayons"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-ruler"/></svg></span><span class="ds-nav__label">Espaces, rayons, ombres</span></a></li>
+      </ul>
+      <p class="ds-nav__heading">Composants M3</p>
+      <ul class="ds-nav">
+        <li><a class="ds-nav__link" href="#c-menus" data-rail-label="Rail & Menus M3 (...)"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-more-vert"/></svg></span><span class="ds-nav__label">Rail &amp; Menus M3 (…)</span></a></li>
+        <li><a class="ds-nav__link" href="#c-queue" data-rail-label="File d'analyse"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-layers"/></svg></span><span class="ds-nav__label">File d'analyse</span><span class="ds-nav__count">3</span></a></li>
+        <li><a class="ds-nav__link" href="#c-buttons" data-rail-label="Boutons M3"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-play"/></svg></span><span class="ds-nav__label">Boutons M3</span></a></li>
+        <li><a class="ds-nav__link" href="#c-badges" data-rail-label="Badges & Chips"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg></span><span class="ds-nav__label">Badges &amp; Chips</span></a></li>
+        <li><a class="ds-nav__link" href="#c-hover" data-rail-label="Survol & Popovers"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-sparkle"/></svg></span><span class="ds-nav__label">Survol (Hover &amp; Popovers)</span></a></li>
+        <li><a class="ds-nav__link" href="#c-cards" data-rail-label="Cartes & KPI"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-folder"/></svg></span><span class="ds-nav__label">Cartes &amp; KPI</span></a></li>
+        <li><a class="ds-nav__link" href="#c-table" data-rail-label="Tableau worklist"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-worklist"/></svg></span><span class="ds-nav__label">Tableau worklist</span></a></li>
+        <li><a class="ds-nav__link" href="#c-forms" data-rail-label="Formulaires"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-upload"/></svg></span><span class="ds-nav__label">Formulaires</span></a></li>
+        <li><a class="ds-nav__link" href="#c-sections" data-rail-label="Rubriques éditables"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-edit-note"/></svg></span><span class="ds-nav__label">Rubriques éditables</span></a></li>
+        <li><a class="ds-nav__link" href="#c-alerts" data-rail-label="Alertes & Toasts"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-info"/></svg></span><span class="ds-nav__label">Alertes &amp; toasts</span></a></li>
+        <li><a class="ds-nav__link" href="#c-tabs" data-rail-label="Onglets"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-book"/></svg></span><span class="ds-nav__label">Onglets</span></a></li>
+        <li><a class="ds-nav__link" href="#c-timeline" data-rail-label="Frise des RCP"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-clock"/></svg></span><span class="ds-nav__label">Frise des RCP</span></a></li>
+        <li><a class="ds-nav__link" href="#c-opinions" data-rail-label="Avis experts"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-scale"/></svg></span><span class="ds-nav__label">Avis experts</span></a></li>
+        <li><a class="ds-nav__link" href="#c-chat" data-rail-label="Assistant IA"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-chat"/></svg></span><span class="ds-nav__label">Assistant IA</span></a></li>
+        <li><a class="ds-nav__link" href="#c-progress" data-rail-label="Progression"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-trend-up"/></svg></span><span class="ds-nav__label">Progression</span></a></li>
+        <li><a class="ds-nav__link" href="#c-modal" data-rail-label="Dialogues"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg></span><span class="ds-nav__label">Dialogues</span></a></li>
+        <li><a class="ds-nav__link" href="#c-empty" data-rail-label="Chargement & Vide"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-folder-open"/></svg></span><span class="ds-nav__label">Chargement &amp; vide</span></a></li>
+        <li><a class="ds-nav__link" href="#c-split" data-rail-label="Vue scindée"><span class="ds-nav__indicator"><svg class="ds-icon" aria-hidden="true"><use href="#ic-split"/></svg></span><span class="ds-nav__label">Vue scindée</span></a></li>
+      </ul>
+    </nav>
+    <p class="ds-sidebar__footer">Données entièrement fictives. Aucun patient réel.</p>
+  </aside>
+
+  <div class="ds-main" id="top">
+    <!-- ===================== Queue banner (SSE live region) ===================== -->
+    <div class="ds-queue-banner" role="status" aria-live="polite" aria-atomic="true" data-testid="queue-banner">
+      <span class="ds-queue-banner__text">
+        <span class="ds-spinner" aria-hidden="true"></span>
+        <span class="ds-queue-banner__msg"><strong>3 analyses en cours</strong> · 1 en attente · dernier : Dossier fictif #A-1042</span>
+      </span>
+      <progress class="ds-progress ds-queue-banner__progress" max="100" value="62" aria-label="Avancement global de la file : 62 %"></progress>
+      <button type="button" class="ds-btn ds-btn--sm ds-btn--secondary ds-queue-banner__action" data-open="queue-drawer" aria-haspopup="dialog" data-testid="btn_queue_open">Voir la file</button>
+    </div>
+
+    <!-- ===================== Topbar ===================== -->
+    <header class="ds-topbar">
+      <button type="button" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon" id="sidebar-toggle" aria-label="Replier ou déplier le menu latéral" aria-expanded="true" data-tooltip="Replier / déplier le menu" data-testid="btn_sidebar_toggle">
+        <svg class="ds-icon" aria-hidden="true"><use href="#ic-menu"/></svg>
+      </button>
+      <ol class="ds-breadcrumb" aria-label="Fil d'Ariane">
+        <li><a href="#top">DataSyntis</a></li>
+        <li><a href="#tokens-colors">Design System</a></li>
+        <li><span aria-current="page">Styleguide M3</span></li>
+      </ol>
+      <div class="ds-topbar__actions">
+        <span class="ds-badge ds-badge--domain-onco"><svg class="ds-icon" aria-hidden="true"><use href="#ic-ribbon"/></svg> Oncologie</span>
+        <!-- Sélecteur de thème Clair / Sombre (fonctionne en CSS pur :has() ET en JS) -->
+        <div class="ds-segmented" role="radiogroup" aria-label="Choix du thème (Clair ou Sombre)" data-testid="theme-selector">
+          <input type="radio" name="ds-theme" id="theme-light" value="light" checked>
+          <label for="theme-light"><svg class="ds-icon" aria-hidden="true"><use href="#ic-sun"/></svg> Clair</label>
+          <input type="radio" name="ds-theme" id="theme-dark" value="dark">
+          <label for="theme-dark"><svg class="ds-icon" aria-hidden="true"><use href="#ic-moon"/></svg> Sombre</label>
+        </div>
+      </div>
+    </header>
+
+    <main class="ds-workspace" id="main">
+      <div class="ds-page-header">
+        <div class="ds-page-header__text">
+          <h1>Design System DataSyntis — Material Design 3</h1>
+          <p class="sg-lead">Niveaux de gris neutres modernes type Google Material Design 3 (sans dominante bleue), ombres ultra-douces, catalogue unifié de 58 icônes vectorielles SVG M3 (<code>public/img/icons.svg</code>), boutons et navigation en pilules M3, composants de survol riches (<code>.ds-hovercard</code>, <code>[data-tooltip]</code>) et sélecteur de thème <strong>Clair / Sombre</strong> en haut à droite.</p>
+        </div>
+      </div>
+
+      <!-- ===================== COLORS ===================== -->
+      <section class="sg-section" id="tokens-colors" aria-labelledby="h-colors">
+        <h2 id="h-colors"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-palette"/></svg> Couleurs &amp; surfaces Material Design 3</h2>
+        <p class="sg-lead">Hiérarchie de surfaces en gris neutres modernes (<code>#F6F6F8</code> canvas, <code>#FFFFFF</code> surface carte, <code>#F0F0F3</code> conteneur M3, <code>#0F0F12</code> / <code>#17171B</code> en mode sombre). Utilisez le sélecteur <strong>Clair / Sombre</strong> dans la barre supérieure pour basculer instantanément.</p>
+        <div id="swatches" class="ds-stack"></div>
+      </section>
+
+      <!-- ===================== ICON CATALOG ===================== -->
+      <section class="sg-section" id="tokens-icons" aria-labelledby="h-icons">
+        <h2 id="h-icons"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-shapes"/></svg> Catalogue d'icônes Material Design 3 (SVG vectoriel)</h2>
+        <p class="sg-lead">Toutes les icônes suivent une grille optique uniforme <code>24×24</code> avec un trait arrondi de <code>1.85px</code> (<code>stroke="currentColor"</code>), sans aucun emoji dépendant de l'OS. Cliquez sur une tuile pour copier son snippet <code>&lt;svg class="ds-icon"&gt;&lt;use href="#ic-…"/&gt;&lt;/svg&gt;</code>.</p>
+
+        <div class="sg-specimen">
+          <div class="ds-toolbar" style="padding:0;border:0;background:transparent">
+            <div class="ds-field">
+              <label class="ds-label" for="icon-filter">Filtrer le catalogue (58 icônes)</label>
+              <input id="icon-filter" class="ds-input" type="search" placeholder="Ex. : priorité, stéthoscope, edit, pdf, poumon…" data-testid="icon-catalog-search">
+            </div>
+            <div class="ds-toolbar__end">
+              <span class="ds-badge ds-badge--neutral" id="icon-copy-feedback" aria-live="polite">
+                <svg class="ds-icon" aria-hidden="true"><use href="#ic-copy"/></svg> Cliquez sur une icône pour copier son code
+              </span>
+            </div>
+          </div>
+
+          <span class="sg-group-title">Échelle de tailles (.ds-icon--xs à .ds-icon--xl) &amp; Conteneurs tonals M3 (.ds-icon-box)</span>
+          <div class="sg-row">
+            <span class="ds-badge ds-badge--neutral"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-stethoscope"/></svg> xs (14px)</span>
+            <span class="ds-badge ds-badge--neutral"><svg class="ds-icon ds-icon--sm" aria-hidden="true"><use href="#ic-stethoscope"/></svg> sm (16px)</span>
+            <span class="ds-badge ds-badge--neutral"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> default (18px)</span>
+            <span class="ds-badge ds-badge--neutral"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-stethoscope"/></svg> md (20px)</span>
+            <span class="ds-badge ds-badge--neutral"><svg class="ds-icon ds-icon--lg" aria-hidden="true"><use href="#ic-stethoscope"/></svg> lg (24px)</span>
+            <span class="ds-badge ds-badge--neutral"><svg class="ds-icon ds-icon--xl" aria-hidden="true"><use href="#ic-stethoscope"/></svg> xl (32px)</span>
+            <span class="ds-icon-box" data-tooltip=".ds-icon-box (Primary Tonal)"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-compass"/></svg></span>
+            <span class="ds-icon-box ds-icon-box--danger" data-tooltip=".ds-icon-box--danger"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-priority-high"/></svg></span>
+            <span class="ds-icon-box ds-icon-box--warning" data-tooltip=".ds-icon-box--warning"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-warning"/></svg></span>
+            <span class="ds-icon-box ds-icon-box--success" data-tooltip=".ds-icon-box--success"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-check-circle"/></svg></span>
+            <span class="ds-icon-box ds-icon-box--info" data-tooltip=".ds-icon-box--info"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-sparkle"/></svg></span>
+            <span class="ds-icon-box ds-icon-box--neutral" data-tooltip=".ds-icon-box--neutral"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-folder"/></svg></span>
+          </div>
+
+          <div id="icon-catalog" class="ds-stack" data-testid="icon-catalog"></div>
+        </div>
+      </section>
+
+      <!-- ===================== TYPOGRAPHY ===================== -->
+      <section class="sg-section" id="tokens-type" aria-labelledby="h-type">
+        <h2 id="h-type"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-type"/></svg> Typographie</h2>
+        <p class="sg-lead">Pile système (<code>--ds-font-sans</code>) : aucune police téléchargée. Corps de texte 15 px, tableaux denses 13 px, jamais en dessous de 12 px.</p>
+        <div class="ds-card"><div class="ds-card__body">
+          <div class="sg-scale-item"><code>--ds-text-3xl</code><span style="font-size:var(--ds-text-3xl);font-weight:700">12 dossiers</span></div>
+          <div class="sg-scale-item"><code>--ds-text-2xl</code><span style="font-size:var(--ds-text-2xl);font-weight:700">Mme Jeanne Fictive</span></div>
+          <div class="sg-scale-item"><code>--ds-text-xl</code><span style="font-size:var(--ds-text-xl);font-weight:700">Synthèse synoptique RCP</span></div>
+          <div class="sg-scale-item"><code>--ds-text-lg</code><span style="font-size:var(--ds-text-lg);font-weight:600">Contrôle de complétude</span></div>
+          <div class="sg-scale-item"><code>--ds-text-md</code><span>Adénocarcinome pancréatique céphalique, cT3N1M0, CA 19-9 à 412 U/mL.</span></div>
+          <div class="sg-scale-item"><code>--ds-text-sm</code><span style="font-size:var(--ds-text-sm)">RCP digestive du 14/10/2026 · 3 pièces analysées</span></div>
+          <div class="sg-scale-item"><code>--ds-text-xs</code><span style="font-size:var(--ds-text-xs)"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-clock"/></svg> Temps cumulé : 2 min 41 s</span></div>
+          <div class="sg-scale-item"><code>--ds-font-mono</code><span class="ds-mono">IPP-000000-FICTIF</span></div>
+        </div></div>
+      </section>
+
+      <!-- ===================== SPACING / RADII / SHADOWS ===================== -->
+      <section class="sg-section" id="tokens-space" aria-labelledby="h-space">
+        <h2 id="h-space"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-ruler"/></svg> Espaces, rayons M3 &amp; élévation douce</h2>
+        <div class="ds-grid">
+          <div class="ds-card"><div class="ds-card__body ds-stack--sm" id="space-scale"></div></div>
+          <div class="ds-card"><div class="ds-card__body">
+            <div class="sg-row">
+              <div class="sg-box" style="border-radius:var(--ds-radius-sm)">radius-sm (8px)</div>
+              <div class="sg-box" style="border-radius:var(--ds-radius-md)">radius-md (12px)</div>
+              <div class="sg-box" style="border-radius:var(--ds-radius-lg)">radius-lg (16px)</div>
+              <div class="sg-box" style="border-radius:var(--ds-radius-xl)">radius-xl (28px)</div>
+              <div class="sg-box" style="border-radius:var(--ds-radius-pill)">pill (999px)</div>
+            </div>
+            <div class="sg-row">
+              <div class="sg-box" style="box-shadow:var(--ds-shadow-sm)">shadow-sm</div>
+              <div class="sg-box" style="box-shadow:var(--ds-shadow-md)">shadow-md</div>
+              <div class="sg-box" style="box-shadow:var(--ds-shadow-lg)">shadow-lg</div>
+            </div>
+            <p class="ds-small ds-muted">En Material Design 3, la hiérarchie repose sur les tons de gris neutres et une bordure <code>1px</code> subtile ; les ombres restent ultra-légères.</p>
+          </div></div>
+        </div>
+      </section>
+
+      <!-- ===================== M3 NAVIGATION RAIL & CONTEXTUAL MENUS (...) ===================== -->
+      <section class="sg-section" id="c-menus" aria-labelledby="h-menus">
+        <h2 id="h-menus"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-more-vert"/></svg> Navigation Rail M3 &amp; Menus contextuels (<code>…</code>) légèrement colorés</h2>
+        <p class="sg-lead">Le menu latéral suit les spécifications <strong>Material Design 3 Navigation Rail</strong> (indicateur actif pilule <code>56×32px</code> <code>.ds-nav__indicator</code>, Tonal FAB <code>.ds-rail__fab</code>, surface teintée <code>--ds-sidebar-bg</code> et info-bulle latérale au survol lorsque replié). Les actions secondaires sont regroupées dans des <strong>menus contextuels M3 (<code>.ds-menu</code>)</strong> légèrement colorés (<code>--ds-menu-bg</code>).</p>
+        <div class="sg-specimen">
+          <span class="sg-group-title">Menus contextuels M3 (<code>.ds-menu</code> — déclencheur <code>⋮</code> ou <code>⋯</code>)</span>
+          <div class="sg-row" style="gap:var(--ds-space-6)">
+            <details class="ds-menu" open data-testid="sg-menu-patient">
+              <summary class="ds-menu__trigger" aria-label="Menu patient M3">
+                <svg class="ds-icon" aria-hidden="true"><use href="#ic-more-vert"/></svg>
+              </summary>
+              <div class="ds-menu__panel ds-menu__panel--left" role="menu" style="position:static;margin-top:0.5rem">
+                <div class="ds-menu__header">FICTIVE Jeanne (#A-1042)</div>
+                <a class="ds-menu__item ds-menu__item--active" role="menuitem" href="#c-menus">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-folder"/></svg>
+                  <span>Ouvrir le dossier longitudinal</span>
+                </a>
+                <a class="ds-menu__item" role="menuitem" href="#c-opinions">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg>
+                  <span>Avis &amp; orientation pré-RCP</span>
+                </a>
+                <a class="ds-menu__item" role="menuitem" href="#c-chat">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-sparkle"/></svg>
+                  <span>Interroger l'assistant IA</span>
+                </a>
+                <hr class="ds-menu__divider">
+                <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg>
+                  <span>Supprimer ce dossier…</span>
+                </button>
+              </div>
+            </details>
+
+            <details class="ds-menu" open data-testid="sg-menu-section">
+              <summary class="ds-menu__trigger" aria-label="Menu rubrique clinique M3">
+                <svg class="ds-icon" aria-hidden="true"><use href="#ic-more-horiz"/></svg>
+              </summary>
+              <div class="ds-menu__panel ds-menu__panel--left" role="menu" style="position:static;margin-top:0.5rem">
+                <div class="ds-menu__header">Rubrique Chimiothérapie</div>
+                <button type="button" class="ds-menu__item" role="menuitem">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-edit"/></svg>
+                  <span>Modifier manuellement</span>
+                </button>
+                <button type="button" class="ds-menu__item" role="menuitem">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-refresh"/></svg>
+                  <span>Relancer l'extraction IA</span>
+                </button>
+                <button type="button" class="ds-menu__item" role="menuitem">
+                  <svg class="ds-icon" aria-hidden="true"><use href="#ic-copy"/></svg>
+                  <span>Copier la synthèse</span>
+                </button>
+              </div>
+            </details>
+          </div>
+          <p class="sg-label">.ds-nav-rail | .ds-nav__indicator (56×32px) | .ds-rail__fab | .ds-menu | .ds-menu__panel (--ds-menu-bg)</p>
+        </div>
+      </section>
+
+      <!-- ===================== QUEUE ===================== -->
+      <section class="sg-section" id="c-queue" aria-labelledby="h-queue">
+        <h2 id="h-queue"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-layers"/></svg> Bannière de file &amp; tiroir M3</h2>
+        <p class="sg-lead">Bannière neutre (sans fond bleu agressif) en haut de page (<code>role="status"</code> + <code>aria-live="polite"</code>). Le bouton ouvre un <code>&lt;dialog class="ds-drawer"&gt;</code> latéral M3.</p>
+        <div class="ds-stack--sm ds-stack">
+          <div class="ds-queue-banner ds-queue-banner--idle" style="position:static" role="status"><span class="ds-queue-banner__text"><svg class="ds-icon" aria-hidden="true"><use href="#ic-clock"/></svg> Aucune analyse en cours</span></div>
+          <div class="ds-queue-banner ds-queue-banner--success" style="position:static" role="status"><span class="ds-queue-banner__text"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> <strong>Lot terminé</strong> · 5 dossiers structurés</span><a class="ds-btn ds-btn--sm ds-queue-banner__action" href="#c-table">Ouvrir la worklist</a></div>
+          <div class="ds-queue-banner ds-queue-banner--error" style="position:static" role="status"><span class="ds-queue-banner__text"><svg class="ds-icon" aria-hidden="true"><use href="#ic-error"/></svg> <strong>1 analyse en échec</strong> · Dossier fictif #A-1039</span><button type="button" class="ds-btn ds-btn--sm ds-queue-banner__action">Détails</button></div>
+          <div class="ds-queue-banner ds-queue-banner--offline" style="position:static" role="status"><span class="ds-queue-banner__text"><svg class="ds-icon" aria-hidden="true"><use href="#ic-wifi-off"/></svg> Connexion temps réel interrompue — nouvelle tentative…</span></div>
+        </div>
+        <div><button type="button" class="ds-btn ds-btn--tonal" data-open="queue-drawer" aria-haspopup="dialog"><svg class="ds-icon" aria-hidden="true"><use href="#ic-layers"/></svg> Ouvrir le tiroir de file</button></div>
+      </section>
+
+      <!-- ===================== BUTTONS ===================== -->
+      <section class="sg-section" id="c-buttons" aria-labelledby="h-buttons">
+        <h2 id="h-buttons"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-play"/></svg> Boutons Material Design 3 (5 variantes M3 + FAB)</h2>
+        <div class="sg-specimen">
+          <span class="sg-group-title">Les 5 boutons standards M3 (State layer 8% au survol, 12% au clic)</span>
+          <div class="sg-row">
+            <button type="button" class="ds-btn ds-btn--primary" data-testid="btn_analyze"><svg class="ds-icon" aria-hidden="true"><use href="#ic-play"/></svg> Filled (Primaire)</button>
+            <button type="button" class="ds-btn ds-btn--tonal"><svg class="ds-icon" aria-hidden="true"><use href="#ic-refresh"/></svg> Filled Tonal</button>
+            <button type="button" class="ds-btn ds-btn--elevated"><svg class="ds-icon" aria-hidden="true"><use href="#ic-sparkle"/></svg> Elevated</button>
+            <button type="button" class="ds-btn ds-btn--secondary">Outlined</button>
+            <button type="button" class="ds-btn ds-btn--ghost">Text</button>
+          </div>
+          <span class="sg-group-title">Actions destructives M3 (Tonal Error → Filled Error) &amp; Extended FAB</span>
+          <div class="sg-row">
+            <button type="button" class="ds-btn ds-btn--danger-soft" data-testid="btn_del_patient_A1042"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg> Supprimer (Tonal Error)</button>
+            <button type="button" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_purge"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg> Supprimer définitivement (Filled Error)</button>
+            <a class="ds-fab" href="#c-forms"><svg class="ds-icon" aria-hidden="true"><use href="#ic-add"/></svg> Nouveau dossier RCP (Extended FAB)</a>
+          </div>
+          <span class="sg-group-title">Tailles, Icon Buttons &amp; états</span>
+          <div class="sg-row">
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--sm">Compact (32px)</button>
+            <button type="button" class="ds-btn ds-btn--primary">Standard M3 (40px)</button>
+            <button type="button" class="ds-btn ds-btn--primary ds-btn--lg">Large (48px)</button>
+            <button type="button" class="ds-btn ds-btn--tonal ds-btn--icon" aria-label="Rechercher" data-tooltip="Icon Button Tonal"><svg class="ds-icon" aria-hidden="true"><use href="#ic-search"/></svg></button>
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--icon" aria-label="Fermer" data-tooltip="Icon Button Outlined"><svg class="ds-icon" aria-hidden="true"><use href="#ic-close"/></svg></button>
+            <button type="button" class="ds-btn ds-btn--primary" aria-busy="true" disabled>Analyse en cours…</button>
+            <button type="button" class="ds-btn ds-btn--secondary" disabled>Désactivé</button>
+          </div>
+          <p class="sg-label">.ds-btn--primary (Filled) | --tonal (Filled Tonal) | --elevated (Elevated) | --secondary (Outlined) | --ghost (Text) | .ds-fab</p>
+        </div>
+      </section>
+
+      <!-- ===================== BADGES & CHIPS ===================== -->
+      <section class="sg-section" id="c-badges" aria-labelledby="h-badges">
+        <h2 id="h-badges"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-compass"/></svg> Badges &amp; Chips interactifs M3</h2>
+        <p class="sg-lead">Toujours <strong>icône SVG + texte + couleur</strong>, ≤ 24 caractères. Les chips M3 (<code>.ds-chip</code>) possèdent un état de survol et de sélection.</p>
+        <div class="sg-specimen">
+          <span class="sg-group-title">Priorité</span>
+          <div class="sg-row">
+            <span class="ds-badge ds-badge--urgency-high" data-testid="badge-priority-high"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg> Priorité haute</span>
+            <span class="ds-badge ds-badge--urgency-medium"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-medium"/></svg> Priorité modérée</span>
+            <span class="ds-badge ds-badge--urgency-low"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-low"/></svg> Priorité standard</span>
+            <span class="ds-badge ds-badge--urgency-none"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-none"/></svg> Non évaluée</span>
+          </div>
+          <span class="sg-group-title">Complétude &amp; Orientation pré-RCP (non prescriptive)</span>
+          <div class="sg-row">
+            <span class="ds-badge ds-badge--complete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Dossier complet</span>
+            <span class="ds-badge ds-badge--incomplete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> 2 pièces manquantes</span>
+            <span class="ds-badge ds-badge--orientation-standard"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Conforme au référentiel</span>
+            <span class="ds-badge ds-badge--orientation-adapt" data-testid="badge-orientation-adapt"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg> Adaptation suggérée</span>
+            <span class="ds-badge ds-badge--orientation-pending"><svg class="ds-icon" aria-hidden="true"><use href="#ic-clock"/></svg> À discuter en RCP</span>
+          </div>
+          <span class="sg-group-title">Chips de filtre interactifs Material Design 3 (.ds-chip)</span>
+          <div class="sg-row">
+            <button type="button" class="ds-chip" aria-pressed="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check"/></svg> Priorité haute (3)</button>
+            <button type="button" class="ds-chip" aria-pressed="false"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Pancréas</button>
+            <button type="button" class="ds-chip" aria-pressed="false"><svg class="ds-icon" aria-hidden="true"><use href="#ic-radiation"/></svg> Radiothérapie</button>
+            <button type="button" class="ds-chip" aria-pressed="false"><svg class="ds-icon" aria-hidden="true"><use href="#ic-brain"/></svg> Neurologie</button>
+          </div>
+          <span class="sg-group-title">Spécialités requises · domaines · traçabilité</span>
+          <div class="sg-row">
+            <ul class="ds-badge-list" aria-label="Spécialités requises">
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Pancréas</li>
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-radiation"/></svg> Radiothérapie</li>
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-microscope"/></svg> Anatomopathologie</li>
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-brain"/></svg> Neurologie</li>
+            </ul>
+            <span class="ds-badge ds-badge--domain-onco"><svg class="ds-icon" aria-hidden="true"><use href="#ic-ribbon"/></svg> Oncologie</span>
+            <span class="ds-badge ds-badge--domain-sma"><svg class="ds-icon" aria-hidden="true"><use href="#ic-dna"/></svg> Amyotrophie spinale</span>
+            <span class="ds-badge ds-badge--manual" data-testid="badge-manual-edit"><svg class="ds-icon" aria-hidden="true"><use href="#ic-edit-note"/></svg> Modifié manuellement</span>
+            <span class="ds-badge ds-badge--neutral ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-clock"/></svg> 0 min 41 s</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== HOVER / TOOLTIPS / HOVERCARDS ===================== -->
+      <section class="sg-section" id="c-hover" aria-labelledby="h-hover">
+        <h2 id="h-hover"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-sparkle"/></svg> Composants de survol (Tooltips M3 &amp; Rich Hovercards)</h2>
+        <p class="sg-lead">Passez la souris (ou naviguez au clavier avec <code>Tab</code>) sur les éléments ci-dessous pour afficher les info-bulles rapides (<code>[data-tooltip]</code>) et les cartes d'aperçu clinique riches (<code>.ds-hovercard</code>) sans quitter la vue.</p>
+        <div class="sg-specimen">
+          <span class="sg-group-title">1. Cartes d'aperçu clinique au survol (.ds-hovercard)</span>
+          <div class="sg-row">
+            <!-- Hovercard 1: Missing items -->
+            <div class="ds-hovercard" tabindex="0" data-testid="hovercard-missing">
+              <span class="ds-badge ds-badge--incomplete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> 2 pièces manquantes</span>
+              <div class="ds-hovercard__panel" role="tooltip">
+                <span class="ds-hovercard__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> Contrôle de complétude pré-RCP</span>
+                <p class="ds-hovercard__body">Éléments requis par le référentiel TNCD Pancréas non détectés dans le dossier :</p>
+                <ul class="ds-hovercard__list">
+                  <li>TEP-TDM d'extension (&lt; 4 semaines)</li>
+                  <li>Compte rendu anatomopathologique définitif</li>
+                </ul>
+                <div class="ds-hovercard__footer">
+                  <a class="ds-btn ds-btn--tonal ds-btn--sm" href="#c-sections">Vérifier la rubrique</a>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hovercard 2: AI Thinking / Reflection -->
+            <div class="ds-hovercard" tabindex="0" data-testid="hovercard-thinking">
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-sparkle"/></svg> Réflexion IA (0 min 12 s)</button>
+              <div class="ds-hovercard__panel" role="tooltip">
+                <span class="ds-hovercard__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-sparkle"/></svg> Trace de raisonnement IA</span>
+                <p class="ds-hovercard__body">« Biopsie écho-endoscopique du 28/09/2026 confirmant un adénocarcinome canalaire céphalique. Scanner TAP du 02/10 : contact VMS &lt; 180° sans thrombose, pas de métastase hépatique → classé cT3 N1 M0 résécable borderline. »</p>
+                <div class="ds-hovercard__footer">
+                  <span class="ds-small ds-muted">Modèle local · Ornith-35B</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Hovercard 3: Guideline citation -->
+            <div class="ds-hovercard" tabindex="0" data-testid="hovercard-ref">
+              <span class="ds-chip"><svg class="ds-icon" aria-hidden="true"><use href="#ic-book"/></svg> Réf. TNCD Pancréas §4.2</span>
+              <div class="ds-hovercard__panel" role="tooltip">
+                <span class="ds-hovercard__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-book"/></svg> Thésaurus National de Cancérologie Digestive</span>
+                <p class="ds-hovercard__body">« En 2<sup>e</sup> ligne métastatique ou localement avancé après FOLFIRINOX, une association gemcitabine + nab-paclitaxel est proposée chez les patients OMS 0–1. »</p>
+                <div class="ds-hovercard__footer">
+                  <a class="ds-btn ds-btn--ghost ds-btn--sm" href="#c-opinions">Ouvrir le référentiel p. 18</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <span class="sg-group-title">2. Info-bulles courtes M3 ([data-tooltip])</span>
+          <div class="sg-row">
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-tooltip="Conserve toutes les modifications manuelles"><svg class="ds-icon" aria-hidden="true"><use href="#ic-refresh"/></svg> Relancer l'IA</button>
+            <button type="button" class="ds-btn ds-btn--ghost ds-btn--icon" aria-label="Télécharger le PDF source" data-tooltip="Télécharger le PDF original"><svg class="ds-icon" aria-hidden="true"><use href="#ic-download"/></svg></button>
+            <button type="button" class="ds-btn ds-btn--ghost ds-btn--icon" aria-label="Rattacher à un autre patient" data-tooltip="Relier cette fiche à un patient existant"><svg class="ds-icon" aria-hidden="true"><use href="#ic-link"/></svg></button>
+          </div>
+          <p class="sg-label">.ds-hovercard + .ds-hovercard__panel · [data-tooltip="…"] · déclenchés au :hover et au :focus-within clavier</p>
+        </div>
+      </section>
+
+      <!-- ===================== CARDS ===================== -->
+      <section class="sg-section" id="c-cards" aria-labelledby="h-cards">
+        <h2 id="h-cards"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-folder"/></svg> Cartes Material Design 3 (Outlined, Elevated, Filled) &amp; KPI</h2>
+        <p class="sg-lead">Aucune barre colorée latérale : la hiérarchie M3 utilise les 3 types de cartes officielles (<strong>Outlined</strong>, <strong>Elevated</strong>, <strong>Filled</strong>) et des icônes SVG en conteneurs tonals arrondis (<code>12px</code>).</p>
+        <div class="ds-grid">
+          <div class="ds-card"><div class="ds-card__header"><h3 class="ds-card__title">1. Outlined Card (.ds-card)</h3></div><div class="ds-card__body"><p class="ds-small ds-muted">Surface <code>--ds-color-surface</code> avec contour <code>1px</code> subtil (<code>outline-variant</code>), sans ombre.</p></div></div>
+          <div class="ds-card ds-card--elevated"><div class="ds-card__header"><h3 class="ds-card__title">2. Elevated Card (.ds-card--elevated)</h3></div><div class="ds-card__body"><p class="ds-small ds-muted">Surface Container Low sans bordure, avec élévation douce M3 Level 1.</p></div></div>
+          <div class="ds-card ds-card--filled"><div class="ds-card__header"><h3 class="ds-card__title">3. Filled Card (.ds-card--filled)</h3></div><div class="ds-card__body"><p class="ds-small ds-muted">Surface Container tonale sans bordure ni ombre pour regrouper des sous-blocs.</p></div></div>
+        </div>
+        <div class="ds-kpi-grid">
+          <a class="ds-kpi ds-kpi--success" href="#c-table" data-testid="kpi-structured"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--success" aria-hidden="true"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-folder"/></svg></span> Dossiers structurés</span><span class="ds-kpi__value">24</span><span class="ds-kpi__meta">RCP digestive du 06/11/2026</span></a>
+          <a class="ds-kpi ds-kpi--danger" href="#c-table" data-testid="kpi-priority-high"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--danger" aria-hidden="true"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-priority-high"/></svg></span> Priorité haute</span><span class="ds-kpi__value">3</span><span class="ds-kpi__meta">à présenter en premier</span></a>
+          <a class="ds-kpi ds-kpi--warning" href="#c-table"><span class="ds-kpi__label"><span class="ds-icon-box ds-icon-box--warning" aria-hidden="true"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-warning"/></svg></span> Contrôle de complétude</span><span class="ds-kpi__value">5</span><span class="ds-kpi__meta">dossiers incomplets</span></a>
+          <a class="ds-kpi" href="#c-table"><span class="ds-kpi__label"><span class="ds-icon-box" aria-hidden="true"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-compass"/></svg></span> Orientations pré-RCP</span><span class="ds-kpi__value">7</span><span class="ds-kpi__meta">adaptations suggérées</span></a>
+        </div>
+
+        <span class="sg-group-title">En-tête patient + carte synoptique épinglée (.ds-synoptic)</span>
+        <div class="ds-patient-header">
+          <h3 class="ds-patient-header__name">Mme Jeanne FICTIVE</h3>
+          <ul class="ds-patient-header__meta">
+            <li>Née le 02/03/1958 (68 ans)</li><li>F</li><li class="ds-mono">IPP-000000-FICTIF</li><li>3 RCP</li>
+            <li><span class="ds-badge ds-badge--neutral ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-clock"/></svg> Temps cumulé : 2 min 41 s</span></li>
+          </ul>
+        </div>
+        <div class="ds-synoptic ds-synoptic--static" data-testid="synoptic-card">
+          <div class="ds-synoptic__row">
+            <span class="ds-synoptic__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Synthèse synoptique RCP</span>
+            <span class="ds-synoptic__label">Priorité</span><span class="ds-badge ds-badge--urgency-high"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg> Priorité haute</span>
+            <span class="ds-synoptic__label">Complétude</span>
+            <div class="ds-hovercard" tabindex="0">
+              <span class="ds-badge ds-badge--incomplete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> 2 pièces manquantes</span>
+              <div class="ds-hovercard__panel" role="tooltip">
+                <span class="ds-hovercard__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> Manquant au dossier</span>
+                <ul class="ds-hovercard__list"><li>TEP-TDM</li><li>CR anatomopathologique</li></ul>
+              </div>
+            </div>
+            <span class="ds-synoptic__label">Orientation</span><span class="ds-badge ds-badge--orientation-adapt"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg> Adaptation suggérée</span>
+          </div>
+          <div class="ds-synoptic__row">
+            <span class="ds-synoptic__label"><svg class="ds-icon" aria-hidden="true"><use href="#ic-users"/></svg> Spécialités requises (3) :</span>
+            <ul class="ds-badge-list">
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Pancréas</li>
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-radiation"/></svg> Radiothérapie</li>
+              <li class="ds-badge ds-badge--specialty"><svg class="ds-icon" aria-hidden="true"><use href="#ic-microscope"/></svg> Anatomopathologie</li>
+            </ul>
+          </div>
+          <div class="ds-synoptic__row">
+            <dl class="ds-markers">
+              <div class="ds-markers__item"><dt>Diagnostic</dt><dd>Adénocarcinome tête du pancréas</dd></div>
+              <div class="ds-markers__item"><dt>Stade</dt><dd>cT3 N1 M0</dd></div>
+              <div class="ds-markers__item"><dt>CA 19-9</dt><dd>412 U/mL <span class="ds-delta ds-delta--worse"><svg class="ds-icon" aria-hidden="true"><use href="#ic-trend-up"/></svg> +38 % vs 14/10</span></dd></div>
+              <div class="ds-markers__item"><dt>OMS / ECOG</dt><dd>1 <span class="ds-delta ds-delta--stable">= stable</span></dd></div>
+              <div class="ds-markers__item"><dt>Poids</dt><dd>58 kg <span class="ds-delta ds-delta--worse"><svg class="ds-icon" aria-hidden="true"><use href="#ic-trend-down"/></svg> −4 kg vs 14/10</span></dd></div>
+              <div class="ds-markers__item"><dt>Génétique</dt><dd class="is-missing">Non renseigné</dd></div>
+            </dl>
+          </div>
+        </div>
+
+        <span class="sg-group-title">Cartes patient interactives au survol (.ds-card--interactive)</span>
+        <div class="ds-patient-grid">
+          <article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--urgent" data-testid="patient-card-A1042">
+            <div class="ds-card__header">
+              <h3 class="ds-patient-card__name"><a href="#c-split">Mme Jeanne FICTIVE</a></h3>
+              <span class="ds-patient-card__id">#A-1042</span>
+            </div>
+            <div class="ds-card__body">
+              <div class="ds-cluster">
+                <span class="ds-badge ds-badge--urgency-high"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg> Priorité haute</span>
+                <span class="ds-badge ds-badge--incomplete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> 2 manquantes</span>
+                <span class="ds-badge ds-badge--orientation-adapt"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg> Adaptation suggérée</span>
+              </div>
+              <p class="ds-small">Adénocarcinome pancréatique, cT3N1M0. Progression biologique sous FOLFIRINOX.</p>
+            </div>
+            <div class="ds-card__footer">
+              <span class="ds-small ds-muted">RCP du 06/11/2026</span>
+              <div class="ds-card__footer-end">
+                <button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" aria-label="Supprimer le dossier de Mme Jeanne FICTIVE" data-tooltip="Supprimer ce dossier" data-testid="btn_del_patient_A1042"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg></button>
+                <a class="ds-btn ds-btn--primary ds-btn--sm" href="#c-split">Ouvrir</a>
+              </div>
+            </div>
+          </article>
+          <article class="ds-card ds-card--interactive ds-patient-card" data-testid="patient-card-S0007">
+            <div class="ds-card__header">
+              <h3 class="ds-patient-card__name"><a href="#c-split">Léo EXEMPLE</a></h3>
+              <span class="ds-patient-card__id">#S-0007</span>
+            </div>
+            <div class="ds-card__body">
+              <div class="ds-cluster">
+                <span class="ds-badge ds-badge--urgency-low"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-low"/></svg> Priorité standard</span>
+                <span class="ds-badge ds-badge--complete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Dossier complet</span>
+                <span class="ds-badge ds-badge--domain-sma"><svg class="ds-icon" aria-hidden="true"><use href="#ic-dna"/></svg> SMA type 2</span>
+              </div>
+              <p class="ds-small">Suivi sous nusinersen. HFMSE stable, CVF à 72 % de la théorique.</p>
+            </div>
+            <div class="ds-card__footer">
+              <span class="ds-small ds-muted">RCP SMA du 12/11/2026</span>
+              <div class="ds-card__footer-end">
+                <a class="ds-btn ds-btn--primary ds-btn--sm" href="#c-split">Ouvrir</a>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- ===================== TABLE ===================== -->
+      <section class="sg-section" id="c-table" aria-labelledby="h-table">
+        <h2 id="h-table"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-worklist"/></svg> Tableau worklist (En-tête gris neutre M3)</h2>
+        <form class="ds-toolbar" role="search" onsubmit="return false">
+          <div class="ds-field"><label class="ds-label" for="q">Rechercher</label><input id="q" class="ds-input" type="search" placeholder="Nom, IPP, diagnostic…"></div>
+          <fieldset class="ds-field" style="border:0;padding:0;margin:0">
+            <legend class="ds-label">Complétude</legend>
+            <div class="ds-segmented">
+              <input type="radio" name="compl" id="c-all" checked><label for="c-all">Tous</label>
+              <input type="radio" name="compl" id="c-inc"><label for="c-inc">Incomplets</label>
+              <input type="radio" name="compl" id="c-ok"><label for="c-ok">Complets</label>
+            </div>
+          </fieldset>
+          <div class="ds-toolbar__end">
+            <label class="ds-check"><input type="checkbox" class="ds-toggle" role="switch" id="dense" checked> Affichage dense</label>
+          </div>
+        </form>
+        <div class="ds-table-wrap">
+          <table class="ds-table ds-table--dense" id="worklist" data-testid="worklist-table">
+            <caption class="ds-sr-only">Worklist RCP digestive du 06/11/2026, triée par priorité</caption>
+            <thead>
+              <tr>
+                <th scope="col" aria-sort="descending"><button type="button" class="ds-sort">Priorité</button></th>
+                <th scope="col"><button type="button" class="ds-sort">Patient</button></th>
+                <th scope="col">Domaine</th>
+                <th scope="col">Complétude</th>
+                <th scope="col">Orientation</th>
+                <th scope="col">Spécialités requises</th>
+                <th scope="col" aria-sort="none"><button type="button" class="ds-sort">Dernière RCP</button></th>
+                <th scope="col" class="ds-table__actions"><span class="ds-sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="is-urgent" data-testid="worklist-row-A1042">
+                <td><span class="ds-badge ds-badge--urgency-high ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg> Haute</span></td>
+                <td><a class="ds-table__primary-link" href="#c-split">FICTIVE Jeanne</a><br><span class="ds-small ds-muted ds-mono">#A-1042</span></td>
+                <td><span class="ds-badge ds-badge--domain-onco ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-ribbon"/></svg> Onco</span></td>
+                <td><span class="ds-badge ds-badge--incomplete ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg> 2 manquantes</span></td>
+                <td><span class="ds-badge ds-badge--orientation-adapt ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg> Adaptation suggérée</span></td>
+                <td><span class="ds-badge ds-badge--specialty ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Pancréas</span> <span class="ds-badge ds-badge--specialty ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-radiation"/></svg> Radiothérapie</span></td>
+                <td class="ds-nowrap">14/10/2026</td>
+                <td class="ds-table__actions"><a class="ds-btn ds-btn--ghost ds-btn--sm" href="#c-split">Ouvrir</a></td>
+              </tr>
+              <tr>
+                <td><span class="ds-badge ds-badge--urgency-medium ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-medium"/></svg> Modérée</span></td>
+                <td><a class="ds-table__primary-link" href="#c-split">MODÈLE Paul</a><br><span class="ds-small ds-muted ds-mono">#A-1037</span></td>
+                <td><span class="ds-badge ds-badge--domain-onco ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-ribbon"/></svg> Onco</span></td>
+                <td><span class="ds-badge ds-badge--complete ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Complet</span></td>
+                <td><span class="ds-badge ds-badge--orientation-standard ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Conforme</span></td>
+                <td><span class="ds-badge ds-badge--specialty ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Œsophage</span></td>
+                <td class="ds-nowrap">—</td>
+                <td class="ds-table__actions"><a class="ds-btn ds-btn--ghost ds-btn--sm" href="#c-split">Ouvrir</a></td>
+              </tr>
+              <tr>
+                <td><span class="ds-badge ds-badge--urgency-low ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-low"/></svg> Standard</span></td>
+                <td><a class="ds-table__primary-link" href="#c-split">EXEMPLE Léo</a><br><span class="ds-small ds-muted ds-mono">#S-0007</span></td>
+                <td><span class="ds-badge ds-badge--domain-sma ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-dna"/></svg> SMA</span></td>
+                <td><span class="ds-badge ds-badge--complete ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Complet</span></td>
+                <td><span class="ds-badge ds-badge--orientation-pending ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-clock"/></svg> À discuter</span></td>
+                <td><span class="ds-badge ds-badge--specialty ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-brain"/></svg> Neurologie</span> <span class="ds-badge ds-badge--specialty ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-lungs"/></svg> Pneumologie</span></td>
+                <td class="ds-nowrap">22/09/2026</td>
+                <td class="ds-table__actions"><a class="ds-btn ds-btn--ghost ds-btn--sm" href="#c-split">Ouvrir</a></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===================== FORMS ===================== -->
+      <section class="sg-section" id="c-forms" aria-labelledby="h-forms">
+        <h2 id="h-forms"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-upload"/></svg> Formulaires &amp; dépôt de fichiers</h2>
+        <div class="ds-grid">
+          <div class="ds-card"><div class="ds-card__body">
+            <div class="ds-field"><label class="ds-label" for="f-session">Séance RCP</label><input class="ds-input" id="f-session" value="RCP digestive — 06/11/2026"></div>
+            <div class="ds-field"><label class="ds-label" for="f-domain">Domaine</label>
+              <select class="ds-select" id="f-domain"><option>Oncologie digestive</option><option>Amyotrophie spinale (SMA)</option></select></div>
+            <div class="ds-field"><label class="ds-label" for="f-ipp">IPP</label>
+              <input class="ds-input" id="f-ipp" aria-invalid="true" aria-describedby="f-ipp-err" value="12AB">
+              <span class="ds-error-text" id="f-ipp-err">L'IPP doit comporter 10 chiffres.</span></div>
+            <div class="ds-field"><label class="ds-label" for="f-note">Commentaire <span class="ds-label__optional">(facultatif)</span></label>
+              <textarea class="ds-textarea" id="f-note" aria-describedby="f-note-hint" placeholder="Précision pour la séance…"></textarea>
+              <span class="ds-hint" id="f-note-hint">Visible par les participants de la RCP.</span></div>
+            <label class="ds-check"><input type="checkbox" checked> Prévenir le secrétariat RCP</label>
+            <label class="ds-check"><input type="checkbox" class="ds-toggle" role="switch"> Mode expert (texte &amp; chunks)</label>
+          </div></div>
+          <div class="ds-stack">
+            <label class="ds-dropzone" data-testid="ingest-dropzone">
+              <input type="file" class="ds-sr-only" multiple accept="application/pdf">
+              <span class="ds-dropzone__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-upload"/></svg></span>
+              <span class="ds-dropzone__title">Déposez les PDF du dossier</span>
+              <span class="ds-small ds-muted">ou <u>parcourez</u> · plusieurs fichiers · PDF uniquement · 50 Mo max</span>
+            </label>
+            <ul class="ds-file-list" aria-label="Fichiers du lot">
+              <li class="ds-file-list__item"><svg class="ds-icon" aria-hidden="true"><use href="#ic-file-pdf"/></svg><span class="ds-file-list__name">CR_scanner_TAP_2026-10-02.pdf</span><span class="ds-badge ds-badge--success ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Analysé</span></li>
+              <li class="ds-file-list__item"><svg class="ds-icon" aria-hidden="true"><use href="#ic-file-pdf"/></svg><span class="ds-file-list__name">Biologie_CA19-9_2026-10-20.pdf</span><span class="ds-badge ds-badge--info ds-badge--sm"><span class="ds-spinner" aria-hidden="true"></span> En cours</span></li>
+              <li class="ds-file-list__item"><svg class="ds-icon" aria-hidden="true"><use href="#ic-file-pdf"/></svg><span class="ds-file-list__name">Courrier_oncologue.pdf</span><span class="ds-badge ds-badge--danger ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-error"/></svg> Illisible</span><button type="button" class="ds-btn ds-btn--ghost ds-btn--sm">Réessayer</button></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== INLINE-EDIT SECTIONS ===================== -->
+      <section class="sg-section" id="c-sections" aria-labelledby="h-sections">
+        <h2 id="h-sections"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-edit-note"/></svg> Rubriques éditables</h2>
+        <p class="sg-lead">Rubriques repliées par défaut ; la conclusion clé est dans l'en-tête. Une rubrique corrigée par un clinicien porte le badge « Modifié manuellement » et un en-tête tonal ambre — elle ne sera jamais écrasée par une relance IA sans confirmation.</p>
+        <details class="ds-section" open data-testid="section-diagnosis">
+          <summary><span class="ds-section__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-microscope"/></svg> Diagnostic &amp; stade</span><span class="ds-section__summary">Adénocarcinome tête du pancréas, cT3 N1 M0</span></summary>
+          <div class="ds-section__body">
+            <p>Adénocarcinome canalaire de la tête du pancréas, prouvé histologiquement (biopsie écho-endoscopique du 28/09/2026). Contact veineux mésentérique supérieur &lt; 180°.</p>
+            <div class="ds-section__actions">
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_edit_section_diagnosis"><svg class="ds-icon" aria-hidden="true"><use href="#ic-edit"/></svg> Modifier</button>
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-refresh"/></svg> Relancer cette rubrique</button>
+              <span class="ds-section__duration"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-clock"/></svg> 0 min 12 s</span>
+            </div>
+          </div>
+        </details>
+        <details class="ds-section ds-section--manual" open data-testid="section-treatment">
+          <summary><span class="ds-section__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-pill"/></svg> Traitements</span><span class="ds-badge ds-badge--manual ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-edit-note"/></svg> Modifié manuellement</span><span class="ds-section__summary">FOLFIRINOX, 6 cures</span></summary>
+          <div class="ds-section__body">
+            <p>FOLFIRINOX modifié, 6 cures (juillet → octobre 2026). Neuropathie grade 1.</p>
+            <p class="ds-section__provenance">Modifié par Dr A. Exemple le 30/10/2026 à 17:42 · version IA conservée dans l'historique</p>
+            <div class="ds-section__actions">
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-edit"/></svg> Modifier</button>
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-undo"/></svg> Revenir à la version IA</button>
+              <span class="ds-section__duration"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-clock"/></svg> 0 min 10 s</span>
+            </div>
+          </div>
+        </details>
+        <details class="ds-section is-editing" open>
+          <summary><span class="ds-section__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-flask"/></svg> Biologie</span><span class="ds-section__summary">Édition en cours…</span></summary>
+          <form class="ds-section__body" onsubmit="return false">
+            <div class="ds-field"><label class="ds-label" for="edit-bio">Contenu de la rubrique</label>
+              <textarea class="ds-textarea" id="edit-bio">CA 19-9 : 412 U/mL (20/10/2026). Bilirubine normale.</textarea></div>
+            <div class="ds-section__actions">
+              <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check"/></svg> Enregistrer</button>
+              <button type="button" class="ds-btn ds-btn--ghost ds-btn--sm">Annuler</button>
+            </div>
+          </form>
+        </details>
+      </section>
+
+      <!-- ===================== ALERTS ===================== -->
+      <section class="sg-section" id="c-alerts" aria-labelledby="h-alerts">
+        <h2 id="h-alerts"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-info"/></svg> Alertes &amp; toasts</h2>
+        <div class="ds-alert" role="note"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-info"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">Référentiel utilisé</span><span>TNCD — Cancer du pancréas, mise à jour 2026 (version fictive).</span></div></div>
+        <div class="ds-alert ds-alert--success" role="note"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">Dossier complet</span><span>Toutes les pièces attendues pour cette RCP sont présentes.</span></div></div>
+        <div class="ds-alert ds-alert--warning" role="note"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-warning"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">2 pièces manquantes</span><span>TEP-TDM, compte rendu anatomopathologique définitif.</span></div></div>
+        <div class="ds-alert ds-alert--guidance" role="note"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">Adaptation suggérée — à discuter en RCP</span><span>Les éléments du dossier pourraient justifier une discussion d'une alternative au schéma de référence. Proposition d'aide à la décision, non prescriptive.</span></div></div>
+        <div class="ds-alert ds-alert--danger" role="alert"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">Action irréversible</span><span>La suppression efface le dossier et ses analyses. Elle ne peut pas être annulée.</span></div></div>
+        <div class="ds-toast-region ds-toast-region--inline" role="status" aria-live="polite">
+          <div class="ds-toast ds-toast--success"><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg><div class="ds-toast__body"><span class="ds-toast__title">Rubrique enregistrée</span>Marquée « Modifié manuellement ».</div><button type="button" class="ds-btn ds-btn--ghost ds-btn--icon ds-btn--sm" aria-label="Fermer la notification"><svg class="ds-icon" aria-hidden="true"><use href="#ic-close"/></svg></button></div>
+          <div class="ds-toast ds-toast--danger"><svg class="ds-icon" aria-hidden="true"><use href="#ic-error"/></svg><div class="ds-toast__body"><span class="ds-toast__title">Échec de l'analyse</span>Courrier_oncologue.pdf est illisible.</div><button type="button" class="ds-btn ds-btn--ghost ds-btn--icon ds-btn--sm" aria-label="Fermer la notification"><svg class="ds-icon" aria-hidden="true"><use href="#ic-close"/></svg></button></div>
+        </div>
+      </section>
+
+      <!-- ===================== TABS ===================== -->
+      <section class="sg-section" id="c-tabs" aria-labelledby="h-tabs">
+        <h2 id="h-tabs"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-book"/></svg> Onglets M3</h2>
+        <div>
+          <div class="ds-tabs" role="tablist" aria-label="Dossier patient">
+            <button type="button" class="ds-tab" role="tab" id="tab-1" aria-selected="true" aria-controls="panel-1" data-testid="tab-clinical"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Dossier clinique</button>
+            <button type="button" class="ds-tab" role="tab" id="tab-2" aria-selected="false" aria-controls="panel-2" tabindex="-1" data-testid="tab-opinions"><svg class="ds-icon" aria-hidden="true"><use href="#ic-scale"/></svg> Avis &amp; orientation pré-RCP</button>
+            <button type="button" class="ds-tab" role="tab" id="tab-3" aria-selected="false" aria-controls="panel-3" tabindex="-1" data-testid="tab-chat"><svg class="ds-icon" aria-hidden="true"><use href="#ic-chat"/></svg> Assistant IA</button>
+            <button type="button" class="ds-tab" role="tab" id="tab-4" aria-selected="false" aria-controls="panel-4" tabindex="-1" data-testid="tab-chunks"><svg class="ds-icon" aria-hidden="true"><use href="#ic-file-pdf"/></svg> Texte &amp; chunks</button>
+          </div>
+          <div class="ds-tabpanel" role="tabpanel" id="panel-1" aria-labelledby="tab-1" tabindex="0"><p>Rubriques cliniques du dossier (voir « Rubriques éditables »).</p></div>
+          <div class="ds-tabpanel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" tabindex="0" hidden><p>Avis par spécialité et propositions d'orientation pré-RCP, triés par pertinence et urgence.</p></div>
+          <div class="ds-tabpanel" role="tabpanel" id="panel-3" aria-labelledby="tab-3" tabindex="0" hidden><p>Questions libres sur le dossier, réponses sourcées.</p></div>
+          <div class="ds-tabpanel" role="tabpanel" id="panel-4" aria-labelledby="tab-4" tabindex="0" hidden><p>Aperçu Markdown et découpage en chunks (visible uniquement en mode Expert).</p></div>
+        </div>
+      </section>
+
+      <!-- ===================== TIMELINE ===================== -->
+      <section class="sg-section" id="c-timeline" aria-labelledby="h-timeline">
+        <h2 id="h-timeline"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-clock"/></svg> Frise des séances RCP (Cartes d'étapes M3 alignées)</h2>
+        <nav class="ds-card" aria-label="Historique des RCP"><div class="ds-card__body">
+          <div class="ds-cluster">
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_timeline_prev"><svg class="ds-icon" aria-hidden="true"><use href="#ic-chevron-left"/></svg> Préc.</button>
+            <span class="ds-small ds-muted">Séance 3 sur 3 · <svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-star"/></svg> Dernière RCP</span>
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" disabled data-testid="btn_timeline_next">Suiv. <svg class="ds-icon" aria-hidden="true"><use href="#ic-chevron-right"/></svg></button>
+          </div>
+          <ol class="ds-timeline" data-testid="session-timeline">
+            <li class="ds-timeline__item">
+              <a class="ds-timeline__link" href="#c-timeline">
+                <span class="ds-timeline__marker ds-timeline__marker--low" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-check"/></svg></span>
+                <span class="ds-timeline__content">
+                  <span class="ds-timeline__date">03/06/2026</span>
+                  <span class="ds-timeline__meta">Standard · Conforme</span>
+                </span>
+              </a>
+            </li>
+            <li class="ds-timeline__item">
+              <a class="ds-timeline__link" href="#c-timeline">
+                <span class="ds-timeline__marker ds-timeline__marker--medium" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-trend-up"/></svg></span>
+                <span class="ds-timeline__content">
+                  <span class="ds-timeline__date">14/10/2026</span>
+                  <span class="ds-timeline__meta">Modérée · CA 19-9 +38 %</span>
+                </span>
+              </a>
+            </li>
+            <li class="ds-timeline__item">
+              <a class="ds-timeline__link" href="#c-timeline" aria-current="step">
+                <span class="ds-timeline__marker ds-timeline__marker--high" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-priority-high"/></svg></span>
+                <span class="ds-timeline__content">
+                  <span class="ds-timeline__date">06/11/2026 <svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-star"/></svg></span>
+                  <span class="ds-timeline__meta">Haute · Adaptation suggérée</span>
+                </span>
+                <span class="ds-sr-only">(séance affichée)</span>
+              </a>
+            </li>
+            <li class="ds-timeline__item">
+              <span class="ds-timeline__link">
+                <span class="ds-timeline__marker" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-clock"/></svg></span>
+                <span class="ds-timeline__content">
+                  <span class="ds-timeline__date">À planifier</span>
+                  <span class="ds-timeline__meta">Prochaine RCP</span>
+                </span>
+              </span>
+            </li>
+          </ol>
+        </div></nav>
+      </section>
+
+      <!-- ===================== OPINIONS ===================== -->
+      <section class="sg-section" id="c-opinions" aria-labelledby="h-opinions">
+        <h2 id="h-opinions"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-scale"/></svg> Avis experts &amp; références</h2>
+        <details class="ds-opinion" open data-testid="opinion-pancreas">
+          <summary><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Avis — Pancréas <span class="ds-badge ds-badge--urgency-high ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg> Priorité haute</span><span class="ds-badge ds-badge--neutral ds-badge--sm">2 propositions</span></summary>
+          <div class="ds-opinion__body">
+            <p><strong>Proposition 1 —</strong> Discuter une chimiothérapie de 2<sup>e</sup> ligne par gemcitabine + nab-paclitaxel, compte tenu de la progression biologique.</p>
+            <p><strong>Proposition 2 —</strong> Compléter le bilan d'extension par TEP-TDM avant discussion RCP.</p>
+            <ul class="ds-refs" aria-label="Références">
+              <li class="ds-refs__title">Références</li>
+              <li class="ds-ref"><span class="ds-ref__source"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-book"/></svg> TNCD Pancréas §4.2</span><span class="ds-ref__quote">« En 2<sup>e</sup> ligne après FOLFIRINOX, gemcitabine ± nab-paclitaxel… » (extrait fictif)</span></li>
+              <li class="ds-ref"><span class="ds-ref__source"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-file-pdf"/></svg> CR scanner 02/10/2026 p. 2</span><span class="ds-ref__quote">« Absence de lésion secondaire hépatique visible. »</span></li>
+            </ul>
+            <p class="ds-disclaimer">Proposition d'aide à la préparation de la RCP générée localement. La décision thérapeutique appartient à la RCP.</p>
+          </div>
+        </details>
+        <details class="ds-opinion">
+          <summary><svg class="ds-icon" aria-hidden="true"><use href="#ic-radiation"/></svg> Avis — Radiothérapie <span class="ds-badge ds-badge--urgency-low ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-low"/></svg> Standard</span><span class="ds-badge ds-badge--neutral ds-badge--sm">1 proposition</span></summary>
+          <div class="ds-opinion__body"><p>Pas d'indication de radiothérapie à ce stade.</p></div>
+        </details>
+      </section>
+
+      <!-- ===================== CHAT ===================== -->
+      <section class="sg-section" id="c-chat" aria-labelledby="h-chat">
+        <h2 id="h-chat"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-chat"/></svg> Assistant IA</h2>
+        <div class="ds-chat" data-testid="chat">
+          <ol class="ds-chat__log" aria-live="polite" aria-label="Conversation">
+            <li class="ds-chat__msg ds-chat__msg--user"><span class="ds-chat__author">Vous</span><div class="ds-chat__bubble">Quelle est l'évolution du CA 19-9 depuis la dernière RCP ?</div></li>
+            <li class="ds-chat__msg ds-chat__msg--assistant"><span class="ds-chat__author"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-sparkle"/></svg> Assistant DataSyntis</span>
+              <div class="ds-chat__bubble">Le CA 19-9 est passé de 298 U/mL (14/10/2026) à 412 U/mL (20/10/2026), soit +38 %.
+                <ul class="ds-refs" aria-label="Sources"><li class="ds-ref"><span class="ds-ref__source"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-file-pdf"/></svg> Biologie 20/10/2026 p. 1</span></li><li class="ds-ref"><span class="ds-ref__source"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-file-pdf"/></svg> Biologie 14/10/2026 p. 1</span></li></ul>
+              </div></li>
+            <li class="ds-chat__msg ds-chat__msg--assistant"><span class="ds-chat__author">Assistant DataSyntis</span><div class="ds-chat__bubble"><span class="ds-chat__typing" aria-label="Rédaction en cours"><span></span><span></span><span></span></span></div></li>
+          </ol>
+          <form class="ds-chat__composer" onsubmit="return false">
+            <label class="ds-sr-only" for="chat-input">Votre question sur le dossier</label>
+            <textarea class="ds-textarea" id="chat-input" rows="1" placeholder="Posez une question sur ce dossier…"></textarea>
+            <button type="submit" class="ds-btn ds-btn--primary" data-testid="btn_chat_send"><svg class="ds-icon" aria-hidden="true"><use href="#ic-send"/></svg> Envoyer</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ===================== PROGRESS ===================== -->
+      <section class="sg-section" id="c-progress" aria-labelledby="h-progress">
+        <h2 id="h-progress"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-trend-up"/></svg> Progression &amp; étapes de traitement</h2>
+        <div class="ds-job" data-testid="job-A1042">
+          <span class="ds-job__title">Dossier fictif #A-1042 — 3 PDF</span>
+          <span class="ds-badge ds-badge--info ds-badge--sm"><span class="ds-spinner" aria-hidden="true"></span> En cours</span>
+          <ol class="ds-stepper ds-job__meta" aria-label="Étapes">
+            <li class="ds-step ds-step--done"><span class="ds-step__icon" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-check"/></svg></span> Lecture PDF</li>
+            <li class="ds-step ds-step--done"><span class="ds-step__icon" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-check"/></svg></span> Indexation</li>
+            <li class="ds-step ds-step--active" aria-current="step"><span class="ds-step__icon" aria-hidden="true">3</span> Extraction clinique</li>
+            <li class="ds-step"><span class="ds-step__icon" aria-hidden="true">4</span> Avis experts</li>
+          </ol>
+          <div class="ds-job__progress">
+            <div class="ds-progress-label"><span>Extraction clinique</span><span>62 %</span></div>
+            <progress class="ds-progress" max="100" value="62" aria-label="Avancement du dossier #A-1042 : 62 %"></progress>
+          </div>
+        </div>
+        <div class="ds-job">
+          <span class="ds-job__title">Dossier fictif #A-1039 — 1 PDF</span>
+          <span class="ds-badge ds-badge--danger ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-error"/></svg> Échec</span>
+          <ol class="ds-stepper ds-job__meta" aria-label="Étapes">
+            <li class="ds-step ds-step--done"><span class="ds-step__icon" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-check"/></svg></span> Lecture PDF</li>
+            <li class="ds-step ds-step--error"><span class="ds-step__icon" aria-hidden="true"><svg class="ds-icon ds-icon--xs" aria-hidden="true"><use href="#ic-close"/></svg></span> Indexation — PDF illisible</li>
+          </ol>
+          <div class="ds-job__progress"><progress class="ds-progress ds-progress--danger" max="100" value="30" aria-label="Avancement : échec à 30 %"></progress></div>
+        </div>
+      </section>
+
+      <!-- ===================== MODAL ===================== -->
+      <section class="sg-section" id="c-modal" aria-labelledby="h-modal">
+        <h2 id="h-modal"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-delete"/></svg> Dialogue de confirmation M3</h2>
+        <p class="sg-lead">Toute action destructive passe par un <code>&lt;dialog&gt;</code> natif : bouton déclencheur <code>btn_del_…</code> (rose léger) → confirmation <code>btn_danger_…</code> (rose plein). Le focus initial est sur « Annuler ».</p>
+        <div><button type="button" class="ds-btn ds-btn--danger-soft" data-open="confirm-dialog" aria-haspopup="dialog" data-testid="btn_del_session_2026_11_06"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg> Supprimer la séance</button></div>
+        <div class="ds-modal ds-modal--danger ds-modal--preview">
+          <div class="ds-modal__header"><span aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg></span><h2>Aperçu statique</h2></div>
+          <div class="ds-modal__body">
+            <div class="ds-alert ds-alert--danger" role="alert"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">Action irréversible</span><span>Les analyses et les modifications manuelles de cette séance seront définitivement effacées.</span></div></div>
+          </div>
+          <div class="ds-modal__footer"><button type="button" class="ds-btn ds-btn--ghost">Annuler</button><button type="button" class="ds-btn ds-btn--danger" data-testid="btn_danger_preview_delete"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg> Supprimer définitivement</button></div>
+        </div>
+      </section>
+
+      <!-- ===================== SKELETON / EMPTY ===================== -->
+      <section class="sg-section" id="c-empty" aria-labelledby="h-empty">
+        <h2 id="h-empty"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-folder-open"/></svg> Chargement &amp; états vides</h2>
+        <div class="ds-grid">
+          <div class="ds-card" aria-busy="true" aria-label="Chargement du dossier"><div class="ds-card__body">
+            <span class="ds-skeleton ds-skeleton--title"></span>
+            <span class="ds-skeleton ds-skeleton--w-80"></span>
+            <span class="ds-skeleton ds-skeleton--w-60"></span>
+            <span class="ds-skeleton ds-skeleton--block"></span>
+          </div></div>
+          <div class="ds-empty" data-testid="empty-worklist">
+            <span class="ds-empty__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-folder-open"/></svg></span>
+            <span class="ds-empty__title">Aucun dossier pour cette séance</span>
+            <p class="ds-empty__text">Déposez les PDF des patients à présenter : DataSyntis les structure et vérifie leur complétude.</p>
+            <a class="ds-btn ds-btn--primary" href="#c-forms"><svg class="ds-icon" aria-hidden="true"><use href="#ic-upload"/></svg> Déposer des dossiers</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== SPLIT VIEW ===================== -->
+      <section class="sg-section" id="c-split" aria-labelledby="h-split">
+        <h2 id="h-split"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-split"/></svg> Vue scindée PDF / dossier</h2>
+        <div class="ds-split ds-split--40-60" data-testid="split-view">
+          <div class="ds-split__pane" style="height:28rem">
+            <div class="ds-cluster"><label class="ds-label" for="pdf-pick">Document source</label>
+              <select class="ds-select" id="pdf-pick" style="width:auto"><option>CR_scanner_TAP_2026-10-02.pdf</option></select></div>
+            <div class="ds-pdf-frame sg-pdf-placeholder"><span><svg class="ds-icon" aria-hidden="true"><use href="#ic-file-pdf"/></svg> Visionneuse PDF (iframe <code>/files/…pdf</code>, même origine)</span></div>
+          </div>
+          <div class="ds-split__pane">
+            <div class="ds-tabs" role="tablist" aria-label="Dossier (aperçu)">
+              <button type="button" class="ds-tab" role="tab" aria-selected="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-stethoscope"/></svg> Dossier clinique</button>
+              <button type="button" class="ds-tab" role="tab" aria-selected="false" tabindex="-1"><svg class="ds-icon" aria-hidden="true"><use href="#ic-scale"/></svg> Avis &amp; orientation pré-RCP</button>
+              <button type="button" class="ds-tab" role="tab" aria-selected="false" tabindex="-1"><svg class="ds-icon" aria-hidden="true"><use href="#ic-chat"/></svg> Assistant IA</button>
+            </div>
+            <details class="ds-section"><summary><span class="ds-section__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-microscope"/></svg> Diagnostic &amp; stade</span><span class="ds-section__summary">cT3 N1 M0</span></summary><div class="ds-section__body"><p>…</p></div></details>
+            <details class="ds-section ds-section--manual"><summary><span class="ds-section__title"><svg class="ds-icon" aria-hidden="true"><use href="#ic-pill"/></svg> Traitements</span><span class="ds-badge ds-badge--manual ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-edit-note"/></svg> Modifié manuellement</span></summary><div class="ds-section__body"><p>…</p></div></details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== DO / DON'T ===================== -->
+      <section class="sg-section" aria-labelledby="h-dodont">
+        <h2 id="h-dodont"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-check-circle"/></svg> À faire / à éviter</h2>
+        <div class="ds-grid">
+          <div class="sg-do"><strong><svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> À faire</strong><div class="ds-cluster"><span class="ds-badge ds-badge--orientation-adapt"><svg class="ds-icon" aria-hidden="true"><use href="#ic-compass"/></svg> Adaptation suggérée</span><span class="ds-badge ds-badge--urgency-high"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg> Priorité haute</span></div><span class="ds-small">Sarcelle neutre pour l'orientation ; rose uniquement pour l'urgence ; icônes SVG vectorielles M3 cohérentes.</span></div>
+          <div class="sg-dont"><strong><svg class="ds-icon" aria-hidden="true"><use href="#ic-error"/></svg> À éviter</strong><div class="ds-cluster"><span class="ds-badge ds-badge--danger">Hors référentiel</span><span class="ds-dot ds-dot--high"></span></div><span class="ds-small">Orientation en rouge (connotation de faute), libellé jugeant, point coloré sans texte ni icône.</span></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ===================== Drawer (native dialog) ===================== -->
+  <dialog class="ds-drawer" id="queue-drawer" aria-labelledby="queue-drawer-title" data-testid="queue-drawer">
+    <div class="ds-drawer__header">
+      <svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#ic-layers"/></svg><h2 id="queue-drawer-title">File d'analyse</h2>
+      <form method="dialog" class="ds-drawer__close"><button class="ds-btn ds-btn--ghost ds-btn--icon" aria-label="Fermer la file d'analyse"><svg class="ds-icon" aria-hidden="true"><use href="#ic-close"/></svg></button></form>
+    </div>
+    <div class="ds-drawer__body">
+      <div class="ds-job"><span class="ds-job__title">Dossier fictif #A-1042</span><span class="ds-badge ds-badge--info ds-badge--sm">En cours</span><span class="ds-job__meta">Extraction clinique · démarré il y a 1 min 12 s</span><div class="ds-job__progress"><progress class="ds-progress" max="100" value="62" aria-label="62 %"></progress></div></div>
+      <div class="ds-job"><span class="ds-job__title">Dossier fictif #S-0008</span><span class="ds-badge ds-badge--neutral ds-badge--sm">En attente</span><span class="ds-job__meta">Position 1 dans la file</span></div>
+      <div class="ds-job"><span class="ds-job__title">Dossier fictif #A-1039</span><span class="ds-badge ds-badge--danger ds-badge--sm"><svg class="ds-icon" aria-hidden="true"><use href="#ic-error"/></svg> Échec</span><span class="ds-job__meta">PDF illisible</span></div>
+    </div>
+    <div class="ds-drawer__footer"><a class="ds-btn ds-btn--secondary" href="#c-progress">Ouvrir l'administration de la file</a></div>
+  </dialog>
+
+  <!-- ===================== Confirm dialog ===================== -->
+  <dialog class="ds-modal ds-modal--danger" id="confirm-dialog" aria-labelledby="confirm-title" aria-describedby="confirm-desc" data-testid="confirm-dialog">
+    <form method="dialog">
+      <div class="ds-modal__header"><span aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg></span><h2 id="confirm-title">Supprimer la séance du 06/11/2026 ?</h2></div>
+      <div class="ds-modal__body">
+        <div class="ds-alert ds-alert--danger" id="confirm-desc"><span class="ds-alert__icon" aria-hidden="true"><svg class="ds-icon" aria-hidden="true"><use href="#ic-priority-high"/></svg></span><div class="ds-alert__content"><span class="ds-alert__title">Action irréversible</span><span>Les analyses et les modifications manuelles de cette séance seront définitivement effacées.</span></div></div>
+      </div>
+      <div class="ds-modal__footer">
+        <button value="cancel" class="ds-btn ds-btn--ghost" autofocus>Annuler</button>
+        <button value="confirm" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_delete_session"><svg class="ds-icon" aria-hidden="true"><use href="#ic-delete"/></svg> Supprimer définitivement</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var radioLight = document.getElementById("theme-light");
+      var radioDark = document.getElementById("theme-dark");
+
+      function applyTheme(mode) {
+        root.setAttribute("data-theme", mode);
+        if (radioLight && radioDark) {
+          radioLight.checked = mode === "light";
+          radioDark.checked = mode === "dark";
+        }
+        renderSwatches();
+      }
+
+      if (radioLight) radioLight.addEventListener("change", function () { if (radioLight.checked) applyTheme("light"); });
+      if (radioDark) radioDark.addEventListener("change", function () { if (radioDark.checked) applyTheme("dark"); });
+
+      // Interactive M3 filter chips demo
+      document.querySelectorAll(".ds-chip[aria-pressed]").forEach(function (chip) {
+        chip.addEventListener("click", function () {
+          var pressed = chip.getAttribute("aria-pressed") === "true";
+          chip.setAttribute("aria-pressed", String(!pressed));
+        });
+      });
+
+      // Sidebar collapse toggle
+      var sbBtn = document.getElementById("sidebar-toggle");
+      if (sbBtn) {
+        sbBtn.addEventListener("click", function () {
+          var collapsed = document.body.classList.toggle("ds-shell--sidebar-collapsed");
+          sbBtn.setAttribute("aria-expanded", String(!collapsed));
+        });
+      }
+
+      // Dialog openers
+      document.querySelectorAll("[data-open]").forEach(function (b) {
+        b.addEventListener("click", function () { document.getElementById(b.dataset.open).showModal(); });
+      });
+
+      // ARIA tabs
+      var tabs = Array.prototype.slice.call(document.querySelectorAll("#c-tabs [role=tab]"));
+      tabs.forEach(function (tab, i) {
+        tab.addEventListener("click", function () { select(i); });
+        tab.addEventListener("keydown", function (e) {
+          if (e.key === "ArrowRight") select((i + 1) % tabs.length, true);
+          if (e.key === "ArrowLeft") select((i - 1 + tabs.length) % tabs.length, true);
+        });
+      });
+      function select(n, focus) {
+        tabs.forEach(function (t, i) {
+          var on = i === n;
+          t.setAttribute("aria-selected", String(on));
+          t.tabIndex = on ? 0 : -1;
+          document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+        });
+        if (focus) tabs[n].focus();
+      }
+
+      // Dense / comfortable table toggle
+      document.getElementById("dense").addEventListener("change", function (e) {
+        var t = document.getElementById("worklist");
+        t.classList.toggle("ds-table--dense", e.target.checked);
+        t.classList.toggle("ds-table--comfortable", !e.target.checked);
+      });
+
+      // Live Icon Catalog
+      var ICON_CATALOG = {
+        "1. Navigation & App Shell": [
+          { id: "ic-menu", label: "Menu latéral" },
+          { id: "ic-worklist", label: "Worklist RCP" },
+          { id: "ic-upload", label: "Dépôt PDF" },
+          { id: "ic-folder", label: "Dossier patient" },
+          { id: "ic-folder-open", label: "Dossier vide" },
+          { id: "ic-book", label: "Référentiels TNCD" },
+          { id: "ic-layers", label: "File d'analyse" },
+          { id: "ic-chat", label: "Assistant IA" },
+          { id: "ic-bug", label: "Signalement / Bug" },
+          { id: "ic-chevron-left", label: "Précédent" },
+          { id: "ic-chevron-right", label: "Suivant" },
+          { id: "ic-close", label: "Fermer" }
+        ],
+        "2. Actions & Édition RCP": [
+          { id: "ic-play", label: "Lancer l'analyse" },
+          { id: "ic-refresh", label: "Relancer IA" },
+          { id: "ic-undo", label: "Version IA initiale" },
+          { id: "ic-edit", label: "Modifier" },
+          { id: "ic-edit-note", label: "Modifié manuellement" },
+          { id: "ic-delete", label: "Supprimer" },
+          { id: "ic-add", label: "Nouveau dossier" },
+          { id: "ic-search", label: "Rechercher" },
+          { id: "ic-download", label: "Télécharger PDF" },
+          { id: "ic-link", label: "Rattacher patient" },
+          { id: "ic-send", label: "Envoyer question" },
+          { id: "ic-copy", label: "Copier" }
+        ],
+        "3. Statuts, Priorités & Orientation pré-RCP": [
+          { id: "ic-priority-high", label: "Priorité haute" },
+          { id: "ic-priority-medium", label: "Priorité modérée" },
+          { id: "ic-priority-low", label: "Priorité standard" },
+          { id: "ic-priority-none", label: "Non évaluée" },
+          { id: "ic-check", label: "Coche simple" },
+          { id: "ic-check-circle", label: "Complet / Conforme" },
+          { id: "ic-warning", label: "Pièces manquantes" },
+          { id: "ic-error", label: "Erreur / Illisible" },
+          { id: "ic-info", label: "Information" },
+          { id: "ic-compass", label: "Orientation pré-RCP" },
+          { id: "ic-clock", label: "Attente / Durée" },
+          { id: "ic-sparkle", label: "Raisonnement IA" },
+          { id: "ic-wifi-off", label: "Hors-ligne SSE" }
+        ],
+        "4. Clinique, Spécialités & Domaines": [
+          { id: "ic-stethoscope", label: "Clinique / Pancréas" },
+          { id: "ic-microscope", label: "Anatomopathologie" },
+          { id: "ic-flask", label: "Biologie / Marqueurs" },
+          { id: "ic-radiation", label: "Radiothérapie" },
+          { id: "ic-pill", label: "Traitements" },
+          { id: "ic-brain", label: "Neurologie" },
+          { id: "ic-lungs", label: "Pneumologie" },
+          { id: "ic-dna", label: "Génétique / SMA" },
+          { id: "ic-ribbon", label: "Domaine Oncologie" },
+          { id: "ic-users", label: "Collégialité RCP" },
+          { id: "ic-scale", label: "Avis experts" },
+          { id: "ic-file-pdf", label: "Compte rendu PDF" }
+        ],
+        "5. Thème, Design System & Indicateurs": [
+          { id: "ic-sun", label: "Mode Clair" },
+          { id: "ic-moon", label: "Mode Sombre" },
+          { id: "ic-palette", label: "Couleurs M3" },
+          { id: "ic-type", label: "Typographie" },
+          { id: "ic-ruler", label: "Espaces & rayons" },
+          { id: "ic-shapes", label: "Catalogue icônes" },
+          { id: "ic-split", label: "Vue scindée" },
+          { id: "ic-star", label: "Dernière RCP" },
+          { id: "ic-trend-up", label: "Hausse marqueur" },
+          { id: "ic-trend-down", label: "Baisse" }
+        ]
+      };
+
+      function renderIcons(query) {
+        var host = document.getElementById("icon-catalog");
+        if (!host) return;
+        var q = (query || "").trim().toLowerCase();
+        host.innerHTML = "";
+        Object.keys(ICON_CATALOG).forEach(function (groupName) {
+          var items = ICON_CATALOG[groupName].filter(function (item) {
+            return !q || item.id.toLowerCase().indexOf(q) !== -1 || item.label.toLowerCase().indexOf(q) !== -1;
+          });
+          if (!items.length) return;
+          var h = document.createElement("h3");
+          h.className = "sg-group-title";
+          h.textContent = groupName;
+          host.appendChild(h);
+
+          var grid = document.createElement("div");
+          grid.className = "ds-icon-grid";
+          items.forEach(function (item) {
+            var btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "ds-icon-tile";
+            btn.setAttribute("data-icon-id", item.id);
+            btn.innerHTML =
+              '<span class="ds-icon-tile__glyph"><svg class="ds-icon ds-icon--md" aria-hidden="true"><use href="#' + item.id + '"/></svg></span>' +
+              '<span class="ds-icon-tile__meta">' +
+                '<span class="ds-icon-tile__label">' + item.label + '</span>' +
+                '<code class="ds-icon-tile__code">#' + item.id + '</code>' +
+              '</span>';
+            btn.addEventListener("click", function () {
+              var snippet = '<svg class="ds-icon" aria-hidden="true"><use href="#' + item.id + '"/></svg>';
+              if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(snippet);
+              }
+              var fb = document.getElementById("icon-copy-feedback");
+              if (fb) {
+                fb.className = "ds-badge ds-badge--success";
+                fb.innerHTML = '<svg class="ds-icon" aria-hidden="true"><use href="#ic-check-circle"/></svg> Copié : #' + item.id;
+              }
+            });
+            grid.appendChild(btn);
+          });
+          host.appendChild(grid);
+        });
+      }
+
+      var iconFilter = document.getElementById("icon-filter");
+      if (iconFilter) {
+        iconFilter.addEventListener("input", function (e) { renderIcons(e.target.value); });
+      }
+      renderIcons("");
+
+      // Live swatches
+      var GROUPS = {
+        "Surfaces & gris neutres M3": ["--ds-color-canvas", "--ds-color-surface", "--ds-color-surface-sunken", "--ds-color-surface-hover", "--ds-sidebar-bg", "--ds-table-header-bg", "--ds-color-text", "--ds-color-text-muted", "--ds-color-text-subtle", "--ds-color-border", "--ds-color-border-strong"],
+        "Primaire (sarcelle)": ["--ds-color-primary", "--ds-color-primary-hover", "--ds-color-primary-text", "--ds-color-primary-soft"],
+        "Statuts": ["--ds-color-success", "--ds-color-success-bg", "--ds-color-warning", "--ds-color-warning-bg", "--ds-color-danger", "--ds-color-danger-bg", "--ds-color-info", "--ds-color-info-bg", "--ds-color-neutral", "--ds-color-neutral-bg"],
+        "Clinique": ["--ds-urgency-high", "--ds-urgency-medium", "--ds-urgency-low", "--ds-urgency-none", "--ds-orientation-standard", "--ds-orientation-adapt", "--ds-orientation-pending", "--ds-manual", "--ds-specialty-bg", "--ds-domain-onco", "--ds-domain-sma"]
+      };
+      function renderSwatches() {
+        var host = document.getElementById("swatches");
+        if (!host) return;
+        var cs = getComputedStyle(root);
+        host.innerHTML = "";
+        Object.keys(GROUPS).forEach(function (g) {
+          var h = document.createElement("h3"); h.className = "sg-group-title"; h.textContent = g; host.appendChild(h);
+          var grid = document.createElement("div"); grid.className = "sg-swatches";
+          GROUPS[g].forEach(function (name) {
+            var val = cs.getPropertyValue(name).trim();
+            var el = document.createElement("div"); el.className = "sg-swatch";
+            el.innerHTML = '<div class="sg-swatch__chip" style="background:var(' + name + ')"></div>' +
+              '<div class="sg-swatch__meta"><code>' + name + '</code><span class="ds-muted">' + val + '</span></div>';
+            grid.appendChild(el);
+          });
+          host.appendChild(grid);
+        });
+      }
+      var space = document.getElementById("space-scale");
+      ["1", "2", "3", "4", "6", "8", "12"].forEach(function (s) {
+        var row = document.createElement("div"); row.className = "sg-scale-item";
+        row.innerHTML = "<code>--ds-space-" + s + "</code><span class=\"sg-space-bar\" style=\"width:var(--ds-space-" + s + ")\"></span>";
+        space.appendChild(row);
+      });
+      applyTheme("light");
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+# ==============================================================================
+# Stage 1: Build TypeScript & Prune DevDependencies
+# ==============================================================================
+FROM node:24-bookworm-slim AS builder
+
+WORKDIR /build
+
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --ignore-scripts=false
+
+COPY web/tsconfig.json web/tsconfig.build.json ./
+COPY web/src ./src
+
+RUN npm run build && \
+    npm prune --omit=dev && \
+    npm cache clean --force
+
+# ==============================================================================
+# Stage 2: Minimal Hardened Non-Root Runtime (UID/GID 1002 appuser)
+# ==============================================================================
+FROM node:24-bookworm-slim AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    dumb-init \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack
+
+RUN groupadd -g 1002 appuser && \
+    useradd -u 1002 -g appuser -m -d /home/appuser -s /usr/sbin/nologin appuser && \
+    mkdir -p /app && chown -R appuser:appuser /app /home/appuser
+
+ENV NODE_ENV=production \
+    APP_DEV_MODE=false \
+    WEB_FAKE_API_FALLBACK=false \
+    HOST_WEB=0.0.0.0 \
+    PORT_WEB=3000 \
+    HOME=/home/appuser
+
+WORKDIR /app
+
+COPY --chown=appuser:appuser --from=builder /build/package.json ./package.json
+COPY --chown=appuser:appuser --from=builder /build/node_modules ./node_modules
+COPY --chown=appuser:appuser --from=builder /build/dist ./dist
+COPY --chown=appuser:appuser web/public ./public
+COPY --chown=appuser:appuser web/styleguide ./styleguide
+
+USER appuser
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+  CMD ["node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT_WEB || 3000) + '/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "dist/main.js"]

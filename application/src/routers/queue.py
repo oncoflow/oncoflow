@@ -1,7 +1,7 @@
 from collections.abc import Iterable
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
 from src.application.paths import is_safe_filename
@@ -21,7 +21,7 @@ from src.models.queue import (
     QueueThinkingStreamEvent,
     ReleaseLocksResponse,
 )
-from src.routers.dependencies import DomainConfigDep, get_base_config
+from src.routers.dependencies import DomainConfigDep, get_base_config, require_admin
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -71,15 +71,13 @@ def get_queue_jobs_endpoint(
 ):
     """List tasks in the processing queue (filterable by domain, status, batch, or filename)."""
     target_domain = getattr(request.state, "requested_domain", domain)
-    jobs = manager.get_queue_jobs(
+    return manager.get_queue_jobs(
         status=status_filter,
         batch_id=batch_id,
         limit=limit,
         domain=target_domain,
+        filename=filename,
     )
-    if filename:
-        jobs = [j for j in jobs if j.get("filename") == filename]
-    return jobs
 
 
 @router.get("/thinking", response_model=QueueThinkingResponse)
@@ -182,12 +180,17 @@ def enqueue_rerun_endpoint(
         total_clinical_models=request.total_clinical_models,
         total_expert_models=request.total_expert_models,
         domain=config.domain,
+        preserve_manual_edits=request.preserve_manual_edits,
     )
 
 
-@router.post("/jobs/{job_id}/retry", response_model=QueueJobResponse)
+@router.post(
+    "/jobs/{job_id}/retry",
+    response_model=QueueJobResponse,
+    dependencies=[Depends(require_admin)],
+)
 def retry_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
-    """Re-enqueue a specific task for execution."""
+    """Re-enqueue a specific task for execution (admin required when user headers are present)."""
     updated = manager.retry_job(job_id)
     if not updated:
         raise HTTPException(
@@ -197,9 +200,13 @@ def retry_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
     return updated
 
 
-@router.delete("/jobs/{job_id}", response_model=JobDeletedResponse)
+@router.delete(
+    "/jobs/{job_id}",
+    response_model=JobDeletedResponse,
+    dependencies=[Depends(require_admin)],
+)
 def delete_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
-    """Cancel or delete a task and release any associated execution lease."""
+    """Cancel or delete a task and release any associated execution lease (admin required when user headers are present)."""
     deleted = manager.cancel_or_delete_job(job_id)
     if not deleted:
         raise HTTPException(
@@ -209,11 +216,15 @@ def delete_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
     return {"job_id": job_id, "deleted": True}
 
 
-@router.post("/clean", response_model=QueueCleanResponse)
+@router.post(
+    "/clean",
+    response_model=QueueCleanResponse,
+    dependencies=[Depends(require_admin)],
+)
 def clean_queue_endpoint(
     http_request: Request,
-    request: QueueCleanRequest,
     manager: QueueManagerDep,
+    request: Annotated[QueueCleanRequest, Body()] = QueueCleanRequest(),
     domain: Annotated[Optional[str], Query()] = None,
 ):
     """Clean the processing queue according to the requested mode (per domain or globally)."""
@@ -228,7 +239,11 @@ def get_queue_locks_endpoint(manager: QueueManagerDep):
     return manager.get_all_gpu_leases()
 
 
-@router.delete("/locks", response_model=ReleaseLocksResponse)
+@router.delete(
+    "/locks",
+    response_model=ReleaseLocksResponse,
+    dependencies=[Depends(require_admin)],
+)
 def release_queue_locks_endpoint(
     request: Request,
     manager: QueueManagerDep,

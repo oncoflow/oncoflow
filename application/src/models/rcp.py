@@ -1,7 +1,7 @@
 """Pydantic request and response schemas for the `/api/v1/patientmdtform` router."""
 
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -69,20 +69,34 @@ class ChatRequest(BaseModel):
         description="Nom de l'agent expert avec lequel échanger (ex: 'pancreas expert')"
     )
     message: str = Field(description="Question ou instruction pour l'agent")
+    language: Optional[Literal["french", "english"]] = Field(
+        default=None,
+        description="Langue de réponse souhaitée pour l'agent ('french' ou 'english')",
+    )
 
 
 class RCPCardResponse(BaseModel):
     file: str
+    link: Optional[str] = None
     patient_id: Optional[str] = None
     patient: str
-    date_refresh: Optional[datetime]
-    date: Optional[datetime]
-    experts: List[str]
-    missing: List[str]
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    date_birth: Optional[datetime] = None
+    date_refresh: Optional[datetime] = None
+    date: Optional[datetime] = None
+    experts: List[str] = Field(default_factory=list)
+    missing: List[str] = Field(default_factory=list)
     urgency: str
     urgency_score: int
-    intervention_required: Optional[bool]
-    intervention_type: Optional[str]
+    priority_level: Optional[int] = None
+    intervention_required: Optional[bool] = None
+    intervention_type: Optional[str] = None
+    care_adaptation_suggested: Optional[bool] = None
+    proposed_care_type: Optional[str] = None
+    processing_status: Optional[str] = None
+    processing_step: Optional[str] = None
+    processing_progress_pct: Optional[float] = None
 
 
 class PatientCardResponse(BaseModel):
@@ -92,15 +106,23 @@ class PatientCardResponse(BaseModel):
     last_name: Optional[str] = None
     date_birth: Optional[datetime] = None
     rcp_count: int = 1
+    file: Optional[str] = None
     latest_file: str
+    link: Optional[str] = None
     date_refresh: Optional[datetime] = None
     date: Optional[datetime] = None
-    experts: List[str]
-    missing: List[str]
+    experts: List[str] = Field(default_factory=list)
+    missing: List[str] = Field(default_factory=list)
     urgency: str
     urgency_score: int
+    priority_level: Optional[int] = None
     intervention_required: Optional[bool] = None
     intervention_type: Optional[str] = None
+    care_adaptation_suggested: Optional[bool] = None
+    proposed_care_type: Optional[str] = None
+    processing_status: Optional[str] = None
+    processing_step: Optional[str] = None
+    processing_progress_pct: Optional[float] = None
 
 
 class PatientResponse(BaseModel):
@@ -116,6 +138,13 @@ class PatientResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class PatientListItemResponse(PatientResponse):
+    """Raw patient record list item including computed `display_label` and `full_name`."""
+
+    display_label: str = ""
+    full_name: str = ""
+
+
 class PatientMDTFormDetailResponse(BaseModel):
     """Full `PatientMDTForm` document response preserving dynamic domain-specific clinical sections."""
 
@@ -129,6 +158,8 @@ class PatientMDTFormDetailResponse(BaseModel):
     last_manual_edit: Optional[dict[str, Any]] = None
     ui_date: Optional[datetime | str] = None
     PatientAdministrative: Optional[dict[str, Any]] = None
+    metrics: Optional[RCPCardResponse] = None
+    mdt_date: Optional[datetime] = None
 
 
 class AdministrativeUpdateResponse(BaseModel):
@@ -175,3 +206,82 @@ class ProcessResponse(BaseModel):
     queued: Optional[bool] = None
     already_queued: Optional[bool] = None
     jobs: List[QueueJobResponse] = Field(default_factory=list)
+
+
+class FormSectionSchemaResponse(BaseModel):
+    """Pure domain schema for a single clinical or decision section of a `PatientMDTForm`."""
+
+    name: str
+    description: str
+    question: Optional[str] = None
+    multi_agent: bool
+    collaborative: bool = False
+    agents: List[str] = Field(default_factory=list)
+    editable: bool
+    json_schema: dict[str, Any]
+
+
+class DomainFormSchemaResponse(BaseModel):
+    """Domain-specific `PatientMDTForm` schema including ordered sections and clinical enums."""
+
+    domain: str
+    sections: List[FormSectionSchemaResponse]
+    enums: dict[str, List[Any]]
+
+
+class ActiveJobsStateResponse(BaseModel):
+    """Summary of active processing queue jobs for a specific `PatientMDTForm` file."""
+
+    has_any_job: bool
+    has_full_job: bool
+    active_models: List[str] = Field(default_factory=list)
+    current_step: Optional[str] = None
+    jobs: List[QueueJobResponse] = Field(default_factory=list)
+
+
+class PatientResolveResponse(BaseModel):
+    """Resolved `PatientRecord`, its chronologically sorted `PatientMDTForm` records, and selected/latest files."""
+
+    patient: Optional[PatientResponse] = None
+    rcps: List[dict[str, Any]] = Field(default_factory=list)
+    selected_file: Optional[str] = None
+    latest_file: Optional[str] = None
+
+
+class BatchFileStatusResponse(BaseModel):
+    """Per-file status within an upload batch."""
+
+    filename: str
+    processing_status: Optional[str] = None
+    step: Optional[str] = None
+    pct: float = 0.0
+    patient_id: Optional[str] = None
+    patient_label: Optional[str] = None
+    error: Optional[str] = None
+
+
+class BatchStatusResponse(BaseModel):
+    """Aggregated status of a multi-file upload batch."""
+
+    batch_id: str
+    overall_pct: float = 0.0
+    files: List[BatchFileStatusResponse] = Field(default_factory=list)
+
+
+class PatientMDTFormStatusResponse(BaseModel):
+    """Lightweight processing status for a single `PatientMDTForm` record."""
+
+    filename: Optional[str] = None
+    processing_status: Optional[str] = None
+    processing_step: Optional[str] = None
+    processing_progress_pct: float = 0.0
+    processing_error: Optional[str] = None
+    patient_id: Optional[str] = None
+
+
+class MeResponse(BaseModel):
+    """Current authenticated user identity and admin role resolved from trusted proxy headers."""
+
+    username: Optional[str] = None
+    display_name: Optional[str] = None
+    is_admin: bool = False

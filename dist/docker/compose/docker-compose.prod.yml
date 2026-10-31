@@ -41,6 +41,8 @@ x-ui-common: &ui-common
   userns_mode: "keep-id"
   cap_drop:
     - ALL
+  security_opt:
+    - no-new-privileges:true
   volumes:
     - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/logs:/var/log/meddatasyntis
   depends_on:
@@ -308,6 +310,42 @@ services:
       - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
       - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
 
+  # ─── Interface Web Material Design 3 (Fastify BFF Multi-Domaines) ───────────
+  oncoflow-web:
+    image: ${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:${ONCOFLOW_TAG:-latest}
+    build:
+      context: ../../..
+      dockerfile: dist/docker/Dockerfile.web
+    container_name: oncoflow-web
+    restart: unless-stopped
+    logging: *default-logging
+    userns_mode: "keep-id"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      NODE_ENV: "production"
+      APP_DEV_MODE: "false"
+      APP_AUTH_MODE: "oauth_proxy"
+      WEB_FAKE_API_FALLBACK: "false"
+      HOST_WEB: "0.0.0.0"
+      PORT_WEB: "3000"
+      APP_API_URL: ${APP_QUEUE_API_URL:-http://oncoflow-api:8000}
+      APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
+      APP_LANGUAGE: ${APP_LANGUAGE:-french}
+      APP_API_TOKEN: ${APP_API_TOKEN:?APP_API_TOKEN must be set in .env.prod}
+      APP_PROXY_SECRET: ${APP_PROXY_SECRET:?APP_PROXY_SECRET must be set in .env.prod}
+    depends_on:
+      - oncoflow-api
+    networks:
+      - search-community
+
   # ─── OAuth2 Proxy (Authentification SSO GitHub partagée sur *.meddatasyntis.bricks-it.fr)
   oauth2-proxy:
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
@@ -340,10 +378,11 @@ services:
     depends_on:
       - oncoflow-ui-oncology
       - oncoflow-ui-sma
+      - oncoflow-web
     networks:
       - search-community
 
-  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.* et sma.*)
+  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic(-new).* et sma(-new).*)
   caddy:
     image: caddy:2.10.2-alpine
     container_name: oncoflow-caddy
@@ -364,6 +403,7 @@ services:
       - oauth2-proxy
       - oncoflow-ui-oncology
       - oncoflow-ui-sma
+      - oncoflow-web
     networks:
       - search-community
 

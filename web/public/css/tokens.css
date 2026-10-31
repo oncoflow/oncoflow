@@ -1,0 +1,390 @@
+/* ==========================================================================
+   DataSyntis — Material Design 3 Tokens (tokens.css)
+   --------------------------------------------------------------------------
+   Reference: https://m3.material.io/styles
+   - M3 5-step Neutral Surface Container hierarchy (Lowest → Highest)
+   - M3 Shape scale (XS 4px · SM 8px · MD 12px · LG 16px · XL 28px · Full 9999px)
+   - M3 Motion easing (Standard, Emphasized Decelerate, Spring)
+   - M3 State-layer opacities (hover 8%, focus/press 12%)
+   - Light mode by default; Dark mode via [data-theme="dark"] or #theme-dark:checked
+   ========================================================================== */
+
+:root,
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* ---- M3 Neutral Gray primitives (zero blue cast) --------------------- */
+  --ds-slate-950: #111113;
+  --ds-slate-900: #18181B;
+  --ds-slate-800: #27272A;
+  --ds-slate-700: #3F3F46;
+  --ds-slate-600: #52525B;
+  --ds-slate-500: #71717A;
+  --ds-slate-400: #A1A1AA;
+  --ds-slate-300: #D4D4D8;
+  --ds-slate-200: #E4E4E7;
+  --ds-slate-100: #F4F4F6;
+  --ds-slate-50:  #F9F9FB;
+  --ds-paper:     #FFFFFF;
+
+  --ds-teal-700: #295450;
+  --ds-teal-600: #386B66;
+  --ds-teal-400: #6BA39D;
+  --ds-teal-300: #88BDB7;
+  --ds-sage-600: #3B6B59;
+  --ds-sage-400: #68A38E;
+  --ds-rose-600: #B3261E; /* M3 Error */
+  --ds-rose-500: #D94668;
+
+  /* ---- M3 5-step Surface Container Hierarchy --------------------------- */
+  --ds-surface-container-lowest: #FFFFFF;
+  --ds-surface-container-low:    #F6F6F8;
+  --ds-surface-container:        #F0F0F3;
+  --ds-surface-container-high:   #EAEAEF;
+  --ds-surface-container-highest:#E2E2E7;
+
+  --ds-color-canvas: var(--ds-surface-container-low);   /* #F6F6F8 */
+  --ds-color-surface: var(--ds-surface-container-lowest); /* #FFFFFF */
+  --ds-color-surface-sunken: var(--ds-surface-container); /* #F0F0F3 */
+  --ds-color-surface-hover: var(--ds-surface-container-high); /* #EAEAEF */
+  --ds-color-overlay: rgb(24 24 27 / 0.36);
+
+  /* M3 Inverse tokens (for Snackbars / Toasts & Tooltips) */
+  --ds-inverse-surface: #2F3033;
+  --ds-inverse-on-surface: #F2F0F4;
+  --ds-inverse-primary: #8FD1CA;
+
+  /* ---- M3 On-Surface & Outline tokens ---------------------------------- */
+  --ds-color-text: #1B1B1F;                     /* M3 On-Surface */
+  --ds-color-text-muted: #47464F;               /* M3 On-Surface-Variant */
+  --ds-color-text-subtle: #606069;              /* AA on surface & canvas */
+  --ds-color-text-inverse: #FAFAFA;
+
+  --ds-color-border: #E0E0E6;                   /* M3 Outline Variant */
+  --ds-color-border-strong: #767680;            /* M3 Outline (≥ 3:1) */
+
+  /* ---- M3 Primary & Tonal Container (mineral teal) --------------------- */
+  --ds-color-primary: #386B66;
+  --ds-color-primary-hover: #295450;
+  --ds-color-on-primary: #FFFFFF;
+  --ds-color-primary-text: #295450;
+  --ds-color-primary-soft: #D6EAE7;             /* M3 Secondary/Primary Container */
+
+  --ds-color-focus: #386B66;
+
+  /* ---- M3 Semantic Containers (solid / container bg / on-container fg) - */
+  --ds-color-success: #3B6B59;
+  --ds-color-success-bg: #DDF0E8;
+  --ds-color-success-fg: #1C4335;
+
+  --ds-color-warning: #B06014;
+  --ds-color-warning-bg: #FCEAD5;
+  --ds-color-warning-fg: #663506;
+
+  --ds-color-danger: #B3261E;                   /* M3 Error */
+  --ds-color-danger-hover: #8C1D18;
+  --ds-color-on-danger: #FFFFFF;
+  --ds-color-danger-bg: #F9DEDC;                /* M3 Error Container */
+  --ds-color-danger-fg: #601410;                /* M3 On-Error-Container */
+  --ds-color-danger-text: #A8201A;
+
+  --ds-color-info: #52525B;
+  --ds-color-info-bg: #E8E8ED;                  /* M3 Neutral Container */
+  --ds-color-info-fg: #27272A;
+
+  --ds-color-neutral: #606069;
+  --ds-color-neutral-bg: #E6E6EB;
+  --ds-color-neutral-fg: #2C2C32;
+
+  /* ---- Clinical semantics ---------------------------------------------- */
+  --ds-urgency-high: var(--ds-color-danger);
+  --ds-urgency-high-bg: var(--ds-color-danger-bg);
+  --ds-urgency-high-fg: var(--ds-color-danger-fg);
+  --ds-urgency-medium: var(--ds-color-warning);
+  --ds-urgency-medium-bg: var(--ds-color-warning-bg);
+  --ds-urgency-medium-fg: var(--ds-color-warning-fg);
+  --ds-urgency-low: var(--ds-color-success);
+  --ds-urgency-low-bg: var(--ds-color-success-bg);
+  --ds-urgency-low-fg: var(--ds-color-success-fg);
+  --ds-urgency-none: var(--ds-color-neutral);
+  --ds-urgency-none-bg: var(--ds-color-neutral-bg);
+  --ds-urgency-none-fg: var(--ds-color-neutral-fg);
+
+  --ds-orientation-standard: var(--ds-color-success);
+  --ds-orientation-standard-bg: var(--ds-color-success-bg);
+  --ds-orientation-standard-fg: var(--ds-color-success-fg);
+  --ds-orientation-adapt: var(--ds-color-primary);
+  --ds-orientation-adapt-bg: var(--ds-color-primary-soft);
+  --ds-orientation-adapt-fg: #1A403C;
+  --ds-orientation-pending: var(--ds-color-neutral);
+  --ds-orientation-pending-bg: var(--ds-color-neutral-bg);
+  --ds-orientation-pending-fg: var(--ds-color-neutral-fg);
+
+  --ds-manual: #966B18;
+  --ds-manual-bg: #F9EDD2;
+  --ds-manual-fg: #5E4108;
+
+  --ds-specialty-bg: #EAEAEF;
+  --ds-specialty-fg: #2C2C32;
+
+  --ds-domain-onco: #386B66;
+  --ds-domain-onco-bg: #D6EAE7;
+  --ds-domain-onco-fg: #1A403C;
+  --ds-domain-sma: #6B538C;
+  --ds-domain-sma-bg: #EDE6F7;
+  --ds-domain-sma-fg: #44315E;
+
+  /* ---- M3 Navigation Rail / Drawer & Lightly Tinted M3 Menus ----------- */
+  --ds-sidebar-bg: #ECF2F1;                     /* M3 Surface Container with subtle teal tint */
+  --ds-sidebar-bg-hover: #DDE8E6;
+  --ds-sidebar-text: #1B1B1F;
+  --ds-sidebar-text-muted: #444948;
+  --ds-sidebar-active-bg: #CFE6E3;              /* M3 Navigation Rail Active Pill (56x32) */
+  --ds-sidebar-active-text: #143835;            /* M3 On-Secondary-Container */
+  --ds-sidebar-border: #D5E2E0;
+  --ds-sidebar-brand-accent: #295450;
+  --ds-table-header-bg: var(--ds-surface-container);
+  --ds-table-header-text: #27272A;
+
+  /* M3 Contextual Menu tokens (Surface Container + Tonal Tint) */
+  --ds-menu-bg: #EEF4F3;
+  --ds-menu-border: #CDDFDC;
+  --ds-menu-item-hover: #DCECE9;
+  --ds-menu-item-active: #CFE6E3;
+  --ds-menu-shadow: 0 8px 24px rgb(20 48 45 / 0.13), 0 2px 6px rgb(20 48 45 / 0.06);
+
+  /* M3 Flat Tonal Container Colors for RCP Fiche Headers (Vert / Orange / Rouge — zero gradient) */
+  --ds-rcp-green-grad: #DDF0E8;
+  --ds-rcp-green-grad-soft: #EAF6F1;
+  --ds-rcp-green-border: #5E9C87;
+  --ds-rcp-green-fg: #103326;
+  --ds-rcp-green-muted: #1C4335;
+  --ds-rcp-green-accent: #2E6B56;
+
+  --ds-rcp-orange-grad: #FCEAD5;
+  --ds-rcp-orange-grad-soft: #FDF3E7;
+  --ds-rcp-orange-border: #D98B3E;
+  --ds-rcp-orange-fg: #482303;
+  --ds-rcp-orange-muted: #663506;
+  --ds-rcp-orange-accent: #B06014;
+
+  --ds-rcp-red-grad: #F9DEDC;
+  --ds-rcp-red-grad-soft: #FCECEB;
+  --ds-rcp-red-border: #D8756E;
+  --ds-rcp-red-fg: #450D0A;
+  --ds-rcp-red-muted: #601410;
+  --ds-rcp-red-accent: #B3261E;
+
+  /* ---- Typography (M3 Type Scale, system font stack) ------------------- */
+  --ds-font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans", "Liberation Sans", Arial, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+  --ds-font-mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", "DejaVu Sans Mono",
+    Menlo, Consolas, monospace;
+
+  --ds-text-xs: 0.75rem;    /* 12px — M3 Label Medium */
+  --ds-text-sm: 0.875rem;   /* 14px — M3 Label Large / Body Medium */
+  --ds-text-md: 0.9375rem;  /* 15px — Body */
+  --ds-text-lg: 1.0625rem;  /* 17px — M3 Title Medium */
+  --ds-text-xl: 1.375rem;   /* 22px — M3 Title Large */
+  --ds-text-2xl: 1.625rem;  /* 26px — M3 Headline Small */
+  --ds-text-3xl: 2rem;      /* 32px — M3 Headline Large (KPI) */
+
+  --ds-weight-regular: 400;
+  --ds-weight-medium: 500;
+  --ds-weight-semibold: 600;
+  --ds-weight-bold: 700;
+
+  --ds-leading-tight: 1.25;
+  --ds-leading-normal: 1.5;
+
+  /* ---- Spacing (4px grid) ---------------------------------------------- */
+  --ds-space-0: 0;
+  --ds-space-1: 0.25rem;
+  --ds-space-2: 0.5rem;
+  --ds-space-3: 0.75rem;
+  --ds-space-4: 1rem;
+  --ds-space-5: 1.25rem;
+  --ds-space-6: 1.5rem;
+  --ds-space-8: 2rem;
+  --ds-space-10: 2.5rem;
+  --ds-space-12: 3rem;
+
+  /* ---- M3 Shape Scale (https://m3.material.io/styles/shape) ------------ */
+  --ds-radius-xs: 0.25rem;   /* 4px  — Extra Small (menus, tooltips) */
+  --ds-radius-sm: 0.5rem;    /* 8px  — Small (M3 Chips, snackbars, badges) */
+  --ds-radius-md: 0.75rem;   /* 12px — Medium (M3 Cards, inputs) */
+  --ds-radius-lg: 1rem;      /* 16px — Large (M3 Large Cards, FAB, drawers) */
+  --ds-radius-xl: 1.75rem;   /* 28px — Extra Large (M3 Dialogs) */
+  --ds-radius-pill: 9999px;  /* Full — M3 Buttons, Segmented, Nav items */
+
+  /* ---- M3 Elevation (whisper-soft ambient + key light) ----------------- */
+  --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.03);
+  --ds-shadow-md: 0 2px 6px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
+  --ds-shadow-lg: 0 6px 18px rgb(0 0 0 / 0.09), 0 2px 6px rgb(0 0 0 / 0.04);
+
+  /* ---- M3 State-layer opacities ---------------------------------------- */
+  --ds-state-hover: 0.08;
+  --ds-state-focus: 0.12;
+  --ds-state-press: 0.12;
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --ds-sidebar-width: 16rem;
+  --ds-sidebar-rail-width: 5rem;
+  --ds-topbar-height: 3.75rem;
+  --ds-banner-height: 0rem;
+  --ds-drawer-width: 26rem;
+  --ds-content-max: 96rem;
+
+  /* ---- Z-index scale --------------------------------------------------- */
+  --ds-z-base: 0;
+  --ds-z-sticky: 10;
+  --ds-z-sidebar: 20;
+  --ds-z-topbar: 30;
+  --ds-z-banner: 40;
+  --ds-z-drawer: 50;
+  --ds-z-popover: 60;
+  --ds-z-modal: 65;
+  --ds-z-toast: 70;
+
+  /* ---- M3 Motion (https://m3.material.io/styles/motion) ---------------- */
+  --ds-duration-fast: 150ms;
+  --ds-duration-normal: 220ms;
+  --ds-duration-slow: 320ms;
+  --ds-ease: cubic-bezier(0.2, 0, 0, 1);                     /* M3 Standard */
+  --ds-ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);     /* M3 Emphasized Decelerate */
+  --ds-ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);        /* Micro-spring */
+
+  /* ---- Focus ring ------------------------------------------------------ */
+  --ds-focus-ring: 0 0 0 2px var(--ds-color-surface), 0 0 0 4px var(--ds-color-focus);
+}
+
+/* ---- Dark theme (M3 High-Contrast Tonal Surfaces — clear block separation) */
+:root[data-theme="dark"],
+:root:has(#theme-dark:checked) {
+  color-scheme: dark;
+
+  --ds-surface-container-lowest: #0A0C10;
+  --ds-surface-container-low:    #161922;
+  --ds-surface-container:        #212633;
+  --ds-surface-container-high:   #2B3142;
+  --ds-surface-container-highest:#353D52;
+
+  --ds-color-canvas: var(--ds-surface-container-lowest); /* #0A0C10 */
+  --ds-color-surface: var(--ds-surface-container-low);   /* #161922 */
+  --ds-color-surface-sunken: var(--ds-surface-container);/* #212633 */
+  --ds-color-surface-hover: var(--ds-surface-container-high); /* #2B3142 */
+  --ds-color-overlay: rgb(0 0 0 / 0.65);
+
+  --ds-inverse-surface: #E5E2E6;
+  --ds-inverse-on-surface: #1C1B1F;
+  --ds-inverse-primary: #295450;
+
+  --ds-color-text: #F0F2F7;
+  --ds-color-text-muted: #B6BAC6;
+  --ds-color-text-subtle: #9A9FAF;
+  --ds-color-text-inverse: #121214;
+
+  --ds-color-border: #363E50;
+  --ds-color-border-strong: #81889B;
+
+  --ds-color-primary: #7BB3AD;
+  --ds-color-primary-hover: #96C8C2;
+  --ds-color-on-primary: #0F2926;
+  --ds-color-primary-text: #8FC4BE;
+  --ds-color-primary-soft: #1E3D3A;
+
+  --ds-color-focus: #8FC4BE;
+
+  --ds-color-success: #6B9080;
+  --ds-color-success-bg: #1A362E;
+  --ds-color-success-fg: #C4E7DA;
+
+  --ds-color-warning: #F59E0B;
+  --ds-color-warning-bg: #3D2810;
+  --ds-color-warning-fg: #FCD9A8;
+
+  --ds-color-danger: #E11D48;
+  --ds-color-danger-hover: #BE123C;
+  --ds-color-on-danger: #FFFFFF;
+  --ds-color-danger-bg: #481522;
+  --ds-color-danger-fg: #FECDD6;
+  --ds-color-danger-text: #FB7190;
+
+  --ds-color-info: #A1A1AA;
+  --ds-color-info-bg: #27272E;
+  --ds-color-info-fg: #E4E4E7;
+
+  --ds-color-neutral: #9E9EA8;
+  --ds-color-neutral-bg: #27272E;
+  --ds-color-neutral-fg: #D4D4D8;
+
+  --ds-orientation-adapt-fg: #C6EAE5;
+
+  --ds-manual: #D4A84B;
+  --ds-manual-bg: #3A2D11;
+  --ds-manual-fg: #F5DFA6;
+
+  --ds-specialty-bg: #27272E;
+  --ds-specialty-fg: #DCDCE2;
+
+  --ds-domain-onco: #7BB3AD;
+  --ds-domain-onco-bg: #1E3D3A;
+  --ds-domain-onco-fg: #C6EAE5;
+  --ds-domain-sma: #A88FD1;
+  --ds-domain-sma-bg: #2E2444;
+  --ds-domain-sma-fg: #E0D5F5;
+
+  --ds-sidebar-bg: #11161C;
+  --ds-sidebar-bg-hover: #1D2630;
+  --ds-sidebar-text: #F0F2F7;
+  --ds-sidebar-text-muted: #B0B5C3;
+  --ds-sidebar-active-bg: #1E3D3A;
+  --ds-sidebar-active-text: #C6EAE5;
+  --ds-sidebar-border: #283442;
+  --ds-sidebar-brand-accent: #8FC4BE;
+  --ds-table-header-bg: #1F2430;
+  --ds-table-header-text: #F0F2F7;
+
+  /* M3 Dark Contextual Menu tokens (Surface Container High + Tonal Teal Tint) */
+  --ds-menu-bg: #192228;
+  --ds-menu-border: #2E3F47;
+  --ds-menu-item-hover: #223139;
+  --ds-menu-item-active: #1E3D3A;
+  --ds-menu-shadow: 0 12px 32px rgb(0 0 0 / 0.58), 0 2px 8px rgb(0 0 0 / 0.42);
+
+  /* M3 Dark Flat Tonal Container Colors for RCP Fiche Headers (Vert / Orange / Rouge — zero gradient) */
+  --ds-rcp-green-grad: #1A362E;
+  --ds-rcp-green-grad-soft: #142B24;
+  --ds-rcp-green-border: #3B856C;
+  --ds-rcp-green-fg: #E4F8F0;
+  --ds-rcp-green-muted: #C4E7DA;
+  --ds-rcp-green-accent: #68A38E;
+
+  --ds-rcp-orange-grad: #3D2810;
+  --ds-rcp-orange-grad-soft: #301F0C;
+  --ds-rcp-orange-border: #AD6B22;
+  --ds-rcp-orange-fg: #FEF1DC;
+  --ds-rcp-orange-muted: #FCD9A8;
+  --ds-rcp-orange-accent: #F59E0B;
+
+  --ds-rcp-red-grad: #481522;
+  --ds-rcp-red-grad-soft: #38101A;
+  --ds-rcp-red-border: #A63046;
+  --ds-rcp-red-fg: #FFE9ED;
+  --ds-rcp-red-muted: #FECDD6;
+  --ds-rcp-red-accent: #FB7190;
+
+  --ds-shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.25);
+  --ds-shadow-md: 0 4px 10px rgb(0 0 0 / 0.42), 0 1px 3px rgb(0 0 0 / 0.3);
+  --ds-shadow-lg: 0 8px 24px rgb(0 0 0 / 0.55);
+}
+
+/* ---- Reduced motion ---------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ds-duration-fast: 0ms;
+    --ds-duration-normal: 0ms;
+    --ds-duration-slow: 0ms;
+  }
+}

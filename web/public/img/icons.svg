@@ -1,0 +1,268 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+  <!-- ===================== 1. Navigation & Shell ===================== -->
+  <symbol id="ic-menu" viewBox="0 0 24 24">
+    <path d="M4 6h16M4 12h16M4 18h16"/>
+  </symbol>
+  <symbol id="ic-worklist" viewBox="0 0 24 24">
+    <rect x="4" y="4" width="16" height="16" rx="2.5"/>
+    <path d="M4 9.5h16M9.5 9.5V20"/>
+  </symbol>
+  <symbol id="ic-upload" viewBox="0 0 24 24">
+    <path d="M12 16V4m0 0-4 4m4-4 4 4"/>
+    <path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>
+  </symbol>
+  <symbol id="ic-folder" viewBox="0 0 24 24">
+    <path d="M3 7a2 2 0 0 1 2-2h4.2a2 2 0 0 1 1.4.6l1.4 1.4H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>
+  </symbol>
+  <symbol id="ic-folder-open" viewBox="0 0 24 24">
+    <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v1H6.5a2 2 0 0 0-1.9 1.4L3 17V7Z"/>
+    <path d="m4.6 11.4 1.9-1.4H21l-2.1 7.6a2 2 0 0 1-1.9 1.4H5a2 2 0 0 1-1.9-2.5l1.5-5.1Z"/>
+  </symbol>
+  <symbol id="ic-book" viewBox="0 0 24 24">
+    <path d="M12 6.5C10.2 5.2 7.5 4.8 4.5 5.2A1.5 1.5 0 0 0 3 6.7v11.1c0 .9.8 1.6 1.7 1.5 2.8-.3 5.4.2 7.3 1.5m0-14.3c1.8-1.3 4.5-1.7 7.5-1.3.9.1 1.5.8 1.5 1.7v11.1c0 .9-.8 1.6-1.7 1.5-2.8-.3-5.4.2-7.3 1.5m0-14.5v14.5"/>
+  </symbol>
+  <symbol id="ic-layers" viewBox="0 0 24 24">
+    <path d="m12 3 9 4.5-9 4.5-9-4.5L12 3Z"/>
+    <path d="m3 12 9 4.5 9-4.5"/>
+    <path d="m3 16.5 9 4.5 9-4.5"/>
+  </symbol>
+  <symbol id="ic-chat" viewBox="0 0 24 24">
+    <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-4.5 3.5V17H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/>
+    <path d="M8 9.5h8M8 13h5"/>
+  </symbol>
+  <symbol id="ic-bug" viewBox="0 0 24 24">
+    <rect x="7" y="8" width="10" height="12" rx="5"/>
+    <path d="M9.5 8V6.5a2.5 2.5 0 0 1 5 0V8M4 13h3m10 0h3M5 8.5l2.5 1.5m9 0L19 8.5M5 18.5 7.5 17m9 0 2.5 1.5M12 11v9"/>
+  </symbol>
+  <symbol id="ic-chevron-left" viewBox="0 0 24 24">
+    <path d="m14.5 6-6 6 6 6"/>
+  </symbol>
+  <symbol id="ic-chevron-right" viewBox="0 0 24 24">
+    <path d="m9.5 6 6 6-6 6"/>
+  </symbol>
+  <symbol id="ic-close" viewBox="0 0 24 24">
+    <path d="M6 6l12 12M18 6 6 18"/>
+  </symbol>
+
+  <!-- ===================== 2. Actions & Édition RCP ===================== -->
+  <symbol id="ic-play" viewBox="0 0 24 24">
+    <polygon points="7,5 19,12 7,19" fill="currentColor" stroke="currentColor" stroke-width="1.5"/>
+  </symbol>
+  <symbol id="ic-refresh" viewBox="0 0 24 24">
+    <path d="M20 11a8 8 0 1 0-1.9 5.2"/>
+    <path d="M20 4v7h-7"/>
+  </symbol>
+  <symbol id="ic-undo" viewBox="0 0 24 24">
+    <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>
+    <path d="M8 5 4 9l4 4"/>
+  </symbol>
+  <symbol id="ic-edit" viewBox="0 0 24 24">
+    <path d="M15.5 4.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4 10.5-10.5Z"/>
+    <path d="m13.5 6.5 3 3"/>
+  </symbol>
+  <symbol id="ic-edit-note" viewBox="0 0 24 24">
+    <path d="M4 7h9M4 12h7M4 17h5"/>
+    <path d="m14.5 11.5 3-3a1.6 1.6 0 0 1 2.3 2.3l-5.3 5.3L12 17l.9-2.5 1.6-3Z"/>
+  </symbol>
+  <symbol id="ic-delete" viewBox="0 0 24 24">
+    <path d="M4 7h16M9.5 7V4.8c0-.5.4-.8.8-.8h3.4c.5 0 .8.3.8.8V7"/>
+    <path d="M6.5 7l.8 11.5a2 2 0 0 0 2 1.8h5.4a2 2 0 0 0 2-1.8L17.5 7"/>
+    <path d="M10 11v5M14 11v5"/>
+  </symbol>
+  <symbol id="ic-add" viewBox="0 0 24 24">
+    <path d="M12 5v14M5 12h14"/>
+  </symbol>
+  <symbol id="ic-search" viewBox="0 0 24 24">
+    <circle cx="11" cy="11" r="6.5"/>
+    <path d="m16 16 4.5 4.5"/>
+  </symbol>
+  <symbol id="ic-download" viewBox="0 0 24 24">
+    <path d="M12 4v11m0 0-4-4m4 4 4-4"/>
+    <path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16"/>
+  </symbol>
+  <symbol id="ic-link" viewBox="0 0 24 24">
+    <path d="M10 13a4.5 4.5 0 0 0 6.4 0l2.3-2.3a4.5 4.5 0 0 0-6.4-6.4L11 5.6"/>
+    <path d="M14 11a4.5 4.5 0 0 0-6.4 0l-2.3 2.3a4.5 4.5 0 0 0 6.4 6.4L13 18.4"/>
+  </symbol>
+  <symbol id="ic-send" viewBox="0 0 24 24">
+    <path d="m21 3-9.5 18-2.8-7.7L1 10.5 21 3Z"/>
+    <path d="M21 3 8.7 13.3"/>
+  </symbol>
+  <symbol id="ic-copy" viewBox="0 0 24 24">
+    <rect x="9" y="9" width="11" height="11" rx="2"/>
+    <path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/>
+  </symbol>
+
+  <!-- ===================== 3. Statuts, Priorités & Orientation ===================== -->
+  <symbol id="ic-priority-high" viewBox="0 0 24 24">
+    <path d="M12 3 21 12l-9 9-9-9 9-9Z"/>
+    <path d="M12 8v5M12 16h.01"/>
+  </symbol>
+  <symbol id="ic-priority-medium" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="m8.5 13 3.5-3.5 3.5 3.5"/>
+  </symbol>
+  <symbol id="ic-priority-low" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="m8.5 12.2 2.3 2.3 4.7-4.7"/>
+  </symbol>
+  <symbol id="ic-priority-none" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="M8.5 12h7"/>
+  </symbol>
+  <symbol id="ic-check" viewBox="0 0 24 24">
+    <path d="m5 12.5 4.5 4.5 9.5-9.5"/>
+  </symbol>
+  <symbol id="ic-check-circle" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="m8.5 12.2 2.4 2.4 4.8-4.8"/>
+  </symbol>
+  <symbol id="ic-warning" viewBox="0 0 24 24">
+    <path d="M10.4 4.4 2.8 17.5a1.8 1.8 0 0 0 1.6 2.7h15.2a1.8 1.8 0 0 0 1.6-2.7L13.6 4.4a1.8 1.8 0 0 0-3.2 0Z"/>
+    <path d="M12 9.5v4M12 16.8h.01"/>
+  </symbol>
+  <symbol id="ic-error" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="m9.2 9.2 5.6 5.6m0-5.6-5.6 5.6"/>
+  </symbol>
+  <symbol id="ic-info" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="M12 11.5v5M12 8.2h.01"/>
+  </symbol>
+  <symbol id="ic-compass" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <polygon points="15.8,8.2 13.6,13.6 8.2,15.8 10.4,10.4"/>
+  </symbol>
+  <symbol id="ic-clock" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="M12 7.5V12l3 2"/>
+  </symbol>
+  <symbol id="ic-sparkle" viewBox="0 0 24 24">
+    <path d="m12 3 2.1 5.9L20 11l-5.9 2.1L12 19l-2.1-5.9L4 11l5.9-2.1L12 3Z"/>
+    <path d="m19 3 .7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2Z"/>
+  </symbol>
+  <symbol id="ic-wifi-off" viewBox="0 0 24 24">
+    <path d="m3 3 18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.2-2.8m4.8.4A10 10 0 0 1 19 13M2 9.5A14.5 14.5 0 0 1 9 6.2m5.8.2A14.5 14.5 0 0 1 22 9.5M12 20h.01"/>
+  </symbol>
+
+  <!-- ===================== 4. Clinique, Spécialités & Domaines ===================== -->
+  <symbol id="ic-stethoscope" viewBox="0 0 24 24">
+    <path d="M5 4v5a5 5 0 0 0 10 0V4M3.5 4h3M13.5 4h3"/>
+    <path d="M10 14v2a4 4 0 0 0 8 0v-3"/>
+    <circle cx="18" cy="11" r="2"/>
+  </symbol>
+  <symbol id="ic-microscope" viewBox="0 0 24 24">
+    <path d="M6 18h8M4 21h16M10 4l4 2-3 6-4-2 3-6Z"/>
+    <path d="M12 9a6 6 0 0 1 4 10.5M9 12l-2 1.5"/>
+  </symbol>
+  <symbol id="ic-flask" viewBox="0 0 24 24">
+    <path d="M9 3h6M10 3v5.5L5.2 17A2.2 2.2 0 0 0 7.1 20h9.8a2.2 2.2 0 0 0 1.9-3L14 8.5V3"/>
+    <path d="M7.5 14.5h9"/>
+  </symbol>
+  <symbol id="ic-radiation" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/>
+    <circle cx="12" cy="12" r="2"/>
+    <path d="M12 3.5v4M12 16.5v4M3.5 12h4M16.5 12h4"/>
+  </symbol>
+  <symbol id="ic-pill" viewBox="0 0 24 24">
+    <path d="m8.5 19.5 11-11a4.2 4.2 0 0 0-6-6l-11 11a4.2 4.2 0 0 0 6 6Z"/>
+    <path d="m8.5 8.5 6 6"/>
+  </symbol>
+  <symbol id="ic-brain" viewBox="0 0 24 24">
+    <path d="M12 5a3 3 0 0 0-5.8 1A3.2 3.2 0 0 0 4 9.2c0 1.1.5 2.1 1.4 2.7A3.2 3.2 0 0 0 5 16.5 3 3 0 0 0 9 19a3 3 0 0 0 3-2.5V5Z"/>
+    <path d="M12 5a3 3 0 0 1 5.8 1A3.2 3.2 0 0 1 20 9.2c0 1.1-.5 2.1-1.4 2.7.9.8 1.2 2.1.4 4.6A3 3 0 0 1 15 19a3 3 0 0 1-3-2.5V5Z"/>
+  </symbol>
+  <symbol id="ic-lungs" viewBox="0 0 24 24">
+    <path d="M12 3v7m0 0-3 2.5m3-2.5 3 2.5"/>
+    <path d="M9 8C6 8 4 11 4 15.5 4 18 5.5 19.5 7.5 19.5c2 0 3-1.2 3-3.5V9.5C10.5 8.5 9.8 8 9 8Z"/>
+    <path d="M15 8c3 0 5 3 5 7.5 0 2.5-1.5 4-3.5 4-2 0-3-1.2-3-3.5V9.5c0-1 .7-1.5 1.5-1.5Z"/>
+  </symbol>
+  <symbol id="ic-dna" viewBox="0 0 24 24">
+    <path d="M6 3c0 6 12 6 12 12s-12 6-12 6M18 3c0 6-12 6-12 12s12 6 12 6"/>
+    <path d="M7.5 6h9M8.5 12h7M7.5 18h9"/>
+  </symbol>
+  <symbol id="ic-ribbon" viewBox="0 0 24 24">
+    <path d="M12 3a4.5 4.5 0 0 0-3.8 6.9L15.5 21M12 3a4.5 4.5 0 0 1 3.8 6.9L8.5 21"/>
+  </symbol>
+  <symbol id="ic-users" viewBox="0 0 24 24">
+    <circle cx="9" cy="8.5" r="3.2"/>
+    <path d="M3.5 19a5.5 5.5 0 0 1 11 0"/>
+    <path d="M15.5 5.6a3 3 0 0 1 0 5.8M17 19a5 5 0 0 0-3-4.6"/>
+  </symbol>
+  <symbol id="ic-scale" viewBox="0 0 24 24">
+    <path d="M12 3v17M8 20h8M5 7h14"/>
+    <path d="m5 7-2.8 6h5.6L5 7Zm14 0-2.8 6h5.6L19 7Z"/>
+  </symbol>
+  <symbol id="ic-file-pdf" viewBox="0 0 24 24">
+    <path d="M6 3h8l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
+    <path d="M14 3v4h4M8 13h8M8 16.5h5"/>
+  </symbol>
+
+  <!-- ===================== 5. Thème, Design System & Indicateurs ===================== -->
+  <symbol id="ic-sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2.5v2.2M12 19.3v2.2M4.7 4.7l1.6 1.6M17.7 17.7l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.7 19.3l1.6-1.6M17.7 6.3l1.6-1.6"/>
+  </symbol>
+  <symbol id="ic-moon" viewBox="0 0 24 24">
+    <path d="M20.2 14.8A8.2 8.2 0 0 1 9.2 3.8a8.2 8.2 0 1 0 11 11Z"/>
+  </symbol>
+  <symbol id="ic-palette" viewBox="0 0 24 24">
+    <path d="M12 3a9 9 0 0 0 0 18h1.5a2.2 2.2 0 0 0 0-4.4H12a2 2 0 0 1 0-4h4.5A4.5 4.5 0 0 0 21 8.1C20.2 5.1 16.5 3 12 3Z"/>
+    <circle cx="8" cy="10" r="1" fill="currentColor"/>
+    <circle cx="11" cy="7.5" r="1" fill="currentColor"/>
+    <circle cx="15" cy="8.5" r="1" fill="currentColor"/>
+    <circle cx="7.5" cy="14" r="1" fill="currentColor"/>
+  </symbol>
+  <symbol id="ic-type" viewBox="0 0 24 24">
+    <path d="M4 6V4h14v2M11 4v16M8 20h6M15 11h5M17.5 11v9"/>
+  </symbol>
+  <symbol id="ic-ruler" viewBox="0 0 24 24">
+    <rect x="3" y="7" width="18" height="10" rx="2"/>
+    <path d="M7 7v4M11 7v3M15 7v4M19 7v3"/>
+  </symbol>
+  <symbol id="ic-shapes" viewBox="0 0 24 24">
+    <polygon points="12,3 17,11 7,11"/>
+    <rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/>
+    <circle cx="17" cy="17" r="3.5"/>
+  </symbol>
+  <symbol id="ic-split" viewBox="0 0 24 24">
+    <rect x="3" y="4" width="18" height="16" rx="2.5"/>
+    <path d="M11 4v16"/>
+  </symbol>
+  <symbol id="ic-star" viewBox="0 0 24 24">
+    <polygon points="12,3.5 14.6,8.8 20.5,9.6 16.2,13.7 17.2,19.5 12,16.8 6.8,19.5 7.8,13.7 3.5,9.6 9.4,8.8"/>
+  </symbol>
+  <symbol id="ic-trend-up" viewBox="0 0 24 24">
+    <path d="m4 16 6-6 4 4 6-6"/>
+    <path d="M15 8h5v5"/>
+  </symbol>
+  <symbol id="ic-trend-down" viewBox="0 0 24 24">
+    <path d="m4 8 6 6 4-4 6 6"/>
+    <path d="M15 16h5v-5"/>
+  </symbol>
+  <symbol id="ic-more-vert" viewBox="0 0 24 24">
+    <circle cx="12" cy="5.5" r="1.6" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="18.5" r="1.6" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="ic-more-horiz" viewBox="0 0 24 24">
+    <circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+    <circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="ic-calendar" viewBox="0 0 24 24">
+    <rect x="3.5" y="5" width="17" height="15.5" rx="2.2"/>
+    <path d="M8 3.5v3M16 3.5v3M3.5 9.5h17"/>
+  </symbol>
+  <symbol id="ic-eye" viewBox="0 0 24 24">
+    <path d="M2.5 12S6 6 12 6s9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/>
+    <circle cx="12" cy="12" r="2.8"/>
+  </symbol>
+  <symbol id="ic-settings" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.77 1.02 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/>
+  </symbol>
+  <symbol id="ic-expand" viewBox="0 0 24 24">
+    <path d="M15 4h5v5M9 20H4v-5M20 4l-6 6M4 20l6-6"/>
+  </symbol>
+</svg>
