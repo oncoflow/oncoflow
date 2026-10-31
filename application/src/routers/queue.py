@@ -4,7 +4,6 @@ from typing import Annotated, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.sse import EventSourceResponse, ServerSentEvent
 
-from src.application.config import AppConfig
 from src.application.paths import is_safe_filename
 from src.infrastructure.queue import InMemoryQueueManager, get_global_queue_manager
 from src.models.queue import (
@@ -22,7 +21,7 @@ from src.models.queue import (
     QueueThinkingStreamEvent,
     ReleaseLocksResponse,
 )
-from src.routers.dependencies import DomainConfigDep
+from src.routers.dependencies import DomainConfigDep, get_base_config
 
 router = APIRouter(prefix="/queue", tags=["queue"])
 
@@ -37,7 +36,7 @@ QueueManagerDep = Annotated[InMemoryQueueManager, Depends(get_queue_manager)]
 @router.get("/domains", response_model=QueueDomainsResponse)
 def get_allowed_domains():
     """Return active medical domains configured on the cross-domain API."""
-    base_conf = AppConfig()
+    base_conf = get_base_config()
     return {
         "default_domain": base_conf.domain,
         "allowed_domains": base_conf.enabled_domains_list,

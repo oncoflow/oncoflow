@@ -55,47 +55,73 @@ All development operations must follow these exact shell commands. Standard pref
 
 ---
 
-## 🤝 Multi-Agent Expert Skills
+## 🤝 Multi-Agent Expert Skills & Subagents
 
-MedDataSyntis defines custom agent skills in the `skills/` folder to capture specific domain expertise. These skills are automatically discoverable by Google Antigravity SDK agents.
+MedDataSyntis defines custom agent skills in `.agents/skills/` and subagents in `.agents/agents/` to capture specific domain expertise. These skills and subagents are automatically discoverable by Google Antigravity SDK agents.
 
 ```mermaid
 graph TD
     PO[Product Owner] --> MD[Doctor / Clinical Expert]
+    PO --> UX[UI / UX Expert]
     MD --> PM[LLM Prompting Engineer]
     PM --> PY[Python Developer]
+    UX --> PY
+    PY --> API[API Expert]
     PY --> QE[Quality Expert]
+    API --> QE
     QE --> CI[CI Expert]
     PY --> IE[Infrastructure Expert]
+    CI --> SRE[SRE & DevOps Expert]
+    IE --> SRE
 ```
 
 ### 1. 🐍 Python Developer
 - **Domain**: Advanced python constructs, LangChain API usage, database connection pools, parser performance.
-- **Location**: [python-developer/SKILL.md](file:///home/guillaume/git/oncoflow/skills/python-developer/SKILL.md)
+- **Location**: [python-developer/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/python-developer/SKILL.md)
 
 ### 2. ✍️ LLM Prompting Engineer
 - **Domain**: System instructions, structured outputs, validation, retry strategies, and LLM temperature behaviors.
-- **Location**: [llm-prompting-engineer/SKILL.md](file:///home/guillaume/git/oncoflow/skills/llm-prompting-engineer/SKILL.md)
+- **Location**: [llm-prompting-engineer/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/llm-prompting-engineer/SKILL.md)
 
-### 3. 📋 Product Owner
-- **Domain**: Oncology Multidisciplinary Team Meeting (RCP/MDT) specifications, patient status tracking, and case triage metrics.
-- **Location**: [product-owner/SKILL.md](file:///home/guillaume/git/oncoflow/skills/product-owner/SKILL.md)
+### 3. 📋 Product Owner (`product-owner` Subagent & Skill)
+- **Domain**: DataSyntis product vision & 3 promises, Multidisciplinary Team Meeting (RCP/MDT) functional specifications (Oncology & SMA), hospital personas (Physician vs RCP Medical Secretary), longitudinal multi-RCP patient consolidation, non-prescriptive medico-legal positioning (`CareOrientationProposal`), and human-in-the-loop edit preservation (`manual_edits`).
+- **Locations**:
+  - Subagent: [product-owner.md](file:///home/guillaume/git/oncoflow/.agents/agents/product-owner.md)
+  - Skill: [product-owner/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/product-owner/SKILL.md)
 
 ### 4. 🩺 Doctor (Clinical Expert)
 - **Domain**: Medical nomenclature, oncology staging relevance, TNCD standard checks, clinical correlation validity.
-- **Location**: [doctor/SKILL.md](file:///home/guillaume/git/oncoflow/skills/doctor/SKILL.md)
+- **Location**: [doctor/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/doctor/SKILL.md)
 
 ### 5. 🚀 CI Expert
 - **Domain**: Automated pipelines, code syntax checking, dependency validation, test orchestration.
-- **Location**: [ci-expert/SKILL.md](file:///home/guillaume/git/oncoflow/skills/ci-expert/SKILL.md)
+- **Location**: [ci-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/ci-expert/SKILL.md)
 
 ### 6. 🌐 Infrastructure Expert
 - **Domain**: Standalone Docker services, database connections (Milvus, MongoDB, ChromaPersistent), hardware acceleration, and memory footprint constraints.
-- **Location**: [infrastructure-expert/SKILL.md](file:///home/guillaume/git/oncoflow/skills/infrastructure-expert/SKILL.md)
+- **Location**: [infrastructure-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/infrastructure-expert/SKILL.md)
 
 ### 7. 🎯 Quality Expert
 - **Domain**: Unit test coverage, exception safety, logging consistency, and edge-case validation.
-- **Location**: [quality-expert/SKILL.md](file:///home/guillaume/git/oncoflow/skills/quality-expert/SKILL.md)
+- **Location**: [quality-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/quality-expert/SKILL.md)
+
+### 8. 🎨 UI / UX Expert (`ui-ux-expert` Subagent & Skill)
+- **Domain**: DataSyntis brand identity, hospital-grade clinical ergonomics (zero-friction readability for physicians and RCP medical secretaries), slate/teal/sage/rose color palette, destructive action semantics (`btn_del_` / `btn_danger_`), Dark Mode portal CSS safety, and Streamlit view architecture (`src/ui/` and `app-ui.py`).
+- **Locations**:
+  - Subagent: [ui-ux-expert.md](file:///home/guillaume/git/oncoflow/.agents/agents/ui-ux-expert.md)
+  - Skill: [ui-ux-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/ui-ux-expert/SKILL.md)
+
+### 9. 🔌 API Expert (`oncoflow-api-expert` Subagent & `api-expert` Skill)
+- **Domain**: Cross-Domain FastAPI architecture (`app-api.py`, `src/routers/`, `src/models/`), `PriorityQueue` SSE streaming (`EventSourceResponse`), multi-domain middleware (`AllowedDomainMiddleware`), dependency injection (`Annotated[..., Depends(...)]`), OpenAPI 3.1 contracts, and Hexagonal/DDD router refactoring.
+- **Locations**:
+  - Subagent: [api-expert.md](file:///home/guillaume/git/oncoflow/.agents/agents/api-expert.md)
+  - Skill: [api-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/api-expert/SKILL.md)
+
+### 10. 🛡️ SRE & DevOps Specialist (`sre-devops-expert` Subagent & Skill)
+- **Domain**: Production Docker & Docker Compose stacks (`dist/docker/`), container security hardening (`cap_drop: ALL`, `userns_mode: keep-id`, loopback port bindings), Zero-Trust Caddy + OAuth2-Proxy SSO ingress (`Caddyfile`), GPU/VRAM capacity planning (`llama.cpp` on L4 24GB + CPU `bge-m3` embeddings + `LiteLLM` gateway + Cloud Run GPU manifests), MongoDB & Milvus high availability, structured JSON logging/logrotate, and GitHub Actions DevSecOps pipelines (`.github/workflows/ci.yml` with `uv`, `ruff`, `pyrefly`, `pytest`, `Trivy`, and GHCR).
+- **Locations**:
+  - Subagent: [sre-devops-expert.md](file:///home/guillaume/git/oncoflow/.agents/agents/sre-devops-expert.md)
+  - Skill: [sre-devops-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/sre-devops-expert/SKILL.md)
 
 ---
 

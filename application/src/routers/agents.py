@@ -36,7 +36,7 @@ def _extract_agent_metadata(name: str, a_cls: type, config: AppConfig) -> dict:
 
 @router.get("", response_model=List[AgentDetailResponse])
 def list_agents(config: DomainConfigDep):
-    """Liste tous les agents configurés pour le domaine demandé et leurs caractéristiques."""
+    """List all configured specialist agents and their metadata for the requested medical domain."""
     agents = get_domain_agents(config.domain)
     return [
         _extract_agent_metadata(name, a_cls, config)
@@ -46,7 +46,7 @@ def list_agents(config: DomainConfigDep):
 
 @router.get("/{agent_name}", response_model=AgentDetailResponse)
 def get_agent_detail(agent_name: str, config: DomainConfigDep):
-    """Récupère les détails de configuration d'un agent spécifique pour le domaine demandé."""
+    """Retrieve configuration details for a specific agent in the requested medical domain."""
     agents = get_domain_agents(config.domain)
     available_agents = agents.list
 

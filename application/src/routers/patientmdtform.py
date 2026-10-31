@@ -1,5 +1,5 @@
 import os
-from typing import Any
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -22,23 +22,25 @@ from src.infrastructure.documents.repositories import (
 )
 from src.models.rcp import (
     AdministrativeUpdateRequest,
+    AdministrativeUpdateResponse,
     ChatRequest,
     ChatResponse,
     LinkPatientRequest,
     MessageResponse,
     PatientCardResponse,
     PatientDetailResponse,
+    PatientMDTFormDetailResponse,
     ProcessRequest,
     ProcessResponse,
     RCPCardResponse,
     SectionUpdateRequest,
     UploadResponse,
 )
-from src.routers.dependencies import DomainConfigDep, require_db
+from src.routers.dependencies import DomainConfigDep, get_db, require_db
 
 router = APIRouter(prefix="/patientmdtform", tags=["patientmdtform"])
 
-# --- Helpers ---
+# --- Helpers & Dependencies ---
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
@@ -96,29 +98,44 @@ def _build_extraction_service(config, db=None) -> PatientMDTFormExtractionServic
     )
 
 
+def get_record_service(
+    config: DomainConfigDep, db=Depends(require_db)
+) -> PatientRecordService:
+    """FastAPI dependency providing a domain-scoped `PatientRecordService`."""
+    return _build_record_service(config, db=db)
+
+
+def get_extraction_service(
+    config: DomainConfigDep, db=Depends(get_db)
+) -> PatientMDTFormExtractionService:
+    """FastAPI dependency providing a domain-scoped `PatientMDTFormExtractionService`."""
+    return _build_extraction_service(config, db=db)
+
+
+RecordServiceDep = Annotated[PatientRecordService, Depends(get_record_service)]
+ExtractionServiceDep = Annotated[
+    PatientMDTFormExtractionService, Depends(get_extraction_service)
+]
+
+
 # --- Endpoints ---
 
 
 @router.get("", response_model=list[RCPCardResponse])
-def get_rcp_cards(config: DomainConfigDep, db=Depends(require_db)):
+def get_rcp_cards(record_service: RecordServiceDep):
     """Retrieve the summary list of all PatientMDTForm records for the domain."""
-    record_service = _build_record_service(config, db=db)
     return record_service.list_patient_mdt_form_cards()
 
 
 @router.get("/patients", response_model=list[PatientCardResponse])
-def get_patient_cards(config: DomainConfigDep, db=Depends(require_db)):
+def get_patient_cards(record_service: RecordServiceDep):
     """Retrieve the list of PatientRecord summaries built from their latest analyzed PatientMDTForm."""
-    record_service = _build_record_service(config, db=db)
     return record_service.list_patient_cards()
 
 
 @router.get("/patients/{patient_id}", response_model=PatientDetailResponse)
-def get_patient_detail(
-    patient_id: str, config: DomainConfigDep, db=Depends(require_db)
-):
+def get_patient_detail(patient_id: str, record_service: RecordServiceDep):
     """Retrieve a PatientRecord and the chronological history of all its PatientMDTForm records."""
-    record_service = _build_record_service(config, db=db)
     detail = record_service.get_patient_detail(patient_id)
     if not detail:
         raise HTTPException(
@@ -134,9 +151,8 @@ def get_patient_detail(
 
 
 @router.delete("/patients/{patient_id}", response_model=MessageResponse)
-def delete_patient(patient_id: str, config: DomainConfigDep, db=Depends(require_db)):
+def delete_patient(patient_id: str, record_service: RecordServiceDep):
     """Delete a PatientRecord and all of its associated PatientMDTForm records."""
-    record_service = _build_record_service(config, db=db)
     deleted = record_service.delete_patient_record(patient_id)
     if not deleted:
         raise HTTPException(
@@ -207,7 +223,7 @@ def chat_with_patient_dossier(
         ) from err
 
 
-@router.get("/{filename}", response_model=dict[str, Any])
+@router.get("/{filename}", response_model=PatientMDTFormDetailResponse)
 def get_rcp_detail(filename: str, config: DomainConfigDep, db=Depends(require_db)):
     """Retrieve the complete details of a PatientMDTForm record."""
     _safe_mdt_form_path(config.rcp.path, filename)
@@ -476,7 +492,10 @@ def download_rcp_pdf(filename: str, config: DomainConfigDep):
     return FileResponse(file_path, media_type="application/pdf", filename=filename)
 
 
-@router.patch("/{filename}/sections/{section_name}", response_model=dict[str, Any])
+@router.patch(
+    "/{filename}/sections/{section_name}",
+    response_model=PatientMDTFormDetailResponse,
+)
 def update_rcp_section(
     filename: str,
     section_name: str,
@@ -502,7 +521,10 @@ def update_rcp_section(
         ) from err
 
 
-@router.patch("/{filename}/administrative", response_model=dict[str, Any])
+@router.patch(
+    "/{filename}/administrative",
+    response_model=AdministrativeUpdateResponse,
+)
 def update_rcp_administrative(
     filename: str,
     request: AdministrativeUpdateRequest,
@@ -537,7 +559,10 @@ def update_rcp_administrative(
         ) from err
 
 
-@router.post("/{filename}/link-patient", response_model=dict[str, Any])
+@router.post(
+    "/{filename}/link-patient",
+    response_model=AdministrativeUpdateResponse,
+)
 def link_rcp_to_patient(
     filename: str,
     request: LinkPatientRequest,

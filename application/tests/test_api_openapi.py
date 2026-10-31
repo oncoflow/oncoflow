@@ -34,6 +34,7 @@ def test_openapi_endpoint_is_versioned(client):
 def test_every_json_endpoint_declares_a_response_schema(client):
     spec = client.get("/api/v1/openapi.json").json()
     missing = []
+    untyped_dict_endpoints = []
     for path, methods in spec["paths"].items():
         for method, operation in methods.items():
             content = operation["responses"].get("200", {}).get("content", {})
@@ -42,4 +43,25 @@ def test_every_json_endpoint_declares_a_response_schema(client):
             schema = content.get("application/json", {}).get("schema", {})
             if not schema:
                 missing.append(f"{method.upper()} {path}")
+            elif (
+                schema.get("type") == "object"
+                and "$ref" not in schema
+                and "properties" not in schema
+            ):
+                untyped_dict_endpoints.append(f"{method.upper()} {path}")
     assert not missing, f"Endpoints without response_model: {missing}"
+    assert not untyped_dict_endpoints, (
+        f"Endpoints using untyped dict[str, Any] response_model: {untyped_dict_endpoints}"
+    )
+
+
+def test_bug_reports_endpoints_are_registered_in_openapi(client):
+    spec = client.get("/api/v1/openapi.json").json()
+    paths = spec["paths"]
+    assert "/api/v1/bug-reports" in paths
+    assert "get" in paths["/api/v1/bug-reports"]
+    assert "post" in paths["/api/v1/bug-reports"]
+    assert "/api/v1/bug-reports/{report_id}/status" in paths
+    assert "patch" in paths["/api/v1/bug-reports/{report_id}/status"]
+    assert "/api/v1/bug-reports/{report_id}" in paths
+    assert "delete" in paths["/api/v1/bug-reports/{report_id}"]

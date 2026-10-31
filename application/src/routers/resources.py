@@ -19,7 +19,7 @@ router = APIRouter(prefix="/resources", tags=["resources"])
 
 @router.get("", response_model=List[ResourceIndexResponse])
 def list_resources(config: DomainConfigDep):
-    """Liste les ressources de référence clinique du domaine et leur état d'indexation vectorielle."""
+    """List clinical reference resources for the domain and their vector indexing status."""
     manager = Ressources(config)
     try:
         files = manager.list_ressources()
@@ -38,7 +38,7 @@ def list_resources(config: DomainConfigDep):
 
 @router.post("/{filename}/index", response_model=ResourceIndexedResponse)
 def index_resource(filename: str, config: DomainConfigDep):
-    """Indexe une ressource scientifique de référence clinique dans la base vectorielle du domaine."""
+    """Index a scientific clinical reference resource into the domain vector store."""
     try:
         safe_path(config.rcp.additional_path, filename)
     except UnsafePathError as err:
@@ -75,7 +75,7 @@ def index_resource(filename: str, config: DomainConfigDep):
 def chat_with_resource_agent(
     filename: str, request: ResourceChatRequest, config: DomainConfigDep
 ):
-    """Dialogue avec l'agent Ressource Assistant pour interroger une ressource spécifique du domaine."""
+    """Chat with the Resource Assistant agent to query a specific indexed clinical resource."""
     try:
         safe_path(config.rcp.additional_path, filename)
     except UnsafePathError as err:

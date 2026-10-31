@@ -1,6 +1,9 @@
+"""Pydantic request and response schemas for the `/api/v1/patientmdtform` router."""
+
 from datetime import datetime
 from typing import Any, List, Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.models.queue import EnqueueResponse, QueueJobResponse
 
@@ -101,7 +104,7 @@ class PatientCardResponse(BaseModel):
 
 
 class PatientResponse(BaseModel):
-    """Identité patient exposée par l'API (liste blanche de champs, sans métadonnées Mongo)."""
+    """Patient identity exposed by the API (whitelisted fields without internal MongoDB metadata)."""
 
     patient_id: str
     first_name: str = ""
@@ -113,10 +116,32 @@ class PatientResponse(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class PatientMDTFormDetailResponse(BaseModel):
+    """Full `PatientMDTForm` document response preserving dynamic domain-specific clinical sections."""
+
+    model_config = ConfigDict(extra="allow")
+
+    id: Optional[str] = None
+    file: str
+    patient_id: Optional[str] = None
+    processing_status: Optional[str] = None
+    manually_edited_sections: List[str] = Field(default_factory=list)
+    last_manual_edit: Optional[dict[str, Any]] = None
+    ui_date: Optional[datetime | str] = None
+    PatientAdministrative: Optional[dict[str, Any]] = None
+
+
+class AdministrativeUpdateResponse(BaseModel):
+    """Response returned when updating patient administrative details or linking a form to a patient."""
+
+    patient: PatientResponse
+    form: PatientMDTFormDetailResponse
+
+
 class PatientDetailResponse(BaseModel):
     patient: PatientResponse
     latest_file: Optional[str] = None
-    # Le contenu d'une fiche RCP dépend des modèles cliniques du domaine (schéma dynamique).
+    # Dynamic clinical sections per domain are preserved on each PatientMDTForm entry.
     rcps: List[dict[str, Any]]
 
 

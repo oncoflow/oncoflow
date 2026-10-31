@@ -7,6 +7,7 @@ from src.infrastructure.documents.mongodb import close_all_mongo_clients
 from src.infrastructure.queue import get_global_queue_manager
 from src.models.queue import HealthResponse
 from src.routers.agents import router as agents_router
+from src.routers.bug_reports import router as bug_reports_router
 from src.routers.dependencies import (
     AllowedDomainMiddleware,
     get_base_config,
@@ -77,7 +78,7 @@ app.add_middleware(AllowedDomainMiddleware)
 
 @app.get("/health", tags=["system"], response_model=HealthResponse)
 def healthcheck():
-    """Vérifie l'état de santé de l'API Cross-Domains et de la file de traitement intégrée."""
+    """Check the health status of the Cross-Domain API and its integrated priority queue."""
     manager = get_global_queue_manager()
     return {
         "status": "ok",
@@ -92,6 +93,7 @@ app.include_router(patientmdtform_router, prefix="/api/v1", dependencies=_protec
 app.include_router(agents_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(resources_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(queue_router, prefix="/api/v1", dependencies=_protected)
+app.include_router(bug_reports_router, prefix="/api/v1", dependencies=_protected)
 
 if __name__ == "__main__":
     # Loopback by default (APP_API_HOST); containers set 0.0.0.0 on a private network.

@@ -18,11 +18,13 @@ This skill defines the brand identity, visual design system, clinical UX pattern
   > *"L'outil d'analyse des dossiers qui prépare le terrain pour faciliter / optimiser la décision médicale."*
 - **Three Core Product Promises**:
   1. **Exhaustivité documentaire** : Ingestion multi-PDF agnostique et consolidation chronologique par patient.
-  2. **Conformité aux recommandations** : Contrôle systématique de complétude et propositions cadrées sur les référentiels scientifiques (ex. TNCD).
+  2. **Conformité aux recommandations** : Contrôle systématique de complétude et propositions cadrées sur les référentiels scientifiques (ex. TNCD, PNDS).
   3. **Fluidité logistique** : Ordonnancement de la séance selon le degré d'urgence et l'expertise requise.
-- **Tone of Voice**:
-  - **Rigoureux, sobre, respectueux de l'expertise médicale**, dénué de jargon marketing creux ou d'effets d'annonce techno-béats.
-  - Prefer precise clinical and operational terms (*"Préparation & ordonnancement RCP"*, *"Contrôle de complétude"*, *"Dossier conforme"*, *"Intégration documentaire"*, *"Modules d'expertise"*) over casual or flashy phrasing.
+- **Tone of Voice & Persona Ergonomics ("Sans réfléchir")**:
+  - **Rigoureux, sobre, respectueux de l'expertise médicale**, dénué de jargon marketing creux.
+  - Every screen must be **instantly readable in 1 second without cognitive effort ("sans réfléchir")** by two primary hospital personas:
+    1. **Le Médecin / Spécialiste RCP** (focus: degré d'urgence, orientation pré-RCP, marqueurs cliniques et biologiques clés, évolution longitudinale entre deux RCP, avis par spécialité et références scientifiques).
+    2. **La Secrétaire médicale / Coordinateur RCP** (focus: complétude du dossier, pièces manquantes, quorum des spécialités à convoquer en séance, identification patient).
 
 ---
 
@@ -33,76 +35,81 @@ This skill defines the brand identity, visual design system, clinical UX pattern
 - **Privacy boundary**: Never load external web fonts (e.g., Google Fonts CDN) to guarantee 100% offline/local hospital compliance.
 
 ### B. Color Palette (Bleu sombre / Gris ardoise + Sauge / Sarcelle / Rose)
-Configured in `application/.streamlit/config.toml` (with automatic Light & Dark mode adaptation):
+Configured in `application/.streamlit/config.toml` and `apply_card_surface_style()` in `src/ui/patient_mdt/translations.py` (with automatic Light & Dark mode adaptation):
 
 | Semantic Role | Light Mode (Matte Anti-Glare) | Dark Mode | Usage |
 | :--- | :--- | :--- | :--- |
 | **Sidebar & Brand Slate** | `#2B3748` | `#0B1120` | Softened slate-blue sidebar (`#2B3748` in light mode to avoid harsh contrast), primary logotype (`Data`) |
 | **Workspace Canvas** | `#E6ECF0` | `#0F172A` | Soft stone-slate desk background (`backgroundColor`) that eliminates white screen glare |
-| **Matte Card Interior (Option 1)** | `#FBFDFF` | `#162032` | Matte off-white paper interior for bordered containers (`div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"]`) and KPI metrics (`[data-testid="stMetric"]`) via `apply_card_surface_style()` |
-| **Primary — Sarcelle minérale douce (Muted Teal)** | `#467E79` | `#72A8A2` | Primary CTAs, active tabs/controls, focal elements, logotype (`Syntis`) — soft mineral celadon/teal |
-| **Success / Conformity — Sauge (Sage)** | `#4D7C6F` (`#E6F1EE` bg) | `#6B9080` | Validated completeness (`Dossier conforme`), standard priority, positive deltas |
-| **Alert / High Priority — Rose** | `#B83B5E` (`#F9E8EC` bg) | `#F43F5E` | Muted raspberry-rose for high priority (`Priorité haute`), critical alerts, focal point of the app icon (`#D94668`) |
+| **Matte Card Interior** | `#FBFDFF` | `#162032` | Matte off-white paper interior for bordered containers (`div.stApp div[data-testid="stLayoutWrapper"] > div[data-testid="stVerticalBlock"]:not([class*="st-key-clinical_scroll_"])`) and KPI metrics (`[data-testid="stMetric"]`) |
+| **Primary — Sarcelle minérale douce (Muted Teal)** | `#467E79` | `#72A8A2` | Primary CTAs, active tabs/controls, focal elements, logotype (`Syntis`) |
+| **Success / Conformity — Sauge (Sage)** | `#4D7C6F` (`#E6F1EE` bg) | `#6B9080` | Validated completeness (`Dossier conforme`), standard priority, positive deltas, validation checkmarks |
+| **Alert / High Priority / Destructive — Rose** | `#B83B5E` (`#F9E8EC` bg) | `#E11D48` / `#F43F5E` | High priority (`Priorité haute`), critical alerts, AND **all destructive / irreversible actions** (`btn_del_...` and `btn_danger_...`) |
 | **Clinical Info Banner (`st.info` / Blue)** | `#3B6E9C` (`#E3EFF8` bg) | `#3B82F6` (`#1E3A5F` bg) | Soft yet clearly visible clinical slate-blue for `st.info` banners (with `#3B6E9C` left accent border) |
 
-### C. Logotype & Application Icon
+### C. Logotype & Application Icon (Anti-Pattern Guardrails)
 - Defined in `src/ui/patient_mdt/translations.py` (`get_logo_svg()`, `get_icon_svg()`) and `application/static/icon.svg`:
-  - **Wordmark**: Strong `sans-serif` typography pairing `Data` (slate) and `Syntis` (muted mineral teal) with a French domain subtitle (`- Oncologie`, `- Amyotrophie spinale`, etc.).
-  - **App Icon / Favicon / Desktop Shortcut**: Rounded dark-slate square (`#1E293B`) featuring a layered teal dossier sheet in the background (`#72A8A2`), a crisp front clinical synthesis card (`#F8FAFC`) with structured horizontal data lines, a teal header bar + rose priority indicator dot (`#D94668`), and a bottom-right **sage-green** validation badge (`#68A38E` / `#437A68`) with a white checkmark (`#F8FAFC`), evoking **multi-document consolidation, structured synthesis, and validated RCP readiness** (never place a checkmark on a red/rose background).
+  - **Wordmark**: Strong `sans-serif` typography pairing `Data` (slate) and `Syntis` (muted mineral teal) with a French domain subtitle (`- Oncologie`, `- Amyotrophie spinale`).
+  - **App Icon**: Layered teal dossier sheet (`#72A8A2`) + foreground synthesis card (`#F8FAFC`) with structured horizontal lines + small rose priority dot (`#D94668`) + bottom-right **sage-green** validation badge (`#68A38E` / `#437A68`) with a white checkmark (`#F8FAFC`).
+  - **Strict UX Anti-Patterns to Avoid**:
+    - Never use 4-arm rotational geometries that could resemble a swastika.
+    - Never place a validation checkmark (`✓`) inside a red or rose circle (red/rose is reserved for urgency/danger; validation is always sage-green).
+
+### D. Dark-Mode Portal Safety (`st.popover` & `st.dialog`)
+- In Streamlit, `st.popover` and `st.dialog` are mounted via React portals inside `<div id="stFloatingOverlayPortal">` directly under `document.body`, **outside** `<div class="stApp">` (where `color-scheme: dark` is applied).
+- Therefore, in `apply_card_surface_style()`:
+  - Always scope `light-dark(#FBFDFF, #162032)` card surface rules to `div.stApp ... :not([class*="st-key-clinical_scroll_"])`.
+  - Always force `background-color: transparent !important; box-shadow: none !important; border: none !important;` on inner blocks of `div[data-testid="stPopoverBody"]` and `div[role="dialog"]` so popovers (`💭 Réflexion IA`, `🔍 Filtres`, `Options IA`) never turn white in Dark Mode.
+  - Note on `st.popover`: never pass an empty label `""` to `st.popover()` (raises `StreamlitAPIException`), and never rely on `with st.container(...) as var:` because `DeltaGenerator.__enter__()` returns `None`.
 
 ---
 
-## 3. Iconography Rules (Keep Icons in Color)
+## 3. Iconography & Specialty Naming Rules
 
-- **Always preserve colorful icons across the interface** to aid rapid visual scanning during high-tempo RCP meetings:
-  1. **Sidebar Navigation (`st.Page`)**: Because `st.Page(..., icon=...)` does not support `:color[:material/...:]` syntax, use expressive **colorful emojis** (`📇`, `👤`, `📥`, `🩺`, `📚`, `📋`, `⚙️`).
-  2. **KPIs, Badges & Section Headers**: Use colorful emojis (`📁`, `🚨`, `⚠️`, `💉`, `✅`, `❌`, `⏳`, `🔄`, `🟠`, `🟢`, `⚪`, `🗂️`, `📅`, `📄`, `👁️`, `🗑️`, `💭`, `📌`) and/or colored Material icons (`:primary[:material/...:]`, `:blue[:material/...:]`, `:green[:material/...:]`, `:red[:material/...:]`, `:orange[:material/...:]`, `:violet[:material/...:]`).
-  3. Never flatten all interface icons into monochrome gray Material icons.
+1. **Preserve Colorful Icons**: Use expressive colorful emojis and colored Material icons (`:primary[:material/...:]`, `:blue[:material/...:]`, etc.) to aid rapid visual triage.
+2. **Clinical Specialty Icons (No Detective Emojis `🕵️`)**:
+   - Map agents via `get_agent_icon_and_label()` in `src/ui/patient_mdt/translations.py`:
+     - `🧠 Neurologie` (`neurologist expert`)
+     - `🧬 Génétique` (`geneticist expert`)
+     - `🫁 Pneumologie` (`pulmonologist expert`)
+     - `🦿 MPR / Rééducation` (`physiotherapy expert`)
+     - `🦴 Orthopédie` (`orthopedist expert`)
+     - `🩺 Pancréas` / `🩺 Œsophage` / `🩺 Foie / CHC`
+     - `⚖️ Coordinateur RCP` (`MDT Coordinator`)
+     - `🗂️ Extraction administrative & clinique` (`Administrative`)
+     - `📚 Assistant référentiels` (`Ressource Assistant`)
+   - Use the concise specialty noun (`Neurologie`, `Génétique`, `Pneumologie`...) rather than repeating `"Expert ..."` on every badge so multi-specialty lists fit cleanly on a single line.
 
 ---
 
-## 4. Clinical UX & Ergonomic Patterns
+## 4. Clinical Layout & Page Ergonomics
 
-### A. Architectural Boundary & Compact Top Spacing (CRITICAL)
-- **Never import `streamlit` outside `src/ui/` and `app-ui.py`**. All business logic, database queries, and queue operations must go through `src/application/` Use Cases and `src/domain/` entities.
-- **Compact Top Page Margin**: Streamlit applies a large `6rem` top padding by default on `div[data-testid="stMainBlockContainer"]` and an opaque `3.75rem` fixed `header[data-testid="stHeader"]`. `apply_card_surface_style()` in `src/ui/patient_mdt/translations.py` makes `header[data-testid="stHeader"]` transparent (`background: transparent !important; pointer-events: none !important;` while keeping its toolbar buttons clickable) and sets `padding-top: 2.75rem !important` on `stMainBlockContainer` so page titles sit high on the screen without ever being clipped by the header bar.
+### A. Header, Sidebar Collapse & Architectural Boundary
+- **Never import `streamlit` outside `src/ui/` and `app-ui.py`**.
+- **Top Header Spacing**: `header[data-testid="stHeader"]` is styled transparent (`pointer-events: none` on the bar, `pointer-events: auto` on buttons) with `padding-top: 2.75rem !important` on `stMainBlockContainer` so top elements are never clipped in production.
+- **Permanent Sidebar Collapse/Expand Controls**: `div[data-testid="stSidebarCollapseButton"]` (`«`) and `button[data-testid="stExpandSidebarButton"]` (`»`) are styled with `visibility: visible !important` and a subtle border so clinicians can collapse/expand the left menu at any time (especially on the side-by-side PDF/Dossier view).
 
 ### B. RCP Preparation & Triage Dashboard (`src/ui/patient_mdt/cards.py`)
-1. **Top KPI Summary Bar**:
-   - Display 4 equal-height bordered metrics (`st.metric(..., border=True, height="stretch")`) at the top:
-     - `📁 Dossiers structurés`
-     - `🚨 Priorité haute (RCP)`
-     - `⚠️ Contrôle de complétude`
-     - `💉 Actes / Interventions`
-2. **Full-Width Compact Filter Toolbar**:
-   - Never push the main dashboard into a narrow column using a permanent `[3, 1]` side filter column.
-   - Place search (`st.text_input`), completeness (`st.segmented_control`), sorting (`st.selectbox`), view toggle (`Cartes` / `Liste`), and advanced filters (`🔍 Filtres` inside `st.popover`) in a single horizontal bordered toolbar (`st.container(border=True)`).
-3. **Equal-Height 3-Column Card Grid**:
-   - Render cards in rows of 3 (`st.columns(3)`) with `st.container(border=True, height="stretch")` so every card in a row has the exact same height.
-   - Separate **consolidated patient dossiers** (`📁 Dossiers patients consolidés`) and **chronological RCP forms** (`📄 Flux documentaire RCP`) into `st.tabs` rather than stacking both grids vertically.
-4. **Destructive & Irreversible Actions in DataSyntis Rose**:
-   - All deletion, purge, and irreversible actions must visually use the **DataSyntis Rose** palette (`#B83B5E` in light mode, `#E11D48` / `#F43F5E` in dark mode):
-     - Secondary delete/purge triggers on cards, list rows, and cache controls use `key="btn_del_..."` (`type="secondary"`, `icon=":material/delete:"`), styled via `apply_card_surface_style()` with a soft rose border, rose tint background, and rose icon/text.
-     - Primary irreversible confirmation buttons inside `@st.dialog` modals (and full-purge actions) use `key="btn_danger_..."` (`type="primary"`, `icon=":material/delete_forever:"`), styled via `apply_card_surface_style()` with a solid DataSyntis Rose fill (`#B83B5E` / `#E11D48`) and white text, alongside a rose `st.error(..., icon=":material/warning:")` banner inside the confirmation dialog.
+1. **Top KPI Summary Bar**: 4 equal-height bordered metrics (`📁 Dossiers structurés`, `🚨 Priorité haute (RCP)`, `⚠️ Contrôle de complétude`, `🧭 Orientations pré-RCP`).
+2. **Full-Width Compact Filter Toolbar**: Search, completeness segmented control, sort order, `Cartes`/`Liste` toggle, and `🔍 Filtres` popover in a single horizontal bar.
+3. **Equal-Height 3-Column Card Grid & Bottom-Aligned Buttons**:
+   - Use `st.container(border=True, height="stretch")` for cards and place `st.space("stretch")` immediately before the footer (missing items expander + action buttons) so buttons align horizontally across all cards in a row.
+4. **Destructive Actions in DataSyntis Rose**:
+   - All delete/purge buttons use `key="btn_del_..."` (secondary rose-tinted button) and all irreversible confirmation buttons inside `@st.dialog` use `key="btn_danger_..."` (solid rose primary button + `st.error` warning banner).
 
 ### C. Patient Clinical File View (`src/ui/patient_mdt/datas.py`)
-1. **Unified Hospital-Grade Patient & RCP Banner (`render_unified_patient_banner`)**:
-   - Combine the Back button (`◀️ Dossiers`), patient full name (`### 👤 {patient.full_name}`), inline administrative badges (`🎂 {dob}`, `⚧️ {gender}`, `🗂️ {count} RCP`), active RCP document metadata, document action buttons (`⏬ Télécharger PDF`, `🔄 Relancer l'analyse`, `Options IA`), and the chronological RCP timeline selector (`st.segmented_control` when $\le 4$ forms, `st.selectbox` when $> 4$) inside a **single unified bordered header card** (`st.container(border=True)`).
-   - Follow immediately with a **single** `[1, 1]` split view: `pdf_viewer` on the left (`height=800`) and `st.tabs(["📋 Données cliniques", "💬 Assistant IA", "📄 Texte & Chunks"])` on the right.
-2. **Synoptic Clinical Summary Banner (`render_clinical_summary_card`) & Independent Scroll**:
-   - Wrap the right-hand clinical data panel in a scrollable container (`st.container(height=760, border=False)`) so clinicians can scroll through extracted sections while keeping the PDF fixed on the left.
-   - Display `🩺 Synthèse synoptique RCP` at the top with Priority, Completeness, Intervention, and Specialty badges on the first row, followed by a multi-column mini-grid of key extracted clinical markers (Organ, OMS, MSI/MSS, Treatments in Oncology; SMA Type, SMN2 copies, Ventilation, Feeding in SMA).
-3. **Clinical Pole Grouping & Inline Expander Header Summaries (`SECTION_META`)**:
-   - Order and group clinical sections by medical reasoning poles (`🎯 Aide à la décision & Conformité RCP`, `🩺 Caractérisation clinique & biologique`, `🔬 Bilan paraclinique & Historique thérapeutique`, `👤 Données administratives extraites`) instead of Python alphabetical class order.
-   - Display the extracted key value directly inside the expander header (`_extract_section_header_summary`, e.g., `🎯 Localisation de la tumeur primitive — Pancréas · ⏱️ 1.2s`) and keep single-value atomic sections or `PatientAdministrative` collapsed by default (`expanded=False`) so decision-critical sections stay front and center.
-4. **Dedicated Clinical Renderers & Prioritized Expert Tabs**:
-   - Render `RadiologicalExamination`, `ChemotherapyData`, `ExpertSuggestion`, `Reference`, and `MTDComplete` with dedicated clinical cards and badges (never raw Python `BaseModel` string dumps), and format both `date` and `datetime` values as `DD/MM/YYYY`.
-   - In `ExpertAnswer`, sort specialist tabs so relevant experts (`expert_relevant=True`) appear first with explicit icons (`🚨` urgent, `✅` relevant, `⚪` non-relevant) and show a concise 1-line notice for non-relevant specialties.
-5. **Discreet Execution Time & Single-Line Section Footer**:
-   - **Execution time (`execution_times`) is secondary metadata**: never give it a dedicated row or `st.caption` inside the card body. Display it discreetly in the expander header (`:small[:gray[· ⏱️ {exec_time:.1f}s]]`) and in the retry button's `help` tooltip.
-   - **Same-row AI Reflection & Retry**: Place the AI reasoning popover (`💭 :small[Réflexion IA]`, `type="tertiary"`) and the section retry button (`:blue[:material/refresh:] :small[Relancer cette rubrique]`, `type="tertiary"`) **on the same horizontal line** inside `st.container(horizontal=True, horizontal_alignment="right", vertical_alignment="center")`.
-
-### D. Unified AI Assistant & Guidelines (`ressources.py`, `agents.py`)
-- In `datas.py`, provide a single `💬 Assistant IA` tab with a `st.segmented_control` selector for scope (`Dossier patient complet` vs `Fiche RCP active uniquement`).
-- In `ressources.py`, avoid duplicate welcome messages when initializing the RAG chat session (`messages_res` already contains the initial greeting).
-- In `agents.py`, display specialty modules in an equal-height 3-column grid (`st.container(border=True, height="stretch")`) with clear indexing status (`✅` vs `⚠️`).
+1. **Unified Patient & RCP Banner (`render_unified_patient_banner`)**:
+   - Displays patient identity, DOB, gender, RCP count, and **cumulative AI execution time** (`:gray-badge[⏱️ Temps cumulé : X min XX s]`, formatted via `_format_duration` in seconds $< 60\text{ s}$ or `M min SS s` $\ge 60\text{ s}$).
+   - When a patient has multiple RCPs, displays an enriched chronological timeline (`🔴`/`🟠`/`🟢`/`⚪`/`⏳` + `🧭`/`⚠️`/`✅`) with `◀ Préc.` / `Suiv. ▶` navigation buttons.
+2. **3-Row Synoptic Card (`render_clinical_summary_card`) Pinned Above Tabs**:
+   - **Row 1 — Statut & Triage RCP (1 line)**: `**🩺 Synthèse synoptique RCP**` + `Priorité` + `Complétude` + `Orientation` (`:red-badge[🧭 Adaptation suggérée]`, appending `proposed_care_type` only if $\le 24$ characters so long sentences never create giant badges). Do not print the long list of missing items at the bottom of the synoptic card (keep it in the tooltip and in `Contrôle de complétude`).
+   - **Row 2 — Spécialités requises (for the RCP Secretary)**: `:small[**👥 Spécialités requises (N) :**]` followed by concise violet specialty badges on a single line.
+   - **Row 3 — Repères cliniques (for the Physician)**: Multi-column clinical markers with automatic translation of `"Not documented in record"` $\rightarrow$ `"Non renseigné"`, plus longitudinal evolution deltas (`📈 Évolution vs RCP du ...`) when a previous RCP exists.
+3. **Separated Tabs & Power-Mode Gating**:
+   - Standard mode displays 3 tabs: **`🩺 Dossier clinique`**, **`⚖️ Avis & Décision RCP`**, and **`💬 Assistant IA`**.
+   - The 4th tab **`📄 Texte & Chunks`** (and the `📝 Format Markdown` / `🧱 Blocs vectoriels (Chunks)` tabs in `ressources.py`) is **only displayed when `st.session_state.get("power")` is active**.
+4. **Collapsed-by-Default Accordions & Individual Expert Accordions**:
+   - All sections in both `🩺 Dossier clinique` and `⚖️ Avis & Décision RCP` have `"default_expanded": False` in `SECTION_META` because their key conclusion is already summarized in the accordion header (`_extract_section_header_summary`).
+   - In `⚖️ Avis & Décision RCP`, omit redundant `#####` pole headings (`"pole": None`) and list each specialty opinion in `ExpertAnswer` **one by one as its own individual collapsible accordion** (`🧠 Avis — Neurologie — 🚨 Priorité haute · 2 proposition(s)`), sorted by relevance and urgency.
+   - Inside each section/expert accordion, place the execution duration (`⏱️ X.X s` / `M min SS s`) in the bottom-right action bar **to the right of the `Relancer cette rubrique` button**.
+   - Always wrap `model_cls.model_validate(...)` in `try / except` to gracefully handle `DefaultResponse(value=None)` fallback dicts without raising a Pydantic `ValidationError`.
