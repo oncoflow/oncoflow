@@ -3,7 +3,12 @@
 import pytest
 from pydantic import ValidationError
 
-from src.application.config import AppConfig, ConfigllmSettings, is_local_host
+from src.application.config import (
+    ApiSecuritySettings,
+    AppConfig,
+    ConfigllmSettings,
+    is_local_host,
+)
 
 
 @pytest.mark.parametrize(
@@ -64,7 +69,48 @@ def test_is_admin_restricted_list_is_case_insensitive():
 
 
 def test_for_domain_keeps_security_settings():
-    conf = AppConfig(admin_users="alice", allowed_domains="oncology,sma")
+    conf = AppConfig(
+        admin_users="alice",
+        allowed_domains="oncology,sma",
+        api=ApiSecuritySettings(
+            port=8088,
+            cors_origins="https://oncologic.example.fr,https://sma.example.fr",
+            rate_limit_enabled=True,
+            rate_limit_requests=120,
+        ),
+    )
     other = conf.for_domain("sma")
     assert other.admin_users == "alice"
     assert other.allow_remote_llm == conf.allow_remote_llm
+    assert other.api.port == 8088
+    assert other.api.cors_origins_list == [
+        "https://oncologic.example.fr",
+        "https://sma.example.fr",
+    ]
+    assert other.api.rate_limit_enabled is True
+    assert other.api.rate_limit_requests == 120
+
+
+def test_cors_wildcard_with_credentials_rejected_in_prod():
+    with pytest.raises(ValidationError, match="CORS wildcard"):
+        AppConfig(
+            dev_mode=False,
+            api=ApiSecuritySettings(
+                cors_enabled=True,
+                cors_origins="*",
+                cors_allow_credentials=True,
+            ),
+        )
+
+
+def test_api_security_settings_lists_and_defaults():
+    sec = ApiSecuritySettings(
+        cors_origins=" http://localhost:3000 , https://app.example.fr ",
+        cors_allow_methods="get, post, options",
+        trusted_hosts="127.0.0.1, localhost, *.example.fr",
+    )
+    assert sec.cors_origins_list == ["http://localhost:3000", "https://app.example.fr"]
+    assert sec.cors_methods_list == ["GET", "POST", "OPTIONS"]
+    assert sec.trusted_hosts_list == ["127.0.0.1", "localhost", "*.example.fr"]
+    assert sec.max_body_bytes == 52_428_800
+    assert sec.security_headers_enabled is True

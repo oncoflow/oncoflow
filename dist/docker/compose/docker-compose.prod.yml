@@ -295,7 +295,7 @@ services:
   oncoflow-api:
     <<: *ui-common
     container_name: oncoflow-api
-    command: ["uv", "run", "--no-sync", "uvicorn", "app-api:app", "--host", "0.0.0.0", "--port", "8000"]
+    command: ["uv", "run", "--no-sync", "python", "app-api.py"]
     ports:
       - "127.0.0.1:8000:8000"
     environment:
@@ -303,6 +303,43 @@ services:
       APP_ALLOWED_DOMAINS: ${APP_ALLOWED_DOMAINS:-oncology,sma}
       APP_QUEUE_API_URL: ""
       APP_LOG_FILE: "/var/log/meddatasyntis/meddatasyntis-api.log"
+      APP_ADMIN_USERS: ${APP_ADMIN_USERS:-}
+      APP_ALLOW_REMOTE_LLM: ${APP_ALLOW_REMOTE_LLM:-false}
+      APP_API_HOST: ${APP_API_HOST:-0.0.0.0}
+      APP_API_PORT: ${APP_API_PORT:-8000}
+      APP_API_WORKERS: ${APP_API_WORKERS:-1}
+      APP_API_TIMEOUT_KEEP_ALIVE: ${APP_API_TIMEOUT_KEEP_ALIVE:-30}
+      APP_API_PROXY_HEADERS: ${APP_API_PROXY_HEADERS:-true}
+      APP_API_FORWARDED_ALLOW_IPS: ${APP_API_FORWARDED_ALLOW_IPS:-127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16}
+      APP_API_DOCS_ENABLED: ${APP_API_DOCS_ENABLED:-false}
+      APP_API_DOCS_REQUIRE_AUTH: ${APP_API_DOCS_REQUIRE_AUTH:-true}
+      APP_API_CORS_ENABLED: ${APP_API_CORS_ENABLED:-true}
+      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://oncologic-new.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma-new.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}}
+      APP_API_CORS_ORIGIN_REGEX: ${APP_API_CORS_ORIGIN_REGEX:-}
+      APP_API_CORS_ALLOW_CREDENTIALS: ${APP_API_CORS_ALLOW_CREDENTIALS:-true}
+      APP_API_CORS_ALLOW_METHODS: ${APP_API_CORS_ALLOW_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
+      APP_API_CORS_ALLOW_HEADERS: ${APP_API_CORS_ALLOW_HEADERS:-Authorization,Content-Type,X-API-Key,X-Oncoflow-Domain,X-Oncoflow-User,X-Oncoflow-User-Name,X-Oncoflow-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With}
+      APP_API_CORS_EXPOSE_HEADERS: ${APP_API_CORS_EXPOSE_HEADERS:-X-Oncoflow-Domain,X-Request-ID,Content-Disposition}
+      APP_API_CORS_MAX_AGE: ${APP_API_CORS_MAX_AGE:-600}
+      APP_API_TRUSTED_HOSTS: ${APP_API_TRUSTED_HOSTS:-127.0.0.1,localhost,oncoflow-api,*.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}}
+      APP_API_FORCE_HTTPS: ${APP_API_FORCE_HTTPS:-false}
+      APP_API_GZIP_ENABLED: ${APP_API_GZIP_ENABLED:-true}
+      APP_API_GZIP_MINIMUM_SIZE: ${APP_API_GZIP_MINIMUM_SIZE:-1000}
+      APP_API_SECURITY_HEADERS_ENABLED: ${APP_API_SECURITY_HEADERS_ENABLED:-true}
+      APP_API_HSTS_ENABLED: ${APP_API_HSTS_ENABLED:-true}
+      APP_API_HSTS_MAX_AGE: ${APP_API_HSTS_MAX_AGE:-31536000}
+      APP_API_HSTS_INCLUDE_SUBDOMAINS: ${APP_API_HSTS_INCLUDE_SUBDOMAINS:-true}
+      APP_API_CSP_POLICY: ${APP_API_CSP_POLICY:-default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'}
+      APP_API_FRAME_OPTIONS: ${APP_API_FRAME_OPTIONS:-DENY}
+      APP_API_REFERRER_POLICY: ${APP_API_REFERRER_POLICY:-no-referrer}
+      APP_API_PERMISSIONS_POLICY: ${APP_API_PERMISSIONS_POLICY:-camera=(), microphone=(), geolocation=(), payment=(), usb=()}
+      APP_API_CACHE_CONTROL: ${APP_API_CACHE_CONTROL:-no-store, no-cache, must-revalidate, max-age=0}
+      APP_API_COOP_POLICY: ${APP_API_COOP_POLICY:-same-origin}
+      APP_API_CORP_POLICY: ${APP_API_CORP_POLICY:-same-origin}
+      APP_API_MAX_BODY_BYTES: ${APP_API_MAX_BODY_BYTES:-52428800}
+      APP_API_RATE_LIMIT_ENABLED: ${APP_API_RATE_LIMIT_ENABLED:-true}
+      APP_API_RATE_LIMIT_REQUESTS: ${APP_API_RATE_LIMIT_REQUESTS:-300}
+      APP_API_RATE_LIMIT_WINDOW_SECONDS: ${APP_API_RATE_LIMIT_WINDOW_SECONDS:-60}
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
       - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology

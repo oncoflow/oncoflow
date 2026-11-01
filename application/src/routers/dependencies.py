@@ -1,8 +1,13 @@
-"""FastAPI middlewares and dependencies (auth, domain routing, database session)."""
+"""FastAPI middlewares and dependencies (auth, security headers, rate limiting, domain routing, database session)."""
 
+from collections import defaultdict, deque
 import hmac
 from functools import lru_cache
+import re
+import threading
+import time
 from typing import Annotated
+import uuid
 
 from fastapi import Depends, Header, HTTPException, Query, Request, Security, status
 from fastapi.responses import JSONResponse
@@ -11,6 +16,25 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from src.application.config import AppConfig
 from src.infrastructure.documents.mongodb import Mongodb
+
+_SAFE_REQUEST_ID_RE = re.compile(r"^[a-zA-Z0-9._\-]{1,128}$")
+_DOCS_PATHS = ("/docs", "/docs/oauth2-redirect", "/redoc", "/api/v1/openapi.json")
+_SWAGGER_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "font-src 'self' https://fonts.gstatic.com data:; "
+    "img-src 'self' data: https://fastapi.tiangolo.com; "
+    "frame-ancestors 'none'; base-uri 'self'"
+)
+_RATE_LIMIT_LOCK = threading.Lock()
+_RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
+
+
+def reset_rate_limit_buckets() -> None:
+    """Clear in-memory rate-limit buckets (used by unit tests)."""
+    with _RATE_LIMIT_LOCK:
+        _RATE_LIMIT_BUCKETS.clear()
 
 
 @lru_cache(maxsize=1)
@@ -62,6 +86,159 @@ def verify_api_token(
         )
 
 
+class ApiSecurityMiddleware(BaseHTTPMiddleware):
+    """
+    Hospital-grade HTTP security middleware for FastAPI:
+    - Generates or sanitizes `X-Request-ID` correlation identifiers.
+    - Enforces maximum payload size (`APP_API_MAX_BODY_BYTES`, HTTP 413).
+    - Optionally enforces authentication on `/docs`, `/redoc`, and `/api/v1/openapi.json` (`APP_API_DOCS_REQUIRE_AUTH`).
+    - Optionally enforces per-IP sliding-window rate limiting (`APP_API_RATE_LIMIT_ENABLED`, HTTP 429).
+    - Injects strict HTTP security headers (`CSP`, `HSTS`, `X-Content-Type-Options`, `X-Frame-Options`,
+      `Referrer-Policy`, `Permissions-Policy`, `COOP`, `CORP`, `Cache-Control: no-store`).
+    """
+
+    @staticmethod
+    def _extract_bearer_or_api_key(request: Request) -> str | None:
+        auth_header = request.headers.get("Authorization") or ""
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            if token:
+                return token
+        api_key = request.headers.get("X-API-Key")
+        return api_key.strip() if api_key else None
+
+    @staticmethod
+    def _resolve_client_ip(request: Request) -> str:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            first = forwarded.split(",")[0].strip()
+            if first:
+                return first
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip and real_ip.strip():
+            return real_ip.strip()
+        if request.client and request.client.host:
+            return request.client.host
+        return "unknown"
+
+    @staticmethod
+    def _apply_security_headers(
+        request: Request, response, base_conf: AppConfig, request_id: str
+    ) -> None:
+        response.headers["X-Request-ID"] = request_id
+        api_sec = base_conf.api
+        if not api_sec.security_headers_enabled:
+            return
+
+        path = request.url.path
+        is_docs = path in _DOCS_PATHS
+        is_pdf = path.endswith("/pdf") or path.endswith("/file")
+
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault(
+            "X-Frame-Options", "SAMEORIGIN" if is_pdf else api_sec.frame_options
+        )
+        response.headers.setdefault("Referrer-Policy", api_sec.referrer_policy)
+        response.headers.setdefault("Permissions-Policy", api_sec.permissions_policy)
+        response.headers.setdefault("Cross-Origin-Opener-Policy", api_sec.coop_policy)
+        response.headers.setdefault("Cross-Origin-Resource-Policy", api_sec.corp_policy)
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            _SWAGGER_CSP if is_docs else api_sec.csp_policy,
+        )
+        if not is_docs and "cache-control" not in response.headers:
+            response.headers["Cache-Control"] = api_sec.cache_control
+
+        if api_sec.hsts_enabled or not base_conf.dev_mode:
+            hsts = f"max-age={api_sec.hsts_max_age}"
+            if api_sec.hsts_include_subdomains:
+                hsts = f"{hsts}; includeSubDomains"
+            response.headers.setdefault("Strict-Transport-Security", hsts)
+
+    async def dispatch(self, request: Request, call_next):
+        base_conf = get_base_config()
+        api_sec = base_conf.api
+
+        raw_req_id = (request.headers.get("X-Request-ID") or "").strip()
+        request_id = (
+            raw_req_id if _SAFE_REQUEST_ID_RE.match(raw_req_id) else str(uuid.uuid4())
+        )
+        request.state.request_id = request_id
+
+        # Allow CORS preflight requests to pass through immediately
+        if request.method == "OPTIONS":
+            response = await call_next(request)
+            self._apply_security_headers(request, response, base_conf, request_id)
+            return response
+
+        # 1. Enforce max request body size via Content-Length
+        content_length = request.headers.get("Content-Length")
+        if content_length:
+            try:
+                body_len = int(content_length)
+            except ValueError:
+                body_len = 0
+            if body_len > api_sec.max_body_bytes:
+                resp = JSONResponse(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    content={
+                        "detail": (
+                            f"Payload trop volumineux ({body_len} octets). "
+                            f"Limite autorisée : {api_sec.max_body_bytes} octets."
+                        )
+                    },
+                )
+                self._apply_security_headers(request, resp, base_conf, request_id)
+                return resp
+
+        # 2. Enforce optional authentication on OpenAPI / Swagger docs
+        if (
+            api_sec.docs_require_auth
+            and base_conf.api_token is not None
+            and request.url.path in _DOCS_PATHS
+        ):
+            provided = self._extract_bearer_or_api_key(request)
+            expected = base_conf.api_token.get_secret_value()
+            if not provided or not hmac.compare_digest(
+                provided.encode(), expected.encode()
+            ):
+                resp = JSONResponse(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    content={"detail": "Authentification requise."},
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+                self._apply_security_headers(request, resp, base_conf, request_id)
+                return resp
+
+        # 3. Enforce optional sliding-window per-IP rate limiting (exempting /health)
+        if api_sec.rate_limit_enabled and request.url.path != "/health":
+            client_ip = self._resolve_client_ip(request)
+            now = time.monotonic()
+            window = float(api_sec.rate_limit_window_seconds)
+            max_reqs = api_sec.rate_limit_requests
+            with _RATE_LIMIT_LOCK:
+                bucket = _RATE_LIMIT_BUCKETS[client_ip]
+                cutoff = now - window
+                while bucket and bucket[0] <= cutoff:
+                    bucket.popleft()
+                if len(bucket) >= max_reqs:
+                    retry_after = max(1, int(window - (now - bucket[0])))
+                    resp = JSONResponse(
+                        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                        content={
+                            "detail": "Trop de requêtes. Veuillez réessayer ultérieurement."
+                        },
+                        headers={"Retry-After": str(retry_after)},
+                    )
+                    self._apply_security_headers(request, resp, base_conf, request_id)
+                    return resp
+                bucket.append(now)
+
+        response = await call_next(request)
+        self._apply_security_headers(request, response, base_conf, request_id)
+        return response
+
+
 class AllowedDomainMiddleware(BaseHTTPMiddleware):
     """
     FastAPI / Starlette Middleware validating the target medical domain (`?domain=...`
@@ -71,7 +248,7 @@ class AllowedDomainMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        if request.url.path.startswith("/api/"):
+        if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
             base_conf = get_base_config()
             raw_domain = request.query_params.get("domain") or request.headers.get(
                 "X-Oncoflow-Domain"
@@ -233,13 +410,13 @@ def require_admin(
     """
     Enforce admin privileges on destructive endpoints.
 
-    - When user/proxy headers (`X-Oncoflow-User` or `X-Oncoflow-Proxy-Secret`) are present
-      (e.g. requests coming through the BFF / OAuth2 reverse proxy), the proxy secret must be
+    - When user headers (`X-Oncoflow-User`) are present (e.g. requests coming through the
+      BFF / OAuth2 reverse proxy on behalf of a human user), the proxy secret must be
       valid AND the user must be listed in `APP_ADMIN_USERS` (`AppConfig.is_admin`).
-    - When no user/proxy headers are present, internal service-to-service calls (`QueueBroker`,
-      worker) already authenticated via `APP_API_TOKEN` are permitted.
+    - When `X-Oncoflow-User` is absent, internal service-to-service calls (`QueueBroker`,
+      worker, BFF service client) already authenticated via `APP_API_TOKEN` are permitted.
     """
-    if x_user is None and x_proxy_secret is None:
+    if x_user is None:
         return
 
     user_info = get_current_user_info(

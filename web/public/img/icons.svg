@@ -95,8 +95,8 @@
 
   <!-- ===================== 3. Statuts, Priorités & Orientation ===================== -->
   <symbol id="ic-priority-high" viewBox="0 0 24 24">
-    <path d="M12 3 21 12l-9 9-9-9 9-9Z"/>
-    <path d="M12 8v5M12 16h.01"/>
+    <circle cx="12" cy="12" r="8.5"/>
+    <path d="M12 8v4.5M12 16h.01"/>
   </symbol>
   <symbol id="ic-priority-medium" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="8.5"/>
@@ -118,8 +118,8 @@
     <path d="m8.5 12.2 2.4 2.4 4.8-4.8"/>
   </symbol>
   <symbol id="ic-warning" viewBox="0 0 24 24">
-    <path d="M10.4 4.4 2.8 17.5a1.8 1.8 0 0 0 1.6 2.7h15.2a1.8 1.8 0 0 0 1.6-2.7L13.6 4.4a1.8 1.8 0 0 0-3.2 0Z"/>
-    <path d="M12 9.5v4M12 16.8h.01"/>
+    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/>
+    <path d="M12 9v4M12 17h.01"/>
   </symbol>
   <symbol id="ic-error" viewBox="0 0 24 24">
     <circle cx="12" cy="12" r="8.5"/>

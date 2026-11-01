@@ -5,7 +5,7 @@
   "description": "DataSyntis Material Design 3 Web UI (Fastify BFF + SSR + htmx — KISS / DDD / Hexagonal / TDD)",
   "type": "module",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=26.0.0"
   },
   "allowScripts": {
     "@biomejs/biome": true,

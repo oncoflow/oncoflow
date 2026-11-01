@@ -116,9 +116,27 @@
       panel.className = "ds-m3-select__panel";
       panel.setAttribute("role", "listbox");
 
+      function buildIconHtml(iconId) {
+        if (!iconId) return "";
+        return (
+          '<span class="ds-m3-select__icon" aria-hidden="true">' +
+          '<svg class="ds-icon ds-icon--xs" aria-hidden="true" focusable="false"><use href="#' +
+          iconId +
+          '"></use></svg></span>'
+        );
+      }
+
       function syncFromSelect() {
         var selectedOpt = select.options[select.selectedIndex] || select.options[0];
-        valueSpan.textContent = selectedOpt ? selectedOpt.textContent : "";
+        var iconId = selectedOpt ? selectedOpt.getAttribute("data-icon") : "";
+        var textLabel = selectedOpt ? selectedOpt.textContent || "" : "";
+        if (iconId) {
+          valueSpan.innerHTML = buildIconHtml(iconId) + "<span></span>";
+          var innerSpan = valueSpan.querySelector("span:last-child");
+          if (innerSpan) innerSpan.textContent = textLabel;
+        } else {
+          valueSpan.textContent = textLabel;
+        }
         panel.querySelectorAll(".ds-m3-select__option").forEach(function (li) {
           var isSel = li.getAttribute("data-value") === select.value;
           li.setAttribute("aria-selected", isSel ? "true" : "false");
@@ -139,11 +157,23 @@
         check.innerHTML =
           '<svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>';
 
+        li.appendChild(check);
+        var optIcon = opt.getAttribute("data-icon");
+        if (optIcon) {
+          var iconWrap = document.createElement("span");
+          iconWrap.className = "ds-m3-select__icon";
+          iconWrap.setAttribute("aria-hidden", "true");
+          iconWrap.innerHTML =
+            '<svg class="ds-icon ds-icon--xs" aria-hidden="true" focusable="false"><use href="#' +
+            optIcon +
+            '"></use></svg>';
+          li.appendChild(iconWrap);
+        }
+
         var label = document.createElement("span");
         label.className = "ds-m3-select__label";
         label.textContent = opt.textContent;
 
-        li.appendChild(check);
         li.appendChild(label);
 
         function chooseOption(ev) {
@@ -768,6 +798,99 @@
       }
     });
   }
+
+  // Smart hovercard & tooltip flip when close to the top or right edge of the viewport
+  function adjustFloatingOverlay(el) {
+    if (!el || typeof el.getBoundingClientRect !== "function") return;
+    var rect = el.getBoundingClientRect();
+    if (el.classList.contains("ds-hovercard")) {
+      el.classList.toggle("ds-hovercard--flip", rect.top < 220);
+      el.classList.toggle("ds-hovercard--align-right", rect.left + 320 > window.innerWidth);
+    }
+    if (el.hasAttribute("data-tooltip")) {
+      if (rect.top < 90) {
+        el.setAttribute("data-tooltip-flip", "bottom");
+      } else {
+        el.removeAttribute("data-tooltip-flip");
+      }
+    }
+  }
+  document.addEventListener(
+    "mouseover",
+    function (e) {
+      var hc = e.target.closest(".ds-hovercard");
+      if (hc) adjustFloatingOverlay(hc);
+      var tt = e.target.closest("[data-tooltip]");
+      if (tt) adjustFloatingOverlay(tt);
+    },
+    { passive: true },
+  );
+  document.addEventListener("focusin", function (e) {
+    var hc = e.target.closest(".ds-hovercard");
+    if (hc) adjustFloatingOverlay(hc);
+    var tt = e.target.closest("[data-tooltip]");
+    if (tt) adjustFloatingOverlay(tt);
+  });
+
+  // Client-side worklist column sorting on <table id="worklist">
+  document.addEventListener("click", function (e) {
+    var sortTrigger = e.target.closest("[data-sort-trigger]");
+    if (!sortTrigger) return;
+    var th = sortTrigger.closest("th");
+    var table = sortTrigger.closest("table");
+    var tbody = table ? table.querySelector("tbody") : null;
+    if (!th || !table || !tbody) return;
+
+    e.preventDefault();
+    var colIdx = Number(sortTrigger.getAttribute("data-sort-trigger") || "0");
+    var currentSort = th.getAttribute("aria-sort");
+    var nextDir = currentSort === "ascending" ? "descending" : "ascending";
+
+    table.querySelectorAll("thead th").forEach(function (headerEl) {
+      headerEl.setAttribute("aria-sort", "none");
+      var link = headerEl.querySelector(".ds-sort");
+      var icon = headerEl.querySelector(".ds-sort__icon");
+      if (link) link.classList.remove("is-sorted");
+      if (icon) icon.textContent = "↕";
+    });
+
+    th.setAttribute("aria-sort", nextDir);
+    sortTrigger.classList.add("is-sorted");
+    var activeIcon = sortTrigger.querySelector(".ds-sort__icon");
+    if (activeIcon) activeIcon.textContent = nextDir === "ascending" ? "↑" : "↓";
+
+    var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+    rows.sort(function (rowA, rowB) {
+      var cellA = rowA.children[colIdx];
+      var cellB = rowB.children[colIdx];
+      var valA = (cellA && (cellA.getAttribute("data-sort-value") || cellA.textContent)) || "";
+      var valB = (cellB && (cellB.getAttribute("data-sort-value") || cellB.textContent)) || "";
+      var numA = Number(valA);
+      var numB = Number(valB);
+      var cmp = 0;
+      if (!Number.isNaN(numA) && !Number.isNaN(numB) && valA !== "" && valB !== "") {
+        cmp = numA - numB;
+      } else {
+        cmp = String(valA).localeCompare(String(valB), "fr", { sensitivity: "base" });
+      }
+      return nextDir === "ascending" ? cmp : -cmp;
+    });
+
+    rows.forEach(function (r) {
+      tbody.appendChild(r);
+    });
+  });
+
+  // Live client-side filter for the Guidelines left document menu
+  document.addEventListener("input", function (e) {
+    var searchInput = e.target.closest("[data-guideline-search]");
+    if (!searchInput) return;
+    var query = String(searchInput.value || "").trim().toLowerCase();
+    document.querySelectorAll("[data-guideline-item]").forEach(function (item) {
+      var name = (item.getAttribute("data-guideline-item") || "").toLowerCase();
+      item.style.display = !query || name.indexOf(query) !== -1 ? "" : "none";
+    });
+  });
 
   // Live SSE Queue Banner stream
   if (typeof window.EventSource === "function" && document.getElementById("queue-banner")) {

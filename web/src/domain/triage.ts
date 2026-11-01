@@ -264,6 +264,23 @@ export function filterAndSortCards(
     if (sortBy === "date") {
       return (b.mdtDate ?? "").localeCompare(a.mdtDate ?? "") * dir;
     }
+    if (sortBy === "completeness") {
+      const compDiff = (b.missingCount - a.missingCount) * dir;
+      if (compDiff !== 0) return compDiff;
+      return a.patientName.localeCompare(b.patientName, "fr");
+    }
+    if (sortBy === "orientation") {
+      const rankOrient = (v: boolean | null) => (v === true ? 0 : v === null ? 1 : 2);
+      const orientDiff =
+        (rankOrient(a.careAdaptationSuggested) - rankOrient(b.careAdaptationSuggested)) * dir;
+      if (orientDiff !== 0) return orientDiff;
+      return a.patientName.localeCompare(b.patientName, "fr");
+    }
+    if (sortBy === "specialties") {
+      const specDiff = (b.specialties.length - a.specialties.length) * dir;
+      if (specDiff !== 0) return specDiff;
+      return a.patientName.localeCompare(b.patientName, "fr");
+    }
     // Default: priority high > medium > low > none, then most recent mdtDate
     const rankDiff = (priorityRank(a.priorityLevel) - priorityRank(b.priorityLevel)) * dir;
     if (rankDiff !== 0) return rankDiff;

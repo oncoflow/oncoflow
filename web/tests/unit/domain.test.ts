@@ -229,7 +229,11 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
 
     const agent = getAgentPresentation("pancreas expert", "fr");
     expect(agent.icon).toBe("ic-stethoscope");
-    expect(agent.label).toBe("Pancréas");
+    expect(agent.label).toBe("Oncologie digestive — Pancréas");
+
+    const adminAgent = getAgentPresentation("Administrative", "fr");
+    expect(adminAgent.icon).toBe("ic-folder");
+    expect(adminAgent.label).toBe("Extraction administrative & clinique");
   });
 
   it("translates LLM fallback strings and clinical labels in FR and EN", () => {

@@ -1,7 +1,7 @@
 # ==============================================================================
-# Stage 1: Build TypeScript & Prune DevDependencies
+# Stage 1: Build TypeScript & Prune DevDependencies (Debian 13 Trixie)
 # ==============================================================================
-FROM node:24-bookworm-slim AS builder
+FROM node:26-trixie-slim AS builder
 
 WORKDIR /build
 
@@ -16,9 +16,9 @@ RUN npm run build && \
     npm cache clean --force
 
 # ==============================================================================
-# Stage 2: Minimal Hardened Non-Root Runtime (UID/GID 1002 appuser)
+# Stage 2: Minimal Hardened Non-Root Runtime (Debian 13 Trixie, UID/GID 1002)
 # ==============================================================================
-FROM node:24-bookworm-slim AS runtime
+FROM node:26-trixie-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     dumb-init \

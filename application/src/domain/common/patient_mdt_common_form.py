@@ -699,13 +699,10 @@ class PatientMDTForm:
         """Extract dashboard card metrics from a `PatientMDTForm` or persistence dictionary."""
         d = cls._as_dict(doc_or_form)
         processing_status = d.get("processing_status") or "COMPLETED"
-        is_clinical_pending = processing_status in (
-            "PENDING_CLINICAL",
-            "PROCESSING_CLINICAL",
-            "PENDING_EXPERTS",
-            "PROCESSING_EXPERTS",
-        )
 
+        first_name = None
+        last_name = None
+        date_birth = None
         patient_name = "Inconnu"
         if "PatientAdministrative" in d and isinstance(
             d["PatientAdministrative"], dict
@@ -713,6 +710,17 @@ class PatientMDTForm:
             p = d["PatientAdministrative"]
             first = p.get("first_name", "") or ""
             last = p.get("last_name", "") or ""
+            first_name = first or None
+            last_name = last or None
+            dob = p.get("date_birth")
+            if isinstance(dob, str):
+                try:
+                    date_birth = datetime.fromisoformat(dob)
+                except ValueError:
+                    date_birth = None
+            elif isinstance(dob, datetime):
+                date_birth = dob
+            date_birth = _to_naive_paris(date_birth)
             full = f"{first} {last}".strip()
             if full:
                 patient_name = full
@@ -769,24 +777,64 @@ class PatientMDTForm:
                                 if urgency_score == 0:
                                     urgency_level = "Standard"
 
-        missing_data = []
+        raw_missing_candidates: list[str] = []
+        raw_is_mtd_complete: bool | None = None
         if "MTDCompleted" in d and isinstance(d["MTDCompleted"], dict):
-            if "mtd_complete" in d["MTDCompleted"]:
-                mtd_comp = d["MTDCompleted"].get("mtd_complete")
-                if isinstance(mtd_comp, dict):
-                    m = mtd_comp.get("what_missing", [])
-                    if isinstance(m, list):
-                        missing_data.extend(m)
+            mtd_section = d["MTDCompleted"]
+            if "mtd_complete" in mtd_section and isinstance(
+                mtd_section.get("mtd_complete"), dict
+            ):
+                mtd_comp = mtd_section["mtd_complete"]
+                if isinstance(mtd_comp.get("is_mtd_complete"), bool):
+                    raw_is_mtd_complete = mtd_comp["is_mtd_complete"]
+                m = mtd_comp.get("what_missing", [])
+                if isinstance(m, list):
+                    raw_missing_candidates.extend(str(x) for x in m if x)
+            elif "what_missing" in mtd_section or "is_mtd_complete" in mtd_section:
+                if isinstance(mtd_section.get("is_mtd_complete"), bool):
+                    raw_is_mtd_complete = mtd_section["is_mtd_complete"]
+                m = mtd_section.get("what_missing", [])
+                if isinstance(m, list):
+                    raw_missing_candidates.extend(str(x) for x in m if x)
             else:
-                for agent_data in d["MTDCompleted"].values():
+                for agent_data in mtd_section.values():
                     if isinstance(agent_data, dict):
                         mtd_comp = agent_data.get("mtd_complete")
                         if isinstance(mtd_comp, dict):
                             m = mtd_comp.get("what_missing", [])
                             if isinstance(m, list):
-                                missing_data.extend(m)
-        elif not is_clinical_pending:
-            missing_data.extend(["no data"])
+                                raw_missing_candidates.extend(str(x) for x in m if x)
+                        elif isinstance(agent_data.get("what_missing"), list):
+                            raw_missing_candidates.extend(
+                                str(x) for x in agent_data["what_missing"] if x
+                            )
+
+        raw_missing: list[str] = []
+        seen_missing: set[str] = set()
+        for item in raw_missing_candidates:
+            cleaned = item.strip()
+            if cleaned and cleaned.lower() != "no data" and cleaned not in seen_missing:
+                seen_missing.add(cleaned)
+                raw_missing.append(cleaned)
+
+        hidden_missing_items = [
+            str(x) for x in (d.get("hidden_missing_items") or []) if x
+        ]
+        hide_missing_items = bool(d.get("hide_missing_items", False))
+        hidden_set = set(hidden_missing_items)
+        missing = (
+            []
+            if hide_missing_items
+            else [m for m in raw_missing if m not in hidden_set]
+        )
+        if hide_missing_items or (
+            raw_missing and all(m in hidden_set for m in raw_missing)
+        ):
+            is_complete = True
+        elif raw_is_mtd_complete is not None and not missing:
+            is_complete = raw_is_mtd_complete
+        else:
+            is_complete = len(missing) == 0
 
         care_adaptation_suggested = None
         proposed_care_type = None
@@ -858,10 +906,17 @@ class PatientMDTForm:
             "file": file_name,
             "patient_id": patient_id,
             "patient": patient_name,
+            "first_name": first_name,
+            "last_name": last_name,
+            "date_birth": date_birth,
             "date_refresh": date_refresh,
             "date": date_mcp,
             "experts": relevant_experts,
-            "missing": list(set(missing_data)),
+            "missing": missing,
+            "is_complete": is_complete,
+            "all_missing_items": raw_missing,
+            "hidden_missing_items": hidden_missing_items,
+            "hide_missing_items": hide_missing_items,
             "urgency": urgency_level,
             "urgency_score": urgency_score,
             "link": link,

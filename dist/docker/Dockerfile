@@ -1,5 +1,5 @@
-# Utilisation d'une image Python (version alignée avec votre projet)
-FROM python:3.14-slim
+# Utilisation d'une image Python basée sur Debian 13 (Trixie)
+FROM python:3.14-slim-trixie
 
 # Installation de uv et des outils de compilation / librairies graphiques et système
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv

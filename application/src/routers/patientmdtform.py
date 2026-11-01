@@ -39,6 +39,7 @@ from src.models.rcp import (
     DomainFormSchemaResponse,
     LinkPatientRequest,
     MessageResponse,
+    MissingItemsUpdateRequest,
     PatientCardResponse,
     PatientDetailResponse,
     PatientMDTFormDetailResponse,
@@ -698,6 +699,40 @@ def download_rcp_pdf(
             content_disposition_type="inline",
         )
     return FileResponse(target_path, media_type="application/pdf", filename=filename)
+
+
+@router.patch(
+    "/{filename}/missing-items",
+    response_model=PatientMDTFormDetailResponse,
+)
+def update_rcp_missing_items(
+    filename: str,
+    request: MissingItemsUpdateRequest,
+    config: DomainConfigDep,
+    record_service: RecordServiceDep,
+):
+    """Update missing-items visibility (hide all, toggle item, or replace hidden/missing lists) on a PatientMDTForm."""
+    _safe_mdt_form_path(config.rcp.path, filename)
+    try:
+        updated_doc = record_service.update_missing_items_visibility(
+            filename=filename,
+            hide_missing_items=request.hide_missing_items,
+            toggle_item=request.toggle_item,
+            hidden_missing_items=request.hidden_missing_items,
+            what_missing=request.what_missing,
+            edited_by=request.edited_by,
+        )
+        return serialize_mongo_doc(updated_doc)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
 
 
 @router.patch(

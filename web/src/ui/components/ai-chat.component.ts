@@ -1,5 +1,5 @@
 import type { ChatReply } from "../../application/ports/oncoflow-api.port.js";
-import type { AgentModuleInfo } from "../../domain/types.js";
+import type { AgentModuleInfo, ClinicalDomain } from "../../domain/types.js";
 
 function esc(value: unknown): string {
   if (value === null || value === undefined) return "";
@@ -14,6 +14,81 @@ function esc(value: unknown): string {
 function iconSvg(id: string, extraClass = ""): string {
   const cls = extraClass ? `ds-icon ${extraClass}` : "ds-icon";
   return `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#${id}"/></svg>`;
+}
+
+export function resolveCitationPdfHref(
+  rawName: string,
+  page: string | number | null | undefined,
+  domain: ClinicalDomain = "oncology",
+  fallbackFormFile?: string,
+): string {
+  const domainParam = encodeURIComponent(domain);
+  const pageNum = page ? String(page).replace(/[^\d]/g, "") || "1" : "1";
+  const pageHash = `#page=${encodeURIComponent(pageNum)}&amp;view=FitH`;
+
+  const norm = (rawName || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
+
+  const isGuidelineRef =
+    norm.includes("tncd") ||
+    norm.includes("pnds") ||
+    norm.includes("argumentaire") ||
+    norm.includes("synthese") ||
+    norm.includes("referentiel") ||
+    norm.includes("recommandation") ||
+    norm.includes("esmo") ||
+    norm.includes("nccn") ||
+    norm.includes("has");
+
+  const isPatientRecordRef =
+    !isGuidelineRef &&
+    Boolean(fallbackFormFile) &&
+    (norm.includes("cr ") ||
+      norm.startsWith("cr") ||
+      norm.includes("scanner") ||
+      norm.includes("tdm") ||
+      norm.includes("irm") ||
+      norm.includes("tep") ||
+      norm.includes("biologie") ||
+      norm.includes("anapath") ||
+      norm.includes("anatomopath") ||
+      norm.includes("compte rendu") ||
+      norm.includes("operatoire") ||
+      norm.includes("dossier") ||
+      norm.includes("consultation") ||
+      norm.includes("courrier"));
+
+  if (isPatientRecordRef && fallbackFormFile) {
+    return `/files/forms/${encodeURIComponent(fallbackFormFile)}/pdf?domain=${domainParam}${pageHash}`;
+  }
+
+  let canonicalResource = (rawName || "").trim();
+  const isCleanPdfFilename = /^[a-zA-Z0-9._\-]+\.pdf$/i.test(canonicalResource);
+  if (!isCleanPdfFilename) {
+    if (domain === "sma") {
+      if (norm.includes("argumentaire")) {
+        canonicalResource = "amyotrophie_spinale_infantile_-_argumentaire.pdf";
+      } else if (norm.includes("synthese")) {
+        canonicalResource = "synthese_mg_amyotrophie_spinale_infantile.pdf";
+      } else {
+        canonicalResource = "amyotrophie_spinale_infantile_-_pnds.pdf";
+      }
+    } else {
+      if (norm.includes("chc") || norm.includes("foie") || norm.includes("hepato")) {
+        canonicalResource = "TNCDCHC.pdf";
+      } else if (
+        norm.includes("oesophage") ||
+        norm.includes("estomac") ||
+        norm.includes("gastrique")
+      ) {
+        canonicalResource = "TNCDOESOPHAGE.pdf";
+      } else {
+        canonicalResource = "TNCDPANCREAS.pdf";
+      }
+    }
+  }
+
+  const formQuery = fallbackFormFile ? `&amp;formFile=${encodeURIComponent(fallbackFormFile)}` : "";
+  return `/files/resources/${encodeURIComponent(canonicalResource)}?domain=${domainParam}${formQuery}${pageHash}`;
 }
 
 export interface AiChatScopeConfig {
@@ -40,6 +115,7 @@ export interface AiChatComponentOptions {
   scopeConfig?: AiChatScopeConfig;
   agents?: Array<Pick<AgentModuleInfo, "name" | "label" | "icon">>;
   defaultAgentName?: string;
+  domain?: ClinicalDomain;
 }
 
 /**
@@ -82,16 +158,21 @@ export function renderAiThinkingModule(agentLabel = "Assistant clinique"): strin
 /**
  * Renders a user question bubble + assistant reply bubble pair inside the chat log.
  */
-export function renderChatLogMessagePartial(question: string, reply: ChatReply): string {
+export function renderChatLogMessagePartial(
+  question: string,
+  reply: ChatReply,
+  domain: ClinicalDomain = "oncology",
+  fallbackFormFile?: string,
+): string {
   const refsHtml =
     reply.references.length === 0
       ? ""
       : `<ul class="ds-refs" aria-label="Sources">
           ${reply.references
-            .map(
-              (r) =>
-                `<li class="ds-ref"><span class="ds-ref__source">${iconSvg("ic-file-pdf", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</span>${r.excerpt ? `<span class="ds-ref__quote">« ${esc(r.excerpt)} »</span>` : ""}</li>`,
-            )
+            .map((r) => {
+              const pdfHref = resolveCitationPdfHref(r.name, r.page, domain, fallbackFormFile);
+              return `<li class="ds-ref"><a class="ds-ref__source ds-ref__link" href="${pdfHref}" target="_blank" rel="noopener" title="Ouvrir ${esc(r.name)}${r.page ? ` à la page ${esc(r.page)}` : ""}">${iconSvg("ic-file-pdf", "ds-icon--xs")} ${esc(r.name)}${r.page ? ` p. ${esc(r.page)}` : ""}</a>${r.excerpt ? `<span class="ds-ref__quote">« ${esc(r.excerpt)} »</span>` : ""}</li>`;
+            })
             .join("")}
         </ul>`;
 
@@ -161,7 +242,9 @@ export function renderAiChatComponent(opts: AiChatComponentOptions): string {
           <span class="ds-chat__author">${iconSvg("ic-sparkle", "ds-icon--xs")} Assistant clinique</span>
           <div class="ds-chat__bubble">${esc(opts.welcomeMessage)}</div>
         </li>`
-      : opts.chatHistory.map((h) => renderChatLogMessagePartial(h.question, h.reply)).join("");
+      : opts.chatHistory
+          .map((h) => renderChatLogMessagePartial(h.question, h.reply, opts.domain ?? "oncology"))
+          .join("");
 
   const mergedSubmitSplitBtnHtml =
     opts.quickPrompts.length === 0
@@ -223,38 +306,20 @@ export interface AiChatDrawerOptions extends AiChatComponentOptions {
 }
 
 /**
- * Renders the Material Design 3 Expressive Floating FAB Menu (`.ds-fab-menu`)
- * paired with a Full-Height Non-Blocking Co-Pilot Side Sheet (`.ds-copilot-drawer`) using M3 spatial transitions.
+ * Renders the Material Design 3 Floating Extended FAB (`.ds-fab-menu`)
+ * that directly opens the Full-Height Non-Blocking Co-Pilot Side Sheet (`.ds-copilot-drawer`)
+ * using M3 spatial transitions (suggestions remain inside the drawer's merged Split Button).
  */
 export function renderAiChatDrawer(opts: AiChatDrawerOptions): string {
   const title = opts.drawerTitle ?? "Assistant clinique";
   const subtitle = opts.drawerSubtitle ?? "";
   const fabLabel = opts.fabLabel ?? "Assistant IA";
-  const fabPrompts = opts.quickPrompts.slice(0, 3);
-
-  const fabMenuItemsHtml = [
-    `<button type="button" class="ds-fab-menu__item ds-fab-menu__item--primary" style="--item-index:0" data-action="open-chat-drawer" data-testid="fab_menu_open_chat">
-      ${iconSvg("ic-chat", "ds-icon--sm")}
-      <span>Ouvrir l'assistant IA</span>
-    </button>`,
-    ...fabPrompts.map(
-      (q, idx) =>
-        `<button type="button" class="ds-fab-menu__item" style="--item-index:${idx + 1}" data-action="fab-quick-prompt" data-prompt="${esc(q)}" data-target-input="${esc(opts.inputId)}" data-testid="fab_menu_prompt_${idx}">
-          ${iconSvg("ic-sparkle", "ds-icon--xs")}
-          <span>${esc(q)}</span>
-        </button>`,
-    ),
-  ].join("");
 
   return `
-    <!-- Material Design 3 Expressive Floating FAB Menu (Bottom-Right) -->
+    <!-- Material Design 3 Floating Extended FAB (Directly Opens AI Co-Pilot Side Sheet) -->
     <div class="ds-fab-menu" id="ai-chat-fab" data-testid="ai-fab-menu">
-      <div class="ds-fab-menu__list" role="menu" aria-label="Actions rapides Assistant IA">
-        ${fabMenuItemsHtml}
-      </div>
-      <button type="button" class="ds-fab-menu__trigger" data-action="toggle-fab-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="ai-chat-drawer" aria-label="${esc(fabLabel)}" data-testid="btn_fab_ai_chat">
+      <button type="button" class="ds-fab-menu__trigger" data-action="open-chat-drawer" aria-controls="ai-chat-drawer" aria-expanded="false" aria-label="${esc(fabLabel)}" data-testid="btn_fab_ai_chat">
         <span class="ds-fab-menu__icon ds-fab-menu__icon--open" aria-hidden="true">${iconSvg("ic-sparkle", "ds-icon--md")}</span>
-        <span class="ds-fab-menu__icon ds-fab-menu__icon--close" aria-hidden="true">${iconSvg("ic-close", "ds-icon--md")}</span>
         <span class="ds-fab-menu__label">${esc(fabLabel)}</span>
       </button>
     </div>
@@ -262,7 +327,7 @@ export function renderAiChatDrawer(opts: AiChatDrawerOptions): string {
     <!-- Material Design 3 Full-Height Non-Blocking Co-Pilot Side Sheet -->
     <aside class="ds-copilot-drawer" id="ai-chat-drawer" aria-label="${esc(title)}" aria-hidden="true" data-testid="ai-chat-drawer">
       <button type="button" class="ds-copilot-drawer__handle" data-action="close-chat-drawer" aria-label="Replier le panneau Assistant IA" title="Replier le bandeau latéral (Échap)">
-        <svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
+        <svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
       </button>
       <header class="ds-copilot-drawer__header">
         <div class="ds-copilot-drawer__title-group">
@@ -272,9 +337,13 @@ export function renderAiChatDrawer(opts: AiChatDrawerOptions): string {
             ${subtitle ? `<p class="ds-copilot-drawer__subtitle">${esc(subtitle)}</p>` : ""}
           </div>
         </div>
-        <button type="button" class="ds-copilot-drawer__close-pill" data-action="close-chat-drawer" aria-label="Replier le tiroir de l'assistant" title="Replier vers le bouton flottant (Échap)" data-testid="btn_close_ai_chat">
+        <button type="button" class="ds-copilot-drawer__close-pill" data-action="close-chat-drawer" aria-label="Replier le tiroir de l'assistant" title="Replier le panneau latéral (Échap)" data-testid="btn_close_ai_chat">
+          <svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="3"/>
+            <path d="M15 3v18"/>
+            <path d="m8 9 3 3-3 3"/>
+          </svg>
           <span>Replier</span>
-          <svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>
         </button>
       </header>
       <div class="ds-copilot-drawer__body">

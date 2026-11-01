@@ -228,13 +228,13 @@
   --ds-state-focus: 0.12;
   --ds-state-press: 0.12;
 
-  /* ---- Layout ---------------------------------------------------------- */
-  --ds-sidebar-width: 16rem;
+  /* ---- Layout (Desktop-first 1920×1080 optimized) ---------------------- */
+  --ds-sidebar-width: 15.5rem;
   --ds-sidebar-rail-width: 5rem;
-  --ds-topbar-height: 3.75rem;
+  --ds-topbar-height: 3.5rem;
   --ds-banner-height: 0rem;
-  --ds-drawer-width: 26rem;
-  --ds-content-max: 96rem;
+  --ds-drawer-width: 28rem;
+  --ds-content-max: 114rem;
 
   /* ---- Z-index scale --------------------------------------------------- */
   --ds-z-base: 0;
@@ -242,18 +242,27 @@
   --ds-z-sidebar: 20;
   --ds-z-topbar: 30;
   --ds-z-banner: 40;
-  --ds-z-drawer: 50;
+  --ds-z-drawer: 70;
   --ds-z-popover: 60;
-  --ds-z-modal: 65;
-  --ds-z-toast: 70;
+  --ds-z-modal: 75;
+  --ds-z-toast: 80;
 
-  /* ---- M3 Motion (https://m3.material.io/styles/motion) ---------------- */
+  /* ---- M3 Motion & Standard Easing Set (https://m3.material.io/m3/pages/motion-easing-and-duration/tokens-specs) */
+  --ds-duration-short2: 100ms;
+  --ds-duration-short3: 150ms;
+  --ds-duration-short4: 200ms;
+  --ds-duration-medium1: 250ms;
+  --ds-duration-medium2: 300ms;
   --ds-duration-fast: 150ms;
-  --ds-duration-normal: 220ms;
-  --ds-duration-slow: 320ms;
-  --ds-ease: cubic-bezier(0.2, 0, 0, 1);                     /* M3 Standard */
-  --ds-ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);     /* M3 Emphasized Decelerate */
-  --ds-ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);        /* Micro-spring */
+  --ds-duration-normal: 200ms;
+  --ds-duration-slow: 300ms;
+  --ds-ease-standard: cubic-bezier(0.2, 0, 0, 1);             /* M3 Standard easing */
+  --ds-ease-standard-decelerate: cubic-bezier(0, 0, 0, 1);    /* M3 Standard decelerate (incoming) */
+  --ds-ease-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);  /* M3 Standard accelerate (outgoing) */
+  --ds-ease: var(--ds-ease-standard);
+  --ds-ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);      /* M3 Emphasized Decelerate */
+  --ds-ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);      /* M3 Emphasized Accelerate */
+  --ds-ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);         /* Micro-spring */
 
   /* ---- Focus ring ------------------------------------------------------ */
   --ds-focus-ring: 0 0 0 2px var(--ds-color-surface), 0 0 0 4px var(--ds-color-focus);

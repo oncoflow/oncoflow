@@ -107,8 +107,25 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // AI reasoning (reasoning_thinking) & quick prompt chips
     expect(res.body).toContain('data-testid="reasoning-TumorLocation"');
     expect(res.body).toContain('data-testid="quick-prompt-chips"');
+    // Collapsible RCP timeline drawer with label
+    expect(res.body).toContain('data-testid="timeline-drawer"');
+    expect(res.body).toContain("Frise chronologique RCP");
+    // Missing items interactive list visible inside MTDCompleted
+    expect(res.body).toContain('data-testid="missing-items-panel"');
+    expect(res.body).toContain('data-testid="missing-items-list"');
+    // PatientMDTFormCheck hidden outside expert mode
+    expect(res.body).not.toContain('data-testid="section-PatientMDTFormCheck"');
     // Zero raw JSON blocks for MTDCompleted or RadiologicalExams
     expect(res.body).not.toContain('{"is_mtd_complete"');
+
+    // Toggle individual missing item visibility
+    const toggleMissingRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/missing-items?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "toggle_item=Compte+rendu+d%27anatomopathologie+définitif+%28biopsie+EUS%29",
+    });
+    expect([200, 302]).toContain(toggleMissingRes.statusCode);
 
     // Save a manual edit on Chemotherapy section
     const editRes = await app.inject({
@@ -174,6 +191,8 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     const agentsRes = await app.inject({ method: "GET", url: "/agents" });
     expect(agentsRes.statusCode).toBe(200);
     expect(agentsRes.body).toContain('data-testid="agents-list"');
+    expect(agentsRes.body).toContain('data-testid="agents-group-coordination"');
+    expect(agentsRes.body).toContain('data-testid="agents-group-experts"');
     expect(agentsRes.body).toContain("Prompts utilisateurs d'extraction");
     expect(agentsRes.body).toContain("Instructions système de l'agent");
 
@@ -250,6 +269,13 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(resPdf.statusCode).toBe(200);
     expect(resPdf.headers["content-type"]).toContain("application/pdf");
     expect(resPdf.headers["x-frame-options"]).toBe("SAMEORIGIN");
+
+    const citationPdf = await app.inject({
+      method: "GET",
+      url: "/files/resources/TNCD%20Pancr%C3%A9as%20%C2%A74.2?domain=oncology",
+    });
+    expect(citationPdf.statusCode).toBe(200);
+    expect(citationPdf.headers["content-type"]).toContain("application/pdf");
     await app.close();
   });
 

@@ -1,5 +1,6 @@
 import type {
   ChatReply,
+  MissingItemsUpdateInput,
   OncoflowApiPort,
   UploadFileInput,
 } from "../../application/ports/oncoflow-api.port.js";
@@ -237,15 +238,36 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       else if (p === "low" && !highestPriority) highestPriority = "low";
     }
 
-    const missingItems = Array.isArray(rawMetrics.missing_items)
-      ? (rawMetrics.missing_items as string[])
-      : Array.isArray(rawMetrics.missing)
-        ? (rawMetrics.missing as string[])
-        : derivedMissing;
-    const missingCount =
-      typeof rawMetrics.missing_count === "number" ? rawMetrics.missing_count : missingItems.length;
+    const allMissingItems = Array.isArray(rawMetrics.all_missing_items)
+      ? (rawMetrics.all_missing_items as string[])
+      : Array.isArray(rawMetrics.missing_items)
+        ? (rawMetrics.missing_items as string[])
+        : Array.isArray(rawMetrics.missing)
+          ? (rawMetrics.missing as string[])
+          : derivedMissing;
+    const hiddenMissingItems = Array.isArray(raw.hidden_missing_items)
+      ? (raw.hidden_missing_items as string[])
+      : Array.isArray(rawMetrics.hidden_missing_items)
+        ? (rawMetrics.hidden_missing_items as string[])
+        : [];
+    const hideMissingItems = Boolean(
+      raw.hide_missing_items ?? rawMetrics.hide_missing_items ?? false,
+    );
+    const hiddenSet = new Set(hiddenMissingItems);
+    const missingItems = hideMissingItems
+      ? []
+      : Array.isArray(rawMetrics.missing_items)
+        ? (rawMetrics.missing_items as string[]).filter((x) => !hiddenSet.has(x))
+        : Array.isArray(rawMetrics.missing)
+          ? (rawMetrics.missing as string[]).filter((x) => !hiddenSet.has(x))
+          : allMissingItems.filter((x) => !hiddenSet.has(x));
+    const missingCount = missingItems.length;
     const isComplete =
-      typeof rawMetrics.is_complete === "boolean" ? rawMetrics.is_complete : derivedIsComplete;
+      hideMissingItems || missingCount === 0
+        ? true
+        : typeof rawMetrics.is_complete === "boolean"
+          ? rawMetrics.is_complete
+          : derivedIsComplete;
     const specialties = Array.isArray(rawMetrics.specialties)
       ? (rawMetrics.specialties as string[])
       : Array.isArray(rawMetrics.experts)
@@ -260,6 +282,9 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       is_complete: isComplete,
       missing_count: missingCount,
       missing_items: missingItems,
+      all_missing_items: allMissingItems,
+      hidden_missing_items: hiddenMissingItems,
+      hide_missing_items: hideMissingItems,
       care_adaptation_suggested:
         typeof rawMetrics.care_adaptation_suggested === "boolean"
           ? rawMetrics.care_adaptation_suggested
@@ -386,21 +411,23 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         `/api/v1/patientmdtform/resolve?${query}&domain=${encodeURIComponent(domain)}`,
         domain,
       );
-      if (res.resolved_type === "rcp" || res.kind === "form") {
+      const nestedPatient =
+        res.patient && typeof res.patient === "object"
+          ? (res.patient as Record<string, unknown>)
+          : null;
+      const resolvedPatientId = nestedPatient?.patient_id ?? res.patient_id ?? res.resolved_id;
+      const resolvedFile = res.selected_file ?? res.latest_file ?? res.filename ?? res.resolved_id;
+      if (res.resolved_type === "rcp" || res.kind === "form" || (!resolvedPatientId && isPdf)) {
         return {
           kind: "form",
-          patientId: res.patient_id ? String(res.patient_id) : null,
-          filename: String(res.filename ?? res.latest_file ?? res.resolved_id ?? target),
+          patientId: resolvedPatientId ? String(resolvedPatientId) : null,
+          filename: String(resolvedFile ?? target),
         };
       }
       return {
         kind: "patient",
-        patientId: String(res.patient_id ?? res.resolved_id ?? target),
-        filename: res.latest_file
-          ? String(res.latest_file)
-          : res.filename
-            ? String(res.filename)
-            : null,
+        patientId: String(resolvedPatientId ?? target),
+        filename: resolvedFile ? String(resolvedFile) : null,
       };
     } catch (err) {
       if (this.fallback) return this.fallback.resolveTarget(target, domain);
@@ -439,6 +466,9 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       return list.map((item) => this.mapRawDetail(item, domain));
     } catch (err) {
       if (this.fallback) return this.fallback.getPatientForms(patientId, domain);
+      if (err instanceof Error && err.message.includes("HTTP 404")) {
+        return [];
+      }
       throw err;
     }
   }
@@ -471,6 +501,36 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     } catch (err) {
       if (this.fallback) {
         return this.fallback.updateFormSection(filename, section, data, editedBy, domain);
+      }
+      throw err;
+    }
+  }
+
+  async updateMissingItems(
+    filename: string,
+    input: MissingItemsUpdateInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/missing-items?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            hide_missing_items: input.hideMissingItems,
+            toggle_item: input.toggleItem,
+            hidden_missing_items: input.hiddenMissingItems,
+            what_missing: input.whatMissing,
+            edited_by: input.editedBy ?? "Clinicien",
+          }),
+        },
+      );
+      return this.mapRawDetail(res, domain);
+    } catch (err) {
+      if (this.fallback) {
+        return this.fallback.updateMissingItems(filename, input, domain);
       }
       throw err;
     }
@@ -515,15 +575,21 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   ): Promise<{ jobId: string }> {
     try {
       const res = await this.requestJson<Record<string, unknown>>(
-        `/api/v1/patientmdtform/process?domain=${encodeURIComponent(domain)}`,
+        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/process?domain=${encodeURIComponent(domain)}`,
         domain,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify([filename]),
+          body: JSON.stringify({
+            model_name: null,
+            preserve_manual_edits: preserveManualEdits,
+          }),
         },
       );
-      return { jobId: String(res.job_id ?? filename) };
+      const jobs = Array.isArray(res.jobs) ? (res.jobs as Array<Record<string, unknown>>) : [];
+      return {
+        jobId: String(jobs[0]?.job_id ?? res.job_id ?? filename),
+      };
     } catch (err) {
       if (this.fallback) {
         return this.fallback.processFullForm(filename, preserveManualEdits, domain);
@@ -659,22 +725,24 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       const rawFiles = Array.isArray(res.files)
         ? (res.files as Array<Record<string, unknown>>)
         : [];
+      const files = rawFiles.map((f) => ({
+        filename: String(f.filename ?? ""),
+        status: String(f.status ?? f.processing_status ?? "COMPLETED"),
+        step: f.step ? String(f.step) : null,
+        progressPct: Number(f.progress_pct ?? f.pct ?? 100),
+        error: f.error ? String(f.error) : null,
+        patientId: f.patient_id ? String(f.patient_id) : null,
+      }));
+      const countBy = (st: string) => files.filter((f) => f.status.toUpperCase() === st).length;
       return {
         batchId: String(res.batch_id ?? batchId),
-        total: Number(res.total ?? rawFiles.length),
-        completed: Number(res.completed ?? 0),
-        running: Number(res.running ?? 0),
-        pending: Number(res.pending ?? 0),
-        failed: Number(res.failed ?? 0),
-        progressPct: Number(res.progress_pct ?? 100),
-        files: rawFiles.map((f) => ({
-          filename: String(f.filename ?? ""),
-          status: String(f.status ?? "COMPLETED"),
-          step: f.step ? String(f.step) : null,
-          progressPct: Number(f.progress_pct ?? 100),
-          error: f.error ? String(f.error) : null,
-          patientId: f.patient_id ? String(f.patient_id) : null,
-        })),
+        total: Number(res.total ?? files.length),
+        completed: Number(res.completed ?? countBy("COMPLETED")),
+        running: Number(res.running ?? countBy("RUNNING")),
+        pending: Number(res.pending ?? countBy("PENDING")),
+        failed: Number(res.failed ?? countBy("FAILED")),
+        progressPct: Number(res.progress_pct ?? res.overall_pct ?? 100),
+        files,
       };
     } catch (err) {
       if (this.fallback) return this.fallback.getBatchStatus(batchId, domain);

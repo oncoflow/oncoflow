@@ -362,6 +362,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
           : "all",
       viewMode: query.viewMode === "rcp" ? "rcp" : "patients",
       displayMode: query.display === "cards" ? "cards" : "table",
+      sortBy:
+        query.sortBy === "priority" ||
+        query.sortBy === "patient" ||
+        query.sortBy === "date" ||
+        query.sortBy === "completeness" ||
+        query.sortBy === "orientation" ||
+        query.sortBy === "specialties"
+          ? query.sortBy
+          : "priority",
+      sortDir: query.sortDir === "desc" ? "desc" : "asc",
       domain: session.domain,
     };
 
@@ -556,6 +566,35 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return reply.redirect(targetUrl);
   });
 
+  app.post("/forms/:filename/missing-items", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename } = req.params as { filename: string };
+    const body = (req.body ?? {}) as Record<string, string | undefined>;
+    const toggleItem = body.toggle_item?.trim() || undefined;
+    const hideAll =
+      body.hide_missing_items === "true"
+        ? true
+        : body.hide_missing_items === "false"
+          ? false
+          : undefined;
+    const restoreAll = body.restore_all === "true";
+
+    await dossierUseCase.updateMissingItems(
+      filename,
+      {
+        toggleItem,
+        hideMissingItems: restoreAll ? false : hideAll,
+        hiddenMissingItems: restoreAll ? [] : undefined,
+        editedBy: session.userName,
+      },
+      session.domain,
+    );
+
+    const fallback = `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-MTDCompleted`;
+    const redirectUrl = sanitizeLocalRedirect(req.headers.referer, fallback);
+    return reply.redirect(redirectUrl);
+  });
+
   app.post("/forms/:filename/sections/:section/rerun", async (req, reply) => {
     const session = resolveSession(req);
     const { filename, section } = req.params as { filename: string; section: string };
@@ -563,9 +602,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const preserve = body.preserve_manual_edits !== "false";
 
     await dossierUseCase.rerunSection(filename, section, preserve, session.domain);
-    return reply.redirect(
-      `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`,
-    );
+    const fallback = `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`;
+    return reply.redirect(sanitizeLocalRedirect(req.headers.referer, fallback));
   });
 
   app.post("/forms/:filename/process", async (req, reply) => {
@@ -575,9 +613,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const preserve = body.preserve_manual_edits !== "false";
 
     await dossierUseCase.processFullForm(filename, preserve, session.domain);
-    return reply.redirect(
-      `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}`,
-    );
+    const fallback = `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}`;
+    return reply.redirect(sanitizeLocalRedirect(req.headers.referer, fallback));
   });
 
   app.post("/forms/:filename/link-patient", async (req, reply) => {
@@ -619,7 +656,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (req.headers["hx-request"] === "true") {
       return reply
         .type("text/html; charset=utf-8")
-        .send(renderChatLogMessagePartial(question, chatReply));
+        .send(renderChatLogMessagePartial(question, chatReply, session.domain, body.filename));
     }
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
@@ -653,7 +690,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (req.headers["hx-request"] === "true") {
       return reply
         .type("text/html; charset=utf-8")
-        .send(renderChatLogMessagePartial(question, chatReply));
+        .send(renderChatLogMessagePartial(question, chatReply, session.domain, filename));
     }
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
@@ -694,17 +731,75 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.get("/files/resources/:filename", async (req, reply) => {
     const session = resolveSession(req);
     const { filename } = req.params as { filename: string };
-    if (!isSafeFilename(filename)) {
+    const query = (req.query ?? {}) as Record<string, string | undefined>;
+    if (
+      !filename ||
+      filename.length > 255 ||
+      filename.includes("..") ||
+      filename.includes("/") ||
+      filename.includes("\\") ||
+      filename.includes("\0")
+    ) {
       return reply.code(400).send("Nom de fichier invalide");
     }
-    const buf = await api.getResourcePdfBuffer(filename, session.domain);
+
+    let resolvedFilename = filename;
+    let buf = await api.getResourcePdfBuffer(resolvedFilename, session.domain);
+
+    if (!buf) {
+      try {
+        const available = await api.listResources(session.domain);
+        const normToken = (v: string) =>
+          v
+            .normalize("NFD")
+            .replace(/\p{M}/gu, "")
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "");
+        const qNorm = normToken(filename);
+        const match =
+          available.find((r) => {
+            const stem = normToken(r.filename.replace(/\.pdf$/i, ""));
+            return Boolean(stem) && (qNorm.includes(stem) || stem.includes(qNorm));
+          }) ??
+          available.find((r) => {
+            const fNorm = normToken(r.filename);
+            if (qNorm.includes("pancreas") && fNorm.includes("pancreas")) return true;
+            if ((qNorm.includes("chc") || qNorm.includes("foie")) && fNorm.includes("chc"))
+              return true;
+            if (
+              (qNorm.includes("oesophage") || qNorm.includes("estomac")) &&
+              fNorm.includes("oesophage")
+            )
+              return true;
+            if (qNorm.includes("argumentaire") && fNorm.includes("argumentaire")) return true;
+            if (qNorm.includes("synthese") && fNorm.includes("synthese")) return true;
+            if ((qNorm.includes("pnds") || qNorm.includes("sma")) && fNorm.includes("pnds"))
+              return true;
+            return false;
+          }) ??
+          available[0];
+
+        if (match) {
+          resolvedFilename = match.filename;
+          buf = await api.getResourcePdfBuffer(resolvedFilename, session.domain);
+        }
+      } catch (_err) {
+        // Fallback below if listResources fails
+      }
+    }
+
+    if (!buf && query.formFile && isSafeFilename(query.formFile)) {
+      resolvedFilename = query.formFile;
+      buf = await api.getFormPdfBuffer(query.formFile, session.domain);
+    }
+
     if (!buf) {
       return reply.code(404).send("Référentiel PDF introuvable");
     }
     reply.header("Content-Type", "application/pdf");
     reply.header(
       "Content-Disposition",
-      `inline; filename="${sanitizeContentDispositionFilename(filename)}"`,
+      `inline; filename="${sanitizeContentDispositionFilename(resolvedFilename)}"`,
     );
     return reply.send(buf);
   });
@@ -761,6 +856,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     );
   });
 
+  app.post("/guidelines/:filename/delete", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename } = req.params as { filename: string };
+    if (!isSafeFilename(filename)) {
+      return reply.code(400).send("Nom de fichier invalide");
+    }
+    await guidelinesUseCase.deleteResource(filename, session.domain);
+    return reply.redirect(`/guidelines?domain=${encodeURIComponent(session.domain)}`);
+  });
+
   app.post("/guidelines/chat", async (req, reply) => {
     const session = resolveSession(req);
     const body = (req.body ?? {}) as Record<string, string | undefined>;
@@ -776,7 +881,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (req.headers["hx-request"] === "true") {
       return reply
         .type("text/html; charset=utf-8")
-        .send(renderChatLogMessagePartial(question, chatReply));
+        .send(renderChatLogMessagePartial(question, chatReply, session.domain, body.filename));
     }
 
     const [overview, { queueStats, queueJobs }] = await Promise.all([

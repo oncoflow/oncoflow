@@ -3,7 +3,12 @@ from typing import Annotated
 
 import uvicorn
 from fastapi import Depends, FastAPI, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
+from src.application.config import AppConfig
 from src.infrastructure.documents.mongodb import close_all_mongo_clients
 from src.infrastructure.queue import get_global_queue_manager
 from src.models.queue import HealthResponse
@@ -12,6 +17,7 @@ from src.routers.agents import router as agents_router
 from src.routers.bug_reports import router as bug_reports_router
 from src.routers.dependencies import (
     AllowedDomainMiddleware,
+    ApiSecurityMiddleware,
     get_base_config,
     get_current_user_info,
     verify_api_token,
@@ -65,6 +71,39 @@ async def lifespan(app: FastAPI):
     close_all_mongo_clients()
 
 
+def configure_security_middlewares(target_app: FastAPI, conf: AppConfig) -> None:
+    """Register domain routing, HTTP security headers, GZip, TrustedHost, HTTPS redirect, and CORS middlewares."""
+    target_app.add_middleware(AllowedDomainMiddleware)
+    target_app.add_middleware(ApiSecurityMiddleware)
+
+    if conf.api.gzip_enabled:
+        target_app.add_middleware(
+            GZipMiddleware,
+            minimum_size=conf.api.gzip_minimum_size,
+        )
+
+    if conf.api.trusted_hosts_list != ["*"]:
+        target_app.add_middleware(
+            TrustedHostMiddleware,
+            allowed_hosts=conf.api.trusted_hosts_list,
+        )
+
+    if conf.api.force_https:
+        target_app.add_middleware(HTTPSRedirectMiddleware)
+
+    if conf.api.cors_enabled:
+        target_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=conf.api.cors_origins_list,
+            allow_origin_regex=conf.api.cors_origin_regex,
+            allow_credentials=conf.api.cors_allow_credentials,
+            allow_methods=conf.api.cors_methods_list,
+            allow_headers=conf.api.cors_headers_list,
+            expose_headers=conf.api.cors_expose_headers_list,
+            max_age=conf.api.cors_max_age,
+        )
+
+
 app = FastAPI(
     title="Oncoflow Cross-Domain API",
     description=(
@@ -73,13 +112,13 @@ app = FastAPI(
     ),
     version="1.1.0",
     lifespan=lifespan,
-    docs_url="/docs",
-    redoc_url="/redoc",
+    docs_url="/docs" if app_conf.api.docs_enabled else None,
+    redoc_url="/redoc" if app_conf.api.docs_enabled else None,
     # Spécification OpenAPI versionnée (utilisée aussi par /docs et /redoc)
-    openapi_url="/api/v1/openapi.json",
+    openapi_url="/api/v1/openapi.json" if app_conf.api.docs_enabled else None,
 )
 
-app.add_middleware(AllowedDomainMiddleware)
+configure_security_middlewares(app, app_conf)
 
 
 @app.get("/health", tags=["system"], response_model=HealthResponse)
@@ -137,4 +176,13 @@ app.include_router(bug_reports_router, prefix="/api/v1", dependencies=_protected
 
 if __name__ == "__main__":
     # Loopback by default (APP_API_HOST); containers set 0.0.0.0 on a private network.
-    uvicorn.run(app, host=app_conf.api_host, port=8000, reload=False)
+    uvicorn.run(
+        app,
+        host=app_conf.api.host,
+        port=app_conf.api.port,
+        workers=app_conf.api.workers,
+        timeout_keep_alive=app_conf.api.timeout_keep_alive,
+        proxy_headers=app_conf.api.proxy_headers,
+        forwarded_allow_ips=app_conf.api.forwarded_allow_ips,
+        reload=False,
+    )

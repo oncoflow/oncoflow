@@ -26,7 +26,11 @@ import type {
   PriorityLevel,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
-import type { ChatReply, OncoflowApiPort } from "../ports/oncoflow-api.port.js";
+import type {
+  ChatReply,
+  MissingItemsUpdateInput,
+  OncoflowApiPort,
+} from "../ports/oncoflow-api.port.js";
 
 export interface DossierSubCardView {
   title: string;
@@ -93,6 +97,12 @@ export interface PatientDossierView {
   nextSessionFile: string | null;
   priorityBadge: ReturnType<typeof derivePriorityBadgeInfo>;
   completenessBadge: ReturnType<typeof deriveCompletenessInfo>;
+  missingItemsState: {
+    allItems: string[];
+    visibleItems: string[];
+    hiddenItems: string[];
+    hideAll: boolean;
+  };
   orientationBadge: ReturnType<typeof deriveOrientationInfo>;
   specialties: Array<{ name: string; label: string; icon: string }>;
   synopticMarkers: Array<{
@@ -136,7 +146,21 @@ export class PatientDossierUseCase {
     lang: Language = "fr",
     selectedFile?: string,
   ): Promise<PatientDossierView | null> {
-    let forms = await this.api.getPatientForms(target, domain);
+    let forms: MdtFormDetail[] = [];
+    if (target.toLowerCase().endsWith(".pdf")) {
+      const single = await this.api.getFormDetail(target, domain);
+      if (single) {
+        if (single.patientId && !single.patientId.toLowerCase().endsWith(".pdf")) {
+          const linked = await this.api.getPatientForms(single.patientId, domain);
+          forms = linked.length > 0 ? linked : [single];
+        } else {
+          forms = [single];
+        }
+      }
+    }
+    if (forms.length === 0) {
+      forms = await this.api.getPatientForms(target, domain);
+    }
     if (forms.length === 0) {
       const single = await this.api.getFormDetail(target, domain);
       if (!single) return null;
@@ -175,24 +199,47 @@ export class PatientDossierUseCase {
       mtdCompletedRaw.mtd_complete && typeof mtdCompletedRaw.mtd_complete === "object"
         ? (mtdCompletedRaw.mtd_complete as Record<string, unknown>)
         : mtdCompletedRaw;
-    const missingItems = Array.isArray(currentForm.metrics.missing_items)
-      ? (currentForm.metrics.missing_items as string[])
+    const rawExtractedMissing = Array.isArray(currentForm.metrics.all_missing_items)
+      ? (currentForm.metrics.all_missing_items as string[])
       : Array.isArray(mtdNested.what_missing)
         ? (mtdNested.what_missing as string[])
         : Array.isArray(mtdCompletedRaw.what_missing)
           ? (mtdCompletedRaw.what_missing as string[])
-          : [];
+          : Array.isArray(currentForm.metrics.missing_items)
+            ? (currentForm.metrics.missing_items as string[])
+            : [];
+    const allMissingItems = rawExtractedMissing.filter((x) => Boolean(x) && x !== "no data");
+    const hiddenMissingItems = Array.isArray(currentForm.metrics.hidden_missing_items)
+      ? (currentForm.metrics.hidden_missing_items as string[])
+      : [];
+    const hideAllMissing = Boolean(currentForm.metrics.hide_missing_items ?? false);
+    const hiddenSet = new Set(hiddenMissingItems);
+    const missingItems = hideAllMissing
+      ? []
+      : Array.isArray(currentForm.metrics.missing_items)
+        ? (currentForm.metrics.missing_items as string[]).filter(
+            (x) => Boolean(x) && x !== "no data" && !hiddenSet.has(x),
+          )
+        : allMissingItems.filter((x) => !hiddenSet.has(x));
     const completenessBadge = deriveCompletenessInfo(
       {
         is_complete:
-          typeof currentForm.metrics.is_complete === "boolean"
-            ? currentForm.metrics.is_complete
-            : mtdNested.is_mtd_complete !== false && missingItems.length === 0,
+          hideAllMissing || missingItems.length === 0
+            ? true
+            : typeof currentForm.metrics.is_complete === "boolean"
+              ? currentForm.metrics.is_complete
+              : mtdNested.is_mtd_complete !== false && missingItems.length === 0,
         missing_count: missingItems.length,
         missing_items: missingItems,
       },
       lang,
     );
+    const missingItemsState = {
+      allItems: allMissingItems,
+      visibleItems: missingItems,
+      hiddenItems: hiddenMissingItems,
+      hideAll: hideAllMissing,
+    };
 
     const careSec = (currentForm.sections.CareOrientationProposal ?? {}) as Record<string, unknown>;
     const careAdaptationSuggested =
@@ -290,6 +337,7 @@ export class PatientDossierUseCase {
       nextSessionFile: currentIndex < sorted.length - 1 ? sorted[currentIndex + 1]!.file : null,
       priorityBadge,
       completenessBadge,
+      missingItemsState,
       orientationBadge,
       specialties,
       synopticMarkers,
@@ -789,6 +837,14 @@ export class PatientDossierUseCase {
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
     return this.api.updateFormSection(filename, section, data, editedBy, domain);
+  }
+
+  async updateMissingItems(
+    filename: string,
+    input: MissingItemsUpdateInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    return this.api.updateMissingItems(filename, input, domain);
   }
 
   async rerunSection(

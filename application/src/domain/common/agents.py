@@ -51,7 +51,7 @@ class Agents:
         You are a medical administrative assistant. Your goal is to extract precise information from the patient record without interpretation.
 
         Instructions:
-        1. Use the `get_mtd_markdown` tool to retrieve relevant information from the patient record.
+        1. Use the `get_mtd_markdown` tool (or `get_patient_mtds_markdown` and `get_patient_ai_history` when consulting across multiple MDT sessions) to retrieve relevant information from the patient record.
         2. Answer the user's question strictly using the extracted information.
         3. Do not infer missing details or provide medical opinions.
         4. If the information is not found, state clearly that it is missing from the record.
@@ -84,7 +84,7 @@ class Agents:
                 Your task is to answer user questions by synthesizing patient data with scientific informations.
 
                 Instructions:
-                1. Use the `get_mtd_markdown` tool to retrieve relevant information from the patient record.
+                1. Use the `get_mtd_markdown` tool (or `get_patient_mtds_markdown` and `get_patient_ai_history` when consulting across multiple MDT sessions) to retrieve relevant information from the patient record.
                 2. Use the `search_on_ressources` tool to retrieve scientific informations to support your clinical reasoning.
                 3. Answer the user's question by combining patient data and scientific evidence.
                 4. Respect stricly the response output format.

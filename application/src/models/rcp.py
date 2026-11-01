@@ -6,6 +6,13 @@ from typing import Any, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.models.queue import EnqueueResponse, QueueJobResponse
+from src.models.resources import ResourceIndexResponse
+
+__all__ = [
+    "EnqueueResponse",
+    "QueueJobResponse",
+    "ResourceIndexResponse",
+]
 
 
 class ProcessRequest(BaseModel):
@@ -27,6 +34,14 @@ class SectionUpdateRequest(BaseModel):
         default=None,
         description="Identifiant de l'utilisateur ayant effectué la modification",
     )
+
+
+class MissingItemsUpdateRequest(BaseModel):
+    hide_missing_items: Optional[bool] = None
+    toggle_item: Optional[str] = None
+    hidden_missing_items: Optional[List[str]] = None
+    what_missing: Optional[List[str]] = None
+    edited_by: Optional[str] = None
 
 
 class AdministrativeUpdateRequest(BaseModel):
@@ -87,6 +102,10 @@ class RCPCardResponse(BaseModel):
     date: Optional[datetime] = None
     experts: List[str] = Field(default_factory=list)
     missing: List[str] = Field(default_factory=list)
+    all_missing_items: List[str] = Field(default_factory=list)
+    hidden_missing_items: List[str] = Field(default_factory=list)
+    hide_missing_items: bool = False
+    is_complete: Optional[bool] = None
     urgency: str
     urgency_score: int
     priority_level: Optional[int] = None
@@ -113,6 +132,10 @@ class PatientCardResponse(BaseModel):
     date: Optional[datetime] = None
     experts: List[str] = Field(default_factory=list)
     missing: List[str] = Field(default_factory=list)
+    all_missing_items: List[str] = Field(default_factory=list)
+    hidden_missing_items: List[str] = Field(default_factory=list)
+    hide_missing_items: bool = False
+    is_complete: Optional[bool] = None
     urgency: str
     urgency_score: int
     priority_level: Optional[int] = None

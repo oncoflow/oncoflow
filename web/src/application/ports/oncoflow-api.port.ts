@@ -24,6 +24,14 @@ export interface ChatReply {
   references: CitationRef[];
 }
 
+export interface MissingItemsUpdateInput {
+  hideMissingItems?: boolean;
+  toggleItem?: string;
+  hiddenMissingItems?: string[];
+  whatMissing?: string[];
+  editedBy?: string;
+}
+
 export interface OncoflowApiPort {
   // Worklist & Patients
   listPatientCards(domain: ClinicalDomain): Promise<MdtFormCard[]>;
@@ -44,6 +52,11 @@ export interface OncoflowApiPort {
     section: string,
     data: Record<string, unknown>,
     editedBy: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail>;
+  updateMissingItems(
+    filename: string,
+    input: MissingItemsUpdateInput,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail>;
   rerunSection(

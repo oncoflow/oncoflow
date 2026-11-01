@@ -663,9 +663,25 @@ class PatientMDTFormExtractionService:
             if own_broker and hasattr(broker, "close"):
                 broker.close()
 
+        def _job_created_ts(job: dict[str, Any]) -> float:
+            val = job.get("created_at")
+            if isinstance(val, datetime):
+                return val.timestamp()
+            if isinstance(val, (int, float)):
+                return float(val)
+            if isinstance(val, str):
+                try:
+                    return float(val)
+                except ValueError:
+                    try:
+                        return datetime.fromisoformat(val).timestamp()
+                    except ValueError:
+                        return 0.0
+            return 0.0
+
         tracked_files: list[str] = []
         seen_files: set[str] = set()
-        for j in sorted(batch_jobs, key=lambda x: float(x.get("created_at") or 0.0)):
+        for j in sorted(batch_jobs, key=_job_created_ts):
             fname = j.get("filename")
             if fname and fname not in seen_files:
                 seen_files.add(fname)

@@ -105,7 +105,7 @@ def test_rcp_and_patient_card_responses_include_processing_and_care_fields(
     assert len(rcps) == 1
     rcp_card = rcps[0]
     assert rcp_card["file"] == "case1.pdf"
-    assert rcp_card["link"] == "/tmp/case1.pdf"
+    assert rcp_card["link"] == "datas?patient_id=dupont_jean_1970_05_10&file=case1.pdf"
     assert rcp_card["processing_status"] == "RUNNING"
     assert rcp_card["processing_step"] == "WAVE_2_CLINICAL"
     assert rcp_card["processing_progress_pct"] == 65.0
@@ -118,7 +118,7 @@ def test_rcp_and_patient_card_responses_include_processing_and_care_fields(
     assert len(p_cards) == 1
     p_card = p_cards[0]
     assert p_card["file"] == "case1.pdf"
-    assert p_card["link"] == "/tmp/case1.pdf"
+    assert p_card["link"] == "datas?patient_id=dupont_jean_1970_05_10&file=case1.pdf"
     assert p_card["processing_status"] == "RUNNING"
     assert p_card["processing_step"] == "WAVE_2_CLINICAL"
     assert p_card["processing_progress_pct"] == 65.0
@@ -156,6 +156,7 @@ def test_get_patientmdtform_schema_returns_pure_domain_sections_and_enums(
         assert set(sec.keys()) == {
             "name",
             "description",
+            "question",
             "multi_agent",
             "collaborative",
             "agents",
@@ -871,8 +872,204 @@ def test_me_endpoint_and_require_admin_protection(api_app, client, monkeypatch):
         == 200
     )
 
-    # 7. Internal service call (no X-Oncoflow-User header) remains allowed
+    # 7. Internal service call (no X-Oncoflow-User header) remains allowed, even when X-Oncoflow-Proxy-Secret is sent
     assert client.post("/api/v1/queue/clean").status_code == 200
+    assert (
+        client.post(
+            "/api/v1/queue/clean",
+            headers={"X-Oncoflow-Proxy-Secret": "top-secret-proxy"},
+        ).status_code
+        == 200
+    )
+
+
+# ---------------------------------------------------------------------------
+# 14. GET /patientmdtform/patients/{patient_id} when patient_id is a PDF filename
+# ---------------------------------------------------------------------------
+def test_get_patient_detail_by_pdf_filename_resolves_or_synthesizes_patient(
+    api_app, client, tmp_path
+):
+    """Verify GET /api/v1/patientmdtform/patients/{pdf_filename} returns 200 OK instead of 404."""
+    patient_repo = InMemoryPatientRepository()
+    mdt_repo = InMemoryPatientMDTFormRepository()
+    cache_repo = InMemoryDocumentCacheRepository()
+    conf = api_deps.get_base_config().model_copy()
+    conf.rcp.path = str(tmp_path)
+
+    # Case A: Unlinked PDF form with PatientAdministrative
+    mdt_repo.upsert_fields(
+        "PDF1_b1269a5cb8.pdf",
+        {
+            "file": "PDF1_b1269a5cb8.pdf",
+            "processing_status": "COMPLETED",
+            "PatientAdministrative": {
+                "first_name": "Hélène",
+                "last_name": "Boucher",
+                "date_birth": "1972-04-15",
+                "date_rcp": "2026-05-01",
+                "gender": "Female",
+            },
+        },
+    )
+
+    service = PatientRecordService(
+        patient_repo=patient_repo,
+        mdt_form_repo=mdt_repo,
+        cache_repo=cache_repo,
+        config=conf,
+    )
+    api_app.dependency_overrides[get_record_service] = lambda: service
+
+    resp = client.get(
+        "/api/v1/patientmdtform/patients/PDF1_b1269a5cb8.pdf?domain=oncology"
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["patient"]["first_name"] == "Hélène"
+    assert body["patient"]["last_name"] == "Boucher"
+    assert body["patient"]["files"] == ["PDF1_b1269a5cb8.pdf"]
+    assert body["latest_file"] == "PDF1_b1269a5cb8.pdf"
+    assert len(body["rcps"]) == 1
+    assert body["rcps"][0]["file"] == "PDF1_b1269a5cb8.pdf"
+
+    # Case B: Linked PDF form whose patient_id exists in patient_repo
+    saved_patient, _ = service.synchronize_patient_from_admin(
+        "PDF2_linked.pdf",
+        {
+            "first_name": "Antoine",
+            "last_name": "Lavoisier",
+            "date_birth": "1960-08-26",
+            "date_rcp": "2026-06-01",
+            "gender": "Male",
+        },
+    )
+    resp_linked = client.get(
+        "/api/v1/patientmdtform/patients/PDF2_linked.pdf?domain=oncology"
+    )
+    assert resp_linked.status_code == 200
+    body_linked = resp_linked.json()
+    assert body_linked["patient"]["patient_id"] == saved_patient.patient_id
+    assert "PDF2_linked.pdf" in body_linked["patient"]["files"]
+
+
+# ---------------------------------------------------------------------------
+# 15. PATCH /api/v1/patientmdtform/{filename}/missing-items
+# ---------------------------------------------------------------------------
+def test_patch_missing_items_visibility_and_completeness_metrics(
+    api_app, client, tmp_path
+):
+    """Verify PATCH /patientmdtform/{filename}/missing-items toggles, hides, and updates what_missing."""
+    patient_repo = InMemoryPatientRepository()
+    mdt_repo = InMemoryPatientMDTFormRepository()
+    cache_repo = InMemoryDocumentCacheRepository()
+    conf = api_deps.get_base_config().model_copy()
+    conf.rcp.path = str(tmp_path)
+
+    mdt_repo.upsert_fields(
+        "missing_case.pdf",
+        {
+            "file": "missing_case.pdf",
+            "processing_status": "COMPLETED",
+            "MTDCompleted": {
+                "mtd_complete": {
+                    "is_mtd_complete": False,
+                    "what_missing": ["TEP-TDM", "CA 19-9"],
+                    "references": [],
+                }
+            },
+        },
+    )
+
+    service = PatientRecordService(
+        patient_repo=patient_repo,
+        mdt_form_repo=mdt_repo,
+        cache_repo=cache_repo,
+        config=conf,
+    )
+    api_app.dependency_overrides[get_record_service] = lambda: service
+    api_app.dependency_overrides[get_domain_config] = lambda: conf
+
+    # 1. Toggle one item -> hidden_missing_items=["TEP-TDM"], missing=["CA 19-9"], is_complete=False
+    resp1 = client.patch(
+        "/api/v1/patientmdtform/missing_case.pdf/missing-items",
+        json={"toggle_item": "TEP-TDM", "edited_by": "dr_martin"},
+    )
+    assert resp1.status_code == 200
+    b1 = resp1.json()
+    assert b1["metrics"]["all_missing_items"] == ["TEP-TDM", "CA 19-9"]
+    assert b1["metrics"]["hidden_missing_items"] == ["TEP-TDM"]
+    assert b1["metrics"]["missing"] == ["CA 19-9"]
+    assert b1["metrics"]["is_complete"] is False
+
+    # 2. Toggle second item -> all items hidden -> is_complete=True
+    resp2 = client.patch(
+        "/api/v1/patientmdtform/missing_case.pdf/missing-items",
+        json={"toggle_item": "CA 19-9"},
+    )
+    assert resp2.status_code == 200
+    b2 = resp2.json()
+    assert set(b2["metrics"]["hidden_missing_items"]) == {"TEP-TDM", "CA 19-9"}
+    assert b2["metrics"]["missing"] == []
+    assert b2["metrics"]["is_complete"] is True
+
+    # 3. Replace what_missing and set hide_missing_items=True
+    resp3 = client.patch(
+        "/api/v1/patientmdtform/missing_case.pdf/missing-items",
+        json={
+            "what_missing": ["IRM hépatique"],
+            "hidden_missing_items": [],
+            "hide_missing_items": True,
+        },
+    )
+    assert resp3.status_code == 200
+    b3 = resp3.json()
+    assert b3["metrics"]["all_missing_items"] == ["IRM hépatique"]
+    assert b3["metrics"]["hide_missing_items"] is True
+    assert b3["metrics"]["missing"] == []
+    assert b3["metrics"]["is_complete"] is True
+
+
+# ---------------------------------------------------------------------------
+# 16. Resources metadata, POST /resources/upload, and DELETE /resources/{filename}
+# ---------------------------------------------------------------------------
+def test_resources_list_metadata_upload_and_delete(api_app, client, tmp_path):
+    """Verify GET /resources returns size_bytes & updated_at, POST /resources/upload, and DELETE /resources/{f}."""
+    conf = api_deps.get_base_config().model_copy()
+    conf.rcp.additional_path = str(tmp_path)
+    api_app.dependency_overrides[get_domain_config] = lambda: conf
+
+    # Upload a new PDF resource
+    up_resp = client.post(
+        "/api/v1/resources/upload",
+        files={
+            "file": (
+                "TNCD_rectum.pdf",
+                b"%PDF-1.4 rectum guideline",
+                "application/pdf",
+            )
+        },
+    )
+    assert up_resp.status_code == 200
+    up_body = up_resp.json()
+    assert up_body["filename"] == "TNCD_rectum.pdf"
+    assert up_body["size_bytes"] == len(b"%PDF-1.4 rectum guideline")
+    assert up_body["updated_at"] is not None
+    assert (tmp_path / "TNCD_rectum.pdf").is_file()
+
+    # List resources -> includes size_bytes and updated_at
+    list_resp = client.get("/api/v1/resources")
+    assert list_resp.status_code == 200
+    items = list_resp.json()
+    assert len(items) == 1
+    assert items[0]["filename"] == "TNCD_rectum.pdf"
+    assert items[0]["size_bytes"] == len(b"%PDF-1.4 rectum guideline")
+    assert items[0]["updated_at"] is not None
+
+    # Delete resource
+    del_resp = client.delete("/api/v1/resources/TNCD_rectum.pdf")
+    assert del_resp.status_code == 200
+    assert del_resp.json() == {"deleted": "TNCD_rectum.pdf"}
+    assert not (tmp_path / "TNCD_rectum.pdf").exists()
 
 
 # ---------------------------------------------------------------------------
@@ -894,15 +1091,15 @@ def test_per_section_rerun_honours_preserve_manual_edits(
         "manual_case.pdf",
         {
             "file": "manual_case.pdf",
-            "PatientPerformanceStatus": {"who_performance_status": 1},
+            "PatientPerformanceStatus": {"performance_status": 1},
             "manual_edits": {
                 "PatientPerformanceStatus": {
                     "is_manual": True,
                     "edited_at": "2026-04-01T10:00:00Z",
                     "edited_by": "dr_house",
-                    "human_value": {"who_performance_status": 1},
+                    "human_value": {"performance_status": 1},
                     "modified_fields": {
-                        "who_performance_status": {"ai_value": 0, "human_value": 1}
+                        "performance_status": {"ai_value": 0, "human_value": 1}
                     },
                 }
             },
@@ -939,7 +1136,7 @@ def test_per_section_rerun_honours_preserve_manual_edits(
         extract_called["count"] += 1
         target_form = kwargs.get("form") or self.form
         clear_manual_flag = kwargs.get("clear_manual_flag", False)
-        instance = model_cls(who_performance_status=3)
+        instance = model_cls(performance_status=3, references=[])
         target_form.set_section(model_cls.__name__, instance)
         if clear_manual_flag and model_cls.__name__ in target_form.manual_edits:
             target_form.manual_edits = (
@@ -983,9 +1180,7 @@ def test_per_section_rerun_honours_preserve_manual_edits(
         stored_after_preserve["manual_edits"]["PatientPerformanceStatus"]["is_manual"]
         is True
     )
-    assert (
-        stored_after_preserve["PatientPerformanceStatus"]["who_performance_status"] == 1
-    )
+    assert stored_after_preserve["PatientPerformanceStatus"]["performance_status"] == 1
     assert extract_called["count"] == 0
 
     # B) Calling POST /{f}/process with model_name and preserve_manual_edits=False
@@ -1011,8 +1206,5 @@ def test_per_section_rerun_honours_preserve_manual_edits(
         )
         == 1
     )
-    assert (
-        stored_after_overwrite["PatientPerformanceStatus"]["who_performance_status"]
-        == 3
-    )
+    assert stored_after_overwrite["PatientPerformanceStatus"]["performance_status"] == 3
     assert extract_called["count"] == 1

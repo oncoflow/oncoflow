@@ -60,6 +60,9 @@ export interface CardMetrics {
   is_complete?: boolean;
   missing_count?: number;
   missing_items?: string[];
+  all_missing_items?: string[];
+  hidden_missing_items?: string[];
+  hide_missing_items?: boolean;
   care_adaptation_suggested?: boolean | null;
   proposed_care_type?: string | null;
   specialties?: string[];
@@ -228,7 +231,7 @@ export interface WorklistFilter {
   domain?: "all" | ClinicalDomain;
   viewMode?: "patients" | "rcp";
   displayMode?: "table" | "cards";
-  sortBy?: "priority" | "patient" | "date";
+  sortBy?: "priority" | "patient" | "date" | "completeness" | "orientation" | "specialties";
   sortDir?: "asc" | "desc";
   dense?: boolean;
 }

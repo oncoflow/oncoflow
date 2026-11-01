@@ -154,6 +154,8 @@ class PatientRecordService:
             "MTDCompleted": 1,
             "CareOrientationProposal": 1,
             "manual_edits": 1,
+            "hidden_missing_items": 1,
+            "hide_missing_items": 1,
             "processing_status": 1,
             "processing_step": 1,
             "processing_progress_pct": 1,
@@ -212,6 +214,78 @@ class PatientRecordService:
             set_on_insert={"file": filename, "ui_date": now},
         )
         return self.mdt_form_repo.get_by_file(filename) or {}
+
+    def update_missing_items_visibility(
+        self,
+        filename: str,
+        hide_missing_items: bool | None = None,
+        toggle_item: str | None = None,
+        hidden_missing_items: list[str] | None = None,
+        what_missing: list[str] | None = None,
+        edited_by: str | None = None,
+    ) -> dict[str, Any]:
+        """
+        Update missing-items visibility (`hide_missing_items`, `hidden_missing_items`, `toggle_item`)
+        and/or the raw `what_missing` list on a `PatientMDTForm` record, returning the enriched document.
+        """
+        existing_doc = self.mdt_form_repo.get_by_file(filename)
+        if existing_doc is None:
+            raise FileNotFoundError(
+                f"PatientMDTForm document '{filename}' was not found."
+            )
+
+        current_hidden = [
+            str(x) for x in (existing_doc.get("hidden_missing_items") or []) if x
+        ]
+        if hidden_missing_items is not None:
+            current_hidden = [str(x) for x in hidden_missing_items if x]
+        if toggle_item:
+            item_str = str(toggle_item).strip()
+            if item_str:
+                if item_str in current_hidden:
+                    current_hidden = [x for x in current_hidden if x != item_str]
+                else:
+                    current_hidden.append(item_str)
+
+        effective_hide_all = (
+            bool(hide_missing_items)
+            if hide_missing_items is not None
+            else bool(existing_doc.get("hide_missing_items", False))
+        )
+
+        now = datetime.now()
+        fields_to_update: dict[str, Any] = {
+            "hidden_missing_items": current_hidden,
+            "hide_missing_items": effective_hide_all,
+            "date_refresh": now,
+        }
+
+        if what_missing is not None:
+            clean_missing = [str(x).strip() for x in what_missing if str(x).strip()]
+            mtd_sec = dict(existing_doc.get("MTDCompleted") or {})
+            nested = mtd_sec.get("mtd_complete")
+            nested_dict = dict(nested) if isinstance(nested, dict) else {}
+            nested_dict["what_missing"] = clean_missing
+            nested_dict["is_mtd_complete"] = (
+                effective_hide_all
+                or len([m for m in clean_missing if m not in set(current_hidden)]) == 0
+            )
+            nested_dict.setdefault("references", [])
+            mtd_sec["mtd_complete"] = nested_dict
+            mtd_sec["what_missing"] = clean_missing
+            mtd_sec["is_mtd_complete"] = nested_dict["is_mtd_complete"]
+            fields_to_update["MTDCompleted"] = mtd_sec
+            fields_to_update["manual_edits"] = self.form_cls.build_manual_edit_trace(
+                existing_doc,
+                "MTDCompleted",
+                mtd_sec,
+                edited_by=edited_by,
+                edited_at=now,
+            )
+
+        self.mdt_form_repo.upsert_fields(filename, fields_to_update)
+        updated_doc = self.mdt_form_repo.get_by_file(filename) or existing_doc
+        return self.enrich_form_doc(updated_doc)
 
     def update_patient_administrative(
         self,
@@ -514,6 +588,10 @@ class PatientRecordService:
                     "date": card["date"],
                     "experts": card["experts"],
                     "missing": card["missing"],
+                    "all_missing_items": card.get("all_missing_items", []),
+                    "hidden_missing_items": card.get("hidden_missing_items", []),
+                    "hide_missing_items": card.get("hide_missing_items", False),
+                    "is_complete": card.get("is_complete"),
                     "urgency": card["urgency"],
                     "urgency_score": card["urgency_score"],
                     "priority_level": card.get("priority_level"),
@@ -567,6 +645,30 @@ class PatientRecordService:
         `PatientMDTForm` records, and the filename of the latest analyzed `PatientMDTForm`.
         """
         patient = self.patient_repo.get_by_id(patient_id)
+        if patient is None:
+            form_by_file = self.mdt_form_repo.get_by_file(patient_id)
+            if form_by_file is not None:
+                linked_pid = form_by_file.get("patient_id")
+                if linked_pid:
+                    patient = self.patient_repo.get_by_id(linked_pid)
+                    if patient is not None:
+                        patient_id = linked_pid
+                if patient is None:
+                    admin = form_by_file.get("PatientAdministrative")
+                    admin_dict = admin if isinstance(admin, dict) else {}
+                    fname = form_by_file.get("file") or patient_id
+                    synth_pid = linked_pid or patient_id
+                    patient = Patient(
+                        patient_id=synth_pid,
+                        first_name=str(admin_dict.get("first_name") or "").strip(),
+                        last_name=str(admin_dict.get("last_name") or "").strip(),
+                        born_name=admin_dict.get("born_name"),
+                        date_birth=admin_dict.get("date_birth"),
+                        gender=admin_dict.get("gender") or "Not_given",
+                        files=[fname],
+                    )
+                    return patient, [form_by_file], fname
+
         if patient is None:
             all_forms = self.mdt_form_repo.list_all()
             for candidate in self._collect_patients_including_unlinked(all_forms):

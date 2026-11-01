@@ -1,5 +1,6 @@
 import type {
   ChatReply,
+  MissingItemsUpdateInput,
   OncoflowApiPort,
   UploadFileInput,
 } from "../../application/ports/oncoflow-api.port.js";
@@ -832,6 +833,62 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
       edited_by: editedBy,
       previous_ai_value: previousSectionObj,
       modified_fields: modifiedFields,
+    };
+    return form;
+  }
+
+  async updateMissingItems(
+    filename: string,
+    input: MissingItemsUpdateInput,
+    _domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    const form = this.forms.get(filename);
+    if (!form) {
+      throw new Error(`Form not found: ${filename}`);
+    }
+    const mtdComp = (form.sections.MTDCompleted ?? {}) as Record<string, unknown>;
+    const rawAll: string[] = Array.isArray(form.metrics.all_missing_items)
+      ? [...form.metrics.all_missing_items]
+      : Array.isArray(mtdComp.what_missing)
+        ? (mtdComp.what_missing as string[]).map(String)
+        : Array.isArray(form.metrics.missing_items)
+          ? [...form.metrics.missing_items]
+          : [];
+    const nextAll = input.whatMissing ? [...input.whatMissing] : rawAll;
+    let hidden: string[] = Array.isArray(form.metrics.hidden_missing_items)
+      ? [...form.metrics.hidden_missing_items]
+      : [];
+    if (input.hiddenMissingItems) {
+      hidden = [...input.hiddenMissingItems];
+    }
+    if (input.toggleItem) {
+      const idx = hidden.indexOf(input.toggleItem);
+      if (idx >= 0) {
+        hidden.splice(idx, 1);
+      } else {
+        hidden.push(input.toggleItem);
+      }
+    }
+    const hideAll =
+      input.hideMissingItems !== undefined
+        ? Boolean(input.hideMissingItems)
+        : Boolean(form.metrics.hide_missing_items);
+    const hiddenSet = new Set(hidden);
+    const visible = hideAll ? [] : nextAll.filter((x) => !hiddenSet.has(x));
+
+    form.sections.MTDCompleted = {
+      ...mtdComp,
+      what_missing: nextAll,
+      is_mtd_complete: visible.length === 0,
+    };
+    form.metrics = {
+      ...form.metrics,
+      all_missing_items: nextAll,
+      hidden_missing_items: hidden,
+      hide_missing_items: hideAll,
+      missing_items: visible,
+      missing_count: visible.length,
+      is_complete: visible.length === 0,
     };
     return form;
   }

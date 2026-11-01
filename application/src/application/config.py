@@ -331,6 +331,218 @@ class QueueSettings(BaseSettings):
     )
 
 
+class ApiSecuritySettings(BaseSettings):
+    """
+    Configuration for FastAPI server runtime, CORS, Trusted Hosts, HTTP Security Headers,
+    Rate Limiting, Payload Limits, and OpenAPI documentation access.
+
+    Environment variables:
+    - APP_API_HOST, APP_API_PORT, APP_API_WORKERS, APP_API_TIMEOUT_KEEP_ALIVE,
+      APP_API_PROXY_HEADERS, APP_API_FORWARDED_ALLOW_IPS
+    - APP_API_DOCS_ENABLED, APP_API_DOCS_REQUIRE_AUTH
+    - APP_API_CORS_ENABLED, APP_API_CORS_ORIGINS, APP_API_CORS_ORIGIN_REGEX,
+      APP_API_CORS_ALLOW_CREDENTIALS, APP_API_CORS_ALLOW_METHODS,
+      APP_API_CORS_ALLOW_HEADERS, APP_API_CORS_EXPOSE_HEADERS, APP_API_CORS_MAX_AGE
+    - APP_API_TRUSTED_HOSTS, APP_API_FORCE_HTTPS
+    - APP_API_GZIP_ENABLED, APP_API_GZIP_MINIMUM_SIZE
+    - APP_API_SECURITY_HEADERS_ENABLED, APP_API_HSTS_ENABLED, APP_API_HSTS_MAX_AGE,
+      APP_API_HSTS_INCLUDE_SUBDOMAINS, APP_API_CSP_POLICY, APP_API_FRAME_OPTIONS,
+      APP_API_REFERRER_POLICY, APP_API_PERMISSIONS_POLICY, APP_API_CACHE_CONTROL,
+      APP_API_COOP_POLICY, APP_API_CORP_POLICY
+    - APP_API_MAX_BODY_BYTES, APP_API_RATE_LIMIT_ENABLED,
+      APP_API_RATE_LIMIT_REQUESTS, APP_API_RATE_LIMIT_WINDOW_SECONDS
+    """
+
+    model_config = SettingsConfigDict(env_prefix="APP_API_", extra="ignore")
+
+    # --- Uvicorn & Network Bindings ---
+    host: str = Field(
+        default="127.0.0.1",
+        description="Bind address of the FastAPI server (APP_API_HOST). Use 0.0.0.0 only inside a private container network.",
+    )
+    port: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="TCP port of the FastAPI server (APP_API_PORT).",
+    )
+    workers: int = Field(
+        default=1,
+        ge=1,
+        description="Number of Uvicorn worker processes (APP_API_WORKERS). Keep at 1 when using in-process PriorityQueue.",
+    )
+    timeout_keep_alive: int = Field(
+        default=30,
+        ge=1,
+        description="Uvicorn HTTP keep-alive timeout in seconds (APP_API_TIMEOUT_KEEP_ALIVE).",
+    )
+    proxy_headers: bool = Field(
+        default=True,
+        description="Trust X-Forwarded-Proto and X-Forwarded-For headers from reverse proxies (APP_API_PROXY_HEADERS).",
+    )
+    forwarded_allow_ips: str = Field(
+        default="127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16",
+        description="Comma-separated IPs/CIDRs trusted to send X-Forwarded-* headers (APP_API_FORWARDED_ALLOW_IPS).",
+    )
+
+    # --- OpenAPI & Interactive Docs ---
+    docs_enabled: bool = Field(
+        default=True,
+        description="Enable /docs, /redoc, and /api/v1/openapi.json endpoints (APP_API_DOCS_ENABLED).",
+    )
+    docs_require_auth: bool = Field(
+        default=False,
+        description="Require APP_API_TOKEN authentication on /docs, /redoc, and /api/v1/openapi.json (APP_API_DOCS_REQUIRE_AUTH).",
+    )
+
+    # --- CORS (Cross-Origin Resource Sharing) ---
+    cors_enabled: bool = Field(
+        default=True,
+        description="Enable FastAPI CORSMiddleware (APP_API_CORS_ENABLED).",
+    )
+    cors_origins: str = Field(
+        default="http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:8501,http://localhost:8501",
+        description="Comma-separated list of allowed CORS origins (APP_API_CORS_ORIGINS).",
+    )
+    cors_origin_regex: str | None = Field(
+        default=None,
+        description="Optional regex pattern matching allowed CORS origins (APP_API_CORS_ORIGIN_REGEX).",
+    )
+    cors_allow_credentials: bool = Field(
+        default=True,
+        description="Allow cookies and Authorization headers in cross-origin requests (APP_API_CORS_ALLOW_CREDENTIALS).",
+    )
+    cors_allow_methods: str = Field(
+        default="GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        description="Comma-separated HTTP methods allowed for CORS (APP_API_CORS_ALLOW_METHODS).",
+    )
+    cors_allow_headers: str = Field(
+        default="Authorization,Content-Type,X-API-Key,X-Oncoflow-Domain,X-Oncoflow-User,X-Oncoflow-User-Name,X-Oncoflow-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With",
+        description="Comma-separated HTTP request headers allowed for CORS (APP_API_CORS_ALLOW_HEADERS).",
+    )
+    cors_expose_headers: str = Field(
+        default="X-Oncoflow-Domain,X-Request-ID,Content-Disposition",
+        description="Comma-separated response headers exposed to browser scripts via CORS (APP_API_CORS_EXPOSE_HEADERS).",
+    )
+    cors_max_age: int = Field(
+        default=600,
+        ge=0,
+        description="Maximum time in seconds browsers cache CORS preflight responses (APP_API_CORS_MAX_AGE).",
+    )
+
+    # --- Host Header Validation & TLS Redirect ---
+    trusted_hosts: str = Field(
+        default="*",
+        description="Comma-separated list of allowed Host header patterns for TrustedHostMiddleware (APP_API_TRUSTED_HOSTS).",
+    )
+    force_https: bool = Field(
+        default=False,
+        description="Redirect all plain HTTP requests to HTTPS via HTTPSRedirectMiddleware (APP_API_FORCE_HTTPS).",
+    )
+
+    # --- Compression ---
+    gzip_enabled: bool = Field(
+        default=True,
+        description="Enable GZip response compression for payloads larger than gzip_minimum_size (APP_API_GZIP_ENABLED).",
+    )
+    gzip_minimum_size: int = Field(
+        default=1000,
+        ge=100,
+        description="Minimum response size in bytes before applying GZip compression (APP_API_GZIP_MINIMUM_SIZE).",
+    )
+
+    # --- Hospital-Grade HTTP Security Headers ---
+    security_headers_enabled: bool = Field(
+        default=True,
+        description="Inject strict HTTP security headers on all API responses (APP_API_SECURITY_HEADERS_ENABLED).",
+    )
+    hsts_enabled: bool = Field(
+        default=False,
+        description="Send Strict-Transport-Security header (APP_API_HSTS_ENABLED).",
+    )
+    hsts_max_age: int = Field(
+        default=31536000,
+        ge=0,
+        description="Strict-Transport-Security max-age in seconds (APP_API_HSTS_MAX_AGE).",
+    )
+    hsts_include_subdomains: bool = Field(
+        default=True,
+        description="Include includeSubDomains directive in HSTS header (APP_API_HSTS_INCLUDE_SUBDOMAINS).",
+    )
+    csp_policy: str = Field(
+        default="default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        description="Content-Security-Policy header applied to JSON API responses (APP_API_CSP_POLICY).",
+    )
+    frame_options: str = Field(
+        default="DENY",
+        description="X-Frame-Options header value for non-PDF API routes (APP_API_FRAME_OPTIONS).",
+    )
+    referrer_policy: str = Field(
+        default="no-referrer",
+        description="Referrer-Policy header value (APP_API_REFERRER_POLICY).",
+    )
+    permissions_policy: str = Field(
+        default="camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        description="Permissions-Policy header value disabling browser hardware APIs (APP_API_PERMISSIONS_POLICY).",
+    )
+    cache_control: str = Field(
+        default="no-store, no-cache, must-revalidate, max-age=0",
+        description="Cache-Control header preventing caching of confidential patient data (APP_API_CACHE_CONTROL).",
+    )
+    coop_policy: str = Field(
+        default="same-origin",
+        description="Cross-Origin-Opener-Policy header value (APP_API_COOP_POLICY).",
+    )
+    corp_policy: str = Field(
+        default="same-origin",
+        description="Cross-Origin-Resource-Policy header value (APP_API_CORP_POLICY).",
+    )
+
+    # --- Request Body Limit & Sliding-Window Rate Limiting ---
+    max_body_bytes: int = Field(
+        default=52_428_800,
+        ge=1024,
+        description="Maximum HTTP request payload size in bytes before returning HTTP 413 (APP_API_MAX_BODY_BYTES, default 50 MB).",
+    )
+    rate_limit_enabled: bool = Field(
+        default=False,
+        description="Enable per-IP sliding-window rate limiting on the REST API (APP_API_RATE_LIMIT_ENABLED).",
+    )
+    rate_limit_requests: int = Field(
+        default=300,
+        ge=1,
+        description="Maximum requests allowed per client IP within the rate-limit window (APP_API_RATE_LIMIT_REQUESTS).",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        description="Sliding-window duration in seconds for per-IP rate limiting (APP_API_RATE_LIMIT_WINDOW_SECONDS).",
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def cors_methods_list(self) -> list[str]:
+        return [
+            m.strip().upper() for m in self.cors_allow_methods.split(",") if m.strip()
+        ]
+
+    @property
+    def cors_headers_list(self) -> list[str]:
+        return [h.strip() for h in self.cors_allow_headers.split(",") if h.strip()]
+
+    @property
+    def cors_expose_headers_list(self) -> list[str]:
+        return [h.strip() for h in self.cors_expose_headers.split(",") if h.strip()]
+
+    @property
+    def trusted_hosts_list(self) -> list[str]:
+        hosts = [h.strip() for h in self.trusted_hosts.split(",") if h.strip()]
+        return hosts or ["*"]
+
+
 class RCPSettings(BaseSettings):
     """
     Configuration for the RCP (Réunion de Concertation Pluridisciplinaire) pipeline.
@@ -607,9 +819,18 @@ class AppConfig(BaseSettings):
         default_factory=QueueSettings,
         description="Background processing queue and hardware batching settings.",
     )
+    api: ApiSecuritySettings = Field(
+        default_factory=ApiSecuritySettings,
+        description="FastAPI server runtime, CORS, Trusted Hosts, HTTP Security Headers, and rate limiting settings.",
+    )
 
     def model_post_init(self, __context) -> None:
         super().model_post_init(__context)
+        # Keep top-level api_host synchronized with nested api.host
+        if self.api_host != "127.0.0.1" and self.api.host == "127.0.0.1":
+            self.api.host = self.api_host
+        elif self.api.host != "127.0.0.1" and self.api_host == "127.0.0.1":
+            self.api_host = self.api.host
         # Dynamically isolate paths, databases, and collections by domain (e.g., oncology, sma)
         if self.domain:
             self.rcp.additional_path = self.rcp.additional_path / self.domain
@@ -637,6 +858,16 @@ class AppConfig(BaseSettings):
                 f"LLM endpoint '{self.llm.url}' is not a local/private host. Patient data "
                 "must stay local: use a local endpoint or set APP_ALLOW_REMOTE_LLM=true "
                 "explicitly (test deployments only)."
+            )
+        if (
+            not self.dev_mode
+            and self.api.cors_enabled
+            and self.api.cors_allow_credentials
+            and "*" in self.api.cors_origins_list
+        ):
+            raise ValueError(
+                "CORS wildcard '*' with APP_API_CORS_ALLOW_CREDENTIALS=true is forbidden "
+                "when APP_DEV_MODE=false. Specify explicit origins in APP_API_CORS_ORIGINS."
             )
         return self
 
@@ -681,6 +912,7 @@ class AppConfig(BaseSettings):
             logs=self.logs.model_copy(deep=True),
             chromadb=self.chromadb.model_copy(deep=True),
             queue=self.queue.model_copy(deep=True),
+            api=self.api.model_copy(deep=True),
         )
 
     @property
