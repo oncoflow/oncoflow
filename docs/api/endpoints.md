@@ -189,6 +189,34 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
   }
   ```
 
+### Enregistrer une modification manuelle sur une rubrique clinique
+* **URL** : `/api/v1/rcp/{filename}/manual-edit`
+* **Méthode** : `PUT`
+* **Corps de la requête (application/json)** :
+  ```json
+  {
+    "section": "Chemotherapy",
+    "values": {
+      "chemotherapy_name": "FOLFIRINOX modifié (8 cures validées RCP)"
+    },
+    "edited_by": "Dr. Martin"
+  }
+  ```
+* **Description** : Enregistre une édition humaine traçable sur une rubrique extraite (`manual_edits`). Cette rubrique est automatiquement protégée contre l'écrasement lors des relances IA (`preserve_manual_edits=true`).
+
+### Masquer ou restaurer des éléments manquants d'une fiche RCP
+* **URL** : `/api/v1/rcp/{filename}/missing-items`
+* **Méthode** : `PUT`
+* **Corps de la requête (application/json)** :
+  ```json
+  {
+    "toggle_item": "Compte rendu d'anatomopathologie définitif (biopsie EUS)",
+    "hide_missing_items": false,
+    "edited_by": "Secrétariat RCP"
+  }
+  ```
+* **Description** : Permet au secrétariat RCP ou au clinicien de masquer/restaurer individuellement un élément manquant ou de masquer/afficher toute la liste sur une fiche donnée.
+
 ### Télécharger le PDF original
 * **URL** : `/api/v1/rcp/{filename}/pdf`
 * **Méthode** : `GET`
@@ -270,3 +298,72 @@ L'API est structurée de manière modulaire au sein du dossier `application/` :
     "response": "Selon le TNCD Chapitre Pancréas, pour une tumeur résécable, une résection chirurgicale d'emblée suivie d'une chimiothérapie adjuvante par FOLFIRINOX est recommandée..."
   }
   ```
+
+---
+
+## 5. Ordre du Jour de la Prochaine Séance RCP (`/api/v1/mdt/agenda`)
+
+Ces endpoints permettent de préparer, d'ordonner et de piloter la prochaine réunion RCP par domaine clinique (`?domain=oncology` ou `?domain=sma`).
+
+### Obtenir l'ordre du jour complet de la prochaine séance RCP
+* **URL** : `/api/v1/mdt/agenda`
+* **Méthode** : `GET`
+* **Description** : Retourne l'ordre de passage calculé (`items`), les créneaux de passage par spécialiste (`expert_windows`), les dossiers candidats restants dans la worklist (`candidates`) et les compteurs de séance (`total_enrolled`, `urgent_count`, `incomplete_count`, `quorum_warning_count`).
+
+###Programmer directement une nouvelle réunion RCP (Onboarding)
+* **URL** : `/api/v1/mdt/agenda/schedule`
+* **Méthode** : `POST`
+* **Corps de la requête (application/json)** :
+  ```json
+  {
+    "session_date": "2026-12-10",
+    "sort_strategy": "expert_grouping",
+    "attending_experts": ["pancreas expert", "oesophagus expert"],
+    "patient_ids": ["A-1042", "A-1037"]
+  }
+  ```
+* **Description** : Initialise ou remplace en une seule opération la date de la réunion RCP, la stratégie de tri (`expert_grouping` ou `urgency_first`), les spécialistes présents et la liste des patients inscrits.
+
+### Mettre à jour le paramétrage de la séance RCP
+* **URL** : `/api/v1/mdt/agenda/options`
+* **Méthode** : `PUT`
+* **Corps de la requête (application/json)** :
+  ```json
+  {
+    "session_date": "2026-11-20",
+    "sort_strategy": "urgency_first",
+    "toggle_expert": "pancreas expert"
+  }
+  ```
+* **Description** : Modifie la date, la stratégie d'organisation ou la présence d'un spécialiste et recalcule instantanément l'ordre de passage et le quorum.
+
+### Inscrire un ou plusieurs patients à l'ordre du jour
+* **URL** : `/api/v1/mdt/agenda/patients` (unitaire) ou `/api/v1/mdt/agenda/patients/batch` (lot)
+* **Méthode** : `POST`
+* **Description** : Ajoute un dossier patient (`patient_id`) ou un lot filtré (`all`, `urgent`, `complete`) à la séance RCP.
+
+### Déplacer ou épingler manuellement un dossier dans l'ordre de passage
+* **URL** : `/api/v1/mdt/agenda/patients/{patient_id}/position`
+* **Méthode** : `PUT`
+* **Corps de la requête (application/json)** :
+  ```json
+  {
+    "direction": "up",
+    "pinned": true
+  }
+  ```
+* **Description** : Déplace un dossier vers le haut/bas (`direction: "up" | "down"` ou `target_index`) et l'épingle (`pinned: true`) pour conserver sa position manuelle.
+
+### Retirer un patient ou vider l'ordre du jour
+* **URL** : `/api/v1/mdt/agenda/patients/{patient_id}` ou `/api/v1/mdt/agenda/patients`
+* **Méthode** : `DELETE`
+* **Description** : Retire un patient spécifique de la séance (il redevient candidat dans la worklist) ou réinitialise la liste de passage de la séance.
+
+---
+
+## 6. File d'Analyse GPU & Flux Temps Réel (`/api/v1/queue`)
+
+* **`GET /api/v1/queue/stats` & `GET /api/v1/queue/jobs`** : Statistiques et liste des tâches d'extraction/indexation GPU (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`).
+* **`GET /api/v1/queue/stream`** : Flux **Server-Sent Events (SSE)** temps réel consommant l'avancement des tâches et l'aperçu du raisonnement IA (`thinking_preview`).
+* **`POST /api/v1/queue/jobs/{job_id}/retry`** : Relance une tâche en échec.
+* **`POST /api/v1/queue/locks/release` & `POST /api/v1/queue/jobs/clean`** : Libère les verrous GPU orphelins et nettoie les tâches terminées.

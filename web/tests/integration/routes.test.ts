@@ -253,6 +253,37 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
       url: "/admin/queue/locks/release",
     });
     expect([200, 302]).toContain(lockRes.statusCode);
+
+    const cleanRes = await app.inject({
+      method: "POST",
+      url: "/admin/queue/clean",
+    });
+    expect([200, 302]).toContain(cleanRes.statusCode);
+    await app.close();
+  });
+
+  it("GET /ingest and POST /preferences persist theme, language, and expertMode cookies", async () => {
+    const { app } = await createTestApp();
+    const ingestRes = await app.inject({ method: "GET", url: "/ingest?domain=oncology" });
+    expect(ingestRes.statusCode).toBe(200);
+    expect(ingestRes.body).toContain('data-testid="input-ingest-files"');
+    expect(ingestRes.body).toContain('data-testid="btn_ingest_submit"');
+
+    const prefRes = await app.inject({
+      method: "POST",
+      url: "/preferences",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        referer: "/worklist?domain=oncology",
+      },
+      payload: "theme=dark&language=en&expertMode=true",
+    });
+    expect(prefRes.statusCode).toBe(302);
+    const setCookies = prefRes.headers["set-cookie"];
+    const cookieStr = Array.isArray(setCookies) ? setCookies.join("; ") : String(setCookies ?? "");
+    expect(cookieStr).toContain("ds_theme=dark");
+    expect(cookieStr).toContain("ds_lang=en");
+    expect(cookieStr).toContain("ds_expert=true");
     await app.close();
   });
 

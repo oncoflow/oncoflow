@@ -13,8 +13,9 @@ MedDataSyntis is a secure, open-source, local-first web application designed for
 4. **Integrate Scientific Reference guidelines** (TNCD - Thésaurus National de Cancérologie Digestive) to support clinical decision-making.
 
 ### Technical Stack & Key Dependencies
-- **Core Runtime**: Python `>=3.13` (strictly enforced in `pyproject.toml`; note that legacy `HOW-TO-CONTRIBUTE.md` may mention `3.11.X`, but `pyproject.toml` is the source of truth).
-- **Frontend Dashboard**: Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`).
+- **Core Runtime**: Python `>=3.13` (strictly enforced in `pyproject.toml`; note that legacy `HOW-TO-CONTRIBUTE.md` may mention `3.11.X`, but `pyproject.toml` is the source of truth) and Node.js `>=24` for the Material Design 3 Web UI (`web/`).
+- **Material Design 3 Web UI (`web/`)**: Fastify 5 (`fastify`, `@fastify/cookie`, `@fastify/formbody`, `@fastify/multipart`, `@fastify/static`), TypeScript 5.8, self-hosted `ds-*` Design System (WCAG 2.2 AA Light/Dark/Auto themes), Vitest, and Playwright E2E.
+- **Legacy Frontend Dashboard (`application/`)**: Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`).
 - **Orchestration**: LangChain (`langchain-core`, `langchain-ollama`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`).
 - **Vector Search Databases**:
   - Milvus (`pymilvus>=3.0.2`, `langchain-milvus>=0.4.0`) for main retrieval.
@@ -39,6 +40,10 @@ All development operations must follow these exact shell commands. Standard pref
 | **Format Code** | `ruff format src/` | Format python files according to PEP8 |
 | **Run Unit Tests** | `pytest src/application/agent/tests/` | Run test suite for the LangChain agent |
 | **Run App Dev Mode** | `uv run streamlit run app-ui.py` | Start Streamlit UI server locally |
+| **Web UI Install** | `npm --prefix web ci` | Install Node.js dependencies for the M3 Web UI |
+| **Web UI Lint & WCAG** | `npm --prefix web run lint` | Run Biome, TypeScript typecheck, and WCAG contrast check |
+| **Web UI Unit/Int Tests**| `npm --prefix web run test` | Run Vitest unit & Fastify BFF integration tests |
+| **Web UI E2E Tests** | `npm --prefix web run e2e` | Run Playwright E2E clinical & mobile journeys |
 
 ---
 

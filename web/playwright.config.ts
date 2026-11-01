@@ -37,7 +37,7 @@ export default defineConfig({
     command: "APP_USE_FAKE_ONLY=true PORT_WEB=3011 HOST_WEB=127.0.0.1 npm run start",
     url: "http://127.0.0.1:3011/health",
     reuseExistingServer: !process.env.CI,
-    timeout: 15000,
+    timeout: 30000,
   },
   projects: [
     {

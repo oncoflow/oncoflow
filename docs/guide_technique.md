@@ -4,43 +4,58 @@ This document provides a comprehensive technical overview of the **MedDataSyntis
 
 ---
 
-## 🏗️ Clean Onion Architecture
+## 🏗️ Clean Onion & Hexagonal Architecture
 
-The backend of MedDataSyntis is built in Python (strictly requiring `>=3.13`) using Clean Architecture principles to keep the business rules independent of database systems, frameworks, and user interfaces.
+MedDataSyntis separates its presentation and backend layers cleanly across two decoupled workspaces:
+1. **`web/` — Node.js 24 + Fastify 5 Material Design 3 Web UI (Hexagonal BFF)**: Server-rendered clinical web interface communicating exclusively with the Python FastAPI backend over HTTP/SSE.
+2. **`application/` — Python `>=3.13` FastAPI & Multi-Agent RAG Backend (Clean Onion Architecture)**: Keeps domain rules (`domain/`) independent of databases (`infrastructure/`), orchestration (`application/`), and user interfaces (`routers/` & legacy `ui/`).
 
 ```
-                  ┌─────────────────────────────────────┐
-                  │              UI layer               │
-                  │        (Streamlit, app-ui.py)       │
-                  │                  │                  │
-                  │  ┌───────────────▼───────────────┐  │
-                  │  │       Application layer       │  │
-                  │  │  (Agents, Use cases, RAG)     │  │
-                  │  │               │               │  │
-                  │  │  ┌────────────▼────────────┐  │  │
-                  │  │  │       Domain layer      │  │  │
-                  │  │  │   (Entities, Interfaces)│  │  │
-                  │  │  └─────────────────────────┘  │  │
-                  │  └───────────────────────────────┘  │
-                  │                  ▲                  │
-                  │                  │                  │
-                  │         Infrastructure            │
-                  │     (Milvus, MongoDB, Parsers)    │
-                  └─────────────────────────────────────┘
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │  web/ (Node.js 24 + Fastify 5 + TypeScript — Material Design 3 UI)  │
+   │  • src/domain/         (Triage rules, i18n, clinical catalog)       │
+   │  • src/application/    (Worklist, Dossier, Agenda, Guidelines UCs)  │
+   │  • src/infrastructure/ (HttpOncoflowApiAdapter & InMemoryFake)      │
+   │  • src/ui/             (Fastify BFF routes, M3 SSR templates, CSS)  │
+   └──────────────────────────────────┬──────────────────────────────────┘
+                                      │ REST & SSE (/api/v1/*)
+                                      ▼
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │  application/ (Python >= 3.13 — FastAPI app-api.py & Streamlit)     │
+   │  • src/routers/        (FastAPI /api/v1/rcp, /mdt/agenda, /queue)   │
+   │  • src/application/    (Agents, Use cases, PriorityQueue, RAG)      │
+   │  • src/domain/         (Entities: Patient, PatientMDTForm, Agenda)  │
+   │  • src/infrastructure/ (Milvus, MongoDB, Docling/MuPDF/OCR Parsers) │
+   └─────────────────────────────────────────────────────────────────────┘
 ```
+
+### Module breakdown under `web/src/` (Material Design 3 Web UI):
+* **`domain/`**: Pure TypeScript clinical domain logic (`triage.ts` for urgency/completeness/orientation badges and deltas, `catalog.ts` for Oncology & SMA section metadata and quick prompts, `i18n.ts`, `types.ts`).
+* **`application/`**:
+  * **`ports/oncoflow-api.port.ts`**: Hexagonal port contract for all backend operations.
+  * **`use-cases/`**: `worklist.use-case.ts`, `patient-dossier.use-case.ts`, `guidelines.use-case.ts`, `ingest.use-case.ts`, `feedback.use-case.ts`, `queue-admin.use-case.ts`.
+* **`infrastructure/api/`**:
+  * **`http-oncoflow-api.adapter.ts`**: Production HTTP/REST adapter targeting FastAPI (`/api/v1/*`).
+  * **`in-memory-oncoflow-api.fake.ts`**: Deterministic clinical fixture adapter (Oncology & SMA) used for offline development (`APP_DEV_MODE=true`), Vitest integration tests, and Playwright E2E tests.
+* **`ui/`**:
+  * **`server.ts`**: Fastify 5 BFF server with strict `Content-Security-Policy` (`default-src 'self'`), Zero-Trust `X-Oncoflow-Proxy-Secret` verification (`oauth_proxy` mode), host-based clinical domain resolution (`oncologic-new.*` -> `oncology`, `sma-new.*` -> `sma`), and SSE proxy streaming (`/events/queue`).
+  * **`templates.ts` & `components/ai-chat.component.ts`**: Material Design 3 SSR HTML views (`Worklist`, `Ordre du jour RCP /agenda`, `Dossier patient longitudinal`, `Co-Pilot IA Side Sheet`, `Référentiels`, `Experts IA`, `Supervision File GPU`, `Signalements`).
+* **`public/`**: Zero-CDN self-hosted CSS tokens (`public/css/tokens.css`, `public/css/components.css`), progressive enhancement client script (`public/js/app.js`), and 58-icon M3 SVG sprite (`public/img/icons.svg`).
 
 ### Module breakdown under `application/src/`:
-* **`domain/`**: Contains the core domain schemas (`patient.py` with `Patient(BaseModel)`, `common/common_ressources.py`, `patient_mdt_form.py`, `agents.py`), validation boundaries, and abstract interface contracts.
+* **`domain/`**: Contains the core domain schemas (`patient.py` with `Patient(BaseModel)`, `mdt_agenda.py` for RCP session scheduling & expert grouping, `common/common_ressources.py`, `patient_mdt_form.py`, `agents.py`), validation boundaries, and abstract interface contracts.
 * **`application/`**:
   * **`patient.py`**: Patient business logic (deterministic `patient_id` generation from normalized `last_name + first_name + date_birth`, automatic/manual patient association during RCP upload, card metrics extraction, latest analyzed RCP selection, dossier resolution, and chronological AI history formatting via `format_patient_ai_history`).
+  * **`use_cases/mdt_agenda_management.py`**: Orchestrates the next RCP/MDT session agenda (`urgency_first` vs `expert_grouping` sort strategies, quorum computation, specialist passage windows, pin/move overrides, and direct session onboarding).
   * **`agent/`**: The core multi-expert LangChain agent coordinator (`agent.py`) and context-separated tools (`tools.py` with `Context` for single-RCP extraction/chat using `get_mtd_markdown`, and `PatientContext` for full-dossier patient chat using `get_patient_mtds_markdown` and `get_patient_ai_history`).
   * **`reader.py`**: The RAG (Retrieval-Augmented Generation) ingestion and matching pipeline.
   * **`config.py`**: Reads environmental configurations and exposes them statically via the `AppConfig` class.
 * **`infrastructure/`**:
   * **`vectorial/`**: Database wrappers for Milvus and Chroma vector databases.
-  * **`documents/mongodb.py`**: Repositories handling MongoDB integrations for `patients`, `rcp_info`, and `document_cache`.
+  * **`documents/mongodb.py`**: Repositories handling MongoDB integrations for `patients`, `rcp_info`, `mdt_agendas`, and `document_cache`.
   * **`parsers/`**: Ingestion layer leveraging **Docling**, **MuPDF**, **OpenParse**, or **Ollama OCR** for reading patient folders.
-* **`ui/`**: Streamlit pages (`patient_mdt/` cards with top Dossiers Patients and bottom Dernières RCP scannées, unified patient dossier view with 3 top-level tabs (`Données patient`, `Historique des fiches RCP`, `Assistant IA sur le dossier`), batch upload with patient association, and active agent visualizations).
+* **`routers/`**: FastAPI v1 REST & SSE routers (`rcp.py`, `agenda.py`, `agents.py`, `resources.py`, `queue.py`, `bug_reports.py`).
+* **`ui/`**: Legacy Streamlit pages (`patient_mdt/` cards, unified patient dossier view, batch upload, and active agent visualizations).
 
 ---
 
@@ -108,6 +123,21 @@ MedDataSyntis is highly customizable through environment variables parsed transp
 | **`APP_RCP_CHUNK_OVERLAP`**| `int` | `150` | Length of consecutive text overlap between sliding chunks. |
 | **`APP_RCP_MANUAL_QUERY`**| `bool`| `False` | Run CLI interactive prompt loop instead of Streamlit GUI. |
 | **`APP_RCP_DISPLAY_TYPE`**| `str` | `mongodb` | Underlying display mechanism style. |
+
+### Environment Variables for the Material Design 3 Web UI (`web/`):
+
+| Variable Name | Type | Default Value | Description |
+| :--- | :--- | :--- | :--- |
+| **`PORT_WEB`** | `int` | `3000` | Listening TCP port for the Fastify BFF web server. |
+| **`HOST_WEB`** | `str` | `0.0.0.0` | Bind address for the Fastify server (`127.0.0.1` in local dev/E2E). |
+| **`APP_API_URL`** | `str` | `http://127.0.0.1:8000` | Upstream Python FastAPI base URL. |
+| **`APP_API_TOKEN`** | `str` | `""` | Shared Bearer token sent to the FastAPI backend (`Authorization: Bearer ...`). |
+| **`APP_DOMAIN`** | `str` | `oncology` | Default clinical domain for the instance (`oncology` or `sma`). |
+| **`APP_ALLOWED_DOMAINS`** | `str` | `oncology,sma` | Comma-separated list of enabled clinical domains. |
+| **`APP_AUTH_MODE`** | `str` | `none` | Authentication mode (`oauth_proxy` in production behind Caddy + OAuth2-Proxy, `none` in local dev). |
+| **`APP_PROXY_SECRET`** | `str` | `""` | Shared secret verified against the `X-Oncoflow-Proxy-Secret` header when `APP_AUTH_MODE=oauth_proxy`. |
+| **`APP_ADMIN_USERS`** | `str` | `admin` | Comma-separated list of usernames/emails granted GPU queue administration rights. |
+| **`APP_DEV_MODE`** | `bool` | `true` | Enables automatic fallback to `InMemoryOncoflowApiFake` when FastAPI is unreachable in local dev (forced to `false` in production). |
 
 ---
 
