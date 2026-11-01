@@ -3,7 +3,7 @@ export type PriorityLevel = "high" | "medium" | "low" | "none";
 export type CompletenessStatus = "complete" | "incomplete";
 export type OrientationStatus = "adapt" | "standard" | "pending";
 export type Language = "fr" | "en";
-export type ThemeMode = "light" | "dark";
+export type ThemeMode = "auto" | "light" | "dark";
 
 export interface UserSession {
   userId: string;

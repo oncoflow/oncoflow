@@ -2,13 +2,37 @@
   var root = document.documentElement;
   var radioLight = document.getElementById("theme-light");
   var radioDark = document.getElementById("theme-dark");
+  var osDarkMql =
+    typeof window !== "undefined" && typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-color-scheme: dark)")
+      : null;
+
+  function resolveEffectiveTheme(pref) {
+    if (pref === "dark" || pref === "light") return pref;
+    return osDarkMql && osDarkMql.matches ? "dark" : "light";
+  }
+
+  function applyThemePreference(pref) {
+    var normalized = pref === "dark" || pref === "light" ? pref : "auto";
+    root.setAttribute("data-theme-pref", normalized);
+    var effective = resolveEffectiveTheme(normalized);
+    root.setAttribute("data-theme", effective);
+    if (radioLight && radioDark) {
+      radioLight.checked = effective === "light";
+      radioDark.checked = effective === "dark";
+    }
+    var themeMenuBtns = document.querySelectorAll("[data-menu-action='set-theme']");
+    themeMenuBtns.forEach(function (btn) {
+      var val = btn.getAttribute("data-theme-value");
+      var isSelected = val === normalized;
+      btn.setAttribute("aria-checked", isSelected ? "true" : "false");
+      btn.classList.toggle("ds-menu__item--active", isSelected);
+    });
+  }
 
   function setTheme(mode) {
-    root.setAttribute("data-theme", mode);
-    if (radioLight && radioDark) {
-      radioLight.checked = mode === "light";
-      radioDark.checked = mode === "dark";
-    }
+    var normalized = mode === "dark" || mode === "light" ? mode : "auto";
+    applyThemePreference(normalized);
     try {
       fetch("/preferences", {
         method: "POST",
@@ -16,9 +40,27 @@
           "Content-Type": "application/x-www-form-urlencoded",
           "HX-Request": "true",
         },
-        body: "theme=" + encodeURIComponent(mode),
+        body: "theme=" + encodeURIComponent(normalized),
       });
     } catch (_e) {}
+  }
+
+  // Initialize effective theme immediately on load (especially when preference is "auto")
+  var initialPref = root.getAttribute("data-theme-pref") || root.getAttribute("data-theme") || "auto";
+  applyThemePreference(initialPref);
+
+  if (osDarkMql) {
+    var onOsThemeChange = function () {
+      var currentPref = root.getAttribute("data-theme-pref") || "auto";
+      if (currentPref === "auto") {
+        applyThemePreference("auto");
+      }
+    };
+    if (typeof osDarkMql.addEventListener === "function") {
+      osDarkMql.addEventListener("change", onOsThemeChange);
+    } else if (typeof osDarkMql.addListener === "function") {
+      osDarkMql.addListener(onOsThemeChange);
+    }
   }
 
   if (radioLight) {
@@ -401,6 +443,11 @@
         } else if (sbBtn) {
           sbBtn.click();
         }
+        return;
+      }
+      if (action === "set-theme") {
+        var targetTheme = menuActionBtn.getAttribute("data-theme-value") || "auto";
+        setTheme(targetTheme);
         return;
       }
       if (action === "toggle-theme") {
@@ -955,6 +1002,65 @@
       var name = (item.getAttribute("data-guideline-item") || "").toLowerCase();
       item.style.display = !query || name.indexOf(query) !== -1 ? "" : "none";
     });
+  });
+
+  // Live Specialty Focus Highlighting on the RCP Agenda (/agenda) via selector or card badge
+  function applyAgendaSpecialtyFocus(nextExpert) {
+    var agendaList = document.querySelector("[data-testid='agenda-items-list']");
+    if (!agendaList) return;
+
+    var selectEl = document.querySelector("[data-agenda-focus-select]");
+    if (selectEl && selectEl.value !== nextExpert) {
+      selectEl.value = nextExpert;
+      selectEl.dispatchEvent(new Event("change", { bubbles: false }));
+    }
+
+    document.querySelectorAll("[data-focus-expert]").forEach(function (el) {
+      var exp = (el.getAttribute("data-focus-expert") || "").trim();
+      var isActive = nextExpert === "" ? exp === "" : exp === nextExpert;
+      el.setAttribute("aria-pressed", isActive ? "true" : "false");
+      if (el.classList.contains("ds-agenda-item__exp-badge")) {
+        el.classList.toggle("ds-badge--focused-specialty", nextExpert !== "" && exp === nextExpert);
+      }
+    });
+
+    agendaList.querySelectorAll(".ds-agenda-item[data-required-experts]").forEach(function (row) {
+      var raw = row.getAttribute("data-required-experts") || "";
+      var requiredList = raw ? raw.split("|") : [];
+      if (!nextExpert) {
+        row.classList.remove("ds-agenda-item--focused", "ds-agenda-item--dimmed");
+      } else {
+        var matches = requiredList.indexOf(nextExpert) !== -1;
+        row.classList.toggle("ds-agenda-item--focused", matches);
+        row.classList.toggle("ds-agenda-item--dimmed", !matches);
+      }
+    });
+
+    try {
+      var nextUrl = new URL(window.location.href);
+      if (nextExpert) {
+        nextUrl.searchParams.set("focusExpert", nextExpert);
+      } else {
+        nextUrl.searchParams.delete("focusExpert");
+      }
+      window.history.replaceState({}, "", nextUrl.toString());
+    } catch (_err) {}
+  }
+
+  document.addEventListener("change", function (e) {
+    var focusSelect = e.target.closest("[data-agenda-focus-select]");
+    if (!focusSelect) return;
+    applyAgendaSpecialtyFocus((focusSelect.value || "").trim());
+  });
+
+  document.addEventListener("click", function (e) {
+    var focusTrigger = e.target.closest("[data-focus-expert]");
+    if (!focusTrigger) return;
+    e.preventDefault();
+    var clickedExpert = (focusTrigger.getAttribute("data-focus-expert") || "").trim();
+    var currentlyPressed = focusTrigger.getAttribute("aria-pressed") === "true";
+    var nextExpert = !clickedExpert || currentlyPressed ? "" : clickedExpert;
+    applyAgendaSpecialtyFocus(nextExpert);
   });
 
   // Live SSE Queue Banner stream

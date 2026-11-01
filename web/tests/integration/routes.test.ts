@@ -31,7 +31,11 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.headers["content-security-policy"]).toContain("default-src 'self'");
     expect(res.body).toContain('data-testid="sidebar"');
     expect(res.body).toContain('data-testid="queue-banner"');
+    expect(res.body).toContain('data-theme-pref="auto"');
     expect(res.body).toContain('data-testid="theme-selector"');
+    expect(res.body).toContain('data-testid="btn_theme_auto"');
+    expect(res.body).toContain('data-testid="btn_theme_light"');
+    expect(res.body).toContain('data-testid="btn_theme_dark"');
     expect(res.body).toContain('data-testid="kpi-structured"');
     expect(res.body).toContain('data-testid="kpi-priority-high"');
     expect(res.body).toContain('data-testid="worklist-table"');

@@ -20,11 +20,26 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     expect(res.body).toContain("Programmer une nouvelle réunion");
     expect(res.body).toContain("Paramétrage de la réunion RCP");
     expect(res.body).toContain('data-testid="agenda-config-card"');
+    expect(res.body).toContain('data-mobile-collapsible="true"');
+    expect(res.body).toContain('data-testid="agenda-specialty-focus-bar"');
+    expect(res.body).toContain('data-testid="select-focus-specialty"');
+    expect(res.body).toContain('data-agenda-focus-select="true"');
+    expect(res.body).toContain("ds-agenda-header__desktop-action");
     expect(res.body).toContain("FICTIVE Jeanne");
     expect(res.body).toContain("MODÈLE Paul");
     expect(res.body).toContain('data-testid="agenda-expert-chips"');
     expect(res.body).toContain('data-testid="btn_schedule_new_meeting"');
     expect(res.body).not.toContain("Reléguer les dossiers incomplets");
+
+    // Focus on specialty "pancreas expert" highlights matching RCP dossiers and dims others
+    const focusRes = await app.inject({
+      method: "GET",
+      url: "/agenda?domain=oncology&focusExpert=pancreas%20expert",
+    });
+    expect(focusRes.statusCode).toBe(200);
+    expect(focusRes.body).toContain("ds-agenda-item--focused");
+    expect(focusRes.body).toContain("ds-agenda-item--dimmed");
+    expect(focusRes.body).toContain("ds-badge--focused-specialty");
   });
 
   it("hides settings when no meeting is scheduled and renders Dossier précédent / Dossier suivant when opening a dossier from the agenda", async () => {

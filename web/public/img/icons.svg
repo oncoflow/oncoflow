@@ -232,6 +232,16 @@
   <symbol id="ic-star" viewBox="0 0 24 24">
     <polygon points="12,3.5 14.6,8.8 20.5,9.6 16.2,13.7 17.2,19.5 12,16.8 6.8,19.5 7.8,13.7 3.5,9.6 9.4,8.8"/>
   </symbol>
+  <symbol id="ic-lock" viewBox="0 0 24 24">
+    <rect x="5" y="11" width="14" height="10" rx="2"/>
+    <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+    <circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="ic-unlock" viewBox="0 0 24 24">
+    <rect x="5" y="11" width="14" height="10" rx="2"/>
+    <path d="M8 11V7a4 4 0 0 1 7.6-1.8"/>
+    <circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none"/>
+  </symbol>
   <symbol id="ic-trend-up" viewBox="0 0 24 24">
     <path d="m4 16 6-6 4 4 6-6"/>
     <path d="M15 8h5v5"/>

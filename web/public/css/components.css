@@ -1489,6 +1489,17 @@ a.ds-kpi:hover {
 :root[data-theme="dark"] .ds-toolbar {
   box-shadow: var(--ds-shadow-sm);
 }
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] .ds-card,
+  :root[data-theme="auto"] .ds-section,
+  :root[data-theme="auto"] .ds-opinion,
+  :root[data-theme="auto"] .ds-synoptic,
+  :root[data-theme="auto"] .ds-kpi,
+  :root[data-theme="auto"] .ds-table-wrap,
+  :root[data-theme="auto"] .ds-toolbar {
+    box-shadow: var(--ds-shadow-sm);
+  }
+}
 .ds-markers dt { font-size: var(--ds-text-xs); font-weight: var(--ds-weight-medium); color: var(--ds-color-text-muted); }
 .ds-markers dd { margin: 0; font-weight: var(--ds-weight-semibold); display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); overflow-wrap: anywhere; }
 .ds-markers dd.is-missing { color: var(--ds-color-text-subtle); font-weight: var(--ds-weight-regular); font-style: italic; }
@@ -1691,6 +1702,14 @@ article[data-href] {
 .ds-table__actions { text-align: right !important; white-space: nowrap; }
 .ds-table__primary-link { font-weight: var(--ds-weight-semibold); color: var(--ds-color-text); text-decoration: none; }
 .ds-table__primary-link:hover { color: var(--ds-color-primary-text); }
+.ds-table__cell-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
+}
 
 .ds-sort {
   display: inline-flex;
@@ -1864,10 +1883,12 @@ article[data-href] {
   position: relative;
   display: inline-flex;
   width: 100%;
-  min-width: 10.5rem;
+  max-width: 100%;
+  min-width: 0;
 }
 .ds-m3-select--sm {
-  min-width: 8.5rem;
+  min-width: 0;
+  max-width: 100%;
   width: auto;
 }
 .ds-m3-select__trigger {
@@ -2001,9 +2022,9 @@ article[data-href] {
 .ds-m3-select__label {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
 }
 .ds-m3-select__icon {
   display: inline-grid;
@@ -2016,6 +2037,17 @@ article[data-href] {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.ds-m3-select__value > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ds-input::placeholder, .ds-textarea::placeholder { color: var(--ds-color-text-subtle); }
 .ds-input:focus-visible, .ds-select:focus-visible, .ds-textarea:focus-visible { outline: none; border-color: var(--ds-color-primary); box-shadow: inset 0 0 0 1px var(--ds-color-primary); }
@@ -3894,16 +3926,16 @@ a.ds-timeline__link:hover {
 /* 21. Mobile-First Responsive System (< 48rem / 768px & < 36rem / 576px) == */
 /* Desktop (>= 64rem / 1024px) remains 100% untouched                        */
 @media (max-width: 48rem) {
-  /* Bottom Navigation Bar (M3 Compact Navigation Bar) */
+  /* Bottom Navigation Bar (M3 Compact Navigation Bar — 5 items on 1 single row) */
   .ds-bottom-nav {
     position: fixed;
     inset: auto 0 0 0;
     z-index: var(--ds-z-topbar, 30);
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     align-items: center;
     min-height: calc(3.875rem + env(safe-area-inset-bottom, 0px));
-    padding: 0.25rem var(--ds-space-2) calc(0.25rem + env(safe-area-inset-bottom, 0px));
+    padding: 0.25rem var(--ds-space-1) calc(0.25rem + env(safe-area-inset-bottom, 0px));
     background: var(--ds-sidebar-bg);
     border-top: 1px solid var(--ds-color-border);
     box-shadow: 0 -2px 10px rgb(0 0 0 / 0.06);
@@ -3914,12 +3946,13 @@ a.ds-timeline__link:hover {
     align-items: center;
     justify-content: center;
     gap: 2px;
-    padding: 0.2rem 0.25rem;
+    padding: 0.2rem 0.125rem;
     color: var(--ds-sidebar-text-muted);
     text-decoration: none;
-    font-size: 0.6875rem;
+    font-size: 0.65rem;
     font-weight: var(--ds-weight-medium);
     min-width: 0;
+    white-space: nowrap;
   }
   .ds-bottom-nav__item:hover {
     text-decoration: none;
@@ -3929,7 +3962,8 @@ a.ds-timeline__link:hover {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 3.5rem;
+    width: 2.75rem;
+    max-width: 100%;
     height: 1.75rem;
     border-radius: var(--ds-radius-pill);
     transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
@@ -4143,12 +4177,29 @@ a.ds-timeline__link:hover {
   .ds-table--dense td,
   .ds-table td {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--ds-space-3);
+    gap: var(--ds-space-2);
     padding: 0.35rem 0;
     border-bottom: 1px solid color-mix(in srgb, var(--ds-color-border) 55%, transparent);
     text-align: right;
+    min-width: 0;
+  }
+  .ds-table__cell-badges {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.25rem;
+    flex: 1 1 12rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .ds-table td .ds-badge {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .ds-table td[data-label]::before {
     content: attr(data-label);
@@ -4332,13 +4383,13 @@ a.ds-timeline__link:hover {
 }
 
 /* ==========================================================================
-   Next RCP / MDT Session Agenda Builder (.ds-agenda-*)
+   Next RCP / MDT Session Agenda Builder (.ds-agenda-*) — 100% Mobile-First
    ========================================================================== */
 .ds-agenda-header__title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--ds-space-3);
+  gap: var(--ds-space-2);
 }
 .ds-agenda-summary-strip {
   display: inline-flex;
@@ -4347,24 +4398,35 @@ a.ds-timeline__link:hover {
   gap: var(--ds-space-2);
 }
 
+/* Mobile-First Config Toolbar: 1 column on mobile, progressive grid on tablet/desktop */
 .ds-agenda-toolbar {
   display: grid;
-  grid-template-columns: minmax(22rem, 1.5fr) minmax(13rem, 0.75fr) minmax(13rem, 0.75fr);
-  align-items: end;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--ds-space-3);
-  padding: var(--ds-space-3) var(--ds-space-4);
+  padding: var(--ds-space-3);
   overflow: visible;
 }
 .ds-agenda-toolbar__form {
   display: grid;
-  grid-template-columns: 11.5rem minmax(13rem, 1fr);
-  align-items: end;
-  gap: var(--ds-space-3);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--ds-space-2);
   margin: 0;
+  min-width: 0;
 }
+.ds-agenda-toolbar__date,
+.ds-agenda-toolbar__strategy,
 .ds-agenda-toolbar__selector {
   position: relative;
   min-width: 0;
+}
+.ds-agenda-toolbar .ds-m3-select__panel,
+.ds-agenda-onboarding .ds-m3-select__panel {
+  left: 0;
+  right: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .ds-agenda-dropdown {
@@ -4387,26 +4449,21 @@ a.ds-timeline__link:hover {
 .ds-agenda-dropdown__trigger::-webkit-details-marker {
   display: none;
 }
+/* Mobile-First Dropdown Panel: inline full-width on mobile so it never clips off-screen */
 .ds-agenda-dropdown__panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: var(--ds-z-popover, 60);
-  width: min(24rem, 90vw);
-  max-height: 20rem;
+  position: static;
+  width: 100%;
+  max-height: 16rem;
+  margin-top: var(--ds-space-2);
   overflow-y: auto;
   padding: var(--ds-space-3);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-menu-bg, var(--ds-color-surface));
   border: 1px solid var(--ds-color-border-strong);
-  box-shadow: var(--ds-shadow-lg);
+  box-shadow: var(--ds-shadow-md);
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-2);
-}
-.ds-agenda-dropdown__panel--right {
-  left: auto;
-  right: 0;
 }
 .ds-agenda-dropdown__header {
   font-size: var(--ds-text-xs);
@@ -4472,7 +4529,7 @@ a.ds-timeline__link:hover {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--ds-space-3);
+  gap: var(--ds-space-2);
 }
 .ds-agenda-list {
   display: flex;
@@ -4482,26 +4539,35 @@ a.ds-timeline__link:hover {
   padding: 0;
   list-style: none;
 }
+/* Mobile-First Agenda Item: M3 Filled Surface Container (soft tonal background, no border) */
+.ds-card.ds-agenda-item,
 .ds-agenda-item {
   display: grid;
-  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--ds-space-3);
-  padding: var(--ds-space-3) var(--ds-space-4);
+  grid-template-columns: 2.85rem minmax(0, 1fr);
+  align-items: start;
+  gap: var(--ds-space-2);
+  padding: var(--ds-space-3);
+  border: 0 !important;
+  box-shadow: none !important;
+  border-radius: var(--ds-radius-lg, 1rem);
+  background: var(--ds-color-surface-sunken);
+  transition: background-color var(--ds-duration-fast) var(--ds-ease), opacity var(--ds-duration-fast) var(--ds-ease);
 }
-.ds-agenda-item--urgent {
-  border-color: var(--ds-rcp-red-border);
-}
+.ds-card.ds-agenda-item--quorum-warn,
 .ds-agenda-item--quorum-warn {
-  border-color: var(--ds-rcp-orange-border);
+  background: color-mix(in srgb, var(--ds-color-warning-bg) 35%, var(--ds-color-surface-sunken));
+}
+.ds-card.ds-agenda-item--urgent,
+.ds-agenda-item--urgent {
+  background: color-mix(in srgb, var(--ds-color-danger-bg) 35%, var(--ds-color-surface-sunken));
 }
 .ds-agenda-item__rank {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 3.25rem;
-  height: 3.25rem;
+  width: 2.85rem;
+  height: 2.85rem;
   border-radius: var(--ds-radius-md);
   font-family: var(--ds-font-mono);
   font-weight: var(--ds-weight-bold);
@@ -4568,15 +4634,20 @@ a.ds-timeline__link:hover {
   gap: var(--ds-space-1);
   padding: 0.15rem 0.55rem;
   border-radius: var(--ds-radius-pill);
-  background: var(--ds-color-surface-sunken);
+  background: color-mix(in srgb, var(--ds-color-surface) 75%, transparent);
   color: var(--ds-color-text-muted);
   font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-medium);
 }
 .ds-agenda-item__actions {
+  grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--ds-space-1);
+  padding-top: var(--ds-space-2);
+  border-top: 1px solid color-mix(in srgb, var(--ds-color-border) 45%, transparent);
 }
 .ds-agenda-item__actions form {
   margin: 0;
@@ -4614,13 +4685,13 @@ a.ds-timeline__link:hover {
   color: var(--ds-color-text);
 }
 
-/* Direct Onboarding Modal ("Programmer une nouvelle réunion") */
+/* Direct Onboarding Modal ("Programmer une nouvelle réunion") — Mobile-First */
 .ds-agenda-onboarding {
   width: min(40rem, 94vw);
 }
 .ds-agenda-onboarding__grid {
   display: grid;
-  grid-template-columns: 11.5rem minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--ds-space-3);
 }
 .ds-agenda-onboarding__checklist {
@@ -4657,20 +4728,28 @@ a.ds-timeline__link:hover {
   min-width: 0;
 }
 
-/* Explicit Meeting Settings Header ("Paramétrage de la réunion RCP") */
+/* Explicit Collapsible Meeting Settings ("Paramétrage de la réunion RCP") — collapsed on mobile via data-mobile-collapsible */
 .ds-agenda-config-section {
   display: flex;
   flex-direction: column;
-  gap: var(--ds-space-2);
-  padding: 0.75rem 1rem !important;
+  padding: 0 !important;
+  overflow: visible;
 }
 .ds-agenda-config-section__header {
+  list-style: none;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--ds-space-2);
-  padding-bottom: 0.45rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+.ds-agenda-config-section__header::-webkit-details-marker {
+  display: none;
+}
+.ds-agenda-config-section[open] > .ds-agenda-config-section__header {
   border-bottom: 1px solid var(--ds-color-border);
 }
 .ds-agenda-config-section__title {
@@ -4682,60 +4761,255 @@ a.ds-timeline__link:hover {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--ds-color-primary-text);
+  min-width: 0;
+}
+.ds-agenda-config-section__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  flex: none;
+}
+.ds-agenda-config-section__hint {
+  display: none;
+}
+.ds-agenda-config-section__chevron {
+  transition: transform var(--ds-duration-fast) var(--ds-ease);
+}
+.ds-agenda-config-section:not([open]) .ds-agenda-config-section__chevron {
+  transform: rotate(-90deg);
 }
 
-/* Agenda Dossier Previous / Next Navigation Bar (Single Line: Left Prev | Center Info | Right Next) */
-.ds-card.ds-agenda-dossier-nav,
-.ds-agenda-dossier-nav {
+/* Mobile-First: Hide secondary header actions (Worklist & Vider) on mobile */
+.ds-agenda-header__desktop-action {
+  display: none !important;
+}
+
+/* Specialty Focus Selector Bar ("Focus spécialité") & Highlighted Agenda Rows — Mobile-First */
+.ds-agenda-focus-bar {
   display: flex;
-  flex-direction: row !important;
   flex-wrap: nowrap;
   align-items: center;
+  gap: var(--ds-space-2);
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-color-surface-sunken);
+  border: 1px solid var(--ds-color-border);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.ds-agenda-focus-bar:has(.ds-m3-select.is-open) {
+  position: relative;
+  z-index: var(--ds-z-popover, 60);
+}
+.ds-agenda-focus-bar__label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-1);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-bold);
+  color: var(--ds-color-text-muted);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.ds-agenda-focus-bar__label-suffix {
+  display: none;
+}
+.ds-agenda-focus-bar__control {
+  flex: 1 1 0%;
+  min-width: 0;
+  max-width: 100%;
+}
+.ds-agenda-focus-bar .ds-m3-select,
+.ds-agenda-focus-bar .ds-m3-select--sm,
+.ds-agenda-focus-bar .ds-select,
+.ds-agenda-focus-bar .ds-m3-select__trigger {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.ds-agenda-focus-bar .ds-m3-select__panel {
+  left: 0;
+  right: 0;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.ds-agenda-item__exp-badge {
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform var(--ds-duration-fast) var(--ds-ease), box-shadow var(--ds-duration-fast) var(--ds-ease);
+}
+.ds-agenda-item__exp-badge:hover {
+  transform: translateY(-1px);
+}
+.ds-badge--focused-specialty {
+  box-shadow: 0 0 0 2px var(--ds-color-primary);
+  font-weight: var(--ds-weight-bold);
+}
+.ds-card.ds-agenda-item--focused,
+.ds-agenda-item--focused {
+  border: 0 !important;
+  box-shadow: none !important;
+  background: color-mix(in srgb, var(--ds-color-primary-soft) 55%, var(--ds-color-surface)) !important;
+}
+.ds-agenda-item--dimmed {
+  opacity: 0.45;
+  transition: opacity var(--ds-duration-fast) var(--ds-ease);
+}
+.ds-agenda-item--dimmed:hover {
+  opacity: 0.85;
+}
+
+/* Agenda Dossier Previous / Next Navigation Bar — STRICTLY 1 SINGLE LINE ON ALL VIEWPORTS (Mobile & Desktop) */
+.ds-card.ds-agenda-dossier-nav,
+.ds-agenda-dossier-nav {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--ds-space-3);
-  padding: 0.5rem 0.85rem !important;
+  gap: var(--ds-space-2);
+  padding: 0.45rem 0.65rem !important;
   border: 1px solid var(--ds-color-primary);
   background: color-mix(in srgb, var(--ds-color-primary-soft) 35%, var(--ds-color-surface));
+  overflow-x: auto;
 }
 .ds-agenda-dossier-nav__prev {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   flex: 0 0 auto;
+  white-space: nowrap;
 }
 .ds-agenda-dossier-nav__center {
   display: inline-flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: var(--ds-space-2);
+  gap: var(--ds-space-1);
   min-width: 0;
+  flex: 0 1 auto;
+  white-space: nowrap;
 }
 .ds-agenda-dossier-nav__next {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
   flex: 0 0 auto;
+  white-space: nowrap;
+}
+/* Mobile base (< 38rem): ultra-compact single-line labels so Prev | Center | Next never wrap */
+.ds-agenda-dossier-nav__btn-prefix,
+.ds-agenda-dossier-nav__back-label,
+.ds-agenda-dossier-nav__pos-label,
+.ds-agenda-dossier-nav__patient-name,
+.ds-agenda-dossier-nav__session-date {
+  display: none;
 }
 
-@media (max-width: 68rem) {
-  .ds-agenda-toolbar {
-    grid-template-columns: minmax(0, 1fr);
-  }
+/* Progressive enhancement: Small Tablet (>= 38rem / 608px) */
+@media (min-width: 38rem) {
   .ds-agenda-toolbar__form {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 11.5rem minmax(0, 1fr);
+    align-items: end;
+    gap: var(--ds-space-3);
   }
   .ds-agenda-onboarding__grid {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 11.5rem minmax(0, 1fr);
   }
+  .ds-agenda-dossier-nav__btn-prefix,
+  .ds-agenda-dossier-nav__pos-label,
+  .ds-agenda-focus-bar__label-suffix {
+    display: inline;
+  }
+  .ds-agenda-focus-bar__control {
+    max-width: 18rem;
+  }
+}
+
+/* Progressive enhancement: Tablet (>= 48rem / 768px) */
+@media (min-width: 48rem) {
+  .ds-agenda-header__desktop-action {
+    display: inline-flex !important;
+  }
+  .ds-agenda-config-section__header {
+    padding: 0.75rem 1rem;
+  }
+  .ds-agenda-config-section__hint {
+    display: inline;
+  }
+  .ds-agenda-toolbar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ds-agenda-toolbar__form {
+    grid-column: 1 / -1;
+  }
+  .ds-agenda-dropdown__panel {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: var(--ds-z-popover, 60);
+    width: min(24rem, 90vw);
+    max-height: 20rem;
+    margin-top: 0;
+    box-shadow: var(--ds-shadow-lg);
+  }
+  .ds-agenda-dropdown__panel--right {
+    left: auto;
+    right: 0;
+  }
+  .ds-card.ds-agenda-dossier-nav,
+  .ds-agenda-dossier-nav {
+    gap: var(--ds-space-3);
+    padding: 0.5rem 0.9rem !important;
+  }
+  .ds-agenda-dossier-nav__center {
+    gap: var(--ds-space-2);
+  }
+  .ds-agenda-dossier-nav__back-label,
+  .ds-agenda-dossier-nav__session-date {
+    display: inline;
+  }
+}
+
+/* Progressive enhancement: Desktop (>= 56rem / 896px) */
+@media (min-width: 56rem) {
+  .ds-card.ds-agenda-item,
   .ds-agenda-item {
-    grid-template-columns: 3rem minmax(0, 1fr);
+    grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--ds-space-3);
+    padding: var(--ds-space-3) var(--ds-space-4);
+  }
+  .ds-agenda-item__rank {
+    width: 3.25rem;
+    height: 3.25rem;
   }
   .ds-agenda-item__actions {
-    grid-column: 1 / -1;
-    justify-content: flex-end;
-    padding-top: var(--ds-space-2);
-    border-top: 1px solid var(--ds-color-border);
+    grid-column: auto;
+    flex-wrap: nowrap;
+    padding-top: 0;
+    border-top: 0;
+  }
+}
+
+/* Progressive enhancement: Wide Desktop (>= 68rem / 1088px) */
+@media (min-width: 68rem) {
+  .ds-agenda-toolbar {
+    grid-template-columns: minmax(21rem, 1.4fr) minmax(13rem, 0.8fr) minmax(13rem, 0.8fr);
+    align-items: end;
+  }
+  .ds-agenda-toolbar__form {
+    grid-column: auto;
+  }
+  .ds-agenda-dossier-nav__patient-name {
+    display: inline;
   }
 }
 

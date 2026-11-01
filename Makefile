@@ -181,19 +181,6 @@ start-ui-dev: cloudrun-proxy docker-up-proxy
 start-web-dev: cloudrun-proxy docker-up-proxy
 	@echo -e "$(CYAN)--> Vérification de la disponibilité du serveur llama.cpp (Cloud Run)...$(RESET)"
 	@READY=0; \
-	for i in {1..30}; do \
-		if curl -s -m 2 http://127.0.0.1:$(CLOUDRUN_PORT)/health 2>/dev/null | grep -q '"status":"ok"'; then \
-			READY=1; \
-			echo -e "  [$(GREEN)PRÊT$(RESET)] Serveur llama.cpp opérationnel."; \
-			break; \
-		fi; \
-		if [ $$i -eq 1 ]; then \
-			echo -n "  Attente de démarrage du modèle sur Cloud Run (cold start possible)"; \
-		else \
-			echo -n "."; \
-		fi; \
-		sleep 2; \
-	done; \
 	if [ $$READY -eq 0 ]; then \
 		echo -e "\n  [$(YELLOW)ATTENTION$(RESET)] Le serveur llama.cpp n'a pas encore répondu au /health (le chargement du modèle peut encore être en cours)."; \
 	fi

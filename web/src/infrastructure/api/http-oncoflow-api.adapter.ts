@@ -459,6 +459,15 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(domain)}`,
         domain,
       );
+      const topPatientObj =
+        !Array.isArray(res) && res.patient && typeof res.patient === "object"
+          ? (res.patient as Record<string, unknown>)
+          : null;
+      const topPatientId = topPatientObj?.patient_id
+        ? String(topPatientObj.patient_id)
+        : !Array.isArray(res) && res.patient_id
+          ? String(res.patient_id)
+          : patientId;
       const list = Array.isArray(res)
         ? res
         : Array.isArray(res.enriched_rcps)
@@ -468,7 +477,13 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
             : Array.isArray(res.rcps)
               ? (res.rcps as Array<Record<string, unknown>>)
               : [res];
-      return list.map((item) => this.mapRawDetail(item, domain));
+      return list.map((item) => {
+        const mapped = this.mapRawDetail(item, domain);
+        if (!mapped.patientId && topPatientId) {
+          mapped.patientId = topPatientId;
+        }
+        return mapped;
+      });
     } catch (err) {
       if (this.fallback) return this.fallback.getPatientForms(patientId, domain);
       if (err instanceof Error && err.message.includes("HTTP 404")) {

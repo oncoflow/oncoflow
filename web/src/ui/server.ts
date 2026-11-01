@@ -240,7 +240,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const language: Language = rawLang === "en" ? "en" : "fr";
 
     const rawTheme = (query.theme || cookies.ds_theme || config.defaultTheme).toLowerCase();
-    const theme: ThemeMode = rawTheme === "dark" ? "dark" : "light";
+    const theme: ThemeMode = rawTheme === "dark" ? "dark" : rawTheme === "light" ? "light" : "auto";
 
     const expertMode = cookies.ds_expert === "true" || query.expert === "true";
 
@@ -313,7 +313,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       secure: config.devMode === false,
     };
 
-    if (body.theme === "light" || body.theme === "dark") {
+    if (body.theme === "auto" || body.theme === "light" || body.theme === "dark") {
       reply.setCookie("ds_theme", body.theme, cookieOpts);
     }
     if (body.language === "fr" || body.language === "en") {
@@ -407,11 +407,19 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const session = resolveSession(req);
     const query = (req.query ?? {}) as Record<string, string | undefined>;
     const openOnboarding = query.onboarding === "1" || query.onboarding === "true";
+    const focusExpert = query.focusExpert?.trim() || null;
     const [agenda, { queueStats, queueJobs }] = await Promise.all([
       agendaUseCase.getAgenda(session.domain),
       loadShellQueue(session.domain),
     ]);
-    const html = renderAgendaPage(agenda, session, queueStats, queueJobs, openOnboarding);
+    const html = renderAgendaPage(
+      agenda,
+      session,
+      queueStats,
+      queueJobs,
+      openOnboarding,
+      focusExpert,
+    );
     return reply.type("text/html; charset=utf-8").send(html);
   });
 
@@ -651,15 +659,27 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   });
 
   async function resolveAgendaDossierNav(
-    dossier: { patientId: string | null; currentForm: { file: string } },
+    dossier: {
+      patientId: string | null;
+      currentForm: { file: string };
+      timeline: Array<{ file: string }>;
+    },
     domain: ClinicalDomain,
     fromQuery: string | undefined,
+    requestedTarget?: string,
+    requestedFile?: string,
   ) {
     if (fromQuery !== "agenda") return undefined;
     const agenda = await agendaUseCase.getAgenda(domain);
     if (agenda.items.length === 0) return undefined;
+    const timelineFiles = new Set(dossier.timeline.map((t) => t.file));
     const idx = agenda.items.findIndex(
-      (i) => i.patientId === dossier.patientId || i.filename === dossier.currentForm.file,
+      (i) =>
+        (requestedTarget && (i.patientId === requestedTarget || i.filename === requestedTarget)) ||
+        (requestedFile && (i.filename === requestedFile || i.patientId === requestedFile)) ||
+        (dossier.patientId !== null && i.patientId === dossier.patientId) ||
+        i.filename === dossier.currentForm.file ||
+        timelineFiles.has(i.filename),
     );
     if (idx < 0) return undefined;
     const prev = idx > 0 ? agenda.items[idx - 1] : undefined;
@@ -670,8 +690,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       sessionDate: agenda.sessionDate,
       prevPatientId: prev?.patientId ?? null,
       prevPatientName: prev?.patientName ?? null,
+      prevFilename: prev?.filename ?? null,
       nextPatientId: next?.patientId ?? null,
       nextPatientName: next?.patientName ?? null,
+      nextFilename: next?.filename ?? null,
     };
   }
 
@@ -688,7 +710,13 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply.code(404).type("text/html; charset=utf-8").send("<h1>Dossier introuvable</h1>");
     }
 
-    const agendaNav = await resolveAgendaDossierNav(dossier, session.domain, query.from);
+    const agendaNav = await resolveAgendaDossierNav(
+      dossier,
+      session.domain,
+      query.from,
+      patientId,
+      query.file,
+    );
     const html = renderDossierPage(
       dossier,
       session,
@@ -717,7 +745,13 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
         .send("<h1>Fiche RCP introuvable</h1>");
     }
 
-    const agendaNav = await resolveAgendaDossierNav(dossier, session.domain, query.from);
+    const agendaNav = await resolveAgendaDossierNav(
+      dossier,
+      session.domain,
+      query.from,
+      filename,
+      filename,
+    );
     const html = renderDossierPage(
       dossier,
       session,

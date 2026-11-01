@@ -55,7 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WebAppConfig {
     defaultDomain,
     allowedDomains: allowedRaw.length > 0 ? allowedRaw : ["oncology", "sma"],
     defaultLanguage: env.APP_LANGUAGE === "en" || env.APP_LANGUAGE === "english" ? "en" : "fr",
-    defaultTheme: env.APP_THEME === "dark" ? "dark" : "light",
+    defaultTheme: env.APP_THEME === "dark" ? "dark" : env.APP_THEME === "light" ? "light" : "auto",
     useFakeApiFallback,
   };
 }

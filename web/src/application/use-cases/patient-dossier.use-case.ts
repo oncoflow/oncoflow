@@ -161,6 +161,12 @@ export class PatientDossierUseCase {
     if (forms.length === 0) {
       forms = await this.api.getPatientForms(target, domain);
     }
+    if (forms.length === 0 && selectedFile && selectedFile !== target) {
+      const bySelected = await this.api.getFormDetail(selectedFile, domain);
+      if (bySelected) {
+        forms = [bySelected];
+      }
+    }
     if (forms.length === 0) {
       const single = await this.api.getFormDetail(target, domain);
       if (!single) return null;
@@ -318,7 +324,7 @@ export class PatientDossierUseCase {
         : null);
 
     return {
-      patientId: currentForm.patientId,
+      patientId: currentForm.patientId ?? (!target.toLowerCase().endsWith(".pdf") ? target : null),
       patientName,
       firstName,
       lastName,

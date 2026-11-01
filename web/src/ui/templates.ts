@@ -215,7 +215,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           .join("");
 
   return `<!doctype html>
-<html lang="${esc(lang)}" data-theme="${esc(session.theme)}">
+<html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -341,28 +341,32 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           </button>
         </form>
 
-        <!-- Sélecteur de thème Clair / Sombre M3 -->
-        <div class="ds-segmented" role="radiogroup" aria-label="Choix du thème (Clair ou Sombre)" data-testid="theme-selector">
-          <input type="radio" name="ds-theme" id="theme-light" value="light" ${session.theme === "light" ? "checked" : ""}>
-          <label for="theme-light">${iconSvg("ic-sun")} ${esc(t("topbar.theme.light", lang))}</label>
-          <input type="radio" name="ds-theme" id="theme-dark" value="dark" ${session.theme === "dark" ? "checked" : ""}>
-          <label for="theme-dark">${iconSvg("ic-moon")} ${esc(t("topbar.theme.dark", lang))}</label>
-        </div>
-
         <!-- Menu contextuel d'accès rapide (...) -->
         <details class="ds-menu" data-testid="menu-topbar-actions">
           <summary class="ds-menu__trigger" aria-label="Menu contextuel d'affichage et d'accès rapide" title="Plus d'options">
             ${iconSvg("ic-more-vert")}
           </summary>
           <div class="ds-menu__panel" role="menu">
+            <div class="ds-menu__header">${lang === "fr" ? "Thème d'affichage" : "Display Theme"}</div>
+            <div role="group" aria-label="${lang === "fr" ? "Choix du thème" : "Theme selection"}" data-testid="theme-selector">
+              <button type="button" class="ds-menu__item ${session.theme === "auto" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${session.theme === "auto" ? "true" : "false"}" data-menu-action="set-theme" data-theme-value="auto" data-testid="btn_theme_auto">
+                ${iconSvg("ic-palette")}
+                <span>${esc(t("topbar.theme.auto", lang))}</span>
+              </button>
+              <button type="button" class="ds-menu__item ${session.theme === "light" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${session.theme === "light" ? "true" : "false"}" data-menu-action="set-theme" data-theme-value="light" data-testid="btn_theme_light">
+                ${iconSvg("ic-sun")}
+                <span>${esc(t("topbar.theme.light", lang))}</span>
+              </button>
+              <button type="button" class="ds-menu__item ${session.theme === "dark" ? "ds-menu__item--active" : ""}" role="menuitemradio" aria-checked="${session.theme === "dark" ? "true" : "false"}" data-menu-action="set-theme" data-theme-value="dark" data-testid="btn_theme_dark">
+                ${iconSvg("ic-moon")}
+                <span>${esc(t("topbar.theme.dark", lang))}</span>
+              </button>
+            </div>
+            <hr class="ds-menu__divider">
             <div class="ds-menu__header">${lang === "fr" ? "Navigation & Affichage" : "Navigation & View"}</div>
             <button type="button" class="ds-menu__item" role="menuitem" data-menu-action="toggle-rail">
               ${iconSvg("ic-menu")}
               <span>${lang === "fr" ? "Replier / Déplier le menu latéral" : "Toggle sidebar menu"}</span>
-            </button>
-            <button type="button" class="ds-menu__item" role="menuitem" data-menu-action="toggle-theme">
-              ${iconSvg(session.theme === "dark" ? "ic-sun" : "ic-moon")}
-              <span>${lang === "fr" ? "Basculer Thème Clair / Sombre" : "Toggle Light / Dark Theme"}</span>
             </button>
             <button type="button" class="ds-menu__item" role="menuitem" data-open="queue-drawer">
               ${iconSvg("ic-layers")}
@@ -494,13 +498,20 @@ export function renderWorklistPage(
             const dossierHref = c.patientId
               ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
               : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
-            const specsHtml = c.specialties
+            const specsBadges = c.specialties
               .slice(0, 3)
               .map((s) => {
                 const p = getAgentPresentation(s, lang);
-                return `<span class="ds-badge ds-badge--specialty ds-badge--sm">${iconSvg(p.icon)} ${esc(p.label)}</span>`;
+                return `<span class="ds-badge ds-badge--specialty ds-badge--sm" title="${esc(p.label)}">${iconSvg(p.icon)} ${esc(p.shortLabel)}</span>`;
               })
-              .join(" ");
+              .join("");
+            const specsHtml = specsBadges
+              ? `<div class="ds-table__cell-badges">${specsBadges}${
+                  c.specialties.length > 3
+                    ? `<span class="ds-badge ds-badge--neutral ds-badge--sm">+${c.specialties.length - 3}</span>`
+                    : ""
+                }</div>`
+              : "";
 
             const completenessCell =
               !c.isComplete && c.missingItems.length > 0
@@ -1150,8 +1161,10 @@ export interface AgendaDossierNavContext {
   sessionDate: string;
   prevPatientId: string | null;
   prevPatientName: string | null;
+  prevFilename?: string | null;
   nextPatientId: string | null;
   nextPatientName: string | null;
+  nextFilename?: string | null;
 }
 
 export function renderDossierPage(
@@ -1194,7 +1207,7 @@ export function renderDossierPage(
             ? "orange"
             : "green";
       return `<li class="ds-timeline__item">
-        <a class="ds-timeline__link ds-timeline__link--${stepTone}" href="${baseTargetUrl}?file=${encodeURIComponent(step.file)}&domain=${domainParam}" ${step.isCurrent ? 'aria-current="step"' : ""}>
+        <a class="ds-timeline__link ds-timeline__link--${stepTone}" href="${baseTargetUrl}?file=${encodeURIComponent(step.file)}&domain=${domainParam}${agendaNav ? "&from=agenda" : ""}" ${step.isCurrent ? 'aria-current="step"' : ""}>
           <span class="ds-timeline__marker ${markerCls}" aria-hidden="true">${iconSvg(markerIcon, "ds-icon--xs")}</span>
           <span class="ds-timeline__content">
             <span class="ds-timeline__date">${esc(step.mdtDate)} ${step.isLatest ? iconSvg("ic-star", "ds-icon--xs") : ""}</span>
@@ -1523,30 +1536,30 @@ export function renderDossierPage(
         <div class="ds-agenda-dossier-nav__prev">
           ${
             agendaNav.prevPatientId
-              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.prevPatientId)}?domain=${domainParam}&from=agenda" title="${esc(agendaNav.prevPatientName ?? "")}" data-testid="btn_agenda_prev_dossier">
-                  ← Dossier précédent (#${agendaNav.position - 1}${agendaNav.prevPatientName ? ` · ${esc(agendaNav.prevPatientName)}` : ""})
+              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.prevPatientId)}?domain=${domainParam}&from=agenda${agendaNav.prevFilename ? `&file=${encodeURIComponent(agendaNav.prevFilename)}` : ""}" aria-label="Dossier précédent" title="${esc(agendaNav.prevPatientName ?? "")}" data-testid="btn_agenda_prev_dossier">
+                  ← <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>précédent (#${agendaNav.position - 1})<span class="ds-agenda-dossier-nav__patient-name">${agendaNav.prevPatientName ? ` · ${esc(agendaNav.prevPatientName)}` : ""}</span>
                 </a>`
-              : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled data-testid="btn_agenda_prev_dossier">
-                  ← Dossier précédent
+              : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled aria-label="Dossier précédent" data-testid="btn_agenda_prev_dossier">
+                  ← <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>précédent
                 </button>`
           }
         </div>
         <div class="ds-agenda-dossier-nav__center">
           <a class="ds-btn ds-btn--ghost ds-btn--sm" href="/agenda?domain=${domainParam}" data-testid="btn_back_to_agenda">
-            ${iconSvg("ic-calendar")} Ordre du jour RCP
+            ${iconSvg("ic-calendar")} <span class="ds-agenda-dossier-nav__back-label">Ordre du jour RCP</span>
           </a>
           <span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="agenda-dossier-position">
-            Dossier #${agendaNav.position} / ${agendaNav.total} · Séance du ${esc(agendaNav.sessionDate)}
+            <span class="ds-agenda-dossier-nav__pos-label">Dossier </span>#${agendaNav.position}/${agendaNav.total}<span class="ds-agenda-dossier-nav__session-date"> · ${esc(agendaNav.sessionDate)}</span>
           </span>
         </div>
         <div class="ds-agenda-dossier-nav__next">
           ${
             agendaNav.nextPatientId
-              ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.nextPatientId)}?domain=${domainParam}&from=agenda" title="${esc(agendaNav.nextPatientName ?? "")}" data-testid="btn_agenda_next_dossier">
-                  Dossier suivant (#${agendaNav.position + 1}${agendaNav.nextPatientName ? ` · ${esc(agendaNav.nextPatientName)}` : ""}) →
+              ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.nextPatientId)}?domain=${domainParam}&from=agenda${agendaNav.nextFilename ? `&file=${encodeURIComponent(agendaNav.nextFilename)}` : ""}" aria-label="Dossier suivant" title="${esc(agendaNav.nextPatientName ?? "")}" data-testid="btn_agenda_next_dossier">
+                  <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>suivant (#${agendaNav.position + 1})<span class="ds-agenda-dossier-nav__patient-name">${agendaNav.nextPatientName ? ` · ${esc(agendaNav.nextPatientName)}` : ""}</span> →
                 </a>`
-              : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled data-testid="btn_agenda_next_dossier">
-                  Dossier suivant →
+              : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled aria-label="Dossier suivant" data-testid="btn_agenda_next_dossier">
+                  <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>suivant →
                 </button>`
           }
         </div>
@@ -2488,39 +2501,30 @@ export function renderAgendaPage(
   queueStats: QueueStats,
   queueJobs: QueueJobItem[],
   openOnboarding = false,
+  focusExpert: string | null = null,
 ): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
   const attendingSet = new Set(agenda.attendingExperts);
+  const activeFocusExpert =
+    focusExpert && agenda.availableExperts.includes(focusExpert) ? focusExpert : null;
 
   const strategyOptions: Array<{ value: string; label: string }> = [
     {
       value: "hybrid",
-      label:
-        lang === "fr"
-          ? "Hybride (Recommandé : Urgences + Blocs d'experts)"
-          : "Hybrid (Recommended: Urgency + Expert Clusters)",
+      label: lang === "fr" ? "Hybride (Urgences + Spécialités)" : "Hybrid (Urgency + Specialties)",
     },
     {
       value: "urgency_first",
-      label:
-        lang === "fr"
-          ? "Urgence clinique stricte (Haute → Modérée → Standard)"
-          : "Strict Clinical Urgency First",
+      label: lang === "fr" ? "Par urgence clinique" : "By clinical urgency",
     },
     {
       value: "expert_grouping",
-      label:
-        lang === "fr"
-          ? "Regroupement par spécialistes présents (Temps médical optimisé)"
-          : "Group by Attending Specialists",
+      label: lang === "fr" ? "Par spécialistes présents" : "By attending specialists",
     },
     {
       value: "manual",
-      label:
-        lang === "fr"
-          ? "Ordre personnalisé (Épinglages & déplacements manuels)"
-          : "Custom Manual Order",
+      label: lang === "fr" ? "Ordre personnalisé" : "Custom order",
     },
   ];
 
@@ -2549,7 +2553,7 @@ export function renderAgendaPage(
         >
           <span class="ds-agenda-dropdown__check" aria-hidden="true">${isPresent ? "☑" : "☐"}</span>
           ${iconSvg(pres.icon, "ds-icon--xs")}
-          <span class="ds-agenda-dropdown__item-label">${esc(pres.label)}</span>
+          <span class="ds-agenda-dropdown__item-label" title="${esc(pres.label)}">${esc(pres.shortLabel)}</span>
           <span class="ds-badge ${isPresent ? "ds-badge--complete" : "ds-badge--incomplete"} ds-badge--sm" data-testid="expert-window-${esc(expKey)}">
             ${isPresent ? esc(windowLabel) : `Absent (${caseCount})`}
           </span>
@@ -2588,16 +2592,18 @@ export function renderAgendaPage(
                 },
                 lang,
               );
-              const dossierHref = `/patients/${encodeURIComponent(item.patientId)}?domain=${domainParam}&from=agenda`;
+              const dossierHref = `/patients/${encodeURIComponent(item.patientId)}?domain=${domainParam}&from=agenda${item.filename ? `&file=${encodeURIComponent(item.filename)}` : ""}`;
 
               const reqBadgesHtml = item.requiredExperts
                 .map((expKey) => {
                   const p = getAgentPresentation(expKey, lang);
                   const isPresent = item.presentRequiredExperts.includes(expKey);
+                  const isFocusedBadge = activeFocusExpert === expKey;
+                  const focusClass = isFocusedBadge ? " ds-badge--focused-specialty" : "";
                   if (isPresent) {
-                    return `<span class="ds-badge ds-badge--complete ds-badge--sm" title="Spécialiste présent en séance">${iconSvg("ic-check", "ds-icon--xs")} ${esc(p.label)}</span>`;
+                    return `<button type="button" class="ds-badge ds-badge--complete ds-badge--sm ds-agenda-item__exp-badge${focusClass}" data-focus-expert="${esc(expKey)}" aria-pressed="${isFocusedBadge ? "true" : "false"}" title="Cliquer pour mettre en surbrillance les dossiers concernant ${esc(p.label)}">${iconSvg("ic-check", "ds-icon--xs")} ${esc(p.shortLabel)}</button>`;
                   }
-                  return `<span class="ds-badge ds-badge--urgency-high ds-badge--sm" title="Spécialiste requis mais absent de la séance">${iconSvg("ic-warning", "ds-icon--xs")} ${esc(p.label)} (absent)</span>`;
+                  return `<button type="button" class="ds-badge ds-badge--urgency-high ds-badge--sm ds-agenda-item__exp-badge${focusClass}" data-focus-expert="${esc(expKey)}" aria-pressed="${isFocusedBadge ? "true" : "false"}" title="Spécialiste requis mais absent · Cliquer pour mettre en surbrillance les dossiers concernant ${esc(p.label)}">${iconSvg("ic-warning", "ds-icon--xs")} ${esc(p.shortLabel)} (absent)</button>`;
                 })
                 .join(" ");
 
@@ -2621,17 +2627,22 @@ export function renderAgendaPage(
                     ? "ds-agenda-item__rank--warning"
                     : "ds-agenda-item__rank--standard";
 
-              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""}" data-testid="agenda-item-${esc(item.patientId)}">
+              const isItemFocused =
+                activeFocusExpert !== null && item.requiredExperts.includes(activeFocusExpert);
+              const isItemDimmed =
+                activeFocusExpert !== null && !item.requiredExperts.includes(activeFocusExpert);
+
+              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-required-experts="${esc(item.requiredExperts.join("|"))}" data-testid="agenda-item-${esc(item.patientId)}">
                 <div class="ds-agenda-item__rank ${rankTone}" aria-label="Rang de passage ${item.position}">
                   <span class="ds-agenda-item__pos">#${item.position}</span>
-                  ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-star", "ds-icon--xs")}</span>` : ""}
+                  ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-lock", "ds-icon--xs")}</span>` : ""}
                 </div>
 
                 <div class="ds-agenda-item__main">
                   <div class="ds-agenda-item__top">
                     <div class="ds-agenda-item__identity">
                       <a class="ds-agenda-item__name" href="${dossierHref}">${esc(item.patientName)}</a>
-                      <span class="ds-small ds-muted">#${esc(item.patientId)}${item.dateBirth ? ` · Né(e) le ${esc(item.dateBirth)}` : ""}</span>
+                      ${item.dateBirth ? `<span class="ds-small ds-muted">Né(e) le ${esc(item.dateBirth)}</span>` : ""}
                     </div>
                     <div class="ds-cluster">
                       <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
@@ -2672,8 +2683,8 @@ export function renderAgendaPage(
                   </form>
                   <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
                     <input type="hidden" name="pinned" value="${item.pinned ? "false" : "true"}">
-                    <button type="submit" class="ds-btn ${item.pinned ? "ds-btn--tonal" : "ds-btn--ghost"} ds-btn--sm ds-btn--icon" aria-pressed="${item.pinned ? "true" : "false"}" title="${item.pinned ? "Désépingler la position" : "Verrouiller à ce rang"}" aria-label="${item.pinned ? "Désépingler" : "Épingler"} ${esc(item.patientName)}" data-testid="btn_pin_${esc(item.patientId)}">
-                      ${iconSvg("ic-star", "ds-icon--xs")}
+                    <button type="submit" class="ds-btn ${item.pinned ? "ds-btn--tonal" : "ds-btn--ghost"} ds-btn--sm ds-btn--icon" aria-pressed="${item.pinned ? "true" : "false"}" title="${item.pinned ? "Déverrouiller la position" : "Verrouiller à ce rang"}" aria-label="${item.pinned ? "Déverrouiller" : "Verrouiller"} ${esc(item.patientName)}" data-testid="btn_pin_${esc(item.patientId)}">
+                      ${iconSvg(item.pinned ? "ic-lock" : "ic-unlock", "ds-icon--xs")}
                     </button>
                   </form>
                   <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_agenda_${esc(item.patientId)}">Ouvrir</a>
@@ -2698,7 +2709,7 @@ export function renderAgendaPage(
               const prio = derivePriorityBadgeInfo(cand.priorityLevel, lang, true);
               return `<li class="ds-agenda-candidate" data-testid="agenda-candidate-${esc(cand.patientId)}">
                 <div class="ds-agenda-candidate__info">
-                  <span class="ds-agenda-candidate__name">${esc(cand.patientName)} <span class="ds-small ds-muted">#${esc(cand.patientId)}</span></span>
+                  <span class="ds-agenda-candidate__name">${esc(cand.patientName)}${cand.dateBirth ? ` <span class="ds-small ds-muted">· Né(e) le ${esc(cand.dateBirth)}</span>` : ""}</span>
                   <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
                 </div>
                 <form method="post" action="/agenda/patients?domain=${domainParam}">
@@ -2736,10 +2747,10 @@ export function renderAgendaPage(
     .map((expKey) => {
       const pres = getAgentPresentation(expKey, lang);
       const isChecked = attendingSet.has(expKey) || agenda.attendingExperts.length === 0;
-      return `<label class="ds-agenda-onboarding__check-row">
+      return `<label class="ds-agenda-onboarding__check-row" title="${esc(pres.label)}">
         <input type="checkbox" name="attendingExperts" value="${esc(expKey)}" ${isChecked ? "checked" : ""}>
         ${iconSvg(pres.icon, "ds-icon--xs")}
-        <span>${esc(pres.label)}</span>
+        <span>${esc(pres.shortLabel)}</span>
       </label>`;
     })
     .join("");
@@ -2749,7 +2760,7 @@ export function renderAgendaPage(
       const prio = derivePriorityBadgeInfo(p.priorityLevel, lang, true);
       return `<label class="ds-agenda-onboarding__check-row">
         <input type="checkbox" name="patientIds" value="${esc(p.patientId)}" ${p.checked ? "checked" : ""}>
-        <span class="ds-agenda-onboarding__patient-name">${esc(p.patientName)} <small class="ds-muted">#${esc(p.patientId)}</small></span>
+        <span class="ds-agenda-onboarding__patient-name">${esc(p.patientName)}</span>
         <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
       </label>`;
     })
@@ -2757,15 +2768,53 @@ export function renderAgendaPage(
 
   const hasMeeting = agenda.items.length > 0 && Boolean(agenda.sessionDate);
 
-  const configToolbarHtml = hasMeeting
-    ? `<!-- Session Configuration Section (only shown when a meeting is active) -->
-      <section class="ds-card ds-agenda-config-section" aria-labelledby="heading-agenda-settings" data-testid="agenda-config-card">
-        <div class="ds-agenda-config-section__header">
-          <h2 id="heading-agenda-settings" class="ds-agenda-config-section__title">
-            ${iconSvg("ic-compass", "ds-icon--xs")} Paramétrage de la réunion RCP
-          </h2>
-          <span class="ds-small ds-muted">Ajustez la date, le mode d'organisation, les spécialistes présents et la liste des patients</span>
+  const specialtyFocusOptionsHtml = agenda.availableExperts
+    .map((expKey) => {
+      const pres = getAgentPresentation(expKey, lang);
+      const win = agenda.expertWindows.find((w) => w.expertName === expKey);
+      const caseCount = win?.caseCount ?? 0;
+      const isFocused = activeFocusExpert === expKey;
+
+      return `<option value="${esc(expKey)}" data-icon="${esc(pres.icon)}" ${isFocused ? "selected" : ""}>${esc(pres.shortLabel)} (${caseCount})</option>`;
+    })
+    .join("");
+
+  const specialtyFocusBarHtml = hasMeeting
+    ? `<form method="get" action="/agenda" class="ds-agenda-focus-bar" role="search" aria-label="Focus sur une spécialité pour mettre en surbrillance les dossiers concernés" data-testid="agenda-specialty-focus-bar">
+        <input type="hidden" name="domain" value="${esc(session.domain)}">
+        <label class="ds-agenda-focus-bar__label" for="agenda-focus-expert">
+          ${iconSvg("ic-stethoscope", "ds-icon--xs")} <span>Focus<span class="ds-agenda-focus-bar__label-suffix"> spécialité</span> :</span>
+        </label>
+        <div class="ds-agenda-focus-bar__control">
+          <select
+            id="agenda-focus-expert"
+            name="focusExpert"
+            class="ds-select ds-select--sm"
+            data-agenda-focus-select="true"
+            data-testid="select-focus-specialty"
+          >
+            <option value="" ${activeFocusExpert === null ? "selected" : ""}>Toutes (${agenda.items.length})</option>
+            ${specialtyFocusOptionsHtml}
+          </select>
         </div>
+        <noscript>
+          <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm">Filtrer</button>
+        </noscript>
+      </form>`
+    : "";
+
+  const configToolbarHtml = hasMeeting
+    ? `<!-- Session Configuration Section (only shown when a meeting is active; collapsed by default on mobile) -->
+      <details class="ds-card ds-agenda-config-section" open data-mobile-collapsible="true" aria-labelledby="heading-agenda-settings" data-testid="agenda-config-card">
+        <summary class="ds-agenda-config-section__header">
+          <span id="heading-agenda-settings" class="ds-agenda-config-section__title">
+            ${iconSvg("ic-compass", "ds-icon--xs")} Paramétrage de la réunion RCP
+          </span>
+          <span class="ds-agenda-config-section__meta">
+            <span class="ds-small ds-muted ds-agenda-config-section__hint">Date, mode d'organisation, spécialistes présents et patients</span>
+            <svg class="ds-icon ds-icon--xs ds-agenda-config-section__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+          </span>
+        </summary>
 
         <div class="ds-agenda-toolbar">
           <form method="post" action="/agenda/options?domain=${domainParam}" class="ds-agenda-toolbar__form" data-testid="form-agenda-options">
@@ -2810,7 +2859,7 @@ export function renderAgendaPage(
             <span class="ds-label">${iconSvg("ic-users", "ds-icon--xs")} Spécialistes présents</span>
             <details class="ds-agenda-dropdown" data-testid="agenda-expert-chips">
               <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_expert_selector">
-                <span>${agenda.attendingExperts.length}/${agenda.availableExperts.length} spécialiste(s) présent(s)</span>
+                <span>${agenda.attendingExperts.length}/${agenda.availableExperts.length} présents</span>
               </summary>
               <div class="ds-agenda-dropdown__panel" data-testid="agenda-expert-windows">
                 <div class="ds-agenda-dropdown__header">
@@ -2828,7 +2877,7 @@ export function renderAgendaPage(
             <span class="ds-label">${iconSvg("ic-folder-open", "ds-icon--xs")} Ajouter / Retirer</span>
             <details class="ds-agenda-dropdown" data-testid="agenda-candidate-pool">
               <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_candidate_selector">
-                <span>${agenda.candidates.length > 0 ? `+ Ajouter un patient (${agenda.candidates.length} dispo.)` : "Tous les patients sont inscrits"}</span>
+                <span>${agenda.candidates.length > 0 ? `+ Ajouter (${agenda.candidates.length} dispo.)` : "Tous inscrits"}</span>
               </summary>
               <div class="ds-agenda-dropdown__panel ds-agenda-dropdown__panel--right">
                 ${
@@ -2863,7 +2912,7 @@ export function renderAgendaPage(
             </details>
           </div>
         </div>
-      </section>`
+      </details>`
     : "";
 
   const bodyHtml = `
@@ -2899,12 +2948,12 @@ export function renderAgendaPage(
         <button type="button" class="ds-btn ds-btn--primary" data-open="schedule-meeting-dialog" data-testid="btn_schedule_new_meeting">
           ${iconSvg("ic-calendar")} Programmer une nouvelle réunion
         </button>
-        <a class="ds-btn ds-btn--secondary" href="/worklist?domain=${domainParam}">
+        <a class="ds-btn ds-btn--secondary ds-agenda-header__desktop-action" href="/worklist?domain=${domainParam}" data-testid="btn_agenda_worklist">
           ${iconSvg("ic-worklist")} Worklist
         </a>
         ${
           hasMeeting
-            ? `<button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm" data-open="clear-agenda-dialog" data-testid="btn_del_clear_agenda">
+            ? `<button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-agenda-header__desktop-action" data-open="clear-agenda-dialog" data-testid="btn_del_clear_agenda">
                 ${iconSvg("ic-delete")} Vider
               </button>`
             : ""
@@ -2924,12 +2973,13 @@ export function renderAgendaPage(
               </h2>
               ${
                 agenda.items[0]
-                  ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}&from=agenda" data-testid="btn_start_session">
+                  ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}&from=agenda${agenda.items[0].filename ? `&file=${encodeURIComponent(agenda.items[0].filename)}` : ""}" data-testid="btn_start_session">
                       ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
                     </a>`
                   : ""
               }
-            </div>`
+            </div>
+            ${specialtyFocusBarHtml}`
           : ""
       }
       ${enrolledHtml}

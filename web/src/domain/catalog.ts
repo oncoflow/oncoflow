@@ -467,14 +467,45 @@ export function getDomainQuickPrompts(
       ];
 }
 
+const AGENT_SHORT_LABELS_FR: Record<string, string> = {
+  administrative: "Administratif",
+  "mdt coordinator": "Coordinateur RCP",
+  "ressource assistant": "Référentiels",
+  "pancreas expert": "Pancréas",
+  "oesophagus expert": "Œsophage",
+  "hepatocellular expert": "Foie & CHC",
+  "neurologist expert": "Neurologie",
+  "geneticist expert": "Génétique",
+  "pulmonologist expert": "Pneumologie",
+  "physiotherapy expert": "MPR",
+  "orthopedist expert": "Orthopédie",
+};
+
+const AGENT_SHORT_LABELS_EN: Record<string, string> = {
+  administrative: "Administrative",
+  "mdt coordinator": "MDT Coordinator",
+  "ressource assistant": "Guidelines",
+  "pancreas expert": "Pancreas",
+  "oesophagus expert": "Oesophagus",
+  "hepatocellular expert": "Liver & HCC",
+  "neurologist expert": "Neurology",
+  "geneticist expert": "Genetics",
+  "pulmonologist expert": "Pulmonology",
+  "physiotherapy expert": "Physiotherapy",
+  "orthopedist expert": "Orthopedics",
+};
+
 export function getAgentPresentation(
   agentName: string,
   lang: Language = "fr",
-): { name: string; label: string; icon: string } {
+): { name: string; label: string; shortLabel: string; icon: string } {
   const clean = (agentName || "").trim().toLowerCase();
   const icon = AGENT_ICONS_SVG[clean] ?? "ic-stethoscope";
   const label = translateValue(agentName, lang);
-  return { name: agentName, label, icon };
+  const shortMap = lang === "fr" ? AGENT_SHORT_LABELS_FR : AGENT_SHORT_LABELS_EN;
+  const shortLabel =
+    shortMap[clean] ?? (label.includes(" — ") ? (label.split(" — ").pop() ?? label).trim() : label);
+  return { name: agentName, label, shortLabel, icon };
 }
 
 export function formatFieldLabel(fieldKey: string, lang: Language = "fr"): string {
