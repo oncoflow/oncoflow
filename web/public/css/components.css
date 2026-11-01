@@ -1162,8 +1162,8 @@ body > .ds-queue-banner--idle,
 }
 .ds-card:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
 .ds-section:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
-.ds-synoptic:has(.ds-hovercard:hover, .ds-hovercard:focus-within) {
-  position: relative;
+.ds-opinion:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
+.ds-synoptic:has(.ds-menu[open], .ds-popover[open], .ds-hovercard:hover, .ds-hovercard:focus-within) {
   z-index: var(--ds-z-popover, 60);
 }
 .ds-card--elevated {
@@ -1299,7 +1299,10 @@ a.ds-kpi:hover {
   border-radius: var(--ds-radius-lg);
   overflow: visible;
 }
-.ds-synoptic--static { position: static; }
+.ds-synoptic--static {
+  position: relative;
+  top: auto;
+}
 .ds-synoptic__row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2) var(--ds-space-3); }
 .ds-synoptic__row + .ds-synoptic__row { padding-top: var(--ds-space-3); border-top: 1px solid var(--ds-color-border); }
 .ds-synoptic__title { font-weight: var(--ds-weight-semibold); margin-right: var(--ds-space-2); display: inline-flex; align-items: center; gap: var(--ds-space-2); }
@@ -1384,6 +1387,8 @@ a.ds-kpi:hover {
 
 /* Full-colored M3 Tonal RCP Fiche Header (.ds-patient-header — 2-line compact) */
 .ds-patient-header {
+  position: relative;
+  z-index: 10;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -1393,6 +1398,9 @@ a.ds-kpi:hover {
   border: 1.5px solid var(--ds-color-border);
   background: var(--ds-color-surface);
   box-shadow: var(--ds-shadow-sm);
+}
+.ds-patient-header:has(.ds-hovercard:hover, .ds-hovercard:focus-within, .ds-menu[open], .ds-popover[open]) {
+  z-index: var(--ds-z-popover, 60);
 }
 .ds-patient-header__top {
   display: flex;
@@ -1952,6 +1960,7 @@ article[data-href] {
 
 /* M3 Expansion Panels / Clinical Sections (ZERO left stripe) ============== */
 .ds-section {
+  position: relative;
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-color-surface);
@@ -2339,6 +2348,7 @@ a.ds-timeline__link:hover {
 
 /* 13. Expert opinions & references ======================================== */
 .ds-opinion {
+  position: relative;
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-color-surface);
@@ -3553,7 +3563,12 @@ a.ds-timeline__link:hover {
   position: relative;
   display: inline-flex;
   align-items: center;
+  flex-shrink: 0;
   cursor: pointer;
+}
+.ds-hovercard:hover,
+.ds-hovercard:focus-within {
+  z-index: var(--ds-z-toast, 80);
 }
 .ds-hovercard::after {
   content: "";
@@ -3565,6 +3580,7 @@ a.ds-timeline__link:hover {
   pointer-events: none;
 }
 .ds-hovercard--flip::after,
+.ds-patient-header .ds-hovercard::after,
 .ds-hovercard:has(.ds-hovercard__panel--below)::after {
   bottom: auto;
   top: 100%;
@@ -3577,7 +3593,7 @@ a.ds-timeline__link:hover {
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  z-index: var(--ds-z-toast);
+  z-index: var(--ds-z-toast, 80);
   width: max-content;
   min-width: 15rem;
   max-width: min(22rem, 85vw);
@@ -3589,7 +3605,7 @@ a.ds-timeline__link:hover {
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-2);
-  padding: var(--ds-space-3) var(--ds-space-4);
+  padding: 0 var(--ds-space-4) var(--ds-space-3);
   border-radius: var(--ds-radius-md); /* M3 12px Rich Tooltip */
   background: var(--ds-surface-container-high);
   border: 1px solid var(--ds-color-border-strong);
@@ -3597,6 +3613,7 @@ a.ds-timeline__link:hover {
   font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-regular);
   line-height: var(--ds-leading-normal);
+  text-align: left;
   box-shadow: var(--ds-shadow-lg);
   white-space: normal;
   overflow-wrap: anywhere;
@@ -3607,7 +3624,14 @@ a.ds-timeline__link:hover {
     opacity var(--ds-duration-short3) var(--ds-ease-standard),
     visibility var(--ds-duration-short3);
 }
+.ds-hovercard__panel:not(:has(.ds-hovercard__title)) {
+  padding-top: var(--ds-space-3);
+}
+.ds-hovercard__panel > * {
+  flex-shrink: 0;
+}
 .ds-hovercard--flip .ds-hovercard__panel,
+.ds-patient-header .ds-hovercard__panel,
 .ds-hovercard__panel--below {
   bottom: auto;
   top: calc(100% + 8px);
@@ -3624,9 +3648,9 @@ a.ds-timeline__link:hover {
 }
 .ds-hovercard__title {
   position: sticky;
-  top: calc(-1 * var(--ds-space-3));
-  margin: calc(-1 * var(--ds-space-3)) calc(-1 * var(--ds-space-4)) 0;
-  padding: var(--ds-space-2) var(--ds-space-4);
+  top: 0;
+  margin: 0;
+  padding: var(--ds-space-3) 0 var(--ds-space-2);
   background: var(--ds-surface-container-high);
   border-bottom: 1px solid var(--ds-color-border);
   font-size: var(--ds-text-xs);
@@ -3646,6 +3670,9 @@ a.ds-timeline__link:hover {
   padding-left: 1.1rem;
   font-size: var(--ds-text-xs);
   color: var(--ds-color-text);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-1);
 }
 .ds-hovercard__footer {
   display: flex;
