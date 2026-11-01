@@ -31,7 +31,7 @@ async function main() {
   const app = await buildServer({ config, api });
   await app.listen({ port: config.port, host: config.host });
   process.stdout.write(
-    `[DataSyntis Web M3] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl})\n`,
+    `[DataSyntis Web] Server listening on http://${config.host}:${config.port} (API: ${config.apiUrl})\n`,
   );
 }
 

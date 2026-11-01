@@ -212,15 +212,15 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=m3-18">
-  <link rel="stylesheet" href="/public/css/components.css?v=m3-18">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=20">
+  <link rel="stylesheet" href="/public/css/components.css?v=20">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
   <a class="ds-skip-link" href="#main">${lang === "fr" ? "Aller au contenu" : "Skip to content"}</a>
 
   <!-- ===================== Sidebar (Material Design 3 Navigation Rail) ===================== -->
-  <aside class="ds-sidebar ds-nav-rail" aria-label="Navigation principale" data-testid="sidebar">
+  <aside class="ds-sidebar ds-nav-rail" id="sidebar-nav" aria-label="Navigation principale" data-testid="sidebar">
     <div class="ds-rail__header">
       <a class="ds-brand" href="/worklist?domain=${domainParam}" title="DataSyntis — ${session.domain === "sma" ? "RCP Maladies Rares · SMA" : "RCP Oncologie Digestive"}">
         <img class="ds-brand__logo" src="/public/img/datasyntis-icon.svg" alt="" width="32" height="32">
@@ -296,9 +296,13 @@ export function renderLayout(opts: ShellLayoutOptions): string {
       <p style="margin-top:4px">${esc(session.userName)}</p>
     </div>
   </aside>
+  <div class="ds-sidebar-backdrop" id="sidebar-backdrop" aria-hidden="true"></div>
 
   <div class="ds-main" id="top">
     <header class="ds-topbar">
+      <button type="button" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon ds-topbar__burger" id="mobile-nav-toggle" aria-label="${lang === "fr" ? "Ouvrir le menu de navigation" : "Open navigation menu"}" aria-controls="sidebar-nav" aria-expanded="false" data-testid="btn_mobile_nav_toggle">
+        ${iconSvg("ic-menu")}
+      </button>
       <ol class="ds-breadcrumb" aria-label="Fil d'Ariane">
         <li><a href="/worklist?domain=${domainParam}">DataSyntis</a></li>
         ${breadcrumbHtml}
@@ -330,16 +334,16 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           <label for="theme-dark">${iconSvg("ic-moon")} ${esc(t("topbar.theme.dark", lang))}</label>
         </div>
 
-        <!-- Menu contextuel M3 d'accès rapide (...) -->
+        <!-- Menu contextuel d'accès rapide (...) -->
         <details class="ds-menu" data-testid="menu-topbar-actions">
-          <summary class="ds-menu__trigger" aria-label="Menu contextuel d'affichage et d'accès rapide" title="Plus d'options M3">
+          <summary class="ds-menu__trigger" aria-label="Menu contextuel d'affichage et d'accès rapide" title="Plus d'options">
             ${iconSvg("ic-more-vert")}
           </summary>
           <div class="ds-menu__panel" role="menu">
             <div class="ds-menu__header">${lang === "fr" ? "Navigation & Affichage" : "Navigation & View"}</div>
             <button type="button" class="ds-menu__item" role="menuitem" data-menu-action="toggle-rail">
               ${iconSvg("ic-menu")}
-              <span>${lang === "fr" ? "Replier / Déplier le Rail M3" : "Toggle M3 Navigation Rail"}</span>
+              <span>${lang === "fr" ? "Replier / Déplier le menu latéral" : "Toggle sidebar menu"}</span>
             </button>
             <button type="button" class="ds-menu__item" role="menuitem" data-menu-action="toggle-theme">
               ${iconSvg(session.theme === "dark" ? "ic-sun" : "ic-moon")}
@@ -412,7 +416,27 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </div>
   </dialog>
 
-  <script src="/public/js/app.js?v=m3-18" defer></script>
+  <!-- ===================== Mobile Bottom Navigation Bar (M3 Compact < 48rem) ===================== -->
+  <nav class="ds-bottom-nav" aria-label="${lang === "fr" ? "Navigation principale mobile" : "Mobile primary navigation"}" data-testid="bottom-nav">
+    <a class="ds-bottom-nav__item" href="/worklist?domain=${domainParam}" ${activeNav === "worklist" || activeNav === "dossier" ? 'aria-current="page"' : ""}>
+      <span class="ds-bottom-nav__pill">${iconSvg("ic-worklist")}</span>
+      <span class="ds-bottom-nav__label">${esc(t("nav.worklist", lang))}</span>
+    </a>
+    <a class="ds-bottom-nav__item" href="/ingest?domain=${domainParam}" ${activeNav === "ingest" ? 'aria-current="page"' : ""}>
+      <span class="ds-bottom-nav__pill">${iconSvg("ic-add")}</span>
+      <span class="ds-bottom-nav__label">${lang === "fr" ? "Importer" : "Upload"}</span>
+    </a>
+    <a class="ds-bottom-nav__item" href="/guidelines?domain=${domainParam}" ${activeNav === "guidelines" ? 'aria-current="page"' : ""}>
+      <span class="ds-bottom-nav__pill">${iconSvg("ic-book")}</span>
+      <span class="ds-bottom-nav__label">${lang === "fr" ? "Référentiels" : "Guidelines"}</span>
+    </a>
+    <a class="ds-bottom-nav__item" href="/agents?domain=${domainParam}" ${activeNav === "agents" ? 'aria-current="page"' : ""}>
+      <span class="ds-bottom-nav__pill">${iconSvg("ic-users")}</span>
+      <span class="ds-bottom-nav__label">${lang === "fr" ? "Experts IA" : "AI Experts"}</span>
+    </a>
+  </nav>
+
+  <script src="/public/js/app.js?v=20" defer></script>
 </body>
 </html>`;
 }
@@ -492,26 +516,26 @@ export function renderWorklistPage(
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
 
             return `<tr class="${c.priorityLevel === "high" ? "is-urgent" : ""}" data-href="${dossierHref}" title="Double-cliquez pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
-              <td data-sort-value="${prioSortVal}">
+              <td data-label="Priorité" data-sort-value="${prioSortVal}">
                 <span class="ds-badge ${prio.badgeClass} ds-badge--sm" data-testid="badge-priority-${esc(c.priorityLevel)}">
                   ${iconSvg(prio.icon)} ${esc(prio.label)}
                 </span>
               </td>
-              <td data-sort-value="${esc(c.patientName)}">
+              <td data-label="Patient" class="ds-table__primary-cell" data-sort-value="${esc(c.patientName)}">
                 <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a><br>
                 <span class="ds-small ds-muted">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
               </td>
-              <td data-sort-value="${complSortVal}">${completenessCell}</td>
-              <td data-sort-value="${orientSortVal}">
+              <td data-label="Complétude" data-sort-value="${complSortVal}">${completenessCell}</td>
+              <td data-label="Orientation pré-RCP" data-sort-value="${orientSortVal}">
                 ${orientationCell}
               </td>
-              <td data-sort-value="${c.specialties.length}">${specsHtml || '<span class="ds-small ds-muted">—</span>'}</td>
-              <td class="ds-nowrap" data-sort-value="${esc(c.mdtDate ?? "")}">${esc(c.mdtDate ?? "—")}</td>
+              <td data-label="Spécialités" data-sort-value="${c.specialties.length}">${specsHtml || '<span class="ds-small ds-muted">—</span>'}</td>
+              <td data-label="Dernière RCP" class="ds-nowrap" data-sort-value="${esc(c.mdtDate ?? "")}">${esc(c.mdtDate ?? "—")}</td>
               <td class="ds-table__actions">
                 <div class="ds-cluster" style="justify-content:flex-end;flex-wrap:nowrap">
                   <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_${esc(c.id)}">Ouvrir</a>
                   <details class="ds-menu" data-testid="menu-patient-${esc(c.id)}">
-                    <summary class="ds-menu__trigger" aria-label="Actions contextuelles pour ${esc(c.patientName)}" title="Actions patient M3">
+                    <summary class="ds-menu__trigger" aria-label="Actions contextuelles pour ${esc(c.patientName)}" title="Actions patient">
                       ${iconSvg("ic-more-vert")}
                     </summary>
                     <div class="ds-menu__panel" role="menu">
@@ -606,49 +630,55 @@ export function renderWorklistPage(
       </a>
     </div>
 
-    <!-- Filter Toolbar -->
-    <form class="ds-toolbar" method="get" action="/worklist" role="search" data-testid="worklist-filters">
-      <input type="hidden" name="domain" value="${esc(session.domain)}">
-      <div class="ds-field">
-        <label class="ds-label" for="q">Rechercher un dossier</label>
-        <input id="q" name="q" class="ds-input" type="search" value="${esc(filter.query ?? "")}" placeholder="Nom, #ID, organe, spécialité…" data-testid="input-search">
-      </div>
-      <div class="ds-field">
-        <label class="ds-label" for="f-compl">Complétude</label>
-        <select id="f-compl" name="completeness" class="ds-select" data-autosubmit="true" data-testid="select-completeness">
-          <option value="all" ${(filter.completeness ?? "all") === "all" ? "selected" : ""}>Tous les dossiers</option>
-          <option value="incomplete" ${filter.completeness === "incomplete" ? "selected" : ""}>Incomplets uniquement</option>
-          <option value="complete" ${filter.completeness === "complete" ? "selected" : ""}>Complets uniquement</option>
-        </select>
-      </div>
-      <div class="ds-field">
-        <label class="ds-label" for="f-prio">Priorité</label>
-        <select id="f-prio" name="priority" class="ds-select" data-autosubmit="true" data-testid="select-priority">
-          <option value="all" ${(filter.priority ?? "all") === "all" ? "selected" : ""}>Toutes priorités</option>
-          <option value="high" ${filter.priority === "high" ? "selected" : ""}>Priorité haute</option>
-          <option value="medium" ${filter.priority === "medium" ? "selected" : ""}>Priorité modérée</option>
-          <option value="low" ${filter.priority === "low" ? "selected" : ""}>Priorité standard</option>
-        </select>
-      </div>
-      <div class="ds-field">
-        <label class="ds-label" for="f-view">Regroupement</label>
-        <select id="f-view" name="viewMode" class="ds-select" data-autosubmit="true" data-testid="select-viewmode">
-          <option value="patients" ${(filter.viewMode ?? "patients") === "patients" ? "selected" : ""}>Par patient longitudinal</option>
-          <option value="rcp" ${filter.viewMode === "rcp" ? "selected" : ""}>Par fiche RCP</option>
-        </select>
-      </div>
-      <div class="ds-field">
-        <label class="ds-label" for="f-display">Affichage</label>
-        <select id="f-display" name="display" class="ds-select" data-autosubmit="true" data-testid="select-displaymode">
-          <option value="table" ${(filter.displayMode ?? "table") === "table" ? "selected" : ""}>Vue Table</option>
-          <option value="cards" ${filter.displayMode === "cards" ? "selected" : ""}>Vue Cartes</option>
-        </select>
-      </div>
-      <div class="ds-toolbar__end">
-        <button type="submit" class="ds-btn ds-btn--tonal">${iconSvg("ic-search")} Filtrer</button>
-        <a class="ds-btn ds-btn--ghost" href="/worklist?domain=${domainParam}">Réinitialiser</a>
-      </div>
-    </form>
+    <!-- Filter Toolbar (Collapsible on Mobile, Always Open on Desktop) -->
+    <details class="ds-toolbar-drawer" open data-mobile-collapsible="true" data-testid="worklist-filters-drawer">
+      <summary class="ds-toolbar-drawer__summary" data-testid="btn_toggle_filters">
+        <span class="ds-toolbar-drawer__title">${iconSvg("ic-search", "ds-icon--sm")} ${lang === "fr" ? "Rechercher & filtrer les dossiers" : "Search & filter records"}</span>
+        <span class="ds-badge ds-badge--neutral ds-badge--sm">${cards.length} ${lang === "fr" ? "dossier(s)" : "record(s)"}</span>
+      </summary>
+      <form class="ds-toolbar" method="get" action="/worklist" role="search" data-testid="worklist-filters">
+        <input type="hidden" name="domain" value="${esc(session.domain)}">
+        <div class="ds-field">
+          <label class="ds-label" for="q">Rechercher un dossier</label>
+          <input id="q" name="q" class="ds-input" type="search" value="${esc(filter.query ?? "")}" placeholder="Nom, #ID, organe, spécialité…" data-testid="input-search">
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="f-compl">Complétude</label>
+          <select id="f-compl" name="completeness" class="ds-select" data-autosubmit="true" data-testid="select-completeness">
+            <option value="all" ${(filter.completeness ?? "all") === "all" ? "selected" : ""}>Tous les dossiers</option>
+            <option value="incomplete" ${filter.completeness === "incomplete" ? "selected" : ""}>Incomplets uniquement</option>
+            <option value="complete" ${filter.completeness === "complete" ? "selected" : ""}>Complets uniquement</option>
+          </select>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="f-prio">Priorité</label>
+          <select id="f-prio" name="priority" class="ds-select" data-autosubmit="true" data-testid="select-priority">
+            <option value="all" ${(filter.priority ?? "all") === "all" ? "selected" : ""}>Toutes priorités</option>
+            <option value="high" ${filter.priority === "high" ? "selected" : ""}>Priorité haute</option>
+            <option value="medium" ${filter.priority === "medium" ? "selected" : ""}>Priorité modérée</option>
+            <option value="low" ${filter.priority === "low" ? "selected" : ""}>Priorité standard</option>
+          </select>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="f-view">Regroupement</label>
+          <select id="f-view" name="viewMode" class="ds-select" data-autosubmit="true" data-testid="select-viewmode">
+            <option value="patients" ${(filter.viewMode ?? "patients") === "patients" ? "selected" : ""}>Par patient longitudinal</option>
+            <option value="rcp" ${filter.viewMode === "rcp" ? "selected" : ""}>Par fiche RCP</option>
+          </select>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="f-display">Affichage</label>
+          <select id="f-display" name="display" class="ds-select" data-autosubmit="true" data-testid="select-displaymode">
+            <option value="table" ${(filter.displayMode ?? "table") === "table" ? "selected" : ""}>Vue Table</option>
+            <option value="cards" ${filter.displayMode === "cards" ? "selected" : ""}>Vue Cartes</option>
+          </select>
+        </div>
+        <div class="ds-toolbar__end">
+          <button type="submit" class="ds-btn ds-btn--tonal">${iconSvg("ic-search")} Filtrer</button>
+          <a class="ds-btn ds-btn--ghost" href="/worklist?domain=${domainParam}">Réinitialiser</a>
+        </div>
+      </form>
+    </details>
 
     ${
       cards.length === 0
@@ -721,7 +751,7 @@ export function renderWorklistPage(
                       <div class="ds-card__footer-end">
                         <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_${esc(c.id)}">Ouvrir</a>
                         <details class="ds-menu" data-testid="menu-patient-${esc(c.id)}">
-                          <summary class="ds-menu__trigger" aria-label="Actions contextuelles pour ${esc(c.patientName)}" title="Actions patient M3">
+                          <summary class="ds-menu__trigger" aria-label="Actions contextuelles pour ${esc(c.patientName)}" title="Actions patient">
                             ${iconSvg("ic-more-vert")}
                           </summary>
                           <div class="ds-menu__panel" role="menu">
@@ -1505,21 +1535,33 @@ export function renderDossierPage(
           </div>
 
           <div class="ds-patient-header__actions">
-            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-open="link-patient-modal" data-testid="btn_link_patient">
+            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm ds-patient-header__quick-action" data-open="link-patient-modal" data-testid="btn_link_patient">
               ${iconSvg("ic-link")} Rattacher
             </button>
-            <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="display:inline-flex">
+            <form class="ds-patient-header__quick-action" method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="display:inline-flex">
               <input type="hidden" name="preserve_manual_edits" value="true">
               <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-tooltip="Relance l'analyse complète en conservant les modifications manuelles" data-testid="btn_reprocess_form">
                 ${iconSvg("ic-refresh")} Relancer l'IA
               </button>
             </form>
             <details class="ds-menu" data-testid="menu-dossier-actions">
-              <summary class="ds-menu__trigger" aria-label="Actions contextuelles du dossier patient" title="Actions du dossier M3">
+              <summary class="ds-menu__trigger" aria-label="Actions contextuelles du dossier patient" title="Actions du dossier">
                 ${iconSvg("ic-more-vert")}
               </summary>
               <div class="ds-menu__panel" role="menu">
                 <div class="ds-menu__header">Dossier ${esc(dossier.patientName)}</div>
+                <button type="button" class="ds-menu__item" role="menuitem" data-open="link-patient-modal">
+                  ${iconSvg("ic-link")}
+                  <span>Rattacher à un autre patient…</span>
+                </button>
+                <form method="post" action="/forms/${encodeURIComponent(dossier.currentForm.file)}/process?domain=${domainParam}" style="margin:0">
+                  <input type="hidden" name="preserve_manual_edits" value="true">
+                  <button type="submit" class="ds-menu__item" role="menuitem">
+                    ${iconSvg("ic-refresh")}
+                    <span>Relancer l'analyse IA</span>
+                  </button>
+                </form>
+                <hr class="ds-menu__divider">
                 <button type="button" class="ds-menu__item" role="menuitem" data-action="toggle-all-accordions" data-target-panel="panel-clinical">
                   ${iconSvg("ic-layers")}
                   <span>Tout déplier / Tout replier les rubriques</span>
@@ -1532,10 +1574,6 @@ export function renderDossierPage(
                   ${iconSvg("ic-upload")}
                   <span>Importer une nouvelle séance PDF</span>
                 </a>
-                <button type="button" class="ds-menu__item" role="menuitem" data-open="link-patient-modal">
-                  ${iconSvg("ic-link")}
-                  <span>Rattacher à un autre patient…</span>
-                </button>
                 <hr class="ds-menu__divider">
                 <a class="ds-menu__item" role="menuitem" href="/feedback?domain=${domainParam}&patientId=${encodeURIComponent(dossier.patientId ?? dossier.currentForm.file)}">
                   ${iconSvg("ic-bug")}
@@ -1587,7 +1625,7 @@ export function renderDossierPage(
 
     <!-- Split View: Source PDF (Left) + Clinical Tabs (Right) -->
     <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
-      <div class="ds-split__pane ds-split__pane--sticky">
+      <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf">
         <div class="ds-cluster" style="justify-content:space-between">
           <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
           <div class="ds-cluster" style="gap:var(--ds-space-1)">
@@ -1595,7 +1633,7 @@ export function renderDossierPage(
               ${iconSvg("ic-eye")} Élargir PDF
             </button>
             <details class="ds-menu" data-testid="menu-pdf-actions">
-              <summary class="ds-menu__trigger" aria-label="Options du lecteur PDF" title="Options PDF M3">
+              <summary class="ds-menu__trigger" aria-label="Options du lecteur PDF" title="Options du lecteur PDF">
                 ${iconSvg("ic-more-vert")}
               </summary>
               <div class="ds-menu__panel" role="menu">
@@ -1624,7 +1662,7 @@ export function renderDossierPage(
         <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
       </div>
 
-      <div class="ds-split__pane">
+      <div class="ds-split__pane ds-split__pane--clinical">
         <div class="ds-tabs" role="tablist" aria-label="Vues du dossier patient">
           <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="true" aria-controls="panel-clinical" data-testid="tab-clinical">
             ${iconSvg("ic-stethoscope")} Dossier clinique (${clinicalSections.length})
@@ -2158,20 +2196,20 @@ export function renderFeedbackPage(
   const rowsHtml = bugs.items
     .map(
       (b) => `<tr data-testid="bug-row-${esc(b.id)}">
-        <td class="ds-mono">${esc(b.id)}</td>
-        <td>
+        <td data-label="ID" class="ds-mono">${esc(b.id)}</td>
+        <td data-label="Signalement" class="ds-table__primary-cell">
           <strong>${esc(b.title)}</strong>
           <div class="ds-small ds-muted">${esc(b.description)}</div>
         </td>
-        <td><span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-bug")} ${esc(b.category)}</span></td>
-        <td>
+        <td data-label="Catégorie"><span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-bug")} ${esc(b.category)}</span></td>
+        <td data-label="Statut">
           <span class="ds-badge ${b.status === "resolved" ? "ds-badge--success" : b.status === "in_progress" ? "ds-badge--info" : "ds-badge--warning"} ds-badge--sm">
             ${iconSvg(b.status === "resolved" ? "ic-check-circle" : b.status === "in_progress" ? "ic-clock" : "ic-warning")}
             ${esc(b.status)}
           </span>
         </td>
-        <td class="ds-mono">${esc(b.patientOrFile ?? "—")}</td>
-        <td class="ds-nowrap">${esc(b.createdAt)}</td>
+        <td data-label="Dossier" class="ds-mono">${esc(b.patientOrFile ?? "—")}</td>
+        <td data-label="Date" class="ds-nowrap">${esc(b.createdAt)}</td>
         <td class="ds-table__actions">
           <form method="post" action="/feedback/${encodeURIComponent(b.id)}/status?domain=${domainParam}" style="display:inline-flex;gap:var(--ds-space-1)">
             <select name="status" class="ds-select ds-select--sm" data-autosubmit="true">
@@ -2272,17 +2310,17 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
   const jobsRows = jobs
     .map(
       (j) => `<tr data-testid="queue-job-row-${esc(j.jobId)}">
-        <td class="ds-mono">${esc(j.jobId)}</td>
-        <td><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(j.domain)}</span></td>
-        <td class="ds-mono">${esc(j.filename ?? "—")}</td>
-        <td>${esc(j.section ?? j.jobType)}</td>
-        <td>
+        <td data-label="ID Job" class="ds-mono">${esc(j.jobId)}</td>
+        <td data-label="Domaine"><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(j.domain)}</span></td>
+        <td data-label="Fichier" class="ds-mono ds-table__primary-cell">${esc(j.filename ?? "—")}</td>
+        <td data-label="Étape">${esc(j.section ?? j.jobType)}</td>
+        <td data-label="Statut">
           <span class="ds-badge ${j.status === "RUNNING" ? "ds-badge--info" : j.status === "FAILED" ? "ds-badge--danger" : j.status === "COMPLETED" ? "ds-badge--success" : "ds-badge--neutral"} ds-badge--sm">
             ${j.status === "RUNNING" ? '<span class="ds-spinner" aria-hidden="true"></span>' : iconSvg(j.status === "FAILED" ? "ic-error" : j.status === "COMPLETED" ? "ic-check-circle" : "ic-clock")}
             ${esc(j.status)}
           </span>
         </td>
-        <td>
+        <td data-label="Progression">
           <progress class="ds-progress" max="100" value="${Math.round(j.progressPct)}" style="width:6rem"></progress>
           <span class="ds-small ds-muted">${Math.round(j.progressPct)} %</span>
         </td>

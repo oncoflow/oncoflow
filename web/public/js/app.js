@@ -32,8 +32,18 @@
     });
   }
 
-  // Sidebar collapse toggle (M3 Navigation Rail — persisted in localStorage)
+  // Sidebar collapse toggle (M3 Navigation Rail on Desktop + Off-Canvas Drawer on Mobile/Tablet)
   var sbBtn = document.getElementById("sidebar-toggle");
+  var mobileNavBtn = document.getElementById("mobile-nav-toggle");
+  var sbBackdrop = document.getElementById("sidebar-backdrop");
+
+  function setMobileNavOpen(open) {
+    document.body.classList.toggle("ds-shell--mobile-nav-open", open);
+    if (mobileNavBtn) {
+      mobileNavBtn.setAttribute("aria-expanded", String(open));
+    }
+  }
+
   try {
     if (window.localStorage && window.localStorage.getItem("ds_sidebar_collapsed") === "true") {
       document.body.classList.add("ds-shell--sidebar-collapsed");
@@ -42,6 +52,10 @@
   } catch (_e) {}
   if (sbBtn) {
     sbBtn.addEventListener("click", function () {
+      if (window.innerWidth <= 1024) {
+        setMobileNavOpen(false);
+        return;
+      }
       var collapsed = document.body.classList.toggle("ds-shell--sidebar-collapsed");
       sbBtn.setAttribute("aria-expanded", String(!collapsed));
       try {
@@ -51,6 +65,48 @@
       } catch (_e) {}
     });
   }
+  if (mobileNavBtn) {
+    mobileNavBtn.addEventListener("click", function () {
+      var isOpen = document.body.classList.contains("ds-shell--mobile-nav-open");
+      setMobileNavOpen(!isOpen);
+    });
+  }
+  if (sbBackdrop) {
+    sbBackdrop.addEventListener("click", function () {
+      setMobileNavOpen(false);
+    });
+  }
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key === "Escape" && document.body.classList.contains("ds-shell--mobile-nav-open")) {
+      setMobileNavOpen(false);
+    }
+  });
+
+  // Auto-collapse mobile filter drawers on small viewports (<= 768px) unless an active filter is set
+  function syncMobileCollapsibleDrawers() {
+    var isMobile = window.innerWidth <= 768;
+    var hasActiveFilter = false;
+    try {
+      var sp = new URLSearchParams(window.location.search);
+      hasActiveFilter = Boolean(
+        (sp.get("search") && sp.get("search").trim()) ||
+          (sp.get("urgency") && sp.get("urgency") !== "all") ||
+          (sp.get("completeness") && sp.get("completeness") !== "all") ||
+          (sp.get("specialty") && sp.get("specialty") !== "all"),
+      );
+    } catch (_e) {}
+
+    document.querySelectorAll('details[data-mobile-collapsible="true"]').forEach(function (d) {
+      if (!isMobile) {
+        d.open = true;
+      } else if (!d.hasAttribute("data-mobile-init")) {
+        d.setAttribute("data-mobile-init", "true");
+        d.open = hasActiveFilter;
+      }
+    });
+  }
+  syncMobileCollapsibleDrawers();
+  window.addEventListener("resize", syncMobileCollapsibleDrawers, { passive: true });
 
   // Toggle all accordions, toggle PDF expand, quick prompt chips, M3 Contextual Menus (...), and M3 Exposed Dropdown Menus
   function closeAllMenus(exceptEl) {
@@ -339,8 +395,12 @@
       var secName = menuActionBtn.getAttribute("data-section");
       closeAllMenus(null);
 
-      if (action === "toggle-rail" && sbBtn) {
-        sbBtn.click();
+      if (action === "toggle-rail") {
+        if (window.innerWidth <= 1024 && mobileNavBtn) {
+          mobileNavBtn.click();
+        } else if (sbBtn) {
+          sbBtn.click();
+        }
         return;
       }
       if (action === "toggle-theme") {
@@ -364,7 +424,6 @@
         var reasEl = document.querySelector("[data-testid='reasoning-" + secName + "']");
         if (reasEl) {
           reasEl.open = !reasEl.open;
-          reasEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
         }
         return;
       }
@@ -805,7 +864,9 @@
     var rect = el.getBoundingClientRect();
     if (el.classList.contains("ds-hovercard")) {
       el.classList.toggle("ds-hovercard--flip", rect.top < 220);
-      el.classList.toggle("ds-hovercard--align-right", rect.left + 320 > window.innerWidth);
+      var alignRight =
+        rect.left + 320 > window.innerWidth && rect.left > window.innerWidth * 0.4;
+      el.classList.toggle("ds-hovercard--align-right", alignRight);
     }
     if (el.hasAttribute("data-tooltip")) {
       if (rect.top < 90) {
