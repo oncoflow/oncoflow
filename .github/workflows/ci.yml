@@ -70,7 +70,7 @@ jobs:
           severity: "CRITICAL,HIGH"
           scanners: "vuln,secret"
           ignore-unfixed: true
-          skip-dirs: "**/venv,**/.venv,**/dist,**/.cache,**/.pytest_cache"
+          skip-dirs: "**/venv,**/.venv,**/dist,**/.cache,**/.pytest_cache,**/node_modules"
           trivyignores: ".trivyignore"
 
       - name: Login to GitHub Container Registry

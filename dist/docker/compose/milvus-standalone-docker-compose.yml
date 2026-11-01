@@ -5,7 +5,7 @@ x-logging: &default-logging
     max-file: "${DOCKER_LOG_MAX_FILE:-5}"
     compress: "true"
 
-x-milvus-image: &milvus-image milvusdb/milvus:v3.0.3
+x-milvus-image: &milvus-image milvusdb/milvus:v3.0.4
 
 services:
   milvus-volume-init:

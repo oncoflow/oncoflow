@@ -46,7 +46,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web e2e-web build-web docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web e2e-web build-web docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -57,7 +57,8 @@ help:
 	@echo -e "  $(YELLOW)make update$(RESET)              Met à jour les packages Python (uv) et les images Docker (Milvus v3.0, MongoDB)"
 	@echo -e "  $(YELLOW)make install$(RESET)             Installe les dépendances via uv sync"
 	@echo -e "  $(YELLOW)make install-web$(RESET)         Installe les dépendances Node.js de l'interface web"
-	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances Python (uv lock --upgrade && uv sync)"
+	@echo -e "  $(YELLOW)make upgrade$(RESET)             Met à jour toutes les dépendances Python (uv) et Node.js (npm)"
+	@echo -e "  $(YELLOW)make upgrade-web$(RESET)         Met à jour les dépendances Node.js de l'interface web ($(WEB_DIR))"
 	@echo -e "  $(YELLOW)make start-api$(RESET)           Démarre l'API FastAPI (port $(PORT_API))"
 	@echo -e "  $(YELLOW)make start-ui$(RESET)            Démarre le dashboard Streamlit (port $(PORT_UI))"
 	@echo -e "  $(YELLOW)make start-web$(RESET)           Démarre l'API FastAPI Cross-Domains et le serveur Web Node.js Fastify (port $(PORT_WEB))"
@@ -102,8 +103,8 @@ help:
 	@echo -e "  $(YELLOW)make clean$(RESET)            Nettoie les caches (__pycache__, .pytest_cache, .ruff_cache)"
 	@echo ""
 
-## Initialise l'environnement de développement (dépendances Python, volumes Docker et permissions Milvus v3.0)
-init: install
+## Initialise l'environnement de développement (dépendances Python & Node.js, volumes Docker et permissions Milvus v3.0)
+init: install install-web
 	@echo -e "$(CYAN)--> Préparation des volumes Docker de développement ($(DEV_VOLUME_DIR))...$(RESET)"
 	@mkdir -p $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs}
 	@chmod 777 $(DEV_VOLUME_DIR)/{mongodb,mongodb_config,milvus,etcd,minio,logs} 2>/dev/null || true
@@ -113,9 +114,9 @@ init: install
 	DOCKER_VOLUME_DIRECTORY=$(DEV_VOLUME_DIR) docker compose -f $(COMPOSE_DEV) pull
 	@echo -e "$(GREEN)--> Initialisation de l'environnement terminée.$(RESET)"
 
-## Met à jour les dépendances Python (uv) ainsi que les images et conteneurs Docker (Milvus v3.0, MongoDB)
+## Met à jour les dépendances Python (uv) & Node.js (npm) ainsi que les images et conteneurs Docker (Milvus v3.0, MongoDB)
 update: upgrade docker-update
-	@echo -e "$(GREEN)--> Mise à jour complète (packages Python + infrastructure Docker) terminée.$(RESET)"
+	@echo -e "$(GREEN)--> Mise à jour complète (packages Python/Node.js + infrastructure Docker) terminée.$(RESET)"
 
 ## Installe l'environnement virtuel et les dépendances du projet
 install:
@@ -127,8 +128,13 @@ install-web:
 	@echo -e "$(CYAN)--> Installation des dépendances Node.js de l'interface web ($(WEB_DIR))...$(RESET)"
 	npm install --prefix $(WEB_DIR)
 
-## Met à jour l'ensemble des paquets et synchronise l'environnement
-upgrade:
+## Met à jour les dépendances Node.js de l'interface web
+upgrade-web:
+	@echo -e "$(CYAN)--> Mise à jour des dépendances Node.js de l'interface web ($(WEB_DIR))...$(RESET)"
+	npm update --prefix $(WEB_DIR)
+
+## Met à jour l'ensemble des paquets Python et Node.js et synchronise l'environnement
+upgrade: upgrade-web
 	@echo -e "$(CYAN)--> Mise à jour des paquets avec uv lock --upgrade && uv sync...$(RESET)"
 	cd $(APP_DIR) && $(UV) lock --upgrade && $(UV) sync
 

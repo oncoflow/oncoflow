@@ -34,7 +34,27 @@ updates:
           - "minor"
           - "patch"
 
-  # Maintain Docker dependencies in the dist/docker directory
+  # Maintain Node.js / TypeScript dependencies in the web directory
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+      - "web"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Maintain Docker dependencies in the dist/docker directory (Dockerfile & Dockerfile.web)
   - package-ecosystem: "docker"
     directory: "/dist/docker"
     schedule:
@@ -45,6 +65,13 @@ updates:
       - "docker"
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Maintain Docker Compose image versions in dist/docker/compose
   - package-ecosystem: "docker-compose"
@@ -57,3 +84,15 @@ updates:
       - "docker"
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # Milvus standalone relies on etcd 3.5.x; jumping 3.5 -> 3.7 breaks existing etcd data volumes
+      - dependency-name: "coreos/etcd"
+        versions:
+          - ">= 3.6.0"
