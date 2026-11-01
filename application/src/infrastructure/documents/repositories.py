@@ -4,6 +4,7 @@ from typing import Any
 
 from src.application.config import AppConfig
 from src.domain.bug_report import BugReport, BugStatus
+from src.domain.mdt_agenda import MDTAgenda
 from src.domain.patient import Patient
 from src.domain.worker.queue_job import RCPProcessingStatus
 from src.infrastructure.documents.mongodb import Mongodb, sanitize_bson_payload
@@ -333,6 +334,39 @@ class InMemoryBugReportRepository:
         return self._reports.pop(bug_id, None) is not None
 
 
+class InMemoryMDTAgendaRepository:
+    """In-memory adapter for `MDTAgendaRepository` (used in isolated DDD/TDD unit tests)."""
+
+    def __init__(
+        self,
+        domain: str = "oncology",
+        initial_agenda: MDTAgenda | None = None,
+    ) -> None:
+        self.domain = (domain or "oncology").strip().lower()
+        self.agenda_id = MDTAgenda.build_agenda_id(self.domain)
+        self._agenda: MDTAgenda | None = (
+            initial_agenda.model_copy(deep=True) if initial_agenda else None
+        )
+
+    def get_active(self) -> MDTAgenda | None:
+        return self._agenda.model_copy(deep=True) if self._agenda else None
+
+    def save(self, agenda: MDTAgenda) -> MDTAgenda:
+        updated = agenda.model_copy(
+            update={
+                "agenda_id": agenda.agenda_id or self.agenda_id,
+                "domain": agenda.domain or self.domain,
+                "updated_at": datetime.now(),
+            },
+            deep=True,
+        )
+        self._agenda = updated
+        return updated.model_copy(deep=True)
+
+    def reset(self) -> None:
+        self._agenda = None
+
+
 # --- MongoDB Repository Implementations ---
 
 
@@ -639,6 +673,38 @@ class MongoBugReportRepository:
 
     def delete(self, bug_id: str) -> bool:
         return bool(self.db_client.delete_bug_report(bug_id))
+
+
+class MongoMDTAgendaRepository:
+    """MongoDB adapter for `MDTAgendaRepository`."""
+
+    def __init__(
+        self,
+        client_or_config: Mongodb | AppConfig | None = None,
+        db_client: Mongodb | None = None,
+        domain: str | None = None,
+    ) -> None:
+        self.db_client = _resolve_mongo_client(client_or_config, db_client=db_client)
+        resolved_domain = domain
+        if not resolved_domain and isinstance(client_or_config, AppConfig):
+            resolved_domain = client_or_config.domain
+        self.domain = (resolved_domain or "oncology").strip().lower()
+        self.agenda_id = MDTAgenda.build_agenda_id(self.domain)
+
+    def get_active(self) -> MDTAgenda | None:
+        raw = self.db_client.get_mdt_agenda(self.agenda_id)
+        return MDTAgenda.from_persistence(raw) if raw else None
+
+    def save(self, agenda: MDTAgenda) -> MDTAgenda:
+        payload = agenda.to_persistence()
+        payload["agenda_id"] = self.agenda_id
+        payload["domain"] = self.domain
+        payload["updated_at"] = datetime.now()
+        raw = self.db_client.upsert_mdt_agenda(payload)
+        return MDTAgenda.from_persistence(raw)
+
+    def reset(self) -> None:
+        self.db_client.delete_mdt_agenda(self.agenda_id)
 
 
 def build_repositories(

@@ -455,3 +455,25 @@ class Mongodb:
     def delete_bug_report(self, bug_id: str) -> None:
         """Deletes a bug report from the bug_reports collection by bug_id."""
         self.delete_docs(["bug_reports"], {"bug_id": bug_id})
+
+    # --- MDT Agendas Collection Methods ---
+
+    def get_mdt_agenda(self, agenda_id: str) -> dict | None:
+        """Retrieve an MDT agenda document from the `mdt_agendas` collection by `agenda_id`."""
+        return self.get_document("mdt_agendas", {"agenda_id": agenda_id})
+
+    def upsert_mdt_agenda(self, agenda_data: dict) -> dict:
+        """Create or update an MDT agenda document in the `mdt_agendas` collection."""
+        self.set_uniq_index("mdt_agendas", "agenda_id")
+        payload = sanitize_bson_payload(dict(agenda_data))
+        agenda_id = payload["agenda_id"]
+        self.update_doc(
+            collection="mdt_agendas",
+            filter={"agenda_id": agenda_id},
+            upsertable_data=payload,
+        )
+        return self.get_mdt_agenda(agenda_id) or payload
+
+    def delete_mdt_agenda(self, agenda_id: str) -> None:
+        """Delete an MDT agenda document from the `mdt_agendas` collection by `agenda_id`."""
+        self.delete_docs(["mdt_agendas"], {"agenda_id": agenda_id})

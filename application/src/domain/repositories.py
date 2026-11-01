@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Any, Protocol, runtime_checkable
 
 from src.domain.bug_report import BugReport, BugStatus
+from src.domain.mdt_agenda import MDTAgenda
 from src.domain.patient import Patient
 from src.domain.worker.queue_job import RCPProcessingStatus
 
@@ -105,6 +106,17 @@ class BugReportRepository(Protocol):
     ) -> BugReport | None: ...
 
     def delete(self, bug_id: str) -> None: ...
+
+
+@runtime_checkable
+class MDTAgendaRepository(Protocol):
+    """Domain repository port for persisting the active `MDTAgenda` aggregate."""
+
+    def get_active(self) -> MDTAgenda | None: ...
+
+    def save(self, agenda: MDTAgenda) -> MDTAgenda: ...
+
+    def reset(self) -> None: ...
 
 
 @runtime_checkable

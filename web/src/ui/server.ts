@@ -7,6 +7,7 @@ import fastifyFormbody from "@fastify/formbody";
 import fastifyMultipart from "@fastify/multipart";
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
 import type { OncoflowApiPort } from "../application/ports/oncoflow-api.port.js";
+import { AgendaUseCase } from "../application/use-cases/agenda.use-case.js";
 import { FeedbackUseCase } from "../application/use-cases/feedback.use-case.js";
 import { GuidelinesUseCase } from "../application/use-cases/guidelines.use-case.js";
 import { IngestUseCase } from "../application/use-cases/ingest.use-case.js";
@@ -17,11 +18,13 @@ import type { WebAppConfig } from "../config.js";
 import type {
   ClinicalDomain,
   Language,
+  MdtAgendaSortStrategy,
   ThemeMode,
   UserSession,
   WorklistFilter,
 } from "../domain/types.js";
 import {
+  renderAgendaPage,
   renderAgentsPage,
   renderChatLogMessagePartial,
   renderDossierPage,
@@ -172,6 +175,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   });
 
   const worklistUseCase = new WorklistUseCase(api);
+  const agendaUseCase = new AgendaUseCase(api);
   const dossierUseCase = new PatientDossierUseCase(api);
   const ingestUseCase = new IngestUseCase(api);
   const guidelinesUseCase = new GuidelinesUseCase(api);
@@ -396,6 +400,179 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const { patientId } = req.params as { patientId: string };
     await worklistUseCase.deletePatient(patientId, session.domain);
     return reply.code(200).send({ deleted: patientId });
+  });
+
+  // 3b. Next RCP / MDT Session Agenda Builder
+  app.get("/agenda", async (req, reply) => {
+    const session = resolveSession(req);
+    const query = (req.query ?? {}) as Record<string, string | undefined>;
+    const openOnboarding = query.onboarding === "1" || query.onboarding === "true";
+    const [agenda, { queueStats, queueJobs }] = await Promise.all([
+      agendaUseCase.getAgenda(session.domain),
+      loadShellQueue(session.domain),
+    ]);
+    const html = renderAgendaPage(agenda, session, queueStats, queueJobs, openOnboarding);
+    return reply.type("text/html; charset=utf-8").send(html);
+  });
+
+  app.post("/agenda/options", async (req, reply) => {
+    const session = resolveSession(req);
+    const body = (req.body ?? {}) as Record<string, string | string[] | undefined>;
+    const rawStrategy = typeof body.sortStrategy === "string" ? body.sortStrategy : undefined;
+    const sortStrategy: MdtAgendaSortStrategy | undefined =
+      rawStrategy === "hybrid" ||
+      rawStrategy === "urgency_first" ||
+      rawStrategy === "expert_grouping" ||
+      rawStrategy === "manual"
+        ? rawStrategy
+        : undefined;
+
+    const deferIncompleteFiles =
+      body.deferIncompleteFilesPresent === "true"
+        ? body.deferIncompleteFiles === "true"
+        : undefined;
+
+    const toggleExpert =
+      typeof body.toggleExpert === "string" && body.toggleExpert.trim()
+        ? body.toggleExpert.trim()
+        : undefined;
+
+    let attendingExperts: string[] | undefined;
+    if (body.attendingExpertsPresent === "true") {
+      if (Array.isArray(body.attendingExperts)) {
+        attendingExperts = body.attendingExperts.map((x) => x.trim()).filter(Boolean);
+      } else if (typeof body.attendingExperts === "string" && body.attendingExperts.trim()) {
+        attendingExperts = [body.attendingExperts.trim()];
+      } else {
+        attendingExperts = [];
+      }
+    }
+
+    const sessionDate =
+      typeof body.sessionDate === "string" && body.sessionDate.trim()
+        ? body.sessionDate.trim()
+        : undefined;
+
+    await agendaUseCase.updateOptions(
+      {
+        sessionDate,
+        sortStrategy,
+        deferIncompleteFiles,
+        attendingExperts,
+        toggleExpert,
+      },
+      session.domain,
+    );
+    return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.post("/agenda/schedule", async (req, reply) => {
+    const session = resolveSession(req);
+    const body = (req.body ?? {}) as Record<string, string | string[] | undefined>;
+    const rawStrategy = typeof body.sortStrategy === "string" ? body.sortStrategy : undefined;
+    const sortStrategy: MdtAgendaSortStrategy =
+      rawStrategy === "hybrid" ||
+      rawStrategy === "urgency_first" ||
+      rawStrategy === "expert_grouping" ||
+      rawStrategy === "manual"
+        ? rawStrategy
+        : "hybrid";
+
+    const sessionDate =
+      typeof body.sessionDate === "string" && body.sessionDate.trim()
+        ? body.sessionDate.trim()
+        : undefined;
+
+    let attendingExperts: string[] | undefined;
+    if (body.attendingExpertsPresent === "true") {
+      if (Array.isArray(body.attendingExperts)) {
+        attendingExperts = body.attendingExperts.map((x) => x.trim()).filter(Boolean);
+      } else if (typeof body.attendingExperts === "string" && body.attendingExperts.trim()) {
+        attendingExperts = [body.attendingExperts.trim()];
+      } else {
+        attendingExperts = [];
+      }
+    }
+
+    let patientIds: string[] | undefined;
+    if (body.patientIdsPresent === "true") {
+      if (Array.isArray(body.patientIds)) {
+        patientIds = body.patientIds.map((x) => x.trim()).filter(Boolean);
+      } else if (typeof body.patientIds === "string" && body.patientIds.trim()) {
+        patientIds = [body.patientIds.trim()];
+      } else {
+        patientIds = [];
+      }
+    }
+
+    await agendaUseCase.updateOptions(
+      {
+        sessionDate,
+        sortStrategy,
+        deferIncompleteFiles: false,
+        attendingExperts,
+        patientIds,
+        resetEnrolledPatients: true,
+      },
+      session.domain,
+    );
+    return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.post("/agenda/patients", async (req, reply) => {
+    const session = resolveSession(req);
+    const body = (req.body ?? {}) as Record<string, string | string[] | undefined>;
+    const patientId = typeof body.patientId === "string" ? body.patientId.trim() : undefined;
+    const patientIds = Array.isArray(body.patientIds)
+      ? body.patientIds.map((x) => x.trim()).filter(Boolean)
+      : undefined;
+    const enrollAllCandidates = body.enrollAllCandidates === "true";
+    const filterMode =
+      body.filterMode === "complete" || body.filterMode === "urgent" ? body.filterMode : "all";
+
+    await agendaUseCase.enrollPatients(
+      {
+        patientId,
+        patientIds,
+        enrollAllCandidates,
+        filterMode,
+      },
+      session.domain,
+    );
+    return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.post("/agenda/patients/:patientId/remove", async (req, reply) => {
+    const session = resolveSession(req);
+    const { patientId } = req.params as { patientId: string };
+    await agendaUseCase.removePatient(patientId, session.domain);
+    return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.post("/agenda/patients/clear", async (req, reply) => {
+    const session = resolveSession(req);
+    await agendaUseCase.clearAgenda(session.domain);
+    return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.post("/agenda/patients/:patientId/move", async (req, reply) => {
+    const session = resolveSession(req);
+    const { patientId } = req.params as { patientId: string };
+    const body = (req.body ?? {}) as Record<string, string | undefined>;
+    const direction =
+      body.direction === "up" || body.direction === "down" ? body.direction : undefined;
+    const targetPosition =
+      body.targetPosition !== undefined && !Number.isNaN(Number(body.targetPosition))
+        ? Number(body.targetPosition)
+        : undefined;
+    const pinned = body.pinned === "true" ? true : body.pinned === "false" ? false : undefined;
+
+    await agendaUseCase.movePatient(
+      patientId,
+      { direction, targetPosition, pinned },
+      session.domain,
+    );
+    return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
   });
 
   // 4. Ingest & Batch Tracking

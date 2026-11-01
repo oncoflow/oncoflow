@@ -12,6 +12,11 @@ import type {
   BugReportItem,
   ClinicalDomain,
   Language,
+  MdtAgendaEnrollInput,
+  MdtAgendaMoveInput,
+  MdtAgendaSortStrategy,
+  MdtAgendaUpdateInput,
+  MdtAgendaView,
   MdtFormCard,
   MdtFormDetail,
   PatientListItem,
@@ -1188,6 +1193,250 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       return { released: Number(res.released_locks ?? res.released ?? 0) };
     } catch (err) {
       if (this.fallback) return this.fallback.releaseGpuLocks(domain);
+      throw err;
+    }
+  }
+
+  private mapRawAgenda(raw: Record<string, unknown>, domain: ClinicalDomain): MdtAgendaView {
+    const rawStrategy = String(raw.sort_strategy ?? "hybrid");
+    const sortStrategy: MdtAgendaSortStrategy =
+      rawStrategy === "urgency_first" ||
+      rawStrategy === "expert_grouping" ||
+      rawStrategy === "manual"
+        ? rawStrategy
+        : "hybrid";
+
+    const rawItems = Array.isArray(raw.items) ? (raw.items as Array<Record<string, unknown>>) : [];
+    const items = rawItems.map((it, idx) => ({
+      position: Number(it.position ?? idx + 1),
+      patientId: String(it.patient_id ?? it.filename ?? ""),
+      filename: String(it.filename ?? ""),
+      patientName: String(it.patient_name ?? it.patient_id ?? ""),
+      firstName: String(it.first_name ?? ""),
+      lastName: String(it.last_name ?? ""),
+      dateBirth: this.formatIsoDate(it.date_birth),
+      urgency: String(it.urgency ?? ""),
+      urgencyScore: Number(it.urgency_score ?? 0),
+      priorityLevel: normalizePriorityLevel(it.priority_level ?? it.urgency),
+      isComplete: Boolean(it.is_complete ?? true),
+      missingCount: Number(it.missing_count ?? 0),
+      missingItems: Array.isArray(it.missing_items)
+        ? (it.missing_items as string[]).map(String)
+        : [],
+      careAdaptationSuggested:
+        typeof it.care_adaptation_suggested === "boolean" ? it.care_adaptation_suggested : null,
+      proposedCareType: it.proposed_care_type ? String(it.proposed_care_type) : null,
+      requiredExperts: Array.isArray(it.required_experts)
+        ? (it.required_experts as string[]).map(String)
+        : [],
+      presentRequiredExperts: Array.isArray(it.present_required_experts)
+        ? (it.present_required_experts as string[]).map(String)
+        : [],
+      absentRequiredExperts: Array.isArray(it.absent_required_experts)
+        ? (it.absent_required_experts as string[]).map(String)
+        : [],
+      quorumMet: Boolean(it.quorum_met ?? true),
+      expertCoverageRatio: Number(it.expert_coverage_ratio ?? 1),
+      clusterKey: String(it.cluster_key ?? "general"),
+      pinned: Boolean(it.pinned ?? false),
+      rankReason: String(it.rank_reason ?? ""),
+      mdtDate: this.formatIsoDate(it.mdt_date),
+    }));
+
+    const rawWindows = Array.isArray(raw.expert_windows)
+      ? (raw.expert_windows as Array<Record<string, unknown>>)
+      : [];
+    const expertWindows = rawWindows.map((w) => ({
+      expertName: String(w.expert_name ?? ""),
+      isAttending: Boolean(w.is_attending ?? true),
+      caseCount: Number(w.case_count ?? 0),
+      urgentCaseCount: Number(w.urgent_case_count ?? 0),
+      firstPosition:
+        w.first_position !== null && w.first_position !== undefined
+          ? Number(w.first_position)
+          : null,
+      lastPosition:
+        w.last_position !== null && w.last_position !== undefined ? Number(w.last_position) : null,
+      isContiguous: Boolean(w.is_contiguous ?? true),
+      patientIds: Array.isArray(w.patient_ids) ? (w.patient_ids as string[]).map(String) : [],
+    }));
+
+    const rawCandidates = Array.isArray(raw.candidates)
+      ? (raw.candidates as Array<Record<string, unknown>>)
+      : [];
+    const candidates = rawCandidates.map((c) => ({
+      patientId: String(c.patient_id ?? c.filename ?? ""),
+      filename: String(c.filename ?? ""),
+      patientName: String(c.patient_name ?? c.patient_id ?? ""),
+      firstName: String(c.first_name ?? ""),
+      lastName: String(c.last_name ?? ""),
+      dateBirth: this.formatIsoDate(c.date_birth),
+      urgency: String(c.urgency ?? ""),
+      urgencyScore: Number(c.urgency_score ?? 0),
+      priorityLevel: normalizePriorityLevel(c.priority_level ?? c.urgency),
+      isComplete: Boolean(c.is_complete ?? true),
+      missingCount: Number(c.missing_count ?? 0),
+      missingItems: Array.isArray(c.missing_items) ? (c.missing_items as string[]).map(String) : [],
+      careAdaptationSuggested:
+        typeof c.care_adaptation_suggested === "boolean" ? c.care_adaptation_suggested : null,
+      proposedCareType: c.proposed_care_type ? String(c.proposed_care_type) : null,
+      requiredExperts: Array.isArray(c.required_experts)
+        ? (c.required_experts as string[]).map(String)
+        : [],
+      mdtDate: this.formatIsoDate(c.mdt_date),
+    }));
+
+    return {
+      agendaId: String(raw.agenda_id ?? `next_mdt_${domain}`),
+      domain: (raw.domain === "sma" ? "sma" : domain) as ClinicalDomain,
+      sessionDate: String(raw.session_date ?? new Date().toISOString().slice(0, 10)),
+      sortStrategy,
+      deferIncompleteFiles: Boolean(raw.defer_incomplete_files ?? false),
+      availableExperts: Array.isArray(raw.available_experts)
+        ? (raw.available_experts as string[]).map(String)
+        : [],
+      attendingExperts: Array.isArray(raw.attending_experts)
+        ? (raw.attending_experts as string[]).map(String)
+        : [],
+      totalEnrolled: Number(raw.total_enrolled ?? items.length),
+      urgentCount: Number(raw.urgent_count ?? 0),
+      incompleteCount: Number(raw.incomplete_count ?? 0),
+      quorumWarningCount: Number(raw.quorum_warning_count ?? 0),
+      items,
+      expertWindows,
+      candidates,
+      updatedAt: raw.updated_at ? String(raw.updated_at) : null,
+    };
+  }
+
+  async getMdtAgenda(domain: ClinicalDomain): Promise<MdtAgendaView> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/mdt-agenda?domain=${encodeURIComponent(domain)}`,
+        domain,
+      );
+      return this.mapRawAgenda(res, domain);
+    } catch (err) {
+      if (this.fallback) return this.fallback.getMdtAgenda(domain);
+      throw err;
+    }
+  }
+
+  async updateMdtAgenda(
+    input: MdtAgendaUpdateInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    try {
+      const payload: Record<string, unknown> = {};
+      if (input.sessionDate !== undefined) payload.session_date = input.sessionDate;
+      if (input.sortStrategy !== undefined) payload.sort_strategy = input.sortStrategy;
+      if (input.deferIncompleteFiles !== undefined) {
+        payload.defer_incomplete_files = input.deferIncompleteFiles;
+      }
+      if (input.attendingExperts !== undefined) {
+        payload.attending_experts = input.attendingExperts;
+      }
+      if (input.toggleExpert !== undefined) payload.toggle_expert = input.toggleExpert;
+      if (input.patientIds !== undefined) payload.patient_ids = input.patientIds;
+      if (input.resetEnrolledPatients !== undefined) {
+        payload.reset_enrolled_patients = input.resetEnrolledPatients;
+      }
+
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/mdt-agenda?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+      );
+      return this.mapRawAgenda(res, domain);
+    } catch (err) {
+      if (this.fallback) return this.fallback.updateMdtAgenda(input, domain);
+      throw err;
+    }
+  }
+
+  async addPatientsToMdtAgenda(
+    input: MdtAgendaEnrollInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/mdt-agenda/patients?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            patient_ids: input.patientIds,
+            patient_id: input.patientId,
+            enroll_all_candidates: input.enrollAllCandidates ?? false,
+            filter_mode: input.filterMode ?? "all",
+          }),
+        },
+      );
+      return this.mapRawAgenda(res, domain);
+    } catch (err) {
+      if (this.fallback) return this.fallback.addPatientsToMdtAgenda(input, domain);
+      throw err;
+    }
+  }
+
+  async removePatientFromMdtAgenda(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/mdt-agenda/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(domain)}`,
+        domain,
+        { method: "DELETE" },
+      );
+      return this.mapRawAgenda(res, domain);
+    } catch (err) {
+      if (this.fallback) return this.fallback.removePatientFromMdtAgenda(patientId, domain);
+      throw err;
+    }
+  }
+
+  async clearMdtAgenda(domain: ClinicalDomain): Promise<MdtAgendaView> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/mdt-agenda/patients?domain=${encodeURIComponent(domain)}`,
+        domain,
+        { method: "DELETE" },
+      );
+      return this.mapRawAgenda(res, domain);
+    } catch (err) {
+      if (this.fallback) return this.fallback.clearMdtAgenda(domain);
+      throw err;
+    }
+  }
+
+  async movePatientInMdtAgenda(
+    patientId: string,
+    input: MdtAgendaMoveInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/mdt-agenda/patients/${encodeURIComponent(patientId)}/move?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            direction: input.direction,
+            target_position: input.targetPosition,
+            pinned: input.pinned,
+          }),
+        },
+      );
+      return this.mapRawAgenda(res, domain);
+    } catch (err) {
+      if (this.fallback) return this.fallback.movePatientInMdtAgenda(patientId, input, domain);
       throw err;
     }
   }

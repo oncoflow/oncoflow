@@ -21,6 +21,7 @@ import type {
   AgentModuleInfo,
   BatchStatus,
   ClinicalDomain,
+  MdtAgendaView,
   PatientListItem,
   QueueJobItem,
   QueueStats,
@@ -109,7 +110,15 @@ export function formatPatientSubtitle(id: string, rcpCount: number): string {
 
 export interface ShellLayoutOptions {
   title: string;
-  activeNav: "worklist" | "ingest" | "guidelines" | "agents" | "feedback" | "queue" | "dossier";
+  activeNav:
+    | "worklist"
+    | "agenda"
+    | "ingest"
+    | "guidelines"
+    | "agents"
+    | "feedback"
+    | "queue"
+    | "dossier";
   breadcrumbs: Array<{ label: string; href?: string }>;
   session: UserSession;
   queueStats: QueueStats;
@@ -247,6 +256,12 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           <a class="ds-nav__link" href="/worklist?domain=${domainParam}" ${activeNav === "worklist" || activeNav === "dossier" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.worklist", lang))}" title="${esc(t("nav.worklist", lang))}" data-testid="nav-worklist">
             <span class="ds-nav__indicator">${iconSvg("ic-worklist")}</span>
             <span class="ds-nav__label">${esc(t("nav.worklist", lang))}</span>
+          </a>
+        </li>
+        <li>
+          <a class="ds-nav__link" href="/agenda?domain=${domainParam}" ${activeNav === "agenda" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.agenda", lang))}" title="${esc(t("nav.agenda", lang))}" data-testid="nav-agenda">
+            <span class="ds-nav__indicator">${iconSvg("ic-calendar")}</span>
+            <span class="ds-nav__label">${esc(t("nav.agenda", lang))}</span>
           </a>
         </li>
         <li>
@@ -422,6 +437,10 @@ export function renderLayout(opts: ShellLayoutOptions): string {
       <span class="ds-bottom-nav__pill">${iconSvg("ic-worklist")}</span>
       <span class="ds-bottom-nav__label">${esc(t("nav.worklist", lang))}</span>
     </a>
+    <a class="ds-bottom-nav__item" href="/agenda?domain=${domainParam}" ${activeNav === "agenda" ? 'aria-current="page"' : ""}>
+      <span class="ds-bottom-nav__pill">${iconSvg("ic-calendar")}</span>
+      <span class="ds-bottom-nav__label">${lang === "fr" ? "Ordre RCP" : "Agenda"}</span>
+    </a>
     <a class="ds-bottom-nav__item" href="/ingest?domain=${domainParam}" ${activeNav === "ingest" ? 'aria-current="page"' : ""}>
       <span class="ds-bottom-nav__pill">${iconSvg("ic-add")}</span>
       <span class="ds-bottom-nav__label">${lang === "fr" ? "Importer" : "Upload"}</span>
@@ -556,6 +575,13 @@ export function renderWorklistPage(
                         ${iconSvg("ic-upload")}
                         <span>Importer une pièce PDF</span>
                       </a>
+                      <form method="post" action="/agenda/patients?domain=${domainParam}">
+                        <input type="hidden" name="patientId" value="${esc(c.patientId ?? c.id)}">
+                        <button type="submit" class="ds-menu__item" role="menuitem" data-testid="btn_enroll_agenda_${esc(c.id)}">
+                          ${iconSvg("ic-calendar")}
+                          <span>Inscrire à la prochaine RCP</span>
+                        </button>
+                      </form>
                       <hr class="ds-menu__divider">
                       <a class="ds-menu__item" role="menuitem" href="/feedback?domain=${domainParam}&patientId=${encodeURIComponent(c.patientId ?? c.id)}">
                         ${iconSvg("ic-bug")}
@@ -603,6 +629,14 @@ export function renderWorklistPage(
             ? "Préparation collégiale de la RCP neuromusculaire (Amyotrophie spinale SMA) — priorisation et contrôle de complétude."
             : "Préparation collégiale de la RCP d'oncologie digestive — priorisation, contrôle de complétude et orientations pré-RCP."
         }</p>
+      </div>
+      <div class="ds-page-header__actions">
+        <a class="ds-btn ds-btn--primary" href="/agenda?domain=${domainParam}&onboarding=1" data-testid="btn_worklist_schedule_meeting">
+          ${iconSvg("ic-add")} Programmer une nouvelle réunion
+        </a>
+        <a class="ds-btn ds-btn--tonal" href="/agenda?domain=${domainParam}" data-testid="btn_go_agenda">
+          ${iconSvg("ic-calendar")} ${esc(t("nav.agenda", lang))}
+        </a>
       </div>
     </div>
 
@@ -2395,6 +2429,532 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
     session,
     queueStats: stats,
     queueJobs: jobs,
+    bodyHtml,
+  });
+}
+
+export function renderAgendaPage(
+  agenda: MdtAgendaView,
+  session: UserSession,
+  queueStats: QueueStats,
+  queueJobs: QueueJobItem[],
+  openOnboarding = false,
+): string {
+  const lang = session.language;
+  const domainParam = encodeURIComponent(session.domain);
+  const attendingSet = new Set(agenda.attendingExperts);
+
+  const strategyOptions: Array<{ value: string; label: string }> = [
+    {
+      value: "hybrid",
+      label:
+        lang === "fr"
+          ? "Hybride (Recommandé : Urgences + Blocs d'experts)"
+          : "Hybrid (Recommended: Urgency + Expert Clusters)",
+    },
+    {
+      value: "urgency_first",
+      label:
+        lang === "fr"
+          ? "Urgence clinique stricte (Haute → Modérée → Standard)"
+          : "Strict Clinical Urgency First",
+    },
+    {
+      value: "expert_grouping",
+      label:
+        lang === "fr"
+          ? "Regroupement par spécialistes présents (Temps médical optimisé)"
+          : "Group by Attending Specialists",
+    },
+    {
+      value: "manual",
+      label:
+        lang === "fr"
+          ? "Ordre personnalisé (Épinglages & déplacements manuels)"
+          : "Custom Manual Order",
+    },
+  ];
+
+  // 1. Compact Dropdown Selector Items for Attending Experts + Passage Windows
+  const expertSelectorItemsHtml = agenda.availableExperts
+    .map((expKey) => {
+      const pres = getAgentPresentation(expKey, lang);
+      const isPresent = attendingSet.has(expKey);
+      const win = agenda.expertWindows.find((w) => w.expertName === expKey);
+      const caseCount = win?.caseCount ?? 0;
+      const windowLabel =
+        win && win.firstPosition !== null && win.lastPosition !== null
+          ? win.firstPosition === win.lastPosition
+            ? `#${win.firstPosition}`
+            : `#${win.firstPosition}→#${win.lastPosition}`
+          : `${caseCount} doss.`;
+
+      return `<form method="post" action="/agenda/options?domain=${domainParam}" class="ds-agenda-dropdown__form">
+        <input type="hidden" name="toggleExpert" value="${esc(expKey)}">
+        <button
+          type="submit"
+          class="ds-agenda-dropdown__item ${isPresent ? "is-selected" : "is-unselected"}"
+          aria-pressed="${isPresent ? "true" : "false"}"
+          title="${isPresent ? "Cliquer pour marquer absent" : "Cliquer pour marquer présent"}"
+          data-testid="chip_expert_${esc(expKey)}"
+        >
+          <span class="ds-agenda-dropdown__check" aria-hidden="true">${isPresent ? "☑" : "☐"}</span>
+          ${iconSvg(pres.icon, "ds-icon--xs")}
+          <span class="ds-agenda-dropdown__item-label">${esc(pres.label)}</span>
+          <span class="ds-badge ${isPresent ? "ds-badge--complete" : "ds-badge--incomplete"} ds-badge--sm" data-testid="expert-window-${esc(expKey)}">
+            ${isPresent ? esc(windowLabel) : `Absent (${caseCount})`}
+          </span>
+        </button>
+      </form>`;
+    })
+    .join("");
+
+  // 2. Ordered Agenda Rows (Main visual focus)
+  const enrolledHtml =
+    agenda.items.length === 0
+      ? `<div class="ds-empty" data-testid="empty-agenda">
+          <span class="ds-empty__icon">${iconSvg("ic-calendar")}</span>
+          <span class="ds-empty__title">Aucun patient inscrit à cette séance RCP</span>
+          <p class="ds-empty__text">Cliquez sur « Programmer une nouvelle réunion » ou utilisez le sélecteur « Ajouter un patient » pour composer l'ordre du jour.</p>
+          <button type="button" class="ds-btn ds-btn--primary" data-open="schedule-meeting-dialog">
+            ${iconSvg("ic-add")} Programmer une nouvelle réunion
+          </button>
+        </div>`
+      : `<ol class="ds-agenda-list" data-testid="agenda-items-list">
+          ${agenda.items
+            .map((item, idx) => {
+              const prio = derivePriorityBadgeInfo(item.priorityLevel, lang, false);
+              const compl = deriveCompletenessInfo(
+                {
+                  is_complete: item.isComplete,
+                  missing_count: item.missingCount,
+                  missing_items: item.missingItems,
+                },
+                lang,
+              );
+              const orient = deriveOrientationInfo(
+                {
+                  care_adaptation_suggested: item.careAdaptationSuggested,
+                  proposed_care_type: item.proposedCareType,
+                },
+                lang,
+              );
+              const dossierHref = `/patients/${encodeURIComponent(item.patientId)}?domain=${domainParam}`;
+
+              const reqBadgesHtml = item.requiredExperts
+                .map((expKey) => {
+                  const p = getAgentPresentation(expKey, lang);
+                  const isPresent = item.presentRequiredExperts.includes(expKey);
+                  if (isPresent) {
+                    return `<span class="ds-badge ds-badge--complete ds-badge--sm" title="Spécialiste présent en séance">${iconSvg("ic-check", "ds-icon--xs")} ${esc(p.label)}</span>`;
+                  }
+                  return `<span class="ds-badge ds-badge--urgency-high ds-badge--sm" title="Spécialiste requis mais absent de la séance">${iconSvg("ic-warning", "ds-icon--xs")} ${esc(p.label)} (absent)</span>`;
+                })
+                .join(" ");
+
+              const completenessBadge =
+                !item.isComplete && item.missingItems.length > 0
+                  ? `<div class="ds-hovercard" tabindex="0">
+                      <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
+                      <div class="ds-hovercard__panel" role="tooltip">
+                        <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
+                        <ul class="ds-hovercard__list">${item.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+                      </div>
+                    </div>`
+                  : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`;
+
+              const isFirst = idx === 0;
+              const isLast = idx === agenda.items.length - 1;
+              const rankTone =
+                item.priorityLevel === "high"
+                  ? "ds-agenda-item__rank--high"
+                  : !item.isComplete || !item.quorumMet
+                    ? "ds-agenda-item__rank--warning"
+                    : "ds-agenda-item__rank--standard";
+
+              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""}" data-testid="agenda-item-${esc(item.patientId)}">
+                <div class="ds-agenda-item__rank ${rankTone}" aria-label="Rang de passage ${item.position}">
+                  <span class="ds-agenda-item__pos">#${item.position}</span>
+                  ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-star", "ds-icon--xs")}</span>` : ""}
+                </div>
+
+                <div class="ds-agenda-item__main">
+                  <div class="ds-agenda-item__top">
+                    <div class="ds-agenda-item__identity">
+                      <a class="ds-agenda-item__name" href="${dossierHref}">${esc(item.patientName)}</a>
+                      <span class="ds-small ds-muted">#${esc(item.patientId)}${item.dateBirth ? ` · Né(e) le ${esc(item.dateBirth)}` : ""}</span>
+                    </div>
+                    <div class="ds-cluster">
+                      <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                      ${completenessBadge}
+                      <span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>
+                    </div>
+                  </div>
+
+                  ${
+                    item.proposedCareType
+                      ? `<p class="ds-small ds-agenda-item__proposal"><strong>Orientation pré-RCP :</strong> ${esc(item.proposedCareType)}</p>`
+                      : ""
+                  }
+
+                  <div class="ds-agenda-item__bottom">
+                    <div class="ds-cluster" aria-label="Quorum des spécialités requises">
+                      ${reqBadgesHtml || '<span class="ds-small ds-muted">Collège général</span>'}
+                    </div>
+                    <div class="ds-agenda-item__reason" data-testid="rank-reason-${esc(item.patientId)}">
+                      ${iconSvg("ic-compass", "ds-icon--xs")}
+                      <span>${esc(item.rankReason)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="ds-agenda-item__actions" aria-label="Actions d'ordonnancement pour ${esc(item.patientName)}">
+                  <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
+                    <input type="hidden" name="direction" value="up">
+                    <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon" ${isFirst ? "disabled" : ""} title="Monter d'un rang" aria-label="Monter ${esc(item.patientName)}" data-testid="btn_move_up_${esc(item.patientId)}">
+                      ↑
+                    </button>
+                  </form>
+                  <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
+                    <input type="hidden" name="direction" value="down">
+                    <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon" ${isLast ? "disabled" : ""} title="Descendre d'un rang" aria-label="Descendre ${esc(item.patientName)}" data-testid="btn_move_down_${esc(item.patientId)}">
+                      ↓
+                    </button>
+                  </form>
+                  <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
+                    <input type="hidden" name="pinned" value="${item.pinned ? "false" : "true"}">
+                    <button type="submit" class="ds-btn ${item.pinned ? "ds-btn--tonal" : "ds-btn--ghost"} ds-btn--sm ds-btn--icon" aria-pressed="${item.pinned ? "true" : "false"}" title="${item.pinned ? "Désépingler la position" : "Verrouiller à ce rang"}" aria-label="${item.pinned ? "Désépingler" : "Épingler"} ${esc(item.patientName)}" data-testid="btn_pin_${esc(item.patientId)}">
+                      ${iconSvg("ic-star", "ds-icon--xs")}
+                    </button>
+                  </form>
+                  <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_agenda_${esc(item.patientId)}">Ouvrir</a>
+                  <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/remove?domain=${domainParam}">
+                    <button type="submit" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" title="Retirer de la séance RCP" aria-label="Retirer ${esc(item.patientName)} de la séance" data-testid="btn_del_agenda_${esc(item.patientId)}">
+                      ${iconSvg("ic-close", "ds-icon--xs")}
+                    </button>
+                  </form>
+                </div>
+              </li>`;
+            })
+            .join("")}
+        </ol>`;
+
+  // 3. Compact Candidate Selector Dropdown Content (for adding removed patients)
+  const candidatesHtml =
+    agenda.candidates.length === 0
+      ? `<p class="ds-small ds-muted" style="padding:var(--ds-space-2)" data-testid="empty-candidates">Tous les patients du domaine sont inscrits à l'ordre du jour.</p>`
+      : `<ul class="ds-agenda-candidates" data-testid="agenda-candidates-list">
+          ${agenda.candidates
+            .map((cand) => {
+              const prio = derivePriorityBadgeInfo(cand.priorityLevel, lang, true);
+              return `<li class="ds-agenda-candidate" data-testid="agenda-candidate-${esc(cand.patientId)}">
+                <div class="ds-agenda-candidate__info">
+                  <span class="ds-agenda-candidate__name">${esc(cand.patientName)} <span class="ds-small ds-muted">#${esc(cand.patientId)}</span></span>
+                  <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                </div>
+                <form method="post" action="/agenda/patients?domain=${domainParam}">
+                  <input type="hidden" name="patientId" value="${esc(cand.patientId)}">
+                  <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_add_candidate_${esc(cand.patientId)}">
+                    ${iconSvg("ic-add", "ds-icon--xs")} Ajouter
+                  </button>
+                </form>
+              </li>`;
+            })
+            .join("")}
+        </ul>`;
+
+  // 4. All domain patients for the Direct Onboarding Modal (checked by default)
+  const allOnboardingPatients = [
+    ...agenda.items.map((item) => ({
+      patientId: item.patientId,
+      patientName: item.patientName,
+      priorityLevel: item.priorityLevel,
+      isComplete: item.isComplete,
+      requiredExperts: item.requiredExperts,
+      checked: true,
+    })),
+    ...agenda.candidates.map((cand) => ({
+      patientId: cand.patientId,
+      patientName: cand.patientName,
+      priorityLevel: cand.priorityLevel,
+      isComplete: cand.isComplete,
+      requiredExperts: cand.requiredExperts,
+      checked: true,
+    })),
+  ];
+
+  const onboardingExpertsHtml = agenda.availableExperts
+    .map((expKey) => {
+      const pres = getAgentPresentation(expKey, lang);
+      const isChecked = attendingSet.has(expKey) || agenda.attendingExperts.length === 0;
+      return `<label class="ds-agenda-onboarding__check-row">
+        <input type="checkbox" name="attendingExperts" value="${esc(expKey)}" ${isChecked ? "checked" : ""}>
+        ${iconSvg(pres.icon, "ds-icon--xs")}
+        <span>${esc(pres.label)}</span>
+      </label>`;
+    })
+    .join("");
+
+  const onboardingPatientsHtml = allOnboardingPatients
+    .map((p) => {
+      const prio = derivePriorityBadgeInfo(p.priorityLevel, lang, true);
+      return `<label class="ds-agenda-onboarding__check-row">
+        <input type="checkbox" name="patientIds" value="${esc(p.patientId)}" ${p.checked ? "checked" : ""}>
+        <span class="ds-agenda-onboarding__patient-name">${esc(p.patientName)} <small class="ds-muted">#${esc(p.patientId)}</small></span>
+        <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+      </label>`;
+    })
+    .join("");
+
+  const bodyHtml = `
+    <div class="ds-page-header ds-agenda-header">
+      <div class="ds-page-header__text">
+        <div class="ds-agenda-header__title-row">
+          <h1>${esc(t("nav.agenda", lang))}</h1>
+          <div class="ds-agenda-summary-strip" aria-label="Résumé de la séance RCP">
+            <span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="kpi-agenda-enrolled">
+              ${iconSvg("ic-layers", "ds-icon--xs")} ${agenda.totalEnrolled} dossier${agenda.totalEnrolled > 1 ? "s" : ""}
+            </span>
+            <span class="ds-badge ${agenda.urgentCount > 0 ? "ds-badge--urgency-high" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-urgent">
+              ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} urgence${agenda.urgentCount > 1 ? "s" : ""}
+            </span>
+            <span class="ds-badge ${agenda.quorumWarningCount > 0 ? "ds-badge--incomplete" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-quorum">
+              ${iconSvg("ic-users", "ds-icon--xs")} ${agenda.attendingExperts.length}/${agenda.availableExperts.length} experts${agenda.quorumWarningCount > 0 ? ` · ${agenda.quorumWarningCount} alerte(s) quorum` : ""}
+            </span>
+            ${
+              agenda.incompleteCount > 0
+                ? `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-testid="kpi-agenda-incomplete">
+                    ${iconSvg("ic-warning", "ds-icon--xs")} ${agenda.incompleteCount} incomplet${agenda.incompleteCount > 1 ? "s" : ""}
+                  </span>`
+                : ""
+            }
+          </div>
+        </div>
+      </div>
+      <div class="ds-page-header__actions">
+        <button type="button" class="ds-btn ds-btn--primary" data-open="schedule-meeting-dialog" data-testid="btn_schedule_new_meeting">
+          ${iconSvg("ic-calendar")} Programmer une nouvelle réunion
+        </button>
+        <a class="ds-btn ds-btn--secondary" href="/worklist?domain=${domainParam}">
+          ${iconSvg("ic-worklist")} Worklist
+        </a>
+        ${
+          agenda.items.length > 0
+            ? `<button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm" data-open="clear-agenda-dialog" data-testid="btn_del_clear_agenda">
+                ${iconSvg("ic-delete")} Vider
+              </button>`
+            : ""
+        }
+      </div>
+    </div>
+
+    <!-- Compact Single-Row Toolbar: Date + Strategy + Specialist Selector + Patient Selector -->
+    <section class="ds-card ds-agenda-toolbar" aria-label="Paramètres rapides de l'ordre du jour" data-testid="agenda-config-card">
+      <form method="post" action="/agenda/options?domain=${domainParam}" class="ds-agenda-toolbar__form" data-testid="form-agenda-options">
+        <div class="ds-field ds-agenda-toolbar__date">
+          <label class="ds-label" for="agenda-session-date">${iconSvg("ic-calendar", "ds-icon--xs")} Date de la RCP</label>
+          <input
+            type="date"
+            id="agenda-session-date"
+            name="sessionDate"
+            class="ds-input"
+            value="${esc(agenda.sessionDate)}"
+            data-autosubmit="true"
+            data-testid="input-session-date"
+          >
+        </div>
+
+        <div class="ds-field ds-agenda-toolbar__strategy">
+          <label class="ds-label" for="agenda-sort-strategy">${iconSvg("ic-compass", "ds-icon--xs")} Organisation de l'ordre du jour</label>
+          <select
+            id="agenda-sort-strategy"
+            name="sortStrategy"
+            class="ds-select"
+            data-autosubmit="true"
+            data-testid="select-sort-strategy"
+          >
+            ${strategyOptions
+              .map(
+                (opt) =>
+                  `<option value="${esc(opt.value)}" ${agenda.sortStrategy === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`,
+              )
+              .join("")}
+          </select>
+        </div>
+
+        <noscript>
+          <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_apply_agenda_options">Actualiser</button>
+        </noscript>
+      </form>
+
+      <!-- Specialist Multi-Select Dropdown -->
+      <div class="ds-field ds-agenda-toolbar__selector">
+        <span class="ds-label">${iconSvg("ic-users", "ds-icon--xs")} Spécialistes présents</span>
+        <details class="ds-agenda-dropdown" data-testid="agenda-expert-chips">
+          <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_expert_selector">
+            <span>${agenda.attendingExperts.length}/${agenda.availableExperts.length} spécialiste(s) présent(s)</span>
+          </summary>
+          <div class="ds-agenda-dropdown__panel" data-testid="agenda-expert-windows">
+            <div class="ds-agenda-dropdown__header">
+              <span>Cocher / décocher les spécialistes présents</span>
+            </div>
+            <div class="ds-agenda-dropdown__list">
+              ${expertSelectorItemsHtml}
+            </div>
+          </div>
+        </details>
+      </div>
+
+      <!-- Patient Add Selector Dropdown -->
+      <div class="ds-field ds-agenda-toolbar__selector">
+        <span class="ds-label">${iconSvg("ic-folder-open", "ds-icon--xs")} Ajouter / Retirer</span>
+        <details class="ds-agenda-dropdown" data-testid="agenda-candidate-pool">
+          <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_candidate_selector">
+            <span>${agenda.candidates.length > 0 ? `+ Ajouter un patient (${agenda.candidates.length} dispo.)` : "Tous les patients sont inscrits"}</span>
+          </summary>
+          <div class="ds-agenda-dropdown__panel ds-agenda-dropdown__panel--right">
+            ${
+              agenda.candidates.length > 0
+                ? `<div class="ds-cluster" style="margin-bottom:var(--ds-space-2)">
+                    <form method="post" action="/agenda/patients?domain=${domainParam}">
+                      <input type="hidden" name="enrollAllCandidates" value="true">
+                      <input type="hidden" name="filterMode" value="all">
+                      <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_enroll_all">
+                        ${iconSvg("ic-add", "ds-icon--xs")} Tout inscrire
+                      </button>
+                    </form>
+                    <form method="post" action="/agenda/patients?domain=${domainParam}">
+                      <input type="hidden" name="enrollAllCandidates" value="true">
+                      <input type="hidden" name="filterMode" value="urgent">
+                      <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_urgent">
+                        + Urgences
+                      </button>
+                    </form>
+                    <form method="post" action="/agenda/patients?domain=${domainParam}">
+                      <input type="hidden" name="enrollAllCandidates" value="true">
+                      <input type="hidden" name="filterMode" value="complete">
+                      <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_complete">
+                        + Complets
+                      </button>
+                    </form>
+                  </div>`
+                : ""
+            }
+            ${candidatesHtml}
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Main Full-Width Focus: Ordered Agenda List -->
+    <section class="ds-stack ds-agenda-focus" aria-labelledby="heading-ordered-agenda">
+      <div class="ds-agenda-section-bar">
+        <h2 id="heading-ordered-agenda" class="ds-card__title">
+          ${iconSvg("ic-layers")} Ordre de passage de la séance du ${esc(agenda.sessionDate)} (${agenda.items.length} dossier${agenda.items.length > 1 ? "s" : ""})
+        </h2>
+        ${
+          agenda.items.length > 0 && agenda.items[0]
+            ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}" data-testid="btn_start_session">
+                ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
+              </a>`
+            : ""
+        }
+      </div>
+      ${enrolledHtml}
+    </section>
+
+    <!-- Direct Onboarding Modal: "Programmer une nouvelle réunion" -->
+    <dialog class="ds-modal ds-agenda-onboarding" id="schedule-meeting-dialog" ${openOnboarding ? "open" : ""} aria-labelledby="schedule-meeting-title" data-testid="schedule-meeting-dialog">
+      <form method="post" action="/agenda/schedule?domain=${domainParam}" data-testid="form-schedule-meeting">
+        <div class="ds-modal__header">
+          <span>${iconSvg("ic-calendar")}</span>
+          <h2 id="schedule-meeting-title">Programmer une nouvelle réunion RCP</h2>
+        </div>
+        <div class="ds-modal__body ds-stack">
+          <div class="ds-agenda-onboarding__grid">
+            <div class="ds-field">
+              <label class="ds-label" for="onb-session-date">1. Date de la réunion RCP</label>
+              <input
+                type="date"
+                id="onb-session-date"
+                name="sessionDate"
+                class="ds-input"
+                value="${esc(agenda.sessionDate)}"
+                required
+                data-testid="input-onboarding-date"
+              >
+            </div>
+            <div class="ds-field">
+              <label class="ds-label" for="onb-sort-strategy">2. Mode d'organisation</label>
+              <select id="onb-sort-strategy" name="sortStrategy" class="ds-select" data-testid="select-onboarding-strategy">
+                ${strategyOptions
+                  .map(
+                    (opt) =>
+                      `<option value="${esc(opt.value)}" ${agenda.sortStrategy === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </div>
+          </div>
+
+          <div class="ds-field">
+            <span class="ds-label">3. Spécialistes présents à la réunion</span>
+            <input type="hidden" name="attendingExpertsPresent" value="true">
+            <div class="ds-agenda-onboarding__checklist" data-testid="onboarding-experts-list">
+              ${onboardingExpertsHtml}
+            </div>
+          </div>
+
+          <div class="ds-field">
+            <span class="ds-label">4. Patients inscrits par défaut (${allOnboardingPatients.length})</span>
+            <input type="hidden" name="patientIdsPresent" value="true">
+            <div class="ds-agenda-onboarding__checklist" data-testid="onboarding-patients-list">
+              ${onboardingPatientsHtml}
+            </div>
+          </div>
+        </div>
+        <div class="ds-modal__footer">
+          <button type="button" class="ds-btn ds-btn--ghost" data-close="schedule-meeting-dialog">Annuler</button>
+          <button type="submit" class="ds-btn ds-btn--primary" data-testid="btn_confirm_schedule_meeting">
+            ${iconSvg("ic-check")} Générer l'ordre du jour
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Destructive Confirmation Modal for Clearing Agenda (DataSyntis Rose) -->
+    <dialog class="ds-modal ds-modal--danger" id="clear-agenda-dialog" aria-labelledby="clear-agenda-title">
+      <div class="ds-modal__header">
+        <span>${iconSvg("ic-delete")}</span>
+        <h2 id="clear-agenda-title">Vider l'ordre du jour de la séance RCP ?</h2>
+      </div>
+      <div class="ds-modal__body">
+        <div class="ds-alert ds-alert--danger" role="alert">
+          <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Réinitialisation de la liste de passage</span>
+            <span>Les ${agenda.items.length} dossiers seront retirés de l'ordre du jour (les dossiers patients eux-mêmes ne sont pas supprimés).</span>
+          </div>
+        </div>
+      </div>
+      <div class="ds-modal__footer">
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="post" action="/agenda/patients/clear?domain=${domainParam}">
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_clear_agenda">
+            ${iconSvg("ic-delete")} Confirmer la réinitialisation
+          </button>
+        </form>
+      </div>
+    </dialog>
+  `;
+
+  return renderLayout({
+    title: t("nav.agenda", lang),
+    activeNav: "agenda",
+    breadcrumbs: [{ label: t("nav.agenda", lang) }],
+    session,
+    queueStats,
+    queueJobs,
     bodyHtml,
   });
 }

@@ -172,6 +172,7 @@ export const UI_CATALOG: Record<Language, Record<string, string>> = {
   fr: {
     "app.title": "DataSyntis — Préparation collégiale RCP",
     "nav.worklist": "Worklist RCP",
+    "nav.agenda": "Ordre du jour RCP",
     "nav.ingest": "Importer des PDF",
     "nav.guidelines": "Référentiels scientifiques",
     "nav.agents": "Modules d'expertise",
@@ -215,6 +216,7 @@ export const UI_CATALOG: Record<Language, Record<string, string>> = {
   en: {
     "app.title": "DataSyntis — MDT Clinical Preparation",
     "nav.worklist": "MDT Worklist",
+    "nav.agenda": "Next MDT Agenda",
     "nav.ingest": "Upload PDFs",
     "nav.guidelines": "Scientific Guidelines",
     "nav.agents": "Specialty Agents",

@@ -22,6 +22,7 @@ from src.routers.dependencies import (
     get_current_user_info,
     verify_api_token,
 )
+from src.routers.mdt_agenda import router as mdt_agenda_router
 from src.routers.patientmdtform import (
     RecordServiceDep,
     router as patientmdtform_router,
@@ -169,6 +170,7 @@ def list_raw_patients(
 
 
 app.include_router(patientmdtform_router, prefix="/api/v1", dependencies=_protected)
+app.include_router(mdt_agenda_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(agents_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(resources_router, prefix="/api/v1", dependencies=_protected)
 app.include_router(queue_router, prefix="/api/v1", dependencies=_protected)

@@ -5,6 +5,10 @@ import type {
   CitationRef,
   ClinicalDomain,
   Language,
+  MdtAgendaEnrollInput,
+  MdtAgendaMoveInput,
+  MdtAgendaUpdateInput,
+  MdtAgendaView,
   MdtFormCard,
   MdtFormDetail,
   PatientListItem,
@@ -131,4 +135,19 @@ export interface OncoflowApiPort {
   cancelOrDeleteQueueJob(jobId: string, domain: ClinicalDomain): Promise<void>;
   cleanQueue(mode: "completed" | "failed" | "all", domain: ClinicalDomain): Promise<number>;
   releaseGpuLocks(domain: ClinicalDomain): Promise<{ released: number }>;
+
+  // Next RCP / MDT Session Agenda Builder
+  getMdtAgenda(domain: ClinicalDomain): Promise<MdtAgendaView>;
+  updateMdtAgenda(input: MdtAgendaUpdateInput, domain: ClinicalDomain): Promise<MdtAgendaView>;
+  addPatientsToMdtAgenda(
+    input: MdtAgendaEnrollInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView>;
+  removePatientFromMdtAgenda(patientId: string, domain: ClinicalDomain): Promise<MdtAgendaView>;
+  clearMdtAgenda(domain: ClinicalDomain): Promise<MdtAgendaView>;
+  movePatientInMdtAgenda(
+    patientId: string,
+    input: MdtAgendaMoveInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView>;
 }

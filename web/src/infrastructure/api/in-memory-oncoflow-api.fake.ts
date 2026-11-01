@@ -12,6 +12,14 @@ import type {
   BugReportItem,
   ClinicalDomain,
   Language,
+  MdtAgendaCandidate,
+  MdtAgendaEnrollInput,
+  MdtAgendaItem,
+  MdtAgendaMoveInput,
+  MdtAgendaSortStrategy,
+  MdtAgendaUpdateInput,
+  MdtAgendaView,
+  MdtExpertWindow,
   MdtFormCard,
   MdtFormDetail,
   PatientListItem,
@@ -32,6 +40,18 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
   private bugs = new Map<string, BugReportItem>();
   private jobs = new Map<string, QueueJobItem>();
   private gpuLocksCount = 1;
+  private agendas = new Map<
+    ClinicalDomain,
+    {
+      sessionDate: string;
+      sortStrategy: MdtAgendaSortStrategy;
+      deferIncompleteFiles: boolean;
+      attendingExperts: string[];
+      enrolledPatientIds: string[];
+      pinnedMap: Map<string, boolean>;
+      updatedAt: string;
+    }
+  >();
 
   constructor() {
     this.seed();
@@ -650,6 +670,30 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
       patientOrFile: "#S-0007",
       author: "Dr C. Moreau",
       createdAt: "2026-10-25",
+    });
+
+    this.agendas.set("oncology", {
+      sessionDate: "2026-11-13",
+      sortStrategy: "hybrid",
+      deferIncompleteFiles: false,
+      attendingExperts: ["pancreas expert", "oesophagus expert", "hepatocellular expert"],
+      enrolledPatientIds: ["A-1042", "A-1037"],
+      pinnedMap: new Map(),
+      updatedAt: "2026-11-01T18:00:00Z",
+    });
+    this.agendas.set("sma", {
+      sessionDate: "2026-11-19",
+      sortStrategy: "hybrid",
+      deferIncompleteFiles: false,
+      attendingExperts: [
+        "neurologist expert",
+        "geneticist expert",
+        "pulmonologist expert",
+        "orthopedist expert",
+      ],
+      enrolledPatientIds: ["S-0007"],
+      pinnedMap: new Map(),
+      updatedAt: "2026-11-01T18:00:00Z",
     });
   }
 
@@ -1387,5 +1431,382 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     const released = this.gpuLocksCount;
     this.gpuLocksCount = 0;
     return { released };
+  }
+
+  private getDomainAvailableExperts(domain: ClinicalDomain): string[] {
+    return domain === "sma"
+      ? [
+          "neurologist expert",
+          "geneticist expert",
+          "pulmonologist expert",
+          "physiotherapy expert",
+          "orthopedist expert",
+        ]
+      : ["pancreas expert", "oesophagus expert", "hepatocellular expert"];
+  }
+
+  private ensureAgendaState(domain: ClinicalDomain) {
+    let st = this.agendas.get(domain);
+    if (!st) {
+      const avail = this.getDomainAvailableExperts(domain);
+      const defaultIds = Array.from(
+        new Set(
+          Array.from(this.forms.values())
+            .filter((f) => f.domain === domain)
+            .map((f) => f.patientId ?? f.file),
+        ),
+      );
+      st = {
+        sessionDate: "2026-11-13",
+        sortStrategy: "hybrid",
+        deferIncompleteFiles: false,
+        attendingExperts: [...avail],
+        enrolledPatientIds: defaultIds,
+        pinnedMap: new Map(),
+        updatedAt: new Date().toISOString(),
+      };
+      this.agendas.set(domain, st);
+    }
+    return st;
+  }
+
+  async getMdtAgenda(domain: ClinicalDomain): Promise<MdtAgendaView> {
+    const st = this.ensureAgendaState(domain);
+    const availableExperts = this.getDomainAvailableExperts(domain);
+    const attendingSet = new Set(st.attendingExperts);
+    const allCards = await this.listPatientCards(domain);
+    const cardMap = new Map<string, MdtFormCard>();
+    for (const c of allCards) {
+      cardMap.set(c.patientId ?? c.id, c);
+    }
+
+    const enrolledSet = new Set(st.enrolledPatientIds);
+    const rawItems: MdtAgendaItem[] = [];
+
+    for (const pid of st.enrolledPatientIds) {
+      const card = cardMap.get(pid);
+      if (!card) continue;
+      const reqExperts = card.specialties.filter((s) => availableExperts.includes(s));
+      const effectiveReq = reqExperts.length > 0 ? reqExperts : card.specialties;
+      const presentReq = effectiveReq.filter((e) => attendingSet.has(e));
+      const absentReq = effectiveReq.filter((e) => !attendingSet.has(e));
+      const quorumMet = absentReq.length === 0;
+      const coverage = effectiveReq.length > 0 ? presentReq.length / effectiveReq.length : 1.0;
+      const clusterKey = presentReq[0] ?? effectiveReq[0] ?? "general";
+      const urgencyScore =
+        card.priorityLevel === "high" ? 2 : card.priorityLevel === "medium" ? 1 : 0;
+      const urgencyLabel =
+        card.priorityLevel === "high"
+          ? "Urgent"
+          : card.priorityLevel === "medium"
+            ? "Semi-urgent"
+            : "Standard";
+      const pinned = Boolean(st.pinnedMap.get(pid));
+
+      const reasons: string[] = [];
+      if (pinned) reasons.push("Position épinglée manuellement");
+      if (card.priorityLevel === "high") reasons.push("Priorité haute");
+      else if (card.priorityLevel === "medium") reasons.push("Priorité modérée");
+      else reasons.push("Priorité standard");
+
+      if (effectiveReq.length > 0) {
+        if (quorumMet) {
+          reasons.push(`Quorum complet (${presentReq.length}/${effectiveReq.length})`);
+        } else {
+          reasons.push(`Quorum partiel (${presentReq.length}/${effectiveReq.length})`);
+        }
+      }
+      if (!card.isComplete && st.deferIncompleteFiles) {
+        reasons.push(`Dossier incomplet (${card.missingCount} manquante(s))`);
+      } else if (card.careAdaptationSuggested) {
+        reasons.push("Adaptation suggérée");
+      }
+
+      rawItems.push({
+        position: 0,
+        patientId: pid,
+        filename: card.file,
+        patientName: card.patientName,
+        firstName: card.firstName,
+        lastName: card.lastName,
+        dateBirth: card.dateBirth ?? null,
+        urgency: urgencyLabel,
+        urgencyScore,
+        priorityLevel: card.priorityLevel,
+        isComplete: card.isComplete,
+        missingCount: card.missingCount,
+        missingItems: card.missingItems,
+        careAdaptationSuggested: card.careAdaptationSuggested,
+        proposedCareType: card.proposedCareType,
+        requiredExperts: effectiveReq,
+        presentRequiredExperts: presentReq,
+        absentRequiredExperts: absentReq,
+        quorumMet,
+        expertCoverageRatio: coverage,
+        clusterKey,
+        pinned,
+        rankReason: reasons.join(" · "),
+        mdtDate: card.mdtDate,
+      });
+    }
+
+    const clusterStats = new Map<string, { urgent: number; total: number }>();
+    for (const item of rawItems) {
+      const cur = clusterStats.get(item.clusterKey) ?? { urgent: 0, total: 0 };
+      cur.total += 1;
+      if (item.priorityLevel === "high") cur.urgent += 1;
+      clusterStats.set(item.clusterKey, cur);
+    }
+
+    let ordered: MdtAgendaItem[];
+    if (st.sortStrategy === "manual") {
+      ordered = [...rawItems];
+    } else {
+      const unpinned = rawItems.filter((i) => !i.pinned);
+      unpinned.sort((a, b) => {
+        if (st.deferIncompleteFiles && a.isComplete !== b.isComplete) {
+          return a.isComplete ? -1 : 1;
+        }
+        if (st.sortStrategy === "urgency_first") {
+          if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+          if (b.expertCoverageRatio !== a.expertCoverageRatio) {
+            return b.expertCoverageRatio - a.expertCoverageRatio;
+          }
+          return a.patientName.localeCompare(b.patientName, "fr");
+        }
+        if (st.sortStrategy === "expert_grouping") {
+          if (a.quorumMet !== b.quorumMet) return a.quorumMet ? -1 : 1;
+          if (a.clusterKey !== b.clusterKey) {
+            const ca = clusterStats.get(a.clusterKey) ?? { urgent: 0, total: 0 };
+            const cb = clusterStats.get(b.clusterKey) ?? { urgent: 0, total: 0 };
+            if (cb.urgent !== ca.urgent) return cb.urgent - ca.urgent;
+            if (cb.total !== ca.total) return cb.total - ca.total;
+            return a.clusterKey.localeCompare(b.clusterKey);
+          }
+          if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+          return a.patientName.localeCompare(b.patientName, "fr");
+        }
+        const aTopUrgent = a.priorityLevel === "high" && a.quorumMet;
+        const bTopUrgent = b.priorityLevel === "high" && b.quorumMet;
+        if (aTopUrgent !== bTopUrgent) return aTopUrgent ? -1 : 1;
+        if (a.quorumMet !== b.quorumMet) return a.quorumMet ? -1 : 1;
+        if (a.clusterKey !== b.clusterKey) {
+          const ca = clusterStats.get(a.clusterKey) ?? { urgent: 0, total: 0 };
+          const cb = clusterStats.get(b.clusterKey) ?? { urgent: 0, total: 0 };
+          if (cb.urgent !== ca.urgent) return cb.urgent - ca.urgent;
+          if (cb.total !== ca.total) return cb.total - ca.total;
+        }
+        if (b.urgencyScore !== a.urgencyScore) return b.urgencyScore - a.urgencyScore;
+        return a.patientName.localeCompare(b.patientName, "fr");
+      });
+
+      ordered = [];
+      let unpinnedIdx = 0;
+      for (let idx = 0; idx < rawItems.length; idx++) {
+        const orig = rawItems[idx]!;
+        if (orig.pinned) {
+          ordered.push(orig);
+        } else if (unpinnedIdx < unpinned.length) {
+          ordered.push(unpinned[unpinnedIdx++]!);
+        }
+      }
+    }
+
+    ordered.forEach((item, index) => {
+      item.position = index + 1;
+    });
+    st.enrolledPatientIds = ordered.map((i) => i.patientId);
+
+    const expertWindows: MdtExpertWindow[] = availableExperts.map((exp) => {
+      const matching = ordered.filter((it) => it.requiredExperts.includes(exp));
+      const positions = matching.map((it) => it.position);
+      const firstPos = positions.length > 0 ? Math.min(...positions) : null;
+      const lastPos = positions.length > 0 ? Math.max(...positions) : null;
+      const isContiguous =
+        positions.length <= 1 ||
+        (firstPos !== null && lastPos !== null && lastPos - firstPos + 1 === positions.length);
+      return {
+        expertName: exp,
+        isAttending: attendingSet.has(exp),
+        caseCount: matching.length,
+        urgentCaseCount: matching.filter((it) => it.priorityLevel === "high").length,
+        firstPosition: firstPos,
+        lastPosition: lastPos,
+        isContiguous,
+        patientIds: matching.map((it) => it.patientId),
+      };
+    });
+
+    const candidates: MdtAgendaCandidate[] = allCards
+      .filter((c) => !enrolledSet.has(c.patientId ?? c.id))
+      .map((c) => {
+        const pid = c.patientId ?? c.id;
+        const urgencyScore = c.priorityLevel === "high" ? 2 : c.priorityLevel === "medium" ? 1 : 0;
+        const urgencyLabel =
+          c.priorityLevel === "high"
+            ? "Urgent"
+            : c.priorityLevel === "medium"
+              ? "Semi-urgent"
+              : "Standard";
+        return {
+          patientId: pid,
+          filename: c.file,
+          patientName: c.patientName,
+          firstName: c.firstName,
+          lastName: c.lastName,
+          dateBirth: c.dateBirth ?? null,
+          urgency: urgencyLabel,
+          urgencyScore,
+          priorityLevel: c.priorityLevel,
+          isComplete: c.isComplete,
+          missingCount: c.missingCount,
+          missingItems: c.missingItems,
+          careAdaptationSuggested: c.careAdaptationSuggested,
+          proposedCareType: c.proposedCareType,
+          requiredExperts: c.specialties,
+          mdtDate: c.mdtDate,
+        };
+      });
+
+    return {
+      agendaId: `next_mdt_${domain}`,
+      domain,
+      sessionDate: st.sessionDate,
+      sortStrategy: st.sortStrategy,
+      deferIncompleteFiles: st.deferIncompleteFiles,
+      availableExperts,
+      attendingExperts: st.attendingExperts,
+      totalEnrolled: ordered.length,
+      urgentCount: ordered.filter((i) => i.priorityLevel === "high").length,
+      incompleteCount: ordered.filter((i) => !i.isComplete).length,
+      quorumWarningCount: ordered.filter((i) => !i.quorumMet).length,
+      items: ordered,
+      expertWindows,
+      candidates,
+      updatedAt: st.updatedAt,
+    };
+  }
+
+  async updateMdtAgenda(
+    input: MdtAgendaUpdateInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    const st = this.ensureAgendaState(domain);
+    if (input.sessionDate) st.sessionDate = input.sessionDate;
+    if (input.sortStrategy) st.sortStrategy = input.sortStrategy;
+    if (input.deferIncompleteFiles !== undefined) {
+      st.deferIncompleteFiles = Boolean(input.deferIncompleteFiles);
+    }
+    if (input.attendingExperts) {
+      st.attendingExperts = [...input.attendingExperts];
+    }
+    if (input.toggleExpert) {
+      const idx = st.attendingExperts.indexOf(input.toggleExpert);
+      if (idx >= 0) {
+        st.attendingExperts.splice(idx, 1);
+      } else {
+        st.attendingExperts.push(input.toggleExpert);
+      }
+    }
+    if (input.resetEnrolledPatients || input.patientIds !== undefined) {
+      st.pinnedMap.clear();
+      if (input.patientIds !== undefined) {
+        st.enrolledPatientIds = [...new Set(input.patientIds.filter(Boolean))];
+      } else {
+        const cards = await this.listPatientCards(domain);
+        st.enrolledPatientIds = cards.map((c) => c.patientId ?? c.id);
+      }
+    }
+    st.updatedAt = new Date().toISOString();
+    return this.getMdtAgenda(domain);
+  }
+
+  async addPatientsToMdtAgenda(
+    input: MdtAgendaEnrollInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    const st = this.ensureAgendaState(domain);
+    const toAdd: string[] = [];
+    if (input.patientId) toAdd.push(input.patientId);
+    if (Array.isArray(input.patientIds)) toAdd.push(...input.patientIds);
+
+    if (input.enrollAllCandidates) {
+      const cards = await this.listPatientCards(domain);
+      for (const c of cards) {
+        const pid = c.patientId ?? c.id;
+        if (input.filterMode === "complete" && !c.isComplete) continue;
+        if (input.filterMode === "urgent" && c.priorityLevel !== "high") continue;
+        toAdd.push(pid);
+      }
+    }
+
+    for (const pid of toAdd) {
+      if (pid && !st.enrolledPatientIds.includes(pid)) {
+        st.enrolledPatientIds.push(pid);
+      }
+    }
+    st.updatedAt = new Date().toISOString();
+    return this.getMdtAgenda(domain);
+  }
+
+  async removePatientFromMdtAgenda(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    const st = this.ensureAgendaState(domain);
+    st.enrolledPatientIds = st.enrolledPatientIds.filter((id) => id !== patientId);
+    st.pinnedMap.delete(patientId);
+    st.updatedAt = new Date().toISOString();
+    return this.getMdtAgenda(domain);
+  }
+
+  async clearMdtAgenda(domain: ClinicalDomain): Promise<MdtAgendaView> {
+    const st = this.ensureAgendaState(domain);
+    st.enrolledPatientIds = [];
+    st.pinnedMap.clear();
+    st.updatedAt = new Date().toISOString();
+    return this.getMdtAgenda(domain);
+  }
+
+  async movePatientInMdtAgenda(
+    patientId: string,
+    input: MdtAgendaMoveInput,
+    domain: ClinicalDomain,
+  ): Promise<MdtAgendaView> {
+    const st = this.ensureAgendaState(domain);
+    await this.getMdtAgenda(domain);
+
+    if (input.pinned !== undefined && !input.direction && input.targetPosition === undefined) {
+      st.pinnedMap.set(patientId, Boolean(input.pinned));
+      st.updatedAt = new Date().toISOString();
+      return this.getMdtAgenda(domain);
+    }
+
+    const idx = st.enrolledPatientIds.indexOf(patientId);
+    if (idx < 0) return this.getMdtAgenda(domain);
+
+    let targetIdx = idx;
+    if (input.direction === "up" && idx > 0) {
+      targetIdx = idx - 1;
+    } else if (input.direction === "down" && idx < st.enrolledPatientIds.length - 1) {
+      targetIdx = idx + 1;
+    } else if (typeof input.targetPosition === "number") {
+      targetIdx = Math.max(0, Math.min(st.enrolledPatientIds.length - 1, input.targetPosition - 1));
+    }
+
+    if (targetIdx !== idx) {
+      const [moved] = st.enrolledPatientIds.splice(idx, 1);
+      if (moved) {
+        st.enrolledPatientIds.splice(targetIdx, 0, moved);
+      }
+      st.sortStrategy = "manual";
+    }
+    if (input.pinned !== undefined) {
+      st.pinnedMap.set(patientId, Boolean(input.pinned));
+    } else {
+      st.pinnedMap.set(patientId, true);
+    }
+    st.updatedAt = new Date().toISOString();
+    return this.getMdtAgenda(domain);
   }
 }

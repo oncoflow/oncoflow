@@ -242,3 +242,103 @@ export interface WorklistKpis {
   incompleteCount: number;
   adaptationSuggestedCount: number;
 }
+
+export type MdtAgendaSortStrategy = "hybrid" | "urgency_first" | "expert_grouping" | "manual";
+
+export interface MdtAgendaItem {
+  position: number;
+  patientId: string;
+  filename: string;
+  patientName: string;
+  firstName: string;
+  lastName: string;
+  dateBirth: string | null;
+  urgency: string;
+  urgencyScore: number;
+  priorityLevel: PriorityLevel;
+  isComplete: boolean;
+  missingCount: number;
+  missingItems: string[];
+  careAdaptationSuggested: boolean | null;
+  proposedCareType: string | null;
+  requiredExperts: string[];
+  presentRequiredExperts: string[];
+  absentRequiredExperts: string[];
+  quorumMet: boolean;
+  expertCoverageRatio: number;
+  clusterKey: string;
+  pinned: boolean;
+  rankReason: string;
+  mdtDate: string | null;
+}
+
+export interface MdtExpertWindow {
+  expertName: string;
+  isAttending: boolean;
+  caseCount: number;
+  urgentCaseCount: number;
+  firstPosition: number | null;
+  lastPosition: number | null;
+  isContiguous: boolean;
+  patientIds: string[];
+}
+
+export interface MdtAgendaCandidate {
+  patientId: string;
+  filename: string;
+  patientName: string;
+  firstName: string;
+  lastName: string;
+  dateBirth: string | null;
+  urgency: string;
+  urgencyScore: number;
+  priorityLevel: PriorityLevel;
+  isComplete: boolean;
+  missingCount: number;
+  missingItems: string[];
+  careAdaptationSuggested: boolean | null;
+  proposedCareType: string | null;
+  requiredExperts: string[];
+  mdtDate: string | null;
+}
+
+export interface MdtAgendaView {
+  agendaId: string;
+  domain: ClinicalDomain;
+  sessionDate: string;
+  sortStrategy: MdtAgendaSortStrategy;
+  deferIncompleteFiles: boolean;
+  availableExperts: string[];
+  attendingExperts: string[];
+  totalEnrolled: number;
+  urgentCount: number;
+  incompleteCount: number;
+  quorumWarningCount: number;
+  items: MdtAgendaItem[];
+  expertWindows: MdtExpertWindow[];
+  candidates: MdtAgendaCandidate[];
+  updatedAt: string | null;
+}
+
+export interface MdtAgendaUpdateInput {
+  sessionDate?: string;
+  sortStrategy?: MdtAgendaSortStrategy;
+  deferIncompleteFiles?: boolean;
+  attendingExperts?: string[];
+  toggleExpert?: string;
+  patientIds?: string[];
+  resetEnrolledPatients?: boolean;
+}
+
+export interface MdtAgendaEnrollInput {
+  patientIds?: string[];
+  patientId?: string;
+  enrollAllCandidates?: boolean;
+  filterMode?: "all" | "complete" | "urgent";
+}
+
+export interface MdtAgendaMoveInput {
+  direction?: "up" | "down";
+  targetPosition?: number;
+  pinned?: boolean;
+}
