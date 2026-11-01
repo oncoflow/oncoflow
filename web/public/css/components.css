@@ -4657,6 +4657,67 @@ a.ds-timeline__link:hover {
   min-width: 0;
 }
 
+/* Explicit Meeting Settings Header ("Paramétrage de la réunion RCP") */
+.ds-agenda-config-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-2);
+  padding: 0.75rem 1rem !important;
+}
+.ds-agenda-config-section__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding-bottom: 0.45rem;
+  border-bottom: 1px solid var(--ds-color-border);
+}
+.ds-agenda-config-section__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ds-space-2);
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ds-color-primary-text);
+}
+
+/* Agenda Dossier Previous / Next Navigation Bar (Single Line: Left Prev | Center Info | Right Next) */
+.ds-card.ds-agenda-dossier-nav,
+.ds-agenda-dossier-nav {
+  display: flex;
+  flex-direction: row !important;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  padding: 0.5rem 0.85rem !important;
+  border: 1px solid var(--ds-color-primary);
+  background: color-mix(in srgb, var(--ds-color-primary-soft) 35%, var(--ds-color-surface));
+}
+.ds-agenda-dossier-nav__prev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+}
+.ds-agenda-dossier-nav__center {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ds-space-2);
+  min-width: 0;
+}
+.ds-agenda-dossier-nav__next {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
 @media (max-width: 68rem) {
   .ds-agenda-toolbar {
     grid-template-columns: minmax(0, 1fr);

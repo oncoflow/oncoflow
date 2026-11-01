@@ -650,6 +650,31 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     );
   });
 
+  async function resolveAgendaDossierNav(
+    dossier: { patientId: string | null; currentForm: { file: string } },
+    domain: ClinicalDomain,
+    fromQuery: string | undefined,
+  ) {
+    if (fromQuery !== "agenda") return undefined;
+    const agenda = await agendaUseCase.getAgenda(domain);
+    if (agenda.items.length === 0) return undefined;
+    const idx = agenda.items.findIndex(
+      (i) => i.patientId === dossier.patientId || i.filename === dossier.currentForm.file,
+    );
+    if (idx < 0) return undefined;
+    const prev = idx > 0 ? agenda.items[idx - 1] : undefined;
+    const next = idx < agenda.items.length - 1 ? agenda.items[idx + 1] : undefined;
+    return {
+      position: idx + 1,
+      total: agenda.items.length,
+      sessionDate: agenda.sessionDate,
+      prevPatientId: prev?.patientId ?? null,
+      prevPatientName: prev?.patientName ?? null,
+      nextPatientId: next?.patientId ?? null,
+      nextPatientName: next?.patientName ?? null,
+    };
+  }
+
   app.get("/patients/:patientId", async (req, reply) => {
     const session = resolveSession(req);
     const { patientId } = req.params as { patientId: string };
@@ -663,7 +688,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply.code(404).type("text/html; charset=utf-8").send("<h1>Dossier introuvable</h1>");
     }
 
-    const html = renderDossierPage(dossier, session, queueStats, queueJobs, [], query.editSection);
+    const agendaNav = await resolveAgendaDossierNav(dossier, session.domain, query.from);
+    const html = renderDossierPage(
+      dossier,
+      session,
+      queueStats,
+      queueJobs,
+      [],
+      query.editSection,
+      agendaNav,
+    );
     return reply.type("text/html; charset=utf-8").send(html);
   });
 
@@ -683,7 +717,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
         .send("<h1>Fiche RCP introuvable</h1>");
     }
 
-    const html = renderDossierPage(dossier, session, queueStats, queueJobs, [], query.editSection);
+    const agendaNav = await resolveAgendaDossierNav(dossier, session.domain, query.from);
+    const html = renderDossierPage(
+      dossier,
+      session,
+      queueStats,
+      queueJobs,
+      [],
+      query.editSection,
+      agendaNav,
+    );
     return reply.type("text/html; charset=utf-8").send(html);
   });
 

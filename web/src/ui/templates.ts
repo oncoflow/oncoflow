@@ -1144,6 +1144,16 @@ export function renderSectionDetailsPartial(
   </details>`;
 }
 
+export interface AgendaDossierNavContext {
+  position: number;
+  total: number;
+  sessionDate: string;
+  prevPatientId: string | null;
+  prevPatientName: string | null;
+  nextPatientId: string | null;
+  nextPatientName: string | null;
+}
+
 export function renderDossierPage(
   dossier: PatientDossierView,
   session: UserSession,
@@ -1151,6 +1161,7 @@ export function renderDossierPage(
   queueJobs: QueueJobItem[],
   chatHistory: Array<{ question: string; reply: ChatReply }> = [],
   editingSection?: string,
+  agendaNav?: AgendaDossierNavContext,
 ): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
@@ -1507,7 +1518,43 @@ export function renderDossierPage(
     domain: session.domain,
   });
 
+  const agendaNavHtml = agendaNav
+    ? `<nav class="ds-card ds-agenda-dossier-nav" aria-label="Navigation de l'ordre du jour RCP" data-testid="agenda-dossier-nav">
+        <div class="ds-agenda-dossier-nav__prev">
+          ${
+            agendaNav.prevPatientId
+              ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.prevPatientId)}?domain=${domainParam}&from=agenda" title="${esc(agendaNav.prevPatientName ?? "")}" data-testid="btn_agenda_prev_dossier">
+                  ← Dossier précédent (#${agendaNav.position - 1}${agendaNav.prevPatientName ? ` · ${esc(agendaNav.prevPatientName)}` : ""})
+                </a>`
+              : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled data-testid="btn_agenda_prev_dossier">
+                  ← Dossier précédent
+                </button>`
+          }
+        </div>
+        <div class="ds-agenda-dossier-nav__center">
+          <a class="ds-btn ds-btn--ghost ds-btn--sm" href="/agenda?domain=${domainParam}" data-testid="btn_back_to_agenda">
+            ${iconSvg("ic-calendar")} Ordre du jour RCP
+          </a>
+          <span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="agenda-dossier-position">
+            Dossier #${agendaNav.position} / ${agendaNav.total} · Séance du ${esc(agendaNav.sessionDate)}
+          </span>
+        </div>
+        <div class="ds-agenda-dossier-nav__next">
+          ${
+            agendaNav.nextPatientId
+              ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.nextPatientId)}?domain=${domainParam}&from=agenda" title="${esc(agendaNav.nextPatientName ?? "")}" data-testid="btn_agenda_next_dossier">
+                  Dossier suivant (#${agendaNav.position + 1}${agendaNav.nextPatientName ? ` · ${esc(agendaNav.nextPatientName)}` : ""}) →
+                </a>`
+              : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled data-testid="btn_agenda_next_dossier">
+                  Dossier suivant →
+                </button>`
+          }
+        </div>
+      </nav>`
+    : "";
+
   const bodyHtml = `
+    ${agendaNavHtml}
     <!-- Unified RCP Hero Card: Compact 2-Line Header + Always-Visible Synoptic Markers + Collapsible RCP Timeline -->
     <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}" data-testid="synoptic-card">
       <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata) -->
@@ -1796,9 +1843,11 @@ export function renderDossierPage(
 
   return renderLayout({
     title: dossier.patientName,
-    activeNav: "dossier",
+    activeNav: agendaNav ? "agenda" : "dossier",
     breadcrumbs: [
-      { label: t("nav.worklist", lang), href: `/worklist?domain=${domainParam}` },
+      agendaNav
+        ? { label: t("nav.agenda", lang), href: `/agenda?domain=${domainParam}` }
+        : { label: t("nav.worklist", lang), href: `/worklist?domain=${domainParam}` },
       { label: dossier.patientName },
     ],
     session,
@@ -2514,8 +2563,8 @@ export function renderAgendaPage(
     agenda.items.length === 0
       ? `<div class="ds-empty" data-testid="empty-agenda">
           <span class="ds-empty__icon">${iconSvg("ic-calendar")}</span>
-          <span class="ds-empty__title">Aucun patient inscrit à cette séance RCP</span>
-          <p class="ds-empty__text">Cliquez sur « Programmer une nouvelle réunion » ou utilisez le sélecteur « Ajouter un patient » pour composer l'ordre du jour.</p>
+          <span class="ds-empty__title">Aucune réunion RCP programmée</span>
+          <p class="ds-empty__text">Cliquez sur « Programmer une nouvelle réunion » pour définir la date, les spécialistes présents et inscrire les patients à l'ordre du jour.</p>
           <button type="button" class="ds-btn ds-btn--primary" data-open="schedule-meeting-dialog">
             ${iconSvg("ic-add")} Programmer une nouvelle réunion
           </button>
@@ -2539,7 +2588,7 @@ export function renderAgendaPage(
                 },
                 lang,
               );
-              const dossierHref = `/patients/${encodeURIComponent(item.patientId)}?domain=${domainParam}`;
+              const dossierHref = `/patients/${encodeURIComponent(item.patientId)}?domain=${domainParam}&from=agenda`;
 
               const reqBadgesHtml = item.requiredExperts
                 .map((expKey) => {
@@ -2706,29 +2755,144 @@ export function renderAgendaPage(
     })
     .join("");
 
+  const hasMeeting = agenda.items.length > 0 && Boolean(agenda.sessionDate);
+
+  const configToolbarHtml = hasMeeting
+    ? `<!-- Session Configuration Section (only shown when a meeting is active) -->
+      <section class="ds-card ds-agenda-config-section" aria-labelledby="heading-agenda-settings" data-testid="agenda-config-card">
+        <div class="ds-agenda-config-section__header">
+          <h2 id="heading-agenda-settings" class="ds-agenda-config-section__title">
+            ${iconSvg("ic-compass", "ds-icon--xs")} Paramétrage de la réunion RCP
+          </h2>
+          <span class="ds-small ds-muted">Ajustez la date, le mode d'organisation, les spécialistes présents et la liste des patients</span>
+        </div>
+
+        <div class="ds-agenda-toolbar">
+          <form method="post" action="/agenda/options?domain=${domainParam}" class="ds-agenda-toolbar__form" data-testid="form-agenda-options">
+            <div class="ds-field ds-agenda-toolbar__date">
+              <label class="ds-label" for="agenda-session-date">${iconSvg("ic-calendar", "ds-icon--xs")} Date de la RCP</label>
+              <input
+                type="date"
+                id="agenda-session-date"
+                name="sessionDate"
+                class="ds-input"
+                value="${esc(agenda.sessionDate)}"
+                data-autosubmit="true"
+                data-testid="input-session-date"
+              >
+            </div>
+
+            <div class="ds-field ds-agenda-toolbar__strategy">
+              <label class="ds-label" for="agenda-sort-strategy">${iconSvg("ic-compass", "ds-icon--xs")} Organisation de l'ordre du jour</label>
+              <select
+                id="agenda-sort-strategy"
+                name="sortStrategy"
+                class="ds-select"
+                data-autosubmit="true"
+                data-testid="select-sort-strategy"
+              >
+                ${strategyOptions
+                  .map(
+                    (opt) =>
+                      `<option value="${esc(opt.value)}" ${agenda.sortStrategy === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </div>
+
+            <noscript>
+              <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_apply_agenda_options">Actualiser</button>
+            </noscript>
+          </form>
+
+          <!-- Specialist Multi-Select Dropdown -->
+          <div class="ds-field ds-agenda-toolbar__selector">
+            <span class="ds-label">${iconSvg("ic-users", "ds-icon--xs")} Spécialistes présents</span>
+            <details class="ds-agenda-dropdown" data-testid="agenda-expert-chips">
+              <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_expert_selector">
+                <span>${agenda.attendingExperts.length}/${agenda.availableExperts.length} spécialiste(s) présent(s)</span>
+              </summary>
+              <div class="ds-agenda-dropdown__panel" data-testid="agenda-expert-windows">
+                <div class="ds-agenda-dropdown__header">
+                  <span>Cocher / décocher les spécialistes présents</span>
+                </div>
+                <div class="ds-agenda-dropdown__list">
+                  ${expertSelectorItemsHtml}
+                </div>
+              </div>
+            </details>
+          </div>
+
+          <!-- Patient Add Selector Dropdown -->
+          <div class="ds-field ds-agenda-toolbar__selector">
+            <span class="ds-label">${iconSvg("ic-folder-open", "ds-icon--xs")} Ajouter / Retirer</span>
+            <details class="ds-agenda-dropdown" data-testid="agenda-candidate-pool">
+              <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_candidate_selector">
+                <span>${agenda.candidates.length > 0 ? `+ Ajouter un patient (${agenda.candidates.length} dispo.)` : "Tous les patients sont inscrits"}</span>
+              </summary>
+              <div class="ds-agenda-dropdown__panel ds-agenda-dropdown__panel--right">
+                ${
+                  agenda.candidates.length > 0
+                    ? `<div class="ds-cluster" style="margin-bottom:var(--ds-space-2)">
+                        <form method="post" action="/agenda/patients?domain=${domainParam}">
+                          <input type="hidden" name="enrollAllCandidates" value="true">
+                          <input type="hidden" name="filterMode" value="all">
+                          <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_enroll_all">
+                            ${iconSvg("ic-add", "ds-icon--xs")} Tout inscrire
+                          </button>
+                        </form>
+                        <form method="post" action="/agenda/patients?domain=${domainParam}">
+                          <input type="hidden" name="enrollAllCandidates" value="true">
+                          <input type="hidden" name="filterMode" value="urgent">
+                          <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_urgent">
+                            + Urgences
+                          </button>
+                        </form>
+                        <form method="post" action="/agenda/patients?domain=${domainParam}">
+                          <input type="hidden" name="enrollAllCandidates" value="true">
+                          <input type="hidden" name="filterMode" value="complete">
+                          <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_complete">
+                            + Complets
+                          </button>
+                        </form>
+                      </div>`
+                    : ""
+                }
+                ${candidatesHtml}
+              </div>
+            </details>
+          </div>
+        </div>
+      </section>`
+    : "";
+
   const bodyHtml = `
     <div class="ds-page-header ds-agenda-header">
       <div class="ds-page-header__text">
         <div class="ds-agenda-header__title-row">
           <h1>${esc(t("nav.agenda", lang))}</h1>
-          <div class="ds-agenda-summary-strip" aria-label="Résumé de la séance RCP">
-            <span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="kpi-agenda-enrolled">
-              ${iconSvg("ic-layers", "ds-icon--xs")} ${agenda.totalEnrolled} dossier${agenda.totalEnrolled > 1 ? "s" : ""}
-            </span>
-            <span class="ds-badge ${agenda.urgentCount > 0 ? "ds-badge--urgency-high" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-urgent">
-              ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} urgence${agenda.urgentCount > 1 ? "s" : ""}
-            </span>
-            <span class="ds-badge ${agenda.quorumWarningCount > 0 ? "ds-badge--incomplete" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-quorum">
-              ${iconSvg("ic-users", "ds-icon--xs")} ${agenda.attendingExperts.length}/${agenda.availableExperts.length} experts${agenda.quorumWarningCount > 0 ? ` · ${agenda.quorumWarningCount} alerte(s) quorum` : ""}
-            </span>
-            ${
-              agenda.incompleteCount > 0
-                ? `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-testid="kpi-agenda-incomplete">
-                    ${iconSvg("ic-warning", "ds-icon--xs")} ${agenda.incompleteCount} incomplet${agenda.incompleteCount > 1 ? "s" : ""}
-                  </span>`
-                : ""
-            }
-          </div>
+          ${
+            hasMeeting
+              ? `<div class="ds-agenda-summary-strip" aria-label="Résumé de la séance RCP">
+                  <span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="kpi-agenda-enrolled">
+                    ${iconSvg("ic-layers", "ds-icon--xs")} ${agenda.totalEnrolled} dossier${agenda.totalEnrolled > 1 ? "s" : ""}
+                  </span>
+                  <span class="ds-badge ${agenda.urgentCount > 0 ? "ds-badge--urgency-high" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-urgent">
+                    ${iconSvg("ic-priority-high", "ds-icon--xs")} ${agenda.urgentCount} urgence${agenda.urgentCount > 1 ? "s" : ""}
+                  </span>
+                  <span class="ds-badge ${agenda.quorumWarningCount > 0 ? "ds-badge--incomplete" : "ds-badge--neutral"} ds-badge--sm" data-testid="kpi-agenda-quorum">
+                    ${iconSvg("ic-users", "ds-icon--xs")} ${agenda.attendingExperts.length}/${agenda.availableExperts.length} experts${agenda.quorumWarningCount > 0 ? ` · ${agenda.quorumWarningCount} alerte(s) quorum` : ""}
+                  </span>
+                  ${
+                    agenda.incompleteCount > 0
+                      ? `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-testid="kpi-agenda-incomplete">
+                          ${iconSvg("ic-warning", "ds-icon--xs")} ${agenda.incompleteCount} incomplet${agenda.incompleteCount > 1 ? "s" : ""}
+                        </span>`
+                      : ""
+                  }
+                </div>`
+              : ""
+          }
         </div>
       </div>
       <div class="ds-page-header__actions">
@@ -2739,7 +2903,7 @@ export function renderAgendaPage(
           ${iconSvg("ic-worklist")} Worklist
         </a>
         ${
-          agenda.items.length > 0
+          hasMeeting
             ? `<button type="button" class="ds-btn ds-btn--danger-soft ds-btn--sm" data-open="clear-agenda-dialog" data-testid="btn_del_clear_agenda">
                 ${iconSvg("ic-delete")} Vider
               </button>`
@@ -2748,118 +2912,26 @@ export function renderAgendaPage(
       </div>
     </div>
 
-    <!-- Compact Single-Row Toolbar: Date + Strategy + Specialist Selector + Patient Selector -->
-    <section class="ds-card ds-agenda-toolbar" aria-label="Paramètres rapides de l'ordre du jour" data-testid="agenda-config-card">
-      <form method="post" action="/agenda/options?domain=${domainParam}" class="ds-agenda-toolbar__form" data-testid="form-agenda-options">
-        <div class="ds-field ds-agenda-toolbar__date">
-          <label class="ds-label" for="agenda-session-date">${iconSvg("ic-calendar", "ds-icon--xs")} Date de la RCP</label>
-          <input
-            type="date"
-            id="agenda-session-date"
-            name="sessionDate"
-            class="ds-input"
-            value="${esc(agenda.sessionDate)}"
-            data-autosubmit="true"
-            data-testid="input-session-date"
-          >
-        </div>
-
-        <div class="ds-field ds-agenda-toolbar__strategy">
-          <label class="ds-label" for="agenda-sort-strategy">${iconSvg("ic-compass", "ds-icon--xs")} Organisation de l'ordre du jour</label>
-          <select
-            id="agenda-sort-strategy"
-            name="sortStrategy"
-            class="ds-select"
-            data-autosubmit="true"
-            data-testid="select-sort-strategy"
-          >
-            ${strategyOptions
-              .map(
-                (opt) =>
-                  `<option value="${esc(opt.value)}" ${agenda.sortStrategy === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`,
-              )
-              .join("")}
-          </select>
-        </div>
-
-        <noscript>
-          <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_apply_agenda_options">Actualiser</button>
-        </noscript>
-      </form>
-
-      <!-- Specialist Multi-Select Dropdown -->
-      <div class="ds-field ds-agenda-toolbar__selector">
-        <span class="ds-label">${iconSvg("ic-users", "ds-icon--xs")} Spécialistes présents</span>
-        <details class="ds-agenda-dropdown" data-testid="agenda-expert-chips">
-          <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_expert_selector">
-            <span>${agenda.attendingExperts.length}/${agenda.availableExperts.length} spécialiste(s) présent(s)</span>
-          </summary>
-          <div class="ds-agenda-dropdown__panel" data-testid="agenda-expert-windows">
-            <div class="ds-agenda-dropdown__header">
-              <span>Cocher / décocher les spécialistes présents</span>
-            </div>
-            <div class="ds-agenda-dropdown__list">
-              ${expertSelectorItemsHtml}
-            </div>
-          </div>
-        </details>
-      </div>
-
-      <!-- Patient Add Selector Dropdown -->
-      <div class="ds-field ds-agenda-toolbar__selector">
-        <span class="ds-label">${iconSvg("ic-folder-open", "ds-icon--xs")} Ajouter / Retirer</span>
-        <details class="ds-agenda-dropdown" data-testid="agenda-candidate-pool">
-          <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_candidate_selector">
-            <span>${agenda.candidates.length > 0 ? `+ Ajouter un patient (${agenda.candidates.length} dispo.)` : "Tous les patients sont inscrits"}</span>
-          </summary>
-          <div class="ds-agenda-dropdown__panel ds-agenda-dropdown__panel--right">
-            ${
-              agenda.candidates.length > 0
-                ? `<div class="ds-cluster" style="margin-bottom:var(--ds-space-2)">
-                    <form method="post" action="/agenda/patients?domain=${domainParam}">
-                      <input type="hidden" name="enrollAllCandidates" value="true">
-                      <input type="hidden" name="filterMode" value="all">
-                      <button type="submit" class="ds-btn ds-btn--secondary ds-btn--sm" data-testid="btn_enroll_all">
-                        ${iconSvg("ic-add", "ds-icon--xs")} Tout inscrire
-                      </button>
-                    </form>
-                    <form method="post" action="/agenda/patients?domain=${domainParam}">
-                      <input type="hidden" name="enrollAllCandidates" value="true">
-                      <input type="hidden" name="filterMode" value="urgent">
-                      <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_urgent">
-                        + Urgences
-                      </button>
-                    </form>
-                    <form method="post" action="/agenda/patients?domain=${domainParam}">
-                      <input type="hidden" name="enrollAllCandidates" value="true">
-                      <input type="hidden" name="filterMode" value="complete">
-                      <button type="submit" class="ds-btn ds-btn--tonal ds-btn--sm" data-testid="btn_enroll_all_complete">
-                        + Complets
-                      </button>
-                    </form>
-                  </div>`
-                : ""
-            }
-            ${candidatesHtml}
-          </div>
-        </details>
-      </div>
-    </section>
+    ${configToolbarHtml}
 
     <!-- Main Full-Width Focus: Ordered Agenda List -->
     <section class="ds-stack ds-agenda-focus" aria-labelledby="heading-ordered-agenda">
-      <div class="ds-agenda-section-bar">
-        <h2 id="heading-ordered-agenda" class="ds-card__title">
-          ${iconSvg("ic-layers")} Ordre de passage de la séance du ${esc(agenda.sessionDate)} (${agenda.items.length} dossier${agenda.items.length > 1 ? "s" : ""})
-        </h2>
-        ${
-          agenda.items.length > 0 && agenda.items[0]
-            ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}" data-testid="btn_start_session">
-                ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
-              </a>`
-            : ""
-        }
-      </div>
+      ${
+        hasMeeting
+          ? `<div class="ds-agenda-section-bar">
+              <h2 id="heading-ordered-agenda" class="ds-card__title">
+                ${iconSvg("ic-layers")} Ordre de passage de la séance du ${esc(agenda.sessionDate)} (${agenda.items.length} dossier${agenda.items.length > 1 ? "s" : ""})
+              </h2>
+              ${
+                agenda.items[0]
+                  ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}&from=agenda" data-testid="btn_start_session">
+                      ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
+                    </a>`
+                  : ""
+              }
+            </div>`
+          : ""
+      }
       ${enrolledHtml}
     </section>
 

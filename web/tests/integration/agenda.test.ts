@@ -18,11 +18,45 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("Ordre du jour RCP");
     expect(res.body).toContain("Programmer une nouvelle réunion");
+    expect(res.body).toContain("Paramétrage de la réunion RCP");
+    expect(res.body).toContain('data-testid="agenda-config-card"');
     expect(res.body).toContain("FICTIVE Jeanne");
     expect(res.body).toContain("MODÈLE Paul");
     expect(res.body).toContain('data-testid="agenda-expert-chips"');
     expect(res.body).toContain('data-testid="btn_schedule_new_meeting"');
     expect(res.body).not.toContain("Reléguer les dossiers incomplets");
+  });
+
+  it("hides settings when no meeting is scheduled and renders Dossier précédent / Dossier suivant when opening a dossier from the agenda", async () => {
+    const api = new InMemoryOncoflowApiFake();
+    const config = loadConfig({ APP_DEV_MODE: "true" });
+    const app = await buildServer({ config, api });
+
+    // 1. Opening a patient dossier from the agenda (?from=agenda) renders prev/next dossier navigation
+    const dossierFromAgenda = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology&from=agenda",
+    });
+    expect(dossierFromAgenda.statusCode).toBe(200);
+    expect(dossierFromAgenda.body).toContain('data-testid="agenda-dossier-nav"');
+    expect(dossierFromAgenda.body).toContain('data-testid="btn_agenda_prev_dossier"');
+    expect(dossierFromAgenda.body).toContain('data-testid="btn_agenda_next_dossier"');
+    expect(dossierFromAgenda.body).toContain("Dossier précédent");
+    expect(dossierFromAgenda.body).toContain("Dossier suivant");
+    expect(dossierFromAgenda.body).toContain("/patients/A-1037?domain=oncology&from=agenda");
+
+    // 2. Clear the agenda -> no active meeting -> settings card is hidden
+    await app.inject({
+      method: "POST",
+      url: "/agenda/patients/clear?domain=oncology",
+    });
+    const emptyAgendaRes = await app.inject({
+      method: "GET",
+      url: "/agenda?domain=oncology",
+    });
+    expect(emptyAgendaRes.statusCode).toBe(200);
+    expect(emptyAgendaRes.body).not.toContain('data-testid="agenda-config-card"');
+    expect(emptyAgendaRes.body).toContain("Aucune réunion RCP programmée");
   });
 
   it("supports direct onboarding via POST /agenda/schedule ('Programmer une nouvelle réunion')", async () => {
