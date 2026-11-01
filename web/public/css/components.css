@@ -4342,6 +4342,10 @@ a.ds-timeline__link:hover {
     bottom: calc(8.25rem + env(safe-area-inset-bottom, 0px));
   }
   .ds-copilot-drawer {
+    top: var(--ds-vv-offset-top, 0px);
+    bottom: auto;
+    height: var(--ds-vvh, 100dvh);
+    max-height: var(--ds-vvh, 100dvh);
     width: 100vw;
     max-width: 100vw;
     border-left: 0;
@@ -4352,6 +4356,40 @@ a.ds-timeline__link:hover {
   }
   .ds-copilot-drawer__handle {
     display: none;
+  }
+  /* Mobile Virtual Keyboard Open: compact header & hide secondary bar so chat log + composer fit cleanly above the keyboard */
+  .ds-copilot-drawer.is-keyboard-open .ds-copilot-drawer__header,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-copilot-drawer__header {
+    padding: 0.35rem 0.65rem;
+  }
+  .ds-copilot-drawer.is-keyboard-open .ds-copilot-drawer__avatar,
+  .ds-copilot-drawer.is-keyboard-open .ds-copilot-drawer__subtitle,
+  .ds-copilot-drawer.is-keyboard-open .ds-assistant-bar,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-copilot-drawer__avatar,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-copilot-drawer__subtitle,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-assistant-bar {
+    display: none;
+  }
+  .ds-copilot-drawer.is-keyboard-open .ds-copilot-drawer__body,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-copilot-drawer__body {
+    padding: 0.35rem 0.5rem 0.45rem;
+  }
+  .ds-copilot-drawer.is-keyboard-open .ds-chat,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-chat {
+    gap: 0.35rem;
+  }
+  .ds-copilot-drawer.is-keyboard-open .ds-chat__log,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-chat__log {
+    padding: 0.45rem 0.6rem;
+    min-height: 3.5rem;
+  }
+  .ds-copilot-drawer.is-keyboard-open .ds-chat__composer,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-chat__composer {
+    padding: 0.3rem 0.45rem 0.3rem 0.65rem;
+  }
+  .ds-copilot-drawer.is-keyboard-open .ds-chat__input,
+  .ds-copilot-drawer:has(.ds-chat__input:focus) .ds-chat__input {
+    max-height: 4.25rem;
   }
   .ds-modal {
     width: calc(100vw - 1.25rem);

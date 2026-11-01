@@ -218,7 +218,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
 <html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/public/css/tokens.css?v=20">

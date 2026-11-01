@@ -318,6 +318,68 @@
   initM3Selects(document);
 
   // M3 Non-blocking Co-Pilot Side Sheet (#ai-chat-drawer) & M3 Expressive FAB Menu (#ai-chat-fab)
+  function syncVisualViewportForAiDrawer() {
+    var drawer = document.getElementById("ai-chat-drawer");
+    var vv = window.visualViewport;
+    var isMobile = window.innerWidth <= 768;
+    var vvh = vv ? vv.height : window.innerHeight;
+    var vvTop = vv ? vv.offsetTop : 0;
+
+    root.style.setProperty("--ds-vvh", Math.round(vvh) + "px");
+    root.style.setProperty("--ds-vv-offset-top", Math.round(vvTop) + "px");
+
+    var activeEl = document.activeElement;
+    var isChatInputFocused = Boolean(
+      activeEl &&
+        (activeEl.classList.contains("ds-chat__input") ||
+          (activeEl.closest && activeEl.closest(".ds-copilot-drawer, .ds-chat"))) &&
+        (activeEl.tagName === "TEXTAREA" || activeEl.tagName === "INPUT"),
+    );
+    var keyboardLikelyOpen =
+      isMobile && (vvh < window.innerHeight * 0.82 || isChatInputFocused);
+
+    root.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
+    if (drawer) {
+      drawer.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
+      if (drawer.classList.contains("is-open") && keyboardLikelyOpen) {
+        var log = drawer.querySelector(".ds-chat__log");
+        if (log) {
+          log.scrollTop = log.scrollHeight;
+        }
+      }
+    }
+  }
+
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", syncVisualViewportForAiDrawer, {
+      passive: true,
+    });
+    window.visualViewport.addEventListener("scroll", syncVisualViewportForAiDrawer, {
+      passive: true,
+    });
+  }
+  window.addEventListener("resize", syncVisualViewportForAiDrawer, { passive: true });
+  document.addEventListener("focusin", function (e) {
+    var t = e.target;
+    if (
+      t instanceof HTMLElement &&
+      (t.classList.contains("ds-chat__input") || t.closest(".ds-copilot-drawer, .ds-chat"))
+    ) {
+      window.setTimeout(syncVisualViewportForAiDrawer, 60);
+      window.setTimeout(syncVisualViewportForAiDrawer, 260);
+    }
+  });
+  document.addEventListener("focusout", function (e) {
+    var t = e.target;
+    if (
+      t instanceof HTMLElement &&
+      (t.classList.contains("ds-chat__input") || t.closest(".ds-copilot-drawer, .ds-chat"))
+    ) {
+      window.setTimeout(syncVisualViewportForAiDrawer, 100);
+    }
+  });
+  syncVisualViewportForAiDrawer();
+
   function setChatDrawerOpen(isOpen) {
     var drawer = document.getElementById("ai-chat-drawer");
     if (!drawer) return;
@@ -333,7 +395,8 @@
       if (fabTrig) fabTrig.setAttribute("aria-expanded", "false");
       fab.classList.toggle("is-hidden", isOpen);
     }
-    if (isOpen) {
+    syncVisualViewportForAiDrawer();
+    if (isOpen && window.innerWidth > 768) {
       var input = drawer.querySelector("textarea");
       if (input) {
         window.setTimeout(function () {
