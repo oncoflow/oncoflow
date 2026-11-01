@@ -690,7 +690,17 @@ export function renderWorklistPage(
                     <div class="ds-card__body">
                       <div class="ds-cluster">
                         <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
-                        <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
+                        ${
+                          !c.isComplete && c.missingItems.length > 0
+                            ? `<div class="ds-hovercard" tabindex="0">
+                                <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
+                                <div class="ds-hovercard__panel" role="tooltip">
+                                  <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
+                                  <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+                                </div>
+                              </div>`
+                            : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`
+                        }
                         ${
                           c.proposedCareType || c.summaryText
                             ? `<div class="ds-hovercard" tabindex="0">
@@ -1391,9 +1401,9 @@ export function renderDossierPage(
           },
         ];
   const defaultAgentName =
-    assistantAgents.find((a) => a.name.includes("expert"))?.name ??
+    assistantAgents.find((a) => a.name.toLowerCase().includes("expert"))?.name ??
     assistantAgents[0]?.name ??
-    (session.domain === "sma" ? "neurologist expert" : "pancreas expert");
+    "Administrative";
 
   const dossierTone = deriveRcpTone(
     dossier.priorityBadge.level,
@@ -1441,10 +1451,10 @@ export function renderDossierPage(
         <div class="ds-patient-header__top">
           <h1 class="ds-patient-header__name">${esc(dossier.patientName)}</h1>
 
-          <div class="ds-cluster" style="gap:var(--ds-space-2)">
-            <span class="ds-badge ${dossier.priorityBadge.badgeClass}">${iconSvg(dossier.priorityBadge.icon)} ${esc(dossier.priorityBadge.label)}</span>
+          <div class="ds-patient-header__badges">
+            <span class="ds-badge ${dossier.priorityBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.priorityBadge.icon)} ${esc(dossier.priorityBadge.label)}</span>
             <div class="ds-hovercard" tabindex="0">
-              <span class="ds-badge ${dossier.completenessBadge.badgeClass}">
+              <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm">
                 ${iconSvg(dossier.completenessBadge.icon)} ${esc(dossier.completenessBadge.label)}
               </span>
               ${
@@ -1458,15 +1468,40 @@ export function renderDossierPage(
                   : ""
               }
             </div>
-            <span class="ds-badge ${dossier.orientationBadge.badgeClass}" data-testid="badge-orientation-adapt">
-              ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
-            </span>
-            ${dossier.specialties
-              .map(
-                (s) =>
-                  `<span class="ds-badge ds-badge--specialty">${iconSvg(s.icon)} ${esc(s.label)}</span>`,
-              )
-              .join("")}
+            ${
+              dossier.careProposal?.proposedCareType || dossier.careProposal?.clinicalRationale
+                ? `<div class="ds-hovercard" tabindex="0">
+                    <span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm" data-testid="badge-orientation-adapt">
+                      ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
+                    </span>
+                    <div class="ds-hovercard__panel" role="tooltip">
+                      <span class="ds-hovercard__title">${iconSvg("ic-compass")} Orientation pré-RCP</span>
+                      ${dossier.careProposal.proposedCareType ? `<p style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${esc(dossier.careProposal.proposedCareType)}</p>` : ""}
+                      ${dossier.careProposal.clinicalRationale ? `<p>${esc(dossier.careProposal.clinicalRationale)}</p>` : ""}
+                    </div>
+                  </div>`
+                : `<span class="ds-badge ${dossier.orientationBadge.badgeClass} ds-badge--sm" data-testid="badge-orientation-adapt">
+                    ${iconSvg(dossier.orientationBadge.icon)} ${esc(dossier.orientationBadge.label)}
+                  </span>`
+            }
+            ${
+              dossier.specialties[0]
+                ? `<span class="ds-badge ds-badge--specialty ds-badge--sm ds-badge--truncate">${iconSvg(dossier.specialties[0].icon)} ${esc(dossier.specialties[0].label)}</span>`
+                : ""
+            }
+            ${
+              dossier.specialties.length > 1
+                ? `<div class="ds-hovercard" tabindex="0">
+                    <span class="ds-badge ds-badge--specialty ds-badge--sm">+${dossier.specialties.length - 1} ${lang === "fr" ? "spécialité(s)" : "specialties"}</span>
+                    <div class="ds-hovercard__panel" role="tooltip">
+                      <span class="ds-hovercard__title">${iconSvg("ic-stethoscope")} ${lang === "fr" ? "Spécialités mobilisées" : "Involved specialties"} (${dossier.specialties.length})</span>
+                      <ul class="ds-hovercard__list">
+                        ${dossier.specialties.map((s) => `<li>${esc(s.label)}</li>`).join("")}
+                      </ul>
+                    </div>
+                  </div>`
+                : ""
+            }
           </div>
 
           <div class="ds-patient-header__actions">

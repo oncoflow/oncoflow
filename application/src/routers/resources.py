@@ -190,17 +190,52 @@ def index_resource(filename: str, config: DomainConfigDep):
         ) from err
 
 
-def _normalize_token(value: str) -> str:
-    """Return lowercase ASCII alphanumeric string for fuzzy citation-to-PDF matching."""
+def _extract_tokens(value: str) -> list[str]:
+    """Extract lowercase ASCII alphanumeric tokens (length >= 3) for dynamic file matching."""
     decomposed = unicodedata.normalize("NFKD", value or "")
     ascii_only = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
-    return re.sub(r"[^a-z0-9]+", "", ascii_only.lower())
+    return [
+        tok for tok in re.findall(r"[a-z0-9]+", ascii_only.lower()) if len(tok) >= 3
+    ]
 
 
-def _resolve_resource_pdf_path(config, raw_name: str) -> tuple[str, str] | None:
+def _normalize_token(value: str) -> str:
+    """Return lowercase ASCII alphanumeric string for fuzzy citation-to-PDF matching."""
+    return "".join(_extract_tokens(value))
+
+
+def _best_token_match(raw_query: str, candidates: list[str]) -> str | None:
     """
-    Resolve a citation name or filename (e.g. 'TNCDPANCREAS.pdf', 'TNCD Pancréas 2026 §4.2',
-    'PNDS SMA', or a patient RCP PDF name) to an existing `(resolved_filename, full_path)`.
+    Dynamically score candidate filenames against `raw_query` by token overlap length
+    without any hardcoded domain or clinical filenames.
+    """
+    query_tokens = _extract_tokens(raw_query)
+    norm_query = _normalize_token(raw_query)
+    if not query_tokens or not candidates:
+        return None
+
+    best_file: str | None = None
+    best_score = 0
+    for filename in candidates:
+        stem = os.path.splitext(filename)[0]
+        stem_norm = _normalize_token(stem)
+        if not stem_norm:
+            continue
+        if stem_norm == norm_query or (len(stem_norm) >= 4 and stem_norm in norm_query):
+            return filename
+        score = sum(len(tok) for tok in query_tokens if tok in stem_norm)
+        if score > best_score:
+            best_score = score
+            best_file = filename
+    return best_file if best_score >= 3 else None
+
+
+def _resolve_resource_pdf_path(
+    config, raw_name: str, form_file: str | None = None
+) -> tuple[str, str] | None:
+    """
+    Dynamically resolve a citation label or filename against the domain's indexed
+    resources directory (`additional_path`) or patient records directory (`rcp.path`).
     """
     cleaned = os.path.basename((raw_name or "").strip().replace("\\", "/"))
     if not cleaned or ".." in raw_name or "\0" in raw_name:
@@ -218,38 +253,21 @@ def _resolve_resource_pdf_path(config, raw_name: str) -> tuple[str, str] | None:
     available.sort()
 
     # 1. Exact or case-insensitive match in resources directory
-    candidates = [cleaned]
+    exact_candidates = [cleaned]
     if not cleaned.lower().endswith(".pdf"):
-        candidates.append(f"{cleaned}.pdf")
+        exact_candidates.append(f"{cleaned}.pdf")
     lower_map = {f.lower(): f for f in available}
-    for cand in candidates:
+    for cand in exact_candidates:
         if cand.lower() in lower_map:
             matched = lower_map[cand.lower()]
             return matched, os.path.join(base_dir, matched)
 
-    # 2. Fuzzy/keyword match against domain guideline PDFs
-    norm_query = _normalize_token(raw_name)
-    if norm_query and available:
-        for f in available:
-            stem_norm = _normalize_token(os.path.splitext(f)[0])
-            if stem_norm and (stem_norm in norm_query or norm_query in stem_norm):
-                return f, os.path.join(base_dir, f)
+    # 2. Dynamic token-overlap match against available guideline PDFs in resources directory
+    matched_resource = _best_token_match(raw_name, available)
+    if matched_resource:
+        return matched_resource, os.path.join(base_dir, matched_resource)
 
-        keyword_groups = [
-            (("pancreas", "pancreatique"), "pancreas"),
-            (("chc", "hepatocellulaire", "foie", "hepatique"), "chc"),
-            (("oesophage", "oesogastrique", "estomac", "gastrique"), "oesophage"),
-            (("argumentaire",), "argumentaire"),
-            (("synthese", "medecingeneraliste"), "synthese"),
-            (("pnds", "amyotrophie", "sma", "smn"), "pnds"),
-        ]
-        for triggers, target_token in keyword_groups:
-            if any(t in norm_query for t in triggers):
-                for f in available:
-                    if target_token in _normalize_token(f):
-                        return f, os.path.join(base_dir, f)
-
-    # 3. Check if the citation points to a patient RCP PDF inside config.rcp.path
+    # 3. Check if the citation or fallback `form_file` resolves to a patient PDF in `config.rcp.path`
     rcp_dir = str(config.rcp.path)
     try:
         rcp_files = [
@@ -260,31 +278,20 @@ def _resolve_resource_pdf_path(config, raw_name: str) -> tuple[str, str] | None:
     except OSError:
         rcp_files = []
     rcp_lower_map = {f.lower(): f for f in rcp_files}
-    for cand in candidates:
+    for cand in exact_candidates:
         if cand.lower() in rcp_lower_map:
             matched = rcp_lower_map[cand.lower()]
             return matched, os.path.join(rcp_dir, matched)
-    if norm_query:
-        for f in rcp_files:
-            stem_norm = _normalize_token(os.path.splitext(f)[0])
-            if stem_norm and (stem_norm in norm_query or norm_query in stem_norm):
-                return f, os.path.join(rcp_dir, f)
 
-    # 4. If citation mentions a guideline keyword (TNCD, PNDS, recommandation, referentiel), fallback to primary domain PDF
-    if available and any(
-        kw in norm_query
-        for kw in (
-            "tncd",
-            "pnds",
-            "referentiel",
-            "recommandation",
-            "guideline",
-            "has",
-            "esmo",
-        )
-    ):
-        first = available[0]
-        return first, os.path.join(base_dir, first)
+    matched_rcp = _best_token_match(raw_name, rcp_files)
+    if matched_rcp:
+        return matched_rcp, os.path.join(rcp_dir, matched_rcp)
+
+    if form_file:
+        clean_form = os.path.basename(form_file.strip().replace("\\", "/"))
+        if clean_form and ".." not in form_file and clean_form.lower() in rcp_lower_map:
+            matched = rcp_lower_map[clean_form.lower()]
+            return matched, os.path.join(rcp_dir, matched)
 
     return None
 
@@ -294,15 +301,19 @@ def _resolve_resource_pdf_path(config, raw_name: str) -> tuple[str, str] | None:
     response_class=FileResponse,
     responses={200: {"content": {"application/pdf": {}}}},
 )
-def get_resource_file(filename: str, config: DomainConfigDep):
+def get_resource_file(
+    filename: str,
+    config: DomainConfigDep,
+    form_file: str | None = None,
+):
     """Serve a clinical reference resource PDF inline after validating safe path boundaries."""
-    if ".." in filename or "/" in filename or "\\" in filename or "\0" in filename:
+    if ".." in filename or "\0" in filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Nom de fichier invalide.",
         )
 
-    resolved = _resolve_resource_pdf_path(config, filename)
+    resolved = _resolve_resource_pdf_path(config, filename, form_file=form_file)
     if resolved is None:
         if not is_safe_filename(filename):
             raise HTTPException(

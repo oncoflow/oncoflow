@@ -743,54 +743,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply.code(400).send("Nom de fichier invalide");
     }
 
-    let resolvedFilename = filename;
-    let buf = await api.getResourcePdfBuffer(resolvedFilename, session.domain);
+    const safeFormFile =
+      query.formFile && isSafeFilename(query.formFile) ? query.formFile : undefined;
+    let buf = await api.getResourcePdfBuffer(filename, session.domain, safeFormFile);
 
-    if (!buf) {
-      try {
-        const available = await api.listResources(session.domain);
-        const normToken = (v: string) =>
-          v
-            .normalize("NFD")
-            .replace(/\p{M}/gu, "")
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "");
-        const qNorm = normToken(filename);
-        const match =
-          available.find((r) => {
-            const stem = normToken(r.filename.replace(/\.pdf$/i, ""));
-            return Boolean(stem) && (qNorm.includes(stem) || stem.includes(qNorm));
-          }) ??
-          available.find((r) => {
-            const fNorm = normToken(r.filename);
-            if (qNorm.includes("pancreas") && fNorm.includes("pancreas")) return true;
-            if ((qNorm.includes("chc") || qNorm.includes("foie")) && fNorm.includes("chc"))
-              return true;
-            if (
-              (qNorm.includes("oesophage") || qNorm.includes("estomac")) &&
-              fNorm.includes("oesophage")
-            )
-              return true;
-            if (qNorm.includes("argumentaire") && fNorm.includes("argumentaire")) return true;
-            if (qNorm.includes("synthese") && fNorm.includes("synthese")) return true;
-            if ((qNorm.includes("pnds") || qNorm.includes("sma")) && fNorm.includes("pnds"))
-              return true;
-            return false;
-          }) ??
-          available[0];
-
-        if (match) {
-          resolvedFilename = match.filename;
-          buf = await api.getResourcePdfBuffer(resolvedFilename, session.domain);
-        }
-      } catch (_err) {
-        // Fallback below if listResources fails
-      }
-    }
-
-    if (!buf && query.formFile && isSafeFilename(query.formFile)) {
-      resolvedFilename = query.formFile;
-      buf = await api.getFormPdfBuffer(query.formFile, session.domain);
+    if (!buf && safeFormFile) {
+      buf = await api.getFormPdfBuffer(safeFormFile, session.domain);
     }
 
     if (!buf) {
@@ -799,7 +757,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     reply.header("Content-Type", "application/pdf");
     reply.header(
       "Content-Disposition",
-      `inline; filename="${sanitizeContentDispositionFilename(resolvedFilename)}"`,
+      `inline; filename="${sanitizeContentDispositionFilename(filename)}"`,
     );
     return reply.send(buf);
   });

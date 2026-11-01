@@ -25,70 +25,12 @@ export function resolveCitationPdfHref(
   const domainParam = encodeURIComponent(domain);
   const pageNum = page ? String(page).replace(/[^\d]/g, "") || "1" : "1";
   const pageHash = `#page=${encodeURIComponent(pageNum)}&amp;view=FitH`;
-
-  const norm = (rawName || "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
-
-  const isGuidelineRef =
-    norm.includes("tncd") ||
-    norm.includes("pnds") ||
-    norm.includes("argumentaire") ||
-    norm.includes("synthese") ||
-    norm.includes("referentiel") ||
-    norm.includes("recommandation") ||
-    norm.includes("esmo") ||
-    norm.includes("nccn") ||
-    norm.includes("has");
-
-  const isPatientRecordRef =
-    !isGuidelineRef &&
-    Boolean(fallbackFormFile) &&
-    (norm.includes("cr ") ||
-      norm.startsWith("cr") ||
-      norm.includes("scanner") ||
-      norm.includes("tdm") ||
-      norm.includes("irm") ||
-      norm.includes("tep") ||
-      norm.includes("biologie") ||
-      norm.includes("anapath") ||
-      norm.includes("anatomopath") ||
-      norm.includes("compte rendu") ||
-      norm.includes("operatoire") ||
-      norm.includes("dossier") ||
-      norm.includes("consultation") ||
-      norm.includes("courrier"));
-
-  if (isPatientRecordRef && fallbackFormFile) {
+  const cleaned = (rawName || "").trim();
+  if (!cleaned && fallbackFormFile) {
     return `/files/forms/${encodeURIComponent(fallbackFormFile)}/pdf?domain=${domainParam}${pageHash}`;
   }
-
-  let canonicalResource = (rawName || "").trim();
-  const isCleanPdfFilename = /^[a-zA-Z0-9._\-]+\.pdf$/i.test(canonicalResource);
-  if (!isCleanPdfFilename) {
-    if (domain === "sma") {
-      if (norm.includes("argumentaire")) {
-        canonicalResource = "amyotrophie_spinale_infantile_-_argumentaire.pdf";
-      } else if (norm.includes("synthese")) {
-        canonicalResource = "synthese_mg_amyotrophie_spinale_infantile.pdf";
-      } else {
-        canonicalResource = "amyotrophie_spinale_infantile_-_pnds.pdf";
-      }
-    } else {
-      if (norm.includes("chc") || norm.includes("foie") || norm.includes("hepato")) {
-        canonicalResource = "TNCDCHC.pdf";
-      } else if (
-        norm.includes("oesophage") ||
-        norm.includes("estomac") ||
-        norm.includes("gastrique")
-      ) {
-        canonicalResource = "TNCDOESOPHAGE.pdf";
-      } else {
-        canonicalResource = "TNCDPANCREAS.pdf";
-      }
-    }
-  }
-
   const formQuery = fallbackFormFile ? `&amp;formFile=${encodeURIComponent(fallbackFormFile)}` : "";
-  return `/files/resources/${encodeURIComponent(canonicalResource)}?domain=${domainParam}${formQuery}${pageHash}`;
+  return `/files/resources/${encodeURIComponent(cleaned || "document.pdf")}?domain=${domainParam}${formQuery}${pageHash}`;
 }
 
 export interface AiChatScopeConfig {

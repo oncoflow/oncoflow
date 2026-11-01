@@ -653,10 +653,15 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   ): Promise<ChatReply> {
     try {
       const apiLang = language === "en" ? "english" : "french";
-      const defaultAgent = domain === "sma" ? "neurologist expert" : "pancreas expert";
       const trimmedAgent = agentName?.trim();
-      const resolvedAgent =
-        trimmedAgent && trimmedAgent !== "coordinator" ? trimmedAgent : defaultAgent;
+      let resolvedAgent = trimmedAgent && trimmedAgent !== "coordinator" ? trimmedAgent : "";
+      if (!resolvedAgent) {
+        const agents = await this.listAgents(domain, language).catch(() => []);
+        resolvedAgent =
+          agents.find((a) => a.name.toLowerCase().includes("expert"))?.name ??
+          agents[0]?.name ??
+          "Administrative";
+      }
 
       const path = target.patientId
         ? `/api/v1/patientmdtform/patients/${encodeURIComponent(target.patientId)}/chat?domain=${encodeURIComponent(domain)}`
@@ -828,19 +833,24 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     }
   }
 
-  async getResourcePdfBuffer(filename: string, domain: ClinicalDomain): Promise<Buffer | null> {
+  async getResourcePdfBuffer(
+    filename: string,
+    domain: ClinicalDomain,
+    formFile?: string,
+  ): Promise<Buffer | null> {
     try {
-      const url = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(filename)}/file?domain=${encodeURIComponent(domain)}`;
+      const formParam = formFile ? `&form_file=${encodeURIComponent(formFile)}` : "";
+      const url = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(filename)}/file?domain=${encodeURIComponent(domain)}${formParam}`;
       const resp = await this.fetchImpl(url, {
         headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
       });
       if (!resp.ok) {
-        if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain);
+        if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
         return null;
       }
       return Buffer.from(await resp.arrayBuffer());
     } catch (err) {
-      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain);
+      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
       throw err;
     }
   }

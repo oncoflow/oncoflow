@@ -224,10 +224,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   border-right: 1px solid var(--ds-sidebar-border);
   overflow-y: auto;
   overflow-x: hidden;
-  transition:
-    width 260ms var(--ds-ease),
-    padding 260ms var(--ds-ease),
-    background var(--ds-duration-normal) var(--ds-ease);
 }
 
 .ds-rail__header {
@@ -249,7 +245,7 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   border-radius: var(--ds-radius-lg);
   color: inherit;
   text-decoration: none;
-  transition: background var(--ds-duration-normal) var(--ds-ease-standard), padding 240ms var(--ds-ease-standard);
+  transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-brand:hover { background: var(--ds-sidebar-bg-hover); }
 .ds-brand__logo { width: 2rem; height: 2rem; flex: none; }
@@ -261,7 +257,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   opacity: 1;
   overflow: hidden;
   white-space: nowrap;
-  transition: opacity 180ms var(--ds-ease), max-width 240ms var(--ds-ease), transform 200ms var(--ds-ease);
 }
 .ds-brand__name { font-size: var(--ds-text-lg); font-weight: var(--ds-weight-bold); letter-spacing: -0.01em; }
 .ds-brand__name b { color: var(--ds-sidebar-brand-accent); font-weight: inherit; }
@@ -285,16 +280,12 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-semibold);
   transition:
-    background var(--ds-duration-fast) var(--ds-ease),
-    box-shadow var(--ds-duration-fast) var(--ds-ease),
-    transform var(--ds-duration-fast) var(--ds-ease),
-    width 240ms var(--ds-ease),
-    padding 240ms var(--ds-ease);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-rail__fab:hover {
   background: var(--ds-menu-item-hover);
   box-shadow: var(--ds-shadow-md);
-  transform: translateY(-1px);
   text-decoration: none;
 }
 .ds-rail__fab-label {
@@ -302,7 +293,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   opacity: 1;
   overflow: hidden;
   white-space: nowrap;
-  transition: opacity 180ms var(--ds-ease), max-width 240ms var(--ds-ease);
 }
 
 .ds-nav { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
@@ -316,7 +306,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   opacity: 1;
   overflow: hidden;
   white-space: nowrap;
-  transition: opacity 180ms var(--ds-ease), max-height 220ms var(--ds-ease), margin 220ms var(--ds-ease);
 }
 
 /* M3 Navigation Rail Item + Active Pill Indicator (56x32px M3 Pill) */
@@ -333,9 +322,8 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   font-size: var(--ds-text-sm);
   font-weight: var(--ds-weight-medium);
   transition:
-    background var(--ds-duration-normal) var(--ds-ease),
-    color var(--ds-duration-normal) var(--ds-ease),
-    padding 240ms var(--ds-ease);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard),
+    color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-nav__link:hover { background: var(--ds-sidebar-bg-hover); }
 .ds-nav__link[aria-current="page"] {
@@ -352,7 +340,7 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   height: 2rem;
   border-radius: var(--ds-radius-pill);
   flex: none;
-  transition: width 220ms var(--ds-ease), background var(--ds-duration-normal) var(--ds-ease);
+  transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-nav__label {
   max-width: 11rem;
@@ -360,7 +348,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  transition: opacity 180ms var(--ds-ease), max-width 240ms var(--ds-ease), transform 200ms var(--ds-ease);
 }
 .ds-nav__count {
   margin-left: auto;
@@ -373,7 +360,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   font-weight: var(--ds-weight-bold);
   text-align: center;
   line-height: 1.25;
-  transition: transform 200ms var(--ds-ease);
 }
 .ds-sidebar__footer {
   margin-top: auto;
@@ -384,7 +370,6 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   opacity: 1;
   overflow: hidden;
   white-space: nowrap;
-  transition: opacity 180ms var(--ds-ease), max-height 220ms var(--ds-ease);
 }
 
 .ds-main {
@@ -394,11 +379,10 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   max-width: calc(100vw - var(--ds-sidebar-width));
   display: flex;
   flex-direction: column;
-  transition: margin-left 260ms var(--ds-ease), max-width 260ms var(--ds-ease);
 }
 
 #sidebar-toggle .ds-icon {
-  transition: transform 240ms var(--ds-ease-spring);
+  transition: transform var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-shell--sidebar-collapsed #sidebar-toggle .ds-icon,
 :root[data-sidebar="collapsed"] #sidebar-toggle .ds-icon {
@@ -703,23 +687,10 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   background: var(--ds-menu-bg);      /* Lightly tinted M3 Surface Container */
   border: 1px solid var(--ds-menu-border);
   box-shadow: var(--ds-menu-shadow);
-  transform-origin: top right;
-  animation: ds-menu-enter 200ms var(--ds-ease-spring);
 }
 .ds-menu__panel--left {
   right: auto;
   left: 0;
-  transform-origin: top left;
-}
-@keyframes ds-menu-enter {
-  from {
-    opacity: 0;
-    transform: scale(0.94) translateY(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
 }
 .ds-menu__header {
   padding: 0.35rem 0.75rem 0.2rem;
@@ -749,9 +720,8 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   cursor: pointer;
   white-space: nowrap;
   transition:
-    border-radius 200ms var(--ds-ease-spring),
-    background var(--ds-duration-fast) var(--ds-ease),
-    color var(--ds-duration-fast) var(--ds-ease);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard),
+    color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-menu__panel > .ds-menu__item:first-child {
   border-radius: 11px 11px 6px 6px;
@@ -824,14 +794,15 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
 /* 2. Queue status floating bottom pill + M3 Side Sheet drawer ============= */
 .ds-queue-banner {
   position: fixed;
-  right: var(--ds-space-6);
+  left: calc(var(--ds-sidebar-width) + var(--ds-space-6));
+  right: auto;
   bottom: var(--ds-space-5);
   z-index: var(--ds-z-banner);
   display: inline-flex;
   align-items: center;
   gap: var(--ds-space-3);
   min-height: 2.75rem;
-  max-width: min(38rem, calc(100vw - 2rem));
+  max-width: min(34rem, calc(100vw - var(--ds-sidebar-width) - 14rem));
   padding: var(--ds-space-2) var(--ds-space-4);
   font-size: var(--ds-text-sm);
   border-radius: var(--ds-radius-pill);
@@ -839,6 +810,16 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   color: var(--ds-color-text);
   border: 1px solid var(--ds-color-border-strong);
   box-shadow: var(--ds-shadow-lg);
+}
+@media (max-width: 64rem) {
+  .ds-queue-banner {
+    left: var(--ds-space-4);
+    right: var(--ds-space-4);
+    max-width: calc(100vw - 2rem);
+  }
+  .ds-main:has(> .ds-queue-banner:not(.ds-queue-banner--idle)) .ds-fab-menu {
+    bottom: 5.25rem;
+  }
 }
 .ds-workspace .ds-queue-banner {
   position: static;
@@ -876,15 +857,13 @@ body > .ds-queue-banner--idle,
   box-shadow: var(--ds-shadow-lg);
   z-index: var(--ds-z-drawer);
 }
-.ds-drawer[open] { display: flex; flex-direction: column; animation: ds-slide-in var(--ds-duration-slow) var(--ds-ease-decelerate); }
+.ds-drawer[open] { display: flex; flex-direction: column; }
 .ds-drawer::backdrop { background: var(--ds-color-overlay); }
 .ds-drawer__header { display: flex; align-items: center; gap: var(--ds-space-3); padding: var(--ds-space-5) var(--ds-space-6) var(--ds-space-4); }
 .ds-drawer__header h2 { font-size: var(--ds-text-lg); }
 .ds-drawer__close { margin-left: auto; }
 .ds-drawer__body { flex: 1; overflow-y: auto; padding: var(--ds-space-2) var(--ds-space-6) var(--ds-space-5); display: flex; flex-direction: column; gap: var(--ds-space-3); }
 .ds-drawer__footer { padding: var(--ds-space-4) var(--ds-space-6); border-top: 1px solid var(--ds-color-border); display: flex; gap: var(--ds-space-2); justify-content: flex-end; }
-
-@keyframes ds-slide-in { from { transform: translateX(100%); } to { transform: none; } }
 
 .ds-job {
   display: grid;
@@ -1181,8 +1160,9 @@ body > .ds-queue-banner--idle,
   min-width: 0;
   transition: background var(--ds-duration-normal) var(--ds-ease), border-color var(--ds-duration-normal) var(--ds-ease), box-shadow var(--ds-duration-normal) var(--ds-ease), transform var(--ds-duration-normal) var(--ds-ease-decelerate);
 }
-.ds-card:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open),
-.ds-section:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open) {
+.ds-card:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
+.ds-section:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-split-btn.is-open, .ds-hovercard:hover, .ds-hovercard:focus-within),
+.ds-synoptic:has(.ds-hovercard:hover, .ds-hovercard:focus-within) {
   position: relative;
   z-index: var(--ds-z-popover, 60);
 }
@@ -1416,16 +1396,39 @@ a.ds-kpi:hover {
 }
 .ds-patient-header__top {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--ds-space-2) var(--ds-space-3);
+  gap: var(--ds-space-3);
   width: 100%;
+  min-width: 0;
+}
+.ds-patient-header__badges {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--ds-space-2);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ds-badge--truncate {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .ds-patient-header__actions {
   margin-left: auto;
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--ds-space-2);
+  flex: none;
+  white-space: nowrap;
+}
+@media (max-width: 68rem) {
+  .ds-patient-header__top {
+    flex-wrap: wrap;
+  }
 }
 .ds-patient-header--green {
   background: var(--ds-rcp-green-grad);
@@ -1450,6 +1453,8 @@ a.ds-kpi:hover {
   display: inline-flex;
   align-items: center;
   gap: var(--ds-space-2);
+  white-space: nowrap;
+  flex: none;
 }
 .ds-patient-header__meta {
   display: flex;
@@ -1542,8 +1547,8 @@ article[data-href] {
 .ds-table tbody tr {
   transition: background var(--ds-duration-fast) var(--ds-ease);
 }
-.ds-table tbody tr:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open]),
-.ds-table td:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open]) {
+.ds-table tbody tr:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-hovercard:hover, .ds-hovercard:focus-within),
+.ds-table td:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open], .ds-hovercard:hover, .ds-hovercard:focus-within) {
   position: relative;
   z-index: var(--ds-z-popover, 60);
 }
@@ -1791,8 +1796,6 @@ article[data-href] {
   display: none;
   flex-direction: column;
   gap: 3px; /* M3 Expressive vertical menu gap */
-  transform-origin: top left;
-  animation: ds-menu-enter 200ms var(--ds-ease-spring);
 }
 .ds-m3-select.is-open .ds-m3-select__panel {
   display: flex;
@@ -1804,17 +1807,15 @@ article[data-href] {
   width: 100%;
   min-height: 2.5rem;
   padding: 0.45rem 0.85rem;
-  border-radius: 6px; /* M3 Expressive inner item radius */
+  border-radius: 8px;
   color: var(--ds-color-text);
   font-size: var(--ds-text-sm);
   font-weight: var(--ds-weight-medium);
   cursor: pointer;
   user-select: none;
   transition:
-    border-radius 200ms var(--ds-ease-spring),
-    background var(--ds-duration-fast) var(--ds-ease),
-    color var(--ds-duration-fast) var(--ds-ease),
-    padding var(--ds-duration-fast) var(--ds-ease);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard),
+    color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-m3-select__option:first-child {
   border-radius: 11px 11px 6px 6px;
@@ -1828,7 +1829,6 @@ article[data-href] {
 .ds-m3-select__option:hover,
 .ds-m3-select__option:focus-visible {
   outline: none;
-  border-radius: 10px;
   background: var(--ds-menu-item-hover);
 }
 /* M3 Expressive Selection State: Full Pill + Tonal Container + Checkmark */
@@ -1844,21 +1844,14 @@ article[data-href] {
   display: inline-grid;
   place-items: center;
   opacity: 0;
-  transform: scale(0.5);
   overflow: hidden;
   color: var(--ds-orientation-adapt-fg);
   flex: none;
-  transition:
-    width 200ms var(--ds-ease-spring),
-    margin-right 200ms var(--ds-ease-spring),
-    opacity 150ms var(--ds-ease),
-    transform 220ms var(--ds-ease-spring);
 }
 .ds-m3-select__option[aria-selected="true"] .ds-m3-select__check {
   width: 1.125rem;
   margin-right: 0.5rem;
   opacity: 1;
-  transform: scale(1);
 }
 .ds-m3-select__label {
   flex: 1;
@@ -1958,26 +1951,14 @@ article[data-href] {
 .ds-file-list__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--ds-weight-medium); }
 
 /* M3 Expansion Panels / Clinical Sections (ZERO left stripe) ============== */
-@keyframes ds-accordion-open {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .ds-section {
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-color-surface);
   overflow: visible;
   transition:
-    border-color var(--ds-duration-short4) var(--ds-ease-standard),
-    box-shadow var(--ds-duration-short4) var(--ds-ease-standard),
-    background-color var(--ds-duration-short4) var(--ds-ease-standard);
+    border-color var(--ds-duration-short3) var(--ds-ease-standard),
+    background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-section:hover { border-color: var(--ds-color-border-strong); }
 .ds-section > summary,
@@ -1990,9 +1971,7 @@ article[data-href] {
   border-radius: calc(var(--ds-radius-lg) - 1px);
   cursor: pointer;
   list-style: none;
-  transition:
-    background-color var(--ds-duration-short3) var(--ds-ease-standard),
-    border-radius var(--ds-duration-short3) var(--ds-ease-standard);
+  transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-section[open] > summary {
   border-radius: calc(var(--ds-radius-lg) - 1px) calc(var(--ds-radius-lg) - 1px) 0 0;
@@ -2007,7 +1986,7 @@ article[data-href] {
   width: 1.75rem; height: 1.75rem;
   border-radius: var(--ds-radius-pill);
   color: var(--ds-color-text-muted);
-  transition: transform var(--ds-duration-normal) var(--ds-ease-standard), background var(--ds-duration-short3) var(--ds-ease-standard);
+  transition: transform var(--ds-duration-short3) var(--ds-ease-standard), background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-section > summary:hover::after { background: var(--ds-surface-container-high); }
 .ds-section:not([open]) > summary::after { transform: rotate(-90deg); }
@@ -2019,9 +1998,6 @@ article[data-href] {
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-3);
-}
-.ds-section[open] > .ds-section__body {
-  animation: ds-accordion-open var(--ds-duration-medium1) var(--ds-ease-standard-decelerate);
 }
 .ds-section__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--ds-space-2); padding-top: var(--ds-space-3); border-top: 1px solid var(--ds-color-border); }
 .ds-section__duration {
@@ -2135,12 +2111,10 @@ article[data-href] {
   background: var(--ds-inverse-surface);
   color: var(--ds-inverse-on-surface);
   box-shadow: var(--ds-shadow-md);
-  animation: ds-fade-up var(--ds-duration-normal) var(--ds-ease-decelerate);
 }
 .ds-toast__body { flex: 1; min-width: 0; font-size: var(--ds-text-sm); }
 .ds-toast__title { font-weight: var(--ds-weight-semibold); display: block; }
 .ds-toast .ds-btn--ghost { --_fg: var(--ds-inverse-on-surface); }
-@keyframes ds-fade-up { from { opacity: 0; transform: translateY(0.5rem) scale(0.98); } to { opacity: 1; transform: none; } }
 
 /* 11. M3 Primary Tabs (https://m3.material.io/components/tabs) ============ */
 .ds-tabs {
@@ -2254,7 +2228,6 @@ article[data-href] {
 }
 .ds-timeline-drawer__body {
   padding-top: var(--ds-space-2);
-  animation: ds-accordion-open var(--ds-duration-medium1) var(--ds-ease-standard-decelerate);
 }
 
 .ds-timeline {
@@ -2413,9 +2386,6 @@ a.ds-timeline__link:hover {
   flex-direction: column;
   gap: var(--ds-space-3);
 }
-.ds-opinion[open] > .ds-opinion__body {
-  animation: ds-accordion-open var(--ds-duration-medium1) var(--ds-ease-standard-decelerate);
-}
 .ds-opinion-proposal {
   padding: var(--ds-space-4);
 }
@@ -2495,7 +2465,6 @@ a.ds-timeline__link:hover {
   border: 1px solid var(--ds-color-primary);
   background: var(--ds-color-surface);
   box-shadow: var(--ds-shadow-sm);
-  animation: ds-fade-up var(--ds-duration-normal) var(--ds-ease-decelerate);
 }
 .ds-ai-thinking__header {
   display: flex;
@@ -2730,8 +2699,6 @@ a.ds-timeline__link:hover {
   display: none;
   flex-direction: column;
   gap: 3px;
-  transform-origin: bottom right;
-  animation: ds-menu-enter 200ms var(--ds-ease-spring);
 }
 .ds-split-btn.is-open .ds-split-btn__menu {
   display: flex;
@@ -2755,12 +2722,12 @@ a.ds-timeline__link:hover {
   gap: 0.65rem;
   pointer-events: none;
   transition:
-    opacity 200ms var(--ds-ease),
-    transform 260ms var(--ds-ease-spring);
+    opacity var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-fab-menu.is-hidden {
   opacity: 0;
-  transform: translateY(0.75rem) scale(0.92);
+  transform: translateY(0.5rem);
 }
 .ds-fab-menu__trigger {
   pointer-events: auto;
@@ -2782,12 +2749,10 @@ a.ds-timeline__link:hover {
   box-shadow: var(--ds-shadow-lg);
   cursor: pointer;
   transition:
-    border-radius 320ms var(--ds-ease-spring),
-    padding 320ms var(--ds-ease-spring),
-    background 200ms var(--ds-ease-standard),
-    color 200ms var(--ds-ease-standard),
-    transform 240ms var(--ds-ease-spring),
-    box-shadow 200ms var(--ds-ease-standard);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard),
+    color var(--ds-duration-short3) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-fab-menu.is-hidden .ds-fab-menu__trigger {
   pointer-events: none;
@@ -2931,19 +2896,17 @@ a.ds-timeline__link:hover {
   border-left: 1px solid var(--ds-color-border-strong);
   border-radius: var(--ds-radius-xl) 0 0 var(--ds-radius-xl); /* M3 Side Sheet 28px leading corners */
   box-shadow: var(--ds-shadow-lg);
-  opacity: 0;
-  transform: translateX(104%);
-  transform-origin: center right;
+  transform: translate3d(104%, 0, 0);
+  will-change: transform;
+  backface-visibility: hidden;
   visibility: hidden;
   pointer-events: none;
   transition:
-    transform 320ms var(--ds-ease-decelerate),
-    opacity 220ms var(--ds-ease-standard),
-    visibility 320ms;
+    transform 200ms var(--ds-ease-standard),
+    visibility 200ms;
 }
 .ds-copilot-drawer.is-open {
-  opacity: 1;
-  transform: translateX(0);
+  transform: translate3d(0, 0, 0);
   visibility: visible;
   pointer-events: auto;
 }
@@ -3124,7 +3087,7 @@ a.ds-timeline__link:hover {
   color: var(--ds-color-text);
   box-shadow: var(--ds-shadow-lg);
 }
-.ds-modal[open] { animation: ds-fade-up var(--ds-duration-normal) var(--ds-ease-decelerate); }
+.ds-modal[open] { display: block; }
 .ds-modal::backdrop { background: var(--ds-color-overlay); }
 .ds-modal--lg { width: min(56rem, calc(100vw - 2rem)); }
 .ds-modal__header {
@@ -3291,7 +3254,6 @@ a.ds-timeline__link:hover {
   color: var(--ds-color-text);
   line-height: 1.55;
   white-space: pre-wrap;
-  animation: ds-menu-enter 160ms var(--ds-ease-decelerate);
 }
 .ds-popover__panel--left {
   right: auto;
@@ -3586,55 +3548,69 @@ a.ds-timeline__link:hover {
   transform: translateX(-50%) translateY(0) scale(1);
 }
 
-/* M3 Rich Tooltip (12px radius, Surface Container High, soft elevation) */
+/* M3 Rich Tooltip (12px radius, Surface Container High, soft elevation, scrollable max-height) */
 .ds-hovercard {
   position: relative;
   display: inline-flex;
   align-items: center;
   cursor: pointer;
 }
+.ds-hovercard::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  bottom: 100%;
+  height: 14px;
+  pointer-events: none;
+}
+.ds-hovercard--flip::after,
+.ds-hovercard:has(.ds-hovercard__panel--below)::after {
+  bottom: auto;
+  top: 100%;
+}
+.ds-hovercard:hover::after,
+.ds-hovercard:focus-within::after {
+  pointer-events: auto;
+}
 .ds-hovercard__panel {
   position: absolute;
-  bottom: calc(100% + 10px);
+  bottom: calc(100% + 8px);
   left: 0;
   z-index: var(--ds-z-toast);
   width: max-content;
-  max-width: 22rem;
+  min-width: 15rem;
+  max-width: min(22rem, 85vw);
+  max-height: 13.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-2);
-  padding: var(--ds-space-4);
+  padding: var(--ds-space-3) var(--ds-space-4);
   border-radius: var(--ds-radius-md); /* M3 12px Rich Tooltip */
   background: var(--ds-surface-container-high);
+  border: 1px solid var(--ds-color-border-strong);
   color: var(--ds-color-text);
-  font-size: var(--ds-text-sm);
+  font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-regular);
   line-height: var(--ds-leading-normal);
-  box-shadow: var(--ds-shadow-md);
+  box-shadow: var(--ds-shadow-lg);
+  white-space: normal;
+  overflow-wrap: anywhere;
   opacity: 0;
   visibility: hidden;
-  transform: translateY(6px) scale(0.98);
   pointer-events: none;
-  transition: opacity var(--ds-duration-normal) var(--ds-ease-standard), transform var(--ds-duration-normal) var(--ds-ease-standard-decelerate), visibility var(--ds-duration-normal);
-}
-.ds-hovercard__panel::before {
-  content: "";
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  height: 12px;
+  transition:
+    opacity var(--ds-duration-short3) var(--ds-ease-standard),
+    visibility var(--ds-duration-short3);
 }
 .ds-hovercard--flip .ds-hovercard__panel,
 .ds-hovercard__panel--below {
   bottom: auto;
-  top: calc(100% + 10px);
-  transform: translateY(-6px) scale(0.98);
-}
-.ds-hovercard--flip .ds-hovercard__panel::before,
-.ds-hovercard__panel--below::before {
-  top: auto;
-  bottom: 100%;
+  top: calc(100% + 8px);
 }
 .ds-hovercard--align-right .ds-hovercard__panel {
   left: auto;
@@ -3644,16 +3620,22 @@ a.ds-timeline__link:hover {
 .ds-hovercard:focus-within .ds-hovercard__panel {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0) scale(1);
   pointer-events: auto;
 }
 .ds-hovercard__title {
-  font-size: var(--ds-text-sm);
+  position: sticky;
+  top: calc(-1 * var(--ds-space-3));
+  margin: calc(-1 * var(--ds-space-3)) calc(-1 * var(--ds-space-4)) 0;
+  padding: var(--ds-space-2) var(--ds-space-4);
+  background: var(--ds-surface-container-high);
+  border-bottom: 1px solid var(--ds-color-border);
+  font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-semibold);
   color: var(--ds-color-text);
   display: flex;
   align-items: center;
   gap: var(--ds-space-2);
+  z-index: 1;
 }
 .ds-hovercard__body {
   color: var(--ds-color-text-muted);

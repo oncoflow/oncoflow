@@ -379,41 +379,40 @@ export class PatientDossierUseCase {
           key: "smn2_copy_count",
           label: "Copies SMN2",
           value: translateValue(gen.smn2_copy_count, lang),
-          isMissing: gen.smn2_copy_count === undefined,
+          isMissing: gen.smn2_copy_count == null,
         },
         {
           key: "hfmse_score",
           label: "HFMSE",
-          value:
-            mot.hfmse_score !== undefined ? `${mot.hfmse_score}/66` : translateValue(null, lang),
-          isMissing: mot.hfmse_score === undefined,
+          value: mot.hfmse_score != null ? `${mot.hfmse_score}/66` : translateValue(null, lang),
+          isMissing: mot.hfmse_score == null,
           delta: deltaMap.get("hfmse_score"),
         },
         {
           key: "rulm_score",
           label: "RULM",
-          value: mot.rulm_score !== undefined ? `${mot.rulm_score}/37` : translateValue(null, lang),
-          isMissing: mot.rulm_score === undefined,
+          value: mot.rulm_score != null ? `${mot.rulm_score}/37` : translateValue(null, lang),
+          isMissing: mot.rulm_score == null,
           delta: deltaMap.get("rulm_score"),
         },
         {
           key: "forced_vital_capacity_percent",
           label: "CVF",
           value:
-            resp.forced_vital_capacity_percent !== undefined
+            resp.forced_vital_capacity_percent != null
               ? `${resp.forced_vital_capacity_percent} %`
               : translateValue(null, lang),
-          isMissing: resp.forced_vital_capacity_percent === undefined,
+          isMissing: resp.forced_vital_capacity_percent == null,
           delta: deltaMap.get("forced_vital_capacity_percent"),
         },
         {
           key: "scoliosis_cobb_angle",
           label: "Rachis / Cobb",
           value:
-            ortho.scoliosis_cobb_angle !== undefined
+            ortho.scoliosis_cobb_angle != null
               ? `${ortho.scoliosis_cobb_angle}°`
               : translateValue(ortho.has_scoliosis ?? null, lang),
-          isMissing: ortho.scoliosis_cobb_angle === undefined && ortho.has_scoliosis === undefined,
+          isMissing: ortho.scoliosis_cobb_angle == null && ortho.has_scoliosis == null,
           delta: deltaMap.get("scoliosis_cobb_angle"),
         },
       ];

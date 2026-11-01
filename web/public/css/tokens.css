@@ -260,9 +260,9 @@
   --ds-ease-standard-decelerate: cubic-bezier(0, 0, 0, 1);    /* M3 Standard decelerate (incoming) */
   --ds-ease-standard-accelerate: cubic-bezier(0.3, 0, 1, 1);  /* M3 Standard accelerate (outgoing) */
   --ds-ease: var(--ds-ease-standard);
-  --ds-ease-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);      /* M3 Emphasized Decelerate */
-  --ds-ease-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);      /* M3 Emphasized Accelerate */
-  --ds-ease-spring: cubic-bezier(0.22, 1.2, 0.36, 1);         /* Micro-spring */
+  --ds-ease-decelerate: cubic-bezier(0, 0, 0, 1);             /* M3 Standard Decelerate */
+  --ds-ease-accelerate: cubic-bezier(0.3, 0, 1, 1);           /* M3 Standard Accelerate */
+  --ds-ease-spring: cubic-bezier(0.2, 0, 0, 1);               /* M3 Standard Easing (zero overshoot) */
 
   /* ---- Focus ring ------------------------------------------------------ */
   --ds-focus-ring: 0 0 0 2px var(--ds-color-surface), 0 0 0 4px var(--ds-color-focus);

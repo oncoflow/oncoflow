@@ -819,9 +819,13 @@
     "mouseover",
     function (e) {
       var hc = e.target.closest(".ds-hovercard");
-      if (hc) adjustFloatingOverlay(hc);
+      if (hc && (!e.relatedTarget || !hc.contains(e.relatedTarget))) {
+        adjustFloatingOverlay(hc);
+      }
       var tt = e.target.closest("[data-tooltip]");
-      if (tt) adjustFloatingOverlay(tt);
+      if (tt && (!e.relatedTarget || !tt.contains(e.relatedTarget))) {
+        adjustFloatingOverlay(tt);
+      }
     },
     { passive: true },
   );

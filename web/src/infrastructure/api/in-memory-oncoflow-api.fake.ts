@@ -1136,7 +1136,11 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     this.resources.delete(filename);
   }
 
-  async getResourcePdfBuffer(_filename: string, _domain: ClinicalDomain): Promise<Buffer | null> {
+  async getResourcePdfBuffer(
+    _filename: string,
+    _domain: ClinicalDomain,
+    _formFile?: string,
+  ): Promise<Buffer | null> {
     return MINIMAL_PDF_BUFFER;
   }
 
