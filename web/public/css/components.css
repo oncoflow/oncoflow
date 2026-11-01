@@ -780,6 +780,7 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   margin: 0.3rem 0.5rem;
 }
 
+.ds-btn.ds-topbar__burger,
 .ds-topbar__burger,
 .ds-sidebar-backdrop,
 .ds-bottom-nav {
@@ -787,6 +788,7 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
 }
 
 @media (max-width: 64rem) {
+  .ds-btn.ds-topbar__burger,
   .ds-topbar__burger {
     display: inline-flex;
     flex: none;
