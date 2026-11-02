@@ -444,12 +444,6 @@ export class PatientDossierUseCase {
         isMissing: !loc.tumor_location,
       },
       {
-        key: "stage",
-        label: "Diagnostic & stade",
-        value: translateValue(loc.stage ?? loc.tumor_location, lang),
-        isMissing: !loc.stage && !loc.tumor_location,
-      },
-      {
         key: "ca19_9",
         label: "Biologie / MSI",
         value: translateValue(bio.ca19_9 ?? bio.msi_state, lang),

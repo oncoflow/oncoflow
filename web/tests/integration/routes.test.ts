@@ -474,6 +474,35 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(redundantQueryRes.statusCode).toBe(302);
     expect(redundantQueryRes.headers.location).toBe("/worklist?priority=high");
 
+    // 404 Not Found page with link back to index
+    const notFoundRes = await app.inject({
+      method: "GET",
+      url: "/unknown-route-xyz",
+      headers: {
+        host: "oncologic.meddatasyntis.bricks-it.fr",
+        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        "x-auth-request-preferred-username": "dr.martin",
+      },
+    });
+    expect(notFoundRes.statusCode).toBe(404);
+    expect(notFoundRes.body).toContain('data-testid="status-page-404"');
+    expect(notFoundRes.body).toContain('href="/worklist"');
+
+    // 503 Maintenance page with link back to index and retry action
+    const maintenanceRes = await app.inject({
+      method: "GET",
+      url: "/maintenance",
+      headers: {
+        host: "sma.meddatasyntis.bricks-it.fr",
+        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        "x-auth-request-preferred-username": "dr.martin",
+      },
+    });
+    expect(maintenanceRes.statusCode).toBe(503);
+    expect(maintenanceRes.body).toContain('data-testid="status-page-503"');
+    expect(maintenanceRes.body).toContain('data-testid="btn_status_home"');
+    expect(maintenanceRes.body).toContain('data-testid="btn_status_retry"');
+
     await app.close();
   });
 });

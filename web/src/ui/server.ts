@@ -35,6 +35,7 @@ import {
   renderQueueAdminPage,
   renderQueueBannerPartial,
   renderSectionDetailsPartial,
+  renderStatusPage,
   renderWorklistPage,
   stripDomainQuery,
 } from "./templates.js";
@@ -765,7 +766,17 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       loadShellQueue(session.domain),
     ]);
     if (!dossier) {
-      return reply.code(404).type("text/html; charset=utf-8").send("<h1>Dossier introuvable</h1>");
+      return reply
+        .code(404)
+        .type("text/html; charset=utf-8")
+        .send(
+          renderStatusPage({
+            statusCode: 404,
+            kind: "not_found",
+            title: "Dossier introuvable",
+            session,
+          }),
+        );
     }
 
     const agendaNav = await resolveAgendaDossierNav(
@@ -800,7 +811,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply
         .code(404)
         .type("text/html; charset=utf-8")
-        .send("<h1>Fiche RCP introuvable</h1>");
+        .send(
+          renderStatusPage({
+            statusCode: 404,
+            kind: "not_found",
+            title: "Fiche RCP introuvable",
+            session,
+          }),
+        );
     }
 
     const agendaNav = await resolveAgendaDossierNav(
@@ -1262,6 +1280,48 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     reply.header("Cache-Control", "no-cache, no-transform");
     reply.header("Connection", "keep-alive");
     return reply.send(`event: banner\ndata: ${bannerHtml}\n\n`);
+  });
+
+  // 10. Maintenance, 404 Not Found & 5xx Server Error Pages
+  app.get("/maintenance", async (req, reply) => {
+    const session = resolveSession(req);
+    return reply
+      .code(503)
+      .type("text/html; charset=utf-8")
+      .send(renderStatusPage({ statusCode: 503, kind: "maintenance", session }));
+  });
+
+  app.setNotFoundHandler(async (req, reply) => {
+    const session = resolveSession(req);
+    return reply
+      .code(404)
+      .type("text/html; charset=utf-8")
+      .send(renderStatusPage({ statusCode: 404, kind: "not_found", session }));
+  });
+
+  app.setErrorHandler(async (err, req, reply) => {
+    const rawCode =
+      typeof (err as { statusCode?: unknown })?.statusCode === "number"
+        ? ((err as { statusCode: number }).statusCode ?? 500)
+        : 500;
+    const statusCode = rawCode >= 400 && rawCode < 600 ? rawCode : 500;
+    const session = resolveSession(req);
+    if (statusCode === 404) {
+      return reply
+        .code(404)
+        .type("text/html; charset=utf-8")
+        .send(renderStatusPage({ statusCode: 404, kind: "not_found", session }));
+    }
+    return reply
+      .code(statusCode)
+      .type("text/html; charset=utf-8")
+      .send(
+        renderStatusPage({
+          statusCode,
+          kind: statusCode === 503 ? "maintenance" : "server_error",
+          session,
+        }),
+      );
   });
 
   return app;

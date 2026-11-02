@@ -28,6 +28,23 @@
     }
 }
 
+(error_pages) {
+    handle_errors {
+        @err404 expression `{err.status_code} == 404`
+        handle @err404 {
+            header Content-Type "text/html; charset=utf-8"
+            respond `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Page introuvable (404) — DataSyntis</title><style>:root{--bg:#F6F6F8;--surface:#FFFFFF;--text:#1B1B1F;--muted:#47464F;--border:#E0E0E6;--primary:#386B66;--on-primary:#FFFFFF;--badge-bg:#FCEAD5;--badge-fg:#663506}@media(prefers-color-scheme:dark){:root{--bg:#090B10;--surface:#131720;--text:#F0F2F7;--muted:#B6BAC6;--border:#2A3142;--primary:#7BB3AD;--on-primary:#0F2926;--badge-bg:#3D2810;--badge-fg:#FCD9A8}}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:1.5rem;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}.card{width:100%;max-width:32rem;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.08)}.badge{display:inline-block;padding:.25rem .75rem;border-radius:999px;font-size:.75rem;font-weight:600;background:var(--badge-bg);color:var(--badge-fg);margin-bottom:1rem}h1{font-size:1.35rem;margin:0 0 .75rem}p{color:var(--muted);line-height:1.5;margin:0 0 1.5rem;font-size:.95rem}.actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}.btn{display:inline-flex;align-items:center;justify-content:center;padding:.65rem 1.25rem;border-radius:999px;font-weight:600;font-size:.9rem;text-decoration:none;background:var(--primary);color:var(--on-primary)}</style></head><body><main class="card"><span class="badge">404 · Page introuvable</span><h1>Page ou dossier introuvable</h1><p>L'adresse demandée n'existe pas ou a été déplacée.</p><div class="actions"><a class="btn" href="/">Retour à l'accueil</a></div></main></body></html>` 404
+        }
+
+        @err5xx expression `{err.status_code} >= 500 && {err.status_code} < 600`
+        handle @err5xx {
+            header Content-Type "text/html; charset=utf-8"
+            header Retry-After "15"
+            respond `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Maintenance en cours ({err.status_code}) — DataSyntis</title><style>:root{--bg:#F6F6F8;--surface:#FFFFFF;--text:#1B1B1F;--muted:#47464F;--border:#E0E0E6;--primary:#386B66;--on-primary:#FFFFFF;--tonal-bg:#D6EAE7;--tonal-fg:#1A403C;--badge-bg:#E8E8ED;--badge-fg:#27272A}@media(prefers-color-scheme:dark){:root{--bg:#090B10;--surface:#131720;--text:#F0F2F7;--muted:#B6BAC6;--border:#2A3142;--primary:#7BB3AD;--on-primary:#0F2926;--tonal-bg:#1E3D3A;--tonal-fg:#C6EAE5;--badge-bg:#27272E;--badge-fg:#E4E4E7}}*{box-sizing:border-box}body{margin:0;min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:1.5rem;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}.card{width:100%;max-width:34rem;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2rem;text-align:center;box-shadow:0 8px 24px rgba(0,0,0,.08)}.badge{display:inline-block;padding:.25rem .75rem;border-radius:999px;font-size:.75rem;font-weight:600;background:var(--badge-bg);color:var(--badge-fg);margin-bottom:1rem}h1{font-size:1.35rem;margin:0 0 .75rem}p{color:var(--muted);line-height:1.5;margin:0 0 1.5rem;font-size:.95rem}.actions{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}.btn{display:inline-flex;align-items:center;justify-content:center;padding:.65rem 1.25rem;border-radius:999px;font-weight:600;font-size:.9rem;text-decoration:none;background:var(--primary);color:var(--on-primary)}.btn-tonal{background:var(--tonal-bg);color:var(--tonal-fg)}</style></head><body><main class="card"><span class="badge">Maintenance · Code {err.status_code}</span><h1>Plateforme en cours de maintenance</h1><p>Une mise à jour ou un redémarrage du service est en cours. Vos dossiers patients et analyses RCP locales sont intégralement préservés. Merci de patienter quelques instants.</p><div class="actions"><a class="btn" href="/">Retour à l'accueil</a><a class="btn btn-tonal" href="">Réessayer</a></div></main></body></html>` {err.status_code}
+        }
+    }
+}
+
 sso.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
     encode zstd gzip
     import oauth_guard
@@ -40,6 +57,7 @@ sso.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
 oncologic.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
     encode zstd gzip
     import oauth_guard
+    import error_pages
 
     handle {
         route {
@@ -71,6 +89,7 @@ oncologic.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
 sma.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
     encode zstd gzip
     import oauth_guard
+    import error_pages
 
     handle {
         route {
@@ -103,6 +122,7 @@ sma.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
 oncologic-st.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
     encode zstd gzip
     import oauth_guard
+    import error_pages
 
     handle {
         route {
@@ -132,6 +152,7 @@ oncologic-st.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
 sma-st.{$PROD_BASE_DOMAIN:meddatasyntis.bricks-it.fr} {
     encode zstd gzip
     import oauth_guard
+    import error_pages
 
     handle {
         route {
