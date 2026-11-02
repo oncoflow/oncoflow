@@ -419,31 +419,48 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(adminQueueRes.statusCode).toBe(302);
 
-    // sma-new subdomain automatically resolves to the SMA clinical domain
-    const smaNewRes = await app.inject({
+    // sma.<domain> subdomain automatically resolves to the SMA clinical domain and omits ?domain= query strings
+    const smaRes = await app.inject({
       method: "GET",
       url: "/worklist",
       headers: {
-        host: "sma-new.meddatasyntis.bricks-it.fr",
+        host: "sma.meddatasyntis.bricks-it.fr",
         "x-oncoflow-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
-    expect(smaNewRes.statusCode).toBe(200);
-    expect(smaNewRes.body).toContain("Amyotrophie spinale");
+    expect(smaRes.statusCode).toBe(200);
+    expect(smaRes.body).toContain("Amyotrophie spinale");
+    expect(smaRes.body).not.toContain("domain=sma");
+    expect(smaRes.body).not.toContain('name="domain"');
 
-    // oncologic-new subdomain automatically resolves to the Oncology clinical domain
-    const oncoNewRes = await app.inject({
+    // oncologic.<domain> subdomain automatically resolves to the Oncology clinical domain and omits ?domain= query strings
+    const oncoRes = await app.inject({
       method: "GET",
       url: "/worklist",
       headers: {
-        host: "oncologic-new.meddatasyntis.bricks-it.fr",
+        host: "oncologic.meddatasyntis.bricks-it.fr",
         "x-oncoflow-proxy-secret": "top-secret-proxy-key",
         "x-auth-request-preferred-username": "dr.martin",
       },
     });
-    expect(oncoNewRes.statusCode).toBe(200);
-    expect(oncoNewRes.body).toContain("Oncologie");
+    expect(oncoRes.statusCode).toBe(200);
+    expect(oncoRes.body).toContain("Oncologie");
+    expect(oncoRes.body).not.toContain("domain=oncology");
+    expect(oncoRes.body).not.toContain('name="domain"');
+
+    // Redundant ?domain= query parameter on a domain-bound host redirects cleanly without domain=
+    const redundantQueryRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology&priority=high",
+      headers: {
+        host: "oncologic.meddatasyntis.bricks-it.fr",
+        "x-oncoflow-proxy-secret": "top-secret-proxy-key",
+        "x-auth-request-preferred-username": "dr.martin",
+      },
+    });
+    expect(redundantQueryRes.statusCode).toBe(302);
+    expect(redundantQueryRes.headers.location).toBe("/worklist?priority=high");
 
     await app.close();
   });

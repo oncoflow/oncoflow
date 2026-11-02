@@ -10,6 +10,7 @@ export interface UserSession {
   userName: string;
   isAdmin: boolean;
   domain: ClinicalDomain;
+  hostBoundDomain?: boolean;
   allowedDomains: ClinicalDomain[];
   language: Language;
   theme: ThemeMode;

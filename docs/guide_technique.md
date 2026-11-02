@@ -38,7 +38,7 @@ MedDataSyntis separates its presentation and backend layers cleanly across two d
   * **`http-oncoflow-api.adapter.ts`**: Production HTTP/REST adapter targeting FastAPI (`/api/v1/*`).
   * **`in-memory-oncoflow-api.fake.ts`**: Deterministic clinical fixture adapter (Oncology & SMA) used for offline development (`APP_DEV_MODE=true`), Vitest integration tests, and Playwright E2E tests.
 * **`ui/`**:
-  * **`server.ts`**: Fastify 5 BFF server with strict `Content-Security-Policy` (`default-src 'self'`), Zero-Trust `X-Oncoflow-Proxy-Secret` verification (`oauth_proxy` mode), host-based clinical domain resolution (`oncologic-new.*` -> `oncology`, `sma-new.*` -> `sma`), and SSE proxy streaming (`/events/queue`).
+  * **`server.ts`**: Fastify 5 BFF server with strict `Content-Security-Policy` (`default-src 'self'`), Zero-Trust `X-Oncoflow-Proxy-Secret` verification (`oauth_proxy` mode), host-based clinical domain resolution (`oncologic.*` -> `oncology`, `sma.*` -> `sma` without redundant `?domain=` query string), and SSE proxy streaming (`/events/queue`).
   * **`templates.ts` & `components/ai-chat.component.ts`**: Material Design 3 SSR HTML views (`Worklist`, `Ordre du jour RCP /agenda`, `Dossier patient longitudinal`, `Co-Pilot IA Side Sheet`, `Référentiels`, `Experts IA`, `Supervision File GPU`, `Signalements`).
 * **`public/`**: Zero-CDN self-hosted CSS tokens (`public/css/tokens.css`, `public/css/components.css`), progressive enhancement client script (`public/js/app.js`), and 58-icon M3 SVG sprite (`public/img/icons.svg`).
 

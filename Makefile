@@ -73,9 +73,10 @@ help:
 	@echo -e "  $(YELLOW)make sudoers-prod$(RESET)        Installe /etc/sudoers.d/meddatasyntis (Ubuntu 24.04+) pour $(DEPLOY_USER)"
 	@echo -e "  $(YELLOW)make logrotate-prod$(RESET)      Génère et installe la configuration logrotate (/etc/logrotate.d/meddatasyntis)"
 	@echo -e "  $(YELLOW)make pull-models-prod$(RESET)    Télécharge Ornith-1.5-35B-A3B (IQ4_XS) et bge-m3 (Q4_K_M)"
-	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre toute la stack prod (Milvus, Mongo, LLM L4, Streamlit & M3 Web UI oncologic-new/sma-new, OAuth2, Caddy)"
+	@echo -e "  $(YELLOW)make start-prod$(RESET)          Démarre la stack prod (Milvus, Mongo, LLM L4, Web UI M3 oncologic/sma, OAuth2, Caddy)"
+	@echo -e "  $(YELLOW)make start-prod-st$(RESET)       Démarre la stack prod + les frontaux Streamlit optionnels (oncologic-st/sma-st)"
 	@echo -e "  $(YELLOW)make stop-prod$(RESET)           Arrête tous les conteneurs de la stack prod"
-	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre UIs (Streamlit & Web M3 oncologic-new/sma-new) + API + OAuth2 Proxy + Caddy (sans décharger le LLM)"
+	@echo -e "  $(YELLOW)make restart-prod$(RESET)        Redémarre Web M3 (et Streamlit si actif) + API + OAuth2 Proxy + Caddy (sans décharger le LLM)"
 	@echo -e "  $(YELLOW)make prod-update$(RESET)         git pull + mise à jour Milvus v3.0 & images UI/Web M3 + redémarrage sans coupure GPU"
 	@echo -e "  $(YELLOW)make prod-update-all$(RESET)     Mise à jour complète de toute la stack Docker prod (y compris LLM/infra)"
 	@echo -e "  $(YELLOW)make status-prod$(RESET)         Affiche l'état des services prod, santé LLM et VRAM GPU (nvidia-smi)"
@@ -539,7 +540,7 @@ build-prod: docker-build-web
 	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
 	@echo -e "$(GREEN)--> Images Docker de production (App + Web M3) construites avec succès !$(RESET)"
 
-## Démarre les conteneurs Docker de production (Multi-Domaines Oncology & SMA + Web M3 oncologic-new & sma-new)
+## Démarre les conteneurs Docker de production (Multi-Domaines Web M3 oncologic & sma ; définir WITH_STREAMLIT=1 pour activer *-st)
 docker-up-prod:
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "  [$(RED)ERREUR$(RESET)] Fichier $(ENV_PROD) introuvable. Lancez d'abord 'make init-prod' et configurez vos identifiants GitHub OAuth."; \
@@ -553,11 +554,19 @@ docker-up-prod:
 	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> Préparation de l'image Web UI M3 (oncoflow-web pour oncologic-new & sma-new)...$(RESET)"
+	@echo -e "$(CYAN)--> Préparation de l'image Web UI M3 (oncoflow-web pour oncologic & sma)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-web 2>/dev/null || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
-	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + Streamlit & Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
+	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
+	@if [ "$(WITH_STREAMLIT)" = "1" ]; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d; \
+	else \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d; \
+	fi
 	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
+
+## Démarre la stack de production avec les déploiements Streamlit optionnels (oncologic-st & sma-st)
+start-prod-st:
+	@$(MAKE) start-prod WITH_STREAMLIT=1
 
 ## Démarre toute la stack de production et attend la disponibilité des modèles LLM
 start-prod: docker-up-prod
@@ -583,16 +592,18 @@ start-prod: docker-up-prod
 	BASE_DOM=$${BASE_DOM:-$(PROD_BASE_DOMAIN)}; \
 	echo -e "$(GREEN)======================================================================$(RESET)"; \
 	echo -e "  🚀 MedDataSyntis Production actif sur :"; \
-	echo -e "     • Oncologie (Streamlit)     : $(CYAN)https://oncologic.$${BASE_DOM}$(RESET)"; \
-	echo -e "     • Amyotrophie spinale (UI)  : $(CYAN)https://sma.$${BASE_DOM}$(RESET)"; \
-	echo -e "     • Oncologie (Nouvelle M3)   : $(CYAN)https://oncologic-new.$${BASE_DOM}$(RESET)"; \
-	echo -e "     • Amyotrophie spinale (M3)  : $(CYAN)https://sma-new.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Oncologie (Web M3)            : $(CYAN)https://oncologic.$${BASE_DOM}$(RESET)"; \
+	echo -e "     • Amyotrophie spinale (Web M3)  : $(CYAN)https://sma.$${BASE_DOM}$(RESET)"; \
+	if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+		echo -e "     • Oncologie (Streamlit opt.)    : $(CYAN)https://oncologic-st.$${BASE_DOM}$(RESET)"; \
+		echo -e "     • Amyotrophie spinale (ST opt.) : $(CYAN)https://sma-st.$${BASE_DOM}$(RESET)"; \
+	fi; \
 	echo -e "$(GREEN)======================================================================$(RESET)"
 
 ## Arrête tous les conteneurs de la stack de production (conserve les volumes de données)
 stop-prod:
 	@echo -e "$(YELLOW)--> Arrêt de la stack de production MedDataSyntis...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) down --remove-orphans
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit down --remove-orphans
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) down --remove-orphans
 	@echo -e "$(GREEN)--> Stack de production arrêtée.$(RESET)"
 
@@ -604,8 +615,11 @@ pprod: start-prod
 
 ## Redémarre uniquement les services applicatifs et proxy (sans décharger le LLM de la VRAM L4)
 restart-prod:
-	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (UIs Streamlit, Web M3 oncologic-new/sma-new, API Cross-Domains, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-ui-oncology oncoflow-ui-sma oncoflow-web oncoflow-api oauth2-proxy caddy
+	@echo -e "$(CYAN)--> Redémarrage des services applicatifs (Web M3 oncologic/sma, API Cross-Domains, OAuth2 Proxy, Caddy, LiteLLM) sans toucher au GPU...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart litellm oncoflow-web oncoflow-api oauth2-proxy caddy
+	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit restart oncoflow-ui-oncology oncoflow-ui-sma; \
+	fi
 	@echo -e "$(GREEN)--> Services applicatifs redémarrés.$(RESET)"
 
 ## Met à jour le dépôt git, Milvus v3.0 et les images Docker UI/Web M3 sans décharger le modèle LLM du GPU
@@ -615,11 +629,15 @@ prod-update:
 	@echo -e "$(CYAN)--> [2/5] Mise à jour de Milvus Standalone (v3.0)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> [3/5] Téléchargement / construction des dernières images applicatives (UIs Streamlit, Web M3 oncologic-new/sma-new, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-ui-oncology oncoflow-ui-sma oncoflow-api oauth2-proxy caddy litellm
+	@echo -e "$(CYAN)--> [3/5] Téléchargement / construction des dernières images applicatives (Web M3 oncologic/sma, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-api oauth2-proxy caddy litellm
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
 	@echo -e "$(CYAN)--> [4/5] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma oncoflow-web oncoflow-api oauth2-proxy caddy litellm
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-web oncoflow-api oauth2-proxy caddy litellm
+	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit pull oncoflow-ui-oncology oncoflow-ui-sma; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-deps oncoflow-ui-oncology oncoflow-ui-sma; \
+	fi
 	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@echo -e "$(CYAN)--> [5/5] Nettoyage des anciennes images Docker inutilisées...$(RESET)"
 	@docker image prune -f >/dev/null 2>&1 || true
@@ -628,13 +646,17 @@ prod-update:
 
 ## Met à jour l'intégralité de la stack de production (y compris les images LLM, Milvus, MongoDB et Web M3)
 prod-update-all:
-	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + UIs Streamlit + Web M3)...$(RESET)"
+	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + Web M3)...$(RESET)"
 	git pull --ff-only
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull --ignore-buildable
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d
+	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d; \
+	else \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d; \
+	fi
 	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@docker image prune -f >/dev/null 2>&1 || true
 	@$(MAKE) status-prod
@@ -648,12 +670,12 @@ status-prod:
 	@ss -tlnp 2>/dev/null | grep -q ":4180 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "API Cross-Domains (port 8000)     : "
 	@ss -tlnp 2>/dev/null | grep -q ":8000 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
-	@echo -n "Web M3 oncologic-new/sma-new(3000): "
+	@echo -n "Web M3 oncologic/sma (port 3000)  : "
 	@ss -tlnp 2>/dev/null | grep -q ":3000 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
-	@echo -n "UI Oncology GHCR (port 8501)      : "
-	@ss -tlnp 2>/dev/null | grep -q ":8501 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
-	@echo -n "UI SMA GHCR (port 8502)           : "
-	@ss -tlnp 2>/dev/null | grep -q ":8502 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
+	@echo -n "UI Oncology Streamlit opt. (8501) : "
+	@ss -tlnp 2>/dev/null | grep -q ":8501 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(YELLOW)OPTIONNEL (INACTIF)$(RESET)"
+	@echo -n "UI SMA Streamlit opt. (port 8502) : "
+	@ss -tlnp 2>/dev/null | grep -q ":8502 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(YELLOW)OPTIONNEL (INACTIF)$(RESET)"
 	@echo -n "LiteLLM Proxy (port 4000)         : "
 	@ss -tlnp 2>/dev/null | grep -q ":4000 " && echo -e "$(GREEN)ACTIF$(RESET)" || echo -e "$(RED)INACTIF$(RESET)"
 	@echo -n "llama.cpp Chat L4 (port 8080)     : "

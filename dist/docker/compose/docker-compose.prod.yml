@@ -262,7 +262,7 @@ services:
     networks:
       - search-community
 
-  # ─── Applications MedDataSyntis UI en parallèle (Oncology & SMA) ────────────
+  # ─── Applications MedDataSyntis Streamlit UI (Déploiement optionnel : --profile streamlit) ──
   oncoflow-ui-oncology:
     <<: *ui-common
     container_name: oncoflow-ui-oncology
@@ -276,6 +276,8 @@ services:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
       - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/mtd:/app/application/ressources/PatientMDTForm/oncology
       - ${HOST_ONCOLOGIC_DIR:-/data/meddatasyntis/oncologic}/documents:/app/application/ressources/documents/oncology
+    profiles:
+      - "streamlit"
 
   oncoflow-ui-sma:
     <<: *ui-common
@@ -290,6 +292,8 @@ services:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis}/logs:/var/log/meddatasyntis
       - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/mtd:/app/application/ressources/PatientMDTForm/sma
       - ${HOST_SMA_DIR:-/data/meddatasyntis/sma}/documents:/app/application/ressources/documents/sma
+    profiles:
+      - "streamlit"
 
   # ─── API Cross-Domains & File de Traitement intégrée (queue.PriorityQueue) ──
   oncoflow-api:
@@ -314,7 +318,7 @@ services:
       APP_API_DOCS_ENABLED: ${APP_API_DOCS_ENABLED:-false}
       APP_API_DOCS_REQUIRE_AUTH: ${APP_API_DOCS_REQUIRE_AUTH:-true}
       APP_API_CORS_ENABLED: ${APP_API_CORS_ENABLED:-true}
-      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://oncologic-new.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma-new.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}}
+      APP_API_CORS_ORIGINS: ${APP_API_CORS_ORIGINS:-https://oncologic.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://oncologic-st.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr},https://sma-st.${PROD_BASE_DOMAIN:-meddatasyntis.bricks-it.fr}}
       APP_API_CORS_ORIGIN_REGEX: ${APP_API_CORS_ORIGIN_REGEX:-}
       APP_API_CORS_ALLOW_CREDENTIALS: ${APP_API_CORS_ALLOW_CREDENTIALS:-true}
       APP_API_CORS_ALLOW_METHODS: ${APP_API_CORS_ALLOW_METHODS:-GET,POST,PUT,PATCH,DELETE,OPTIONS}
@@ -413,13 +417,11 @@ services:
       OAUTH2_PROXY_COOKIE_SAMESITE: "lax"
       OAUTH2_PROXY_SILENCE_PING_LOGGING: "true"
     depends_on:
-      - oncoflow-ui-oncology
-      - oncoflow-ui-sma
       - oncoflow-web
     networks:
       - search-community
 
-  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic(-new).* et sma(-new).*)
+  # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.*, sma.* et optionnellement *-st.*)
   caddy:
     image: caddy:2.11.7-alpine
     container_name: oncoflow-caddy
@@ -438,8 +440,6 @@ services:
       - ${DOCKER_VOLUME_DIRECTORY:-/data/meddatasyntis/common}/caddy_config:/config
     depends_on:
       - oauth2-proxy
-      - oncoflow-ui-oncology
-      - oncoflow-ui-sma
       - oncoflow-web
     networks:
       - search-community

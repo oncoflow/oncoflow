@@ -36,6 +36,7 @@ import {
   renderQueueBannerPartial,
   renderSectionDetailsPartial,
   renderWorklistPage,
+  stripDomainQuery,
 } from "./templates.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -148,6 +149,44 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return reply.code(404).send("Ressource statique introuvable");
   });
 
+  function isProxyTrusted(req: FastifyRequest): boolean {
+    const providedSecret =
+      (req.headers["x-oncoflow-proxy-secret"] as string | undefined) ||
+      (req.headers["x-proxy-secret"] as string | undefined);
+    return config.proxySecret
+      ? verifyProxySecret(providedSecret, config.proxySecret)
+      : config.devMode !== false;
+  }
+
+  function detectHostDomain(
+    req: FastifyRequest,
+    trustProxyHeaders: boolean,
+  ): ClinicalDomain | undefined {
+    const headerDomain = trustProxyHeaders
+      ? (req.headers["x-oncoflow-domain"] as string | undefined)?.trim().toLowerCase()
+      : undefined;
+    if (headerDomain === "sma" || headerDomain === "oncology") {
+      return headerDomain;
+    }
+    const rawHost =
+      String(req.headers.host || "")
+        .split(",")[0]
+        ?.trim()
+        .toLowerCase() ?? "";
+    if (rawHost.startsWith("sma.") || rawHost.startsWith("sma-")) {
+      return "sma";
+    }
+    if (
+      rawHost.startsWith("oncologic.") ||
+      rawHost.startsWith("oncologic-") ||
+      rawHost.startsWith("oncology.") ||
+      rawHost.startsWith("oncology-")
+    ) {
+      return "oncology";
+    }
+    return undefined;
+  }
+
   // Zero-Trust Proxy Secret Verification when running behind Caddy + OAuth2-Proxy
   app.addHook("onRequest", async (req, reply) => {
     if (req.url === "/health" || req.url.startsWith("/public/")) {
@@ -162,6 +201,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
           .code(403)
           .type("text/plain; charset=utf-8")
           .send("Accès refusé : secret proxy invalide.");
+      }
+    }
+    // Strip redundant ?domain=... query parameter when domain is determined by hostname
+    if (req.method === "GET" && req.url.includes("domain=")) {
+      const hostDomain = detectHostDomain(req, isProxyTrusted(req));
+      if (hostDomain) {
+        const cleanUrl = stripDomainQuery(req.url);
+        if (cleanUrl !== req.url) {
+          return reply.redirect(cleanUrl);
+        }
       }
     }
   });
@@ -189,6 +238,19 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (!req.url.startsWith("/public/") && !reply.getHeader("cache-control")) {
       reply.header("Cache-Control", "no-store, max-age=0");
     }
+
+    const hostDomain = !req.url.startsWith("/public/")
+      ? detectHostDomain(req, isProxyTrusted(req))
+      : undefined;
+    if (hostDomain) {
+      const loc = reply.getHeader("location");
+      if (typeof loc === "string" && loc.includes("domain=")) {
+        reply.header("Location", stripDomainQuery(loc));
+      }
+      if (typeof payload === "string" && payload.includes("domain")) {
+        return stripDomainQuery(payload);
+      }
+    }
     return payload;
   });
 
@@ -200,49 +262,11 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   const feedbackUseCase = new FeedbackUseCase(api);
   const queueAdminUseCase = new QueueAdminUseCase(api);
 
-  function detectHostDomain(
-    req: FastifyRequest,
-    trustProxyHeaders: boolean,
-  ): ClinicalDomain | undefined {
-    const headerDomain = trustProxyHeaders
-      ? (req.headers["x-oncoflow-domain"] as string | undefined)?.trim().toLowerCase()
-      : undefined;
-    if (headerDomain === "sma" || headerDomain === "oncology") {
-      return headerDomain;
-    }
-    const rawHost =
-      String(req.headers.host || "")
-        .split(",")[0]
-        ?.trim()
-        .toLowerCase() ?? "";
-    if (
-      rawHost.startsWith("sma.") ||
-      rawHost.startsWith("sma-new.") ||
-      rawHost.startsWith("sma-")
-    ) {
-      return "sma";
-    }
-    if (
-      rawHost.startsWith("oncologic.") ||
-      rawHost.startsWith("oncologic-new.") ||
-      rawHost.startsWith("oncology.") ||
-      rawHost.startsWith("oncology-")
-    ) {
-      return "oncology";
-    }
-    return undefined;
-  }
-
   function resolveSession(req: FastifyRequest): UserSession {
     const query = (req.query ?? {}) as Record<string, string | undefined>;
     const cookies = req.cookies ?? {};
 
-    const providedSecret =
-      (req.headers["x-oncoflow-proxy-secret"] as string | undefined) ||
-      (req.headers["x-proxy-secret"] as string | undefined);
-    const trustIdentityHeaders = config.proxySecret
-      ? verifyProxySecret(providedSecret, config.proxySecret)
-      : config.devMode !== false;
+    const trustIdentityHeaders = isProxyTrusted(req);
 
     const hostDomain = detectHostDomain(req, trustIdentityHeaders);
     const rawDomain = (
@@ -291,6 +315,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       userName,
       isAdmin,
       domain,
+      hostBoundDomain: Boolean(hostDomain),
       allowedDomains: config.allowedDomains,
       language,
       theme,

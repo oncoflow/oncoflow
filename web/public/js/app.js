@@ -1527,14 +1527,14 @@
 
   function persistAgendaMove(list, patientId, targetPosition) {
     if (!list || !patientId || !targetPosition) return;
-    var domain = list.getAttribute("data-domain") || "oncology";
+    var domain = list.getAttribute("data-domain");
     var form = document.createElement("form");
     form.method = "post";
     form.action =
       "/agenda/patients/" +
       encodeURIComponent(patientId) +
-      "/move?domain=" +
-      encodeURIComponent(domain);
+      "/move" +
+      (domain ? "?domain=" + encodeURIComponent(domain) : "");
     form.style.display = "none";
 
     var posInput = document.createElement("input");

@@ -169,6 +169,15 @@ function resolveQueueJobHref(j: QueueJobItem, fallbackDomain: string): string {
   return `/resolve?target=${encodeURIComponent(j.filename)}&domain=${dom}`;
 }
 
+export function stripDomainQuery(input: string): string {
+  return input
+    .replace(/<input type="hidden" name="domain" value="(?:oncology|sma)">\s*/g, "")
+    .replace(/ data-domain="(?:oncology|sma)"/g, "")
+    .replace(/\?domain=(?:oncology|sma)&/g, "?")
+    .replace(/&domain=(?:oncology|sma)(?=[&#"'\s]|$)/g, "")
+    .replace(/\?domain=(?:oncology|sma)(?=[#"'\s]|$)/g, "");
+}
+
 export function renderLayout(opts: ShellLayoutOptions): string {
   const { session, queueStats, queueJobs, activeNav, breadcrumbs, bodyHtml, title } = opts;
   const lang = session.language;
@@ -228,7 +237,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           })
           .join("");
 
-  return `<!doctype html>
+  const html = `<!doctype html>
 <html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}">
 <head>
   <meta charset="utf-8">
@@ -483,6 +492,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <script src="/public/js/app.js?v=29"></script>
 </body>
 </html>`;
+  return session.hostBoundDomain ? stripDomainQuery(html) : html;
 }
 
 export function renderWorklistPage(
