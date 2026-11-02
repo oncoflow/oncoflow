@@ -245,8 +245,21 @@ test.describe("DataSyntis Material Design 3 Web UI — End-to-End Clinical & Erg
     await page.keyboard.press("Escape");
     await expect(page.locator("body")).not.toHaveClass(/ds-shell--mobile-nav-open/);
 
-    // Navigate to patient dossier on mobile and verify AI Co-Pilot drawer keyboard class sync
+    // Navigate to patient dossier on mobile, verify PDF is hidden behind button and renders on click, and verify AI Co-Pilot drawer keyboard class sync
     await page.goto("/patients/A-1042?domain=oncology");
+    const mobilePdfBtn = page.getByTestId("btn_mobile_pdf_toggle");
+    await expect(mobilePdfBtn).toBeVisible();
+    await expect(mobilePdfBtn).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator(".ds-pdf-viewer-wrap").first()).toBeHidden();
+
+    await mobilePdfBtn.click();
+    await expect(mobilePdfBtn).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator(".ds-pdf-canvas-viewer__canvas").first()).toBeVisible();
+
+    await mobilePdfBtn.click();
+    await expect(mobilePdfBtn).toHaveAttribute("aria-expanded", "false");
+    await expect(page.locator(".ds-pdf-viewer-wrap").first()).toBeHidden();
+
     await page.getByTestId("btn_fab_ai_chat").click();
     const chatDrawer = page.getByTestId("ai-chat-drawer");
     await expect(chatDrawer).toBeVisible();

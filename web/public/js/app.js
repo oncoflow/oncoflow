@@ -703,9 +703,40 @@
       return;
     }
 
+    var mobilePdfBtn = e.target.closest("[data-action='toggle-mobile-pdf']");
+    if (mobilePdfBtn) {
+      closeAllMenus(null);
+      var pdfPane = mobilePdfBtn.closest("[data-pdf-pane]");
+      if (pdfPane) {
+        var isOpen = pdfPane.classList.toggle("is-mobile-pdf-open");
+        mobilePdfBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+        var labelSpan = mobilePdfBtn.querySelector("[data-pdf-toggle-text]");
+        if (labelSpan) {
+          var nextLabel = isOpen
+            ? mobilePdfBtn.getAttribute("data-label-hide")
+            : mobilePdfBtn.getAttribute("data-label-show");
+          if (nextLabel) labelSpan.textContent = nextLabel;
+        }
+        if (isOpen) {
+          var viewerEl = pdfPane.querySelector("[data-pdf-canvas-viewer]");
+          if (viewerEl && viewerEl.getAttribute("data-pdf-rendered") !== "true") {
+            renderMobilePdfCanvas(viewerEl);
+          }
+        }
+      }
+      return;
+    }
+
     var pdfExpandBtn = e.target.closest("[data-action='toggle-pdf-expand']");
     if (pdfExpandBtn) {
       closeAllMenus(null);
+      if (window.matchMedia && window.matchMedia("(max-width: 75rem)").matches) {
+        var mobileToggle = document.querySelector("[data-action='toggle-mobile-pdf']");
+        if (mobileToggle) {
+          mobileToggle.click();
+          return;
+        }
+      }
       var splitView = document.getElementById("dossier-split-view");
       if (splitView) {
         var expanded = splitView.classList.toggle("ds-split--pdf-expanded");
@@ -1658,6 +1689,103 @@
       finalizeAgendaDrag(agendaDragState, true);
     }
   });
+
+  // =========================================================================
+  // 20. Mobile PDF Canvas Renderer (self-hosted PDF.js for mobile viewports)
+  // =========================================================================
+  var pdfJsPromise = null;
+  function loadLocalPdfJs() {
+    if (!pdfJsPromise) {
+      pdfJsPromise = import("/public/vendor/pdfjs/pdf.mjs").then(function (mod) {
+        if (mod && mod.GlobalWorkerOptions) {
+          mod.GlobalWorkerOptions.workerSrc = "/public/vendor/pdfjs/pdf.worker.mjs";
+        }
+        return mod;
+      });
+    }
+    return pdfJsPromise;
+  }
+
+  function renderMobilePdfCanvas(viewerEl) {
+    var pdfUrl = viewerEl.getAttribute("data-pdf-url");
+    var filename = viewerEl.getAttribute("data-pdf-filename") || "document.pdf";
+    if (!pdfUrl || viewerEl.getAttribute("data-pdf-rendered") === "loading") return;
+    viewerEl.setAttribute("data-pdf-rendered", "loading");
+
+    viewerEl.innerHTML =
+      '<div class="ds-pdf-canvas-viewer__bar">' +
+      '<span data-pdf-status>Chargement du PDF…</span>' +
+      '<div class="ds-cluster" style="gap:var(--ds-space-2)">' +
+      '<a class="ds-btn ds-btn--ghost ds-btn--sm" href="' +
+      escHtml(pdfUrl) +
+      '" target="_blank" rel="noopener">Ouvrir</a>' +
+      '<a class="ds-btn ds-btn--secondary ds-btn--sm" href="' +
+      escHtml(pdfUrl) +
+      '" download="' +
+      escHtml(filename) +
+      '">Télécharger</a>' +
+      "</div>" +
+      "</div>" +
+      '<div class="ds-pdf-canvas-viewer__pages" data-pdf-pages></div>';
+
+    var statusEl = viewerEl.querySelector("[data-pdf-status]");
+    var pagesEl = viewerEl.querySelector("[data-pdf-pages]");
+
+    Promise.all([
+      loadLocalPdfJs(),
+      fetch(pdfUrl, { credentials: "same-origin" }).then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.arrayBuffer();
+      }),
+    ])
+      .then(function (results) {
+        var pdfjs = results[0];
+        var buffer = results[1];
+        return pdfjs.getDocument({
+          data: new Uint8Array(buffer),
+          useSystemFonts: true,
+        }).promise;
+      })
+      .then(function (pdfDoc) {
+        var total = pdfDoc.numPages || 1;
+        if (statusEl) {
+          statusEl.textContent = filename + " · " + total + (total > 1 ? " pages" : " page");
+        }
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+        var containerWidth = Math.max(260, (pagesEl && pagesEl.clientWidth) || 340);
+
+        var chain = Promise.resolve();
+        var _loop = function (pageNum) {
+          chain = chain.then(function () {
+            return pdfDoc.getPage(pageNum).then(function (page) {
+              var unscaled = page.getViewport({ scale: 1 });
+              var cssScale = containerWidth / Math.max(1, unscaled.width);
+              var viewport = page.getViewport({ scale: cssScale * dpr });
+              var canvas = document.createElement("canvas");
+              canvas.className = "ds-pdf-canvas-viewer__canvas";
+              canvas.width = Math.floor(viewport.width);
+              canvas.height = Math.floor(viewport.height);
+              if (pagesEl) pagesEl.appendChild(canvas);
+              var ctx = canvas.getContext("2d");
+              if (!ctx) return;
+              return page.render({ canvasContext: ctx, viewport: viewport }).promise;
+            });
+          });
+        };
+        for (var p = 1; p <= total; p++) {
+          _loop(p);
+        }
+        return chain.then(function () {
+          viewerEl.setAttribute("data-pdf-rendered", "true");
+        });
+      })
+      .catch(function () {
+        viewerEl.setAttribute("data-pdf-rendered", "error");
+        if (statusEl) {
+          statusEl.textContent = "Aperçu indisponible — utilisez « Ouvrir » ou « Télécharger ».";
+        }
+      });
+  }
 
   // Live SSE Queue Banner stream
   if (typeof window.EventSource === "function" && document.getElementById("queue-banner")) {

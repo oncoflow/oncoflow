@@ -28,9 +28,106 @@ import type {
   ResourceDocument,
 } from "../../domain/types.js";
 
-const MINIMAL_PDF_BUFFER = Buffer.from(
-  "%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Count 1/Kids[3 0 R]>>endobj\n3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R>>endobj\nxref\n0 4\n0000000000 65535 f \n0000000009 00000 n \n0000000052 00000 n \n0000000101 00000 n \ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n164\n%%EOF\n",
-  "utf8",
+function escapePdfLiteral(str: string): string {
+  return String(str || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[^\x20-\x7E\xA0-\xFF]/g, " ");
+}
+
+function wrapPdfLines(rawText: string, maxChars = 88): string[] {
+  const result: string[] = [];
+  for (const rawLine of String(rawText || "").split(/\r?\n/)) {
+    const cleaned = rawLine
+      .replace(/^#+\s*/, "")
+      .replace(/\*\*/g, "")
+      .trim();
+    if (!cleaned) {
+      if (result.length > 0 && result[result.length - 1] !== "") {
+        result.push("");
+      }
+      continue;
+    }
+    let rest = cleaned;
+    while (rest.length > maxChars) {
+      let cut = rest.lastIndexOf(" ", maxChars);
+      if (cut < 30) cut = maxChars;
+      result.push(rest.slice(0, cut).trim());
+      rest = rest.slice(cut).trim();
+    }
+    if (rest) result.push(rest);
+  }
+  return result;
+}
+
+function buildClinicalPdfBuffer(title: string, subtitle: string, bodyLines: string[]): Buffer {
+  const ops: string[] = [
+    "q",
+    "0.22 0.42 0.40 rg",
+    "36 724 540 38 re f",
+    "Q",
+    "BT",
+    "/F2 12.5 Tf",
+    "1 1 1 rg",
+    "48 738 Td",
+    `(${escapePdfLiteral(title)}) Tj`,
+    "ET",
+    "BT",
+    "/F2 10 Tf",
+    "0.15 0.16 0.18 rg",
+    "36 702 Td",
+    `(${escapePdfLiteral(subtitle)}) Tj`,
+    "ET",
+    "0.82 0.84 0.86 RG",
+    "1 w",
+    "36 692 m 576 692 l S",
+    "BT",
+    "/F1 9.5 Tf",
+    "0.11 0.11 0.13 rg",
+    "14 TL",
+    "36 674 Td",
+  ];
+  for (const line of bodyLines.slice(0, 44)) {
+    ops.push(`(${escapePdfLiteral(line)}) Tj T*`);
+  }
+  ops.push("ET");
+  const stream = ops.join("\n");
+  const objs = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Count 1 /Kids [3 0 R] >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>\nendobj\n",
+    "4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n",
+    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n",
+    `6 0 obj\n<< /Length ${Buffer.byteLength(stream, "latin1")} >>\nstream\n${stream}\nendstream\nendobj\n`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const obj of objs) {
+    offsets.push(Buffer.byteLength(pdf, "latin1"));
+    pdf += obj;
+  }
+  const xrefStart = Buffer.byteLength(pdf, "latin1");
+  pdf += `xref\n0 ${objs.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (let i = 1; i < offsets.length; i++) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+  return Buffer.from(pdf, "latin1");
+}
+
+const MINIMAL_PDF_BUFFER = buildClinicalPdfBuffer(
+  "DataSyntis — Compte Rendu Medical RCP",
+  "Document clinique source (mode demonstration local)",
+  [
+    "Compte rendu medical numerise pour preparation collegiale de seance RCP.",
+    "Donnees extraites localement sans transfert vers un service cloud externe.",
+  ],
 );
 
 export class InMemoryOncoflowApiFake implements OncoflowApiPort {
@@ -1012,8 +1109,17 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     _domain: ClinicalDomain,
     _variant?: "plain" | "bbox",
   ): Promise<Buffer | null> {
-    if (!this.forms.has(filename)) return MINIMAL_PDF_BUFFER;
-    return MINIMAL_PDF_BUFFER;
+    const form = this.forms.get(filename);
+    if (!form) return MINIMAL_PDF_BUFFER;
+    const admin = (form.sections.Administrative ?? {}) as Record<string, unknown>;
+    const patientLabel =
+      [admin.last_name, admin.first_name].filter(Boolean).join(" ") || form.patientId || form.file;
+    const subtitle = `Patient : ${patientLabel}  |  Fichier : ${form.file}${form.mdtDate ? `  |  Seance RCP : ${form.mdtDate}` : ""}`;
+    const lines = wrapPdfLines(
+      form.markdownText ||
+        `Dossier clinique ${patientLabel}\nFichier source : ${form.file}\nDate RCP : ${form.mdtDate ?? "Non renseignee"}`,
+    );
+    return buildClinicalPdfBuffer("DataSyntis — Fiche Source RCP / MDT", subtitle, lines);
   }
 
   async askDossierQuestion(
@@ -1181,11 +1287,29 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
   }
 
   async getResourcePdfBuffer(
-    _filename: string,
-    _domain: ClinicalDomain,
+    filename: string,
+    domain: ClinicalDomain,
     _formFile?: string,
   ): Promise<Buffer | null> {
-    return MINIMAL_PDF_BUFFER;
+    const res = this.resources.get(filename);
+    const domainLabel =
+      domain === "sma"
+        ? "PNDS — Maladies Neuromusculaires Rares (SMA)"
+        : "Referentiel Scientifique TNCD — Oncologie Digestive";
+    const lines = wrapPdfLines(
+      [
+        `Document referentiel : ${filename}`,
+        `Domaine : ${domainLabel}`,
+        `Statut RAG : ${res?.indexed ? "Indexe dans la base vectorielle locale" : "En attente d'indexation"}`,
+        `Derniere mise a jour : ${res?.updatedAt ?? "2026-10-15"}`,
+        "",
+        "Synthese des recommandations cliniques de reference :",
+        "- Verification collegiale des criteres d'eligibilite therapeutique en seance RCP.",
+        "- Controle systematique de la completude du bilan pre-therapeutique (imagerie, biologie, anatomopathologie / genetique).",
+        "- Toute proposition d'orientation pre-RCP doit etre validee par le college medical.",
+      ].join("\n"),
+    );
+    return buildClinicalPdfBuffer(`DataSyntis — ${domainLabel}`, `Fichier : ${filename}`, lines);
   }
 
   async listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]> {

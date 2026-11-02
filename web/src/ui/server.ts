@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import zlib from "node:zlib";
 import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyMultipart from "@fastify/multipart";
@@ -86,12 +87,15 @@ export function sanitizeContentDispositionFilename(name: string): string {
 const PUBLIC_MIME_TYPES: Record<string, string> = {
   ".css": "text/css; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
+  ".mjs": "application/javascript; charset=utf-8",
   ".svg": "image/svg+xml; charset=utf-8",
   ".png": "image/png",
   ".ico": "image/x-icon",
   ".json": "application/json; charset=utf-8",
   ".woff2": "font/woff2",
 };
+
+const gunzipCache = new Map<string, Buffer>();
 
 export interface BuildServerOptions {
   config: WebAppConfig;
@@ -122,12 +126,26 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     }
     const ext = path.extname(resolved).toLowerCase();
     const mime = PUBLIC_MIME_TYPES[ext];
-    if (!mime || !fs.existsSync(resolved) || !fs.statSync(resolved).isFile()) {
+    if (!mime) {
       return reply.code(404).send("Ressource statique introuvable");
     }
-    reply.header("Content-Type", mime);
-    reply.header("Cache-Control", "no-store, max-age=0");
-    return reply.send(fs.readFileSync(resolved));
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+      reply.header("Content-Type", mime);
+      reply.header("Cache-Control", "no-store, max-age=0");
+      return reply.send(fs.readFileSync(resolved));
+    }
+    const gzResolved = `${resolved}.gz`;
+    if (fs.existsSync(gzResolved) && fs.statSync(gzResolved).isFile()) {
+      let unzipped = gunzipCache.get(gzResolved);
+      if (!unzipped) {
+        unzipped = zlib.gunzipSync(fs.readFileSync(gzResolved));
+        gunzipCache.set(gzResolved, unzipped);
+      }
+      reply.header("Content-Type", mime);
+      reply.header("Cache-Control", "public, max-age=86400");
+      return reply.send(unzipped);
+    }
+    return reply.code(404).send("Ressource statique introuvable");
   });
 
   // Zero-Trust Proxy Secret Verification when running behind Caddy + OAuth2-Proxy
@@ -156,7 +174,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       const scriptSrc = isStyleguide ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'";
       reply.header(
         "Content-Security-Policy",
-        `default-src 'self'; style-src 'self' 'unsafe-inline'; ${scriptSrc}; img-src 'self' data:; frame-src 'self'; frame-ancestors 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`,
+        `default-src 'self'; style-src 'self' 'unsafe-inline'; ${scriptSrc}; worker-src 'self' blob:; img-src 'self' data: blob:; frame-src 'self'; frame-ancestors 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'`,
       );
     }
     reply.header("X-Content-Type-Options", "nosniff");

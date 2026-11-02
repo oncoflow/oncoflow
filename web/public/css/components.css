@@ -1845,7 +1845,7 @@ div[data-href] {
   border: 1px solid var(--ds-color-border-strong);
   border-radius: var(--ds-radius-pill);
   overflow: hidden;
-  background: var(--ds-color-surface);
+  background: var(--ds-surface-nested);
 }
 .ds-segmented input { position: absolute; opacity: 0; pointer-events: none; }
 .ds-segmented label {
@@ -2128,7 +2128,7 @@ input[type="search"].ds-input::-webkit-search-decoration {
   padding: 0.5rem 0.75rem;
   border: 1.5px solid var(--ds-color-border-strong);
   border-radius: var(--ds-radius-xs); /* M3 Outlined 4px radius */
-  background: transparent;
+  background: var(--ds-surface-nested);
   color: var(--ds-color-text);
   font: inherit;
   font-size: var(--ds-text-sm);
@@ -2139,7 +2139,7 @@ input[type="search"].ds-input::-webkit-search-decoration {
   justify-content: space-between;
   gap: var(--ds-space-2);
   cursor: pointer;
-  transition: border-color var(--ds-duration-fast) var(--ds-ease), box-shadow var(--ds-duration-fast) var(--ds-ease);
+  transition: border-color var(--ds-duration-fast) var(--ds-ease), background-color var(--ds-duration-fast) var(--ds-ease), box-shadow var(--ds-duration-fast) var(--ds-ease);
 }
 .ds-m3-select--sm .ds-m3-select__trigger {
   min-height: 2rem;
@@ -2149,7 +2149,7 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-m3-select__trigger:hover {
   border-color: var(--ds-color-text);
-  background: transparent;
+  background: var(--ds-color-surface-hover);
 }
 .ds-m3-select.is-open .ds-m3-select__trigger,
 .ds-m3-select__trigger:focus-visible {
@@ -2402,8 +2402,10 @@ input[type="search"].ds-input::-webkit-search-decoration {
 }
 .ds-section[open] > summary {
   border-radius: calc(var(--ds-radius-lg) - 1px) calc(var(--ds-radius-lg) - 1px) 0 0;
+  background: color-mix(in srgb, var(--ds-surface-nested) 60%, var(--ds-color-surface));
+  border-bottom: 1px solid var(--ds-color-border);
 }
-.ds-section > summary:hover { background: var(--ds-surface-container-low); }
+.ds-section > summary:hover { background: var(--ds-surface-nested); }
 .ds-section > summary::-webkit-details-marker { display: none; }
 .ds-section > summary::after {
   content: "▾";
@@ -2827,8 +2829,10 @@ a.ds-timeline__link:hover {
 }
 .ds-opinion[open] > summary {
   border-radius: calc(var(--ds-radius-lg) - 1px) calc(var(--ds-radius-lg) - 1px) 0 0;
+  background: color-mix(in srgb, var(--ds-surface-nested) 60%, var(--ds-color-surface));
+  border-bottom: 1px solid var(--ds-color-border);
 }
-.ds-opinion > summary:hover { background: var(--ds-surface-container-low); }
+.ds-opinion > summary:hover { background: var(--ds-surface-nested); }
 .ds-opinion > summary::-webkit-details-marker { display: none; }
 .ds-opinion > summary::after {
   content: "▾";
@@ -2914,7 +2918,7 @@ a.ds-timeline__link:hover {
   overscroll-behavior: contain;
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-container-low);
+  background: var(--ds-surface-well);
 }
 .ds-chat__msg { display: flex; flex-direction: column; gap: var(--ds-space-1); max-width: 85%; flex-shrink: 0; }
 .ds-chat__author { font-size: var(--ds-text-xs); font-weight: var(--ds-weight-semibold); color: var(--ds-color-text-muted); display: inline-flex; align-items: center; gap: 4px; }
@@ -2922,8 +2926,8 @@ a.ds-timeline__link:hover {
 .ds-chat__msg--user { align-self: flex-end; align-items: flex-end; }
 .ds-chat__msg--user .ds-chat__bubble { background: var(--ds-color-primary-soft); color: var(--ds-orientation-adapt-fg); border-bottom-right-radius: var(--ds-radius-xs); }
 .ds-chat__msg--assistant { align-self: flex-start; }
-.ds-chat__msg--assistant .ds-chat__bubble { background: var(--ds-color-surface); border: 1px solid var(--ds-color-border); border-bottom-left-radius: var(--ds-radius-xs); }
-.ds-chat__msg--assistant .ds-refs { margin-top: var(--ds-space-2); background: var(--ds-surface-container); }
+.ds-chat__msg--assistant .ds-chat__bubble { background: var(--ds-surface-bubble); border: 1px solid var(--ds-border-nested); border-bottom-left-radius: var(--ds-radius-xs); box-shadow: var(--ds-shadow-xs); }
+.ds-chat__msg--assistant .ds-refs { margin-top: var(--ds-space-2); background: var(--ds-surface-nested); }
 .ds-chat__msg--thinking { width: min(30rem, 92%); max-width: 92%; }
 
 /* Dedicated M3 AI Thinking / Reflection Pending UX Module */
@@ -2935,7 +2939,7 @@ a.ds-timeline__link:hover {
   border-radius: var(--ds-radius-lg);
   border-bottom-left-radius: var(--ds-radius-xs);
   border: 1px solid var(--ds-color-primary);
-  background: var(--ds-color-surface);
+  background: var(--ds-surface-bubble);
   box-shadow: var(--ds-shadow-sm);
 }
 .ds-ai-thinking__header {
@@ -3055,7 +3059,7 @@ a.ds-timeline__link:hover {
   padding: 0.45rem 0.55rem 0.45rem 0.9rem;
   border: 1.5px solid var(--ds-color-border-strong);
   border-radius: var(--ds-radius-lg); /* 16px M3 Container */
-  background: var(--ds-color-surface);
+  background: var(--ds-surface-nested);
   box-shadow: var(--ds-shadow-sm);
   transition: border-color var(--ds-duration-fast) var(--ds-ease), box-shadow var(--ds-duration-fast) var(--ds-ease);
 }
@@ -3457,7 +3461,7 @@ a.ds-timeline__link:hover {
   gap: var(--ds-space-3);
   padding: var(--ds-space-3) var(--ds-space-4);
   border-bottom: 1px solid var(--ds-color-border);
-  background: var(--ds-surface-container-low);
+  background: var(--ds-surface-nested);
   border-radius: var(--ds-radius-xl) 0 0 0;
   flex: none;
 }
@@ -3638,7 +3642,46 @@ a.ds-timeline__link:hover {
   top: calc(var(--ds-topbar-height) + var(--ds-space-4));
   height: calc(100vh - var(--ds-topbar-height) - var(--ds-space-6));
 }
+.ds-pdf-mobile-bar {
+  display: none;
+}
+.ds-pdf-viewer-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .ds-pdf-frame { flex: 1; width: 100%; min-height: 36rem; border: 1px solid var(--ds-color-border); border-radius: var(--ds-radius-lg); background: var(--ds-surface-container); }
+.ds-pdf-canvas-viewer {
+  display: none;
+}
+.ds-pdf-canvas-viewer__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-2);
+  padding-bottom: var(--ds-space-2);
+  border-bottom: 1px solid var(--ds-color-border);
+  font-size: var(--ds-text-xs);
+  color: var(--ds-color-text-muted);
+}
+.ds-pdf-canvas-viewer__pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--ds-space-3);
+  width: 100%;
+}
+.ds-pdf-canvas-viewer__canvas {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  background: #ffffff;
+  border-radius: var(--ds-radius-sm);
+  box-shadow: var(--ds-shadow-xs);
+}
 
 /* Structured Sub-Cards (Radiology exams, Chemotherapy lines) & AI Reasoning */
 .ds-subcards {
@@ -3654,8 +3697,8 @@ a.ds-timeline__link:hover {
   gap: var(--ds-space-2);
   padding: var(--ds-space-3) var(--ds-space-4);
   border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-container);
-  border: 1px solid var(--ds-color-border);
+  background: var(--ds-surface-nested);
+  border: 1px solid var(--ds-border-nested);
   min-width: 0;
   max-width: 100%;
 }
@@ -3702,8 +3745,8 @@ a.ds-timeline__link:hover {
   min-height: 1.75rem;
   padding: 0.15rem 0.65rem;
   border-radius: var(--ds-radius-pill);
-  border: 1px solid var(--ds-color-border);
-  background: var(--ds-surface-container-low);
+  border: 1px solid var(--ds-border-nested);
+  background: var(--ds-surface-nested);
   color: var(--ds-color-text-muted);
   font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-medium);
@@ -3781,8 +3824,8 @@ a.ds-timeline__link:hover {
   gap: 2px;
   padding: var(--ds-space-2) var(--ds-space-3);
   border-radius: var(--ds-radius-sm);
-  background: var(--ds-surface-container-low);
-  border: 1px solid var(--ds-color-border);
+  background: var(--ds-surface-nested);
+  border: 1px solid var(--ds-border-nested);
   min-width: 0;
 }
 .ds-kv__label {
@@ -3808,8 +3851,8 @@ a.ds-timeline__link:hover {
   gap: 4px;
   padding: var(--ds-space-3) var(--ds-space-4);
   border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-container-low);
-  border: 1px solid var(--ds-color-border);
+  background: var(--ds-surface-nested);
+  border: 1px solid var(--ds-border-nested);
   font-size: var(--ds-text-sm);
   line-height: 1.55;
   color: var(--ds-color-text);
@@ -3991,9 +4034,31 @@ a.ds-timeline__link:hover {
 }
 @media (max-width: 75rem) {
   .ds-split, .ds-split--40-60, .ds-split--pdf-expanded { grid-template-columns: minmax(0, 1fr); }
-  .ds-split__pane--sticky { position: static; height: 55vh; min-height: 22rem; }
+  .ds-split__pane--sticky { position: static; height: auto; min-height: 0; }
+  #dossier-split-view .ds-split__pane--pdf { order: 0; }
   #dossier-split-view .ds-split__pane--clinical { order: 1; }
-  #dossier-split-view .ds-split__pane--pdf { order: 2; }
+  .ds-pdf-desktop-bar { display: none !important; }
+  .ds-pdf-mobile-bar { display: flex; width: 100%; }
+  .ds-pdf-mobile-toggle { width: 100%; justify-content: center; }
+  [data-pdf-pane] .ds-pdf-viewer-wrap { display: none; }
+  [data-pdf-pane].is-mobile-pdf-open .ds-pdf-viewer-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-2);
+  }
+  [data-pdf-pane] .ds-pdf-frame { display: none; }
+  [data-pdf-pane].is-mobile-pdf-open .ds-pdf-canvas-viewer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--ds-space-3);
+    padding: var(--ds-space-3);
+    max-height: 72dvh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--ds-color-border);
+    border-radius: var(--ds-radius-lg);
+    background: var(--ds-surface-container);
+  }
 }
 
 /* 19. M3 Tooltips & Rich Tooltips (https://m3.material.io/components/tooltips) */

@@ -47,6 +47,10 @@
   --ds-color-surface: var(--ds-surface-container-lowest); /* #FFFFFF */
   --ds-color-surface-sunken: var(--ds-surface-container); /* #F0F0F3 */
   --ds-color-surface-hover: var(--ds-surface-container-high); /* #EAEAEF */
+  --ds-surface-nested: #F4F5F8;                         /* Level 2 inner blocks (.ds-kv, .ds-rationale, .ds-m3-select) */
+  --ds-surface-well: #F2F3F7;                           /* Recessed container (.ds-chat__log) */
+  --ds-surface-bubble: #FFFFFF;                         /* Elevated bubble inside well (.ds-chat__bubble) */
+  --ds-border-nested: #DCDCE4;
   --ds-color-overlay: rgb(24 24 27 / 0.36);
 
   /* M3 Inverse tokens (for Snackbars / Toasts & Tooltips) */
@@ -273,16 +277,20 @@
 :root:has(#theme-dark:checked) {
   color-scheme: dark;
 
-  --ds-surface-container-lowest: #0A0C10;
-  --ds-surface-container-low:    #161922;
-  --ds-surface-container:        #212633;
-  --ds-surface-container-high:   #2B3142;
-  --ds-surface-container-highest:#353D52;
+  --ds-surface-container-lowest: #090B10;
+  --ds-surface-container-low:    #131720;
+  --ds-surface-container:        #1E2433;
+  --ds-surface-container-high:   #283044;
+  --ds-surface-container-highest:#323C54;
 
-  --ds-color-canvas: var(--ds-surface-container-lowest); /* #0A0C10 */
-  --ds-color-surface: var(--ds-surface-container-low);   /* #161922 */
-  --ds-color-surface-sunken: var(--ds-surface-container);/* #212633 */
-  --ds-color-surface-hover: var(--ds-surface-container-high); /* #2B3142 */
+  --ds-color-canvas: var(--ds-surface-container-lowest); /* #090B10 — Level 0 Canvas */
+  --ds-color-surface: var(--ds-surface-container-low);   /* #131720 — Level 1 Cards & Drawers */
+  --ds-color-surface-sunken: var(--ds-surface-container);/* #1E2433 — Level 2 Inner Blocks */
+  --ds-color-surface-hover: var(--ds-surface-container-high); /* #283044 — Level 3 Hover */
+  --ds-surface-nested: #1E2433;                          /* Level 2 inner blocks (.ds-kv, .ds-rationale, .ds-m3-select) */
+  --ds-surface-well: #0D1017;                            /* Recessed container (.ds-chat__log) */
+  --ds-surface-bubble: #1F2636;                          /* Elevated bubble inside well (.ds-chat__bubble) */
+  --ds-border-nested: #333D52;
   --ds-color-overlay: rgb(0 0 0 / 0.65);
 
   --ds-inverse-surface: #E5E2E6;
@@ -395,16 +403,20 @@
   :root:not([data-theme]) {
     color-scheme: dark;
 
-    --ds-surface-container-lowest: #0A0C10;
-    --ds-surface-container-low:    #161922;
-    --ds-surface-container:        #212633;
-    --ds-surface-container-high:   #2B3142;
-    --ds-surface-container-highest:#353D52;
+    --ds-surface-container-lowest: #090B10;
+    --ds-surface-container-low:    #131720;
+    --ds-surface-container:        #1E2433;
+    --ds-surface-container-high:   #283044;
+    --ds-surface-container-highest:#323C54;
 
     --ds-color-canvas: var(--ds-surface-container-lowest);
     --ds-color-surface: var(--ds-surface-container-low);
     --ds-color-surface-sunken: var(--ds-surface-container);
     --ds-color-surface-hover: var(--ds-surface-container-high);
+    --ds-surface-nested: #1E2433;
+    --ds-surface-well: #0D1017;
+    --ds-surface-bubble: #1F2636;
+    --ds-border-nested: #333D52;
     --ds-color-overlay: rgb(0 0 0 / 0.65);
 
     --ds-inverse-surface: #E5E2E6;

@@ -235,8 +235,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=26">
-  <link rel="stylesheet" href="/public/css/components.css?v=26">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=28">
+  <link rel="stylesheet" href="/public/css/components.css?v=28">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -480,7 +480,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=26"></script>
+  <script src="/public/js/app.js?v=28"></script>
 </body>
 </html>`;
 }
@@ -1737,8 +1737,13 @@ export function renderDossierPage(
 
     <!-- Split View: Source PDF (Left) + Clinical Tabs (Right) -->
     <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
-      <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf">
-        <div class="ds-cluster" style="justify-content:space-between">
+      <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf" data-pdf-pane>
+        <div class="ds-pdf-mobile-bar">
+          <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le PDF (${esc(dossier.currentForm.file)})" data-label-hide="Masquer le PDF (${esc(dossier.currentForm.file)})" data-testid="btn_mobile_pdf_toggle">
+            ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le PDF (${esc(dossier.currentForm.file)})</span>
+          </button>
+        </div>
+        <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
           <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
           <div class="ds-cluster" style="gap:var(--ds-space-1)">
             <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-action="toggle-pdf-expand" data-testid="btn_pdf_expand">
@@ -1771,7 +1776,10 @@ export function renderDossierPage(
             </details>
           </div>
         </div>
-        <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
+        <div class="ds-pdf-viewer-wrap">
+          <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
+          <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" data-pdf-filename="${esc(dossier.currentForm.file)}"></div>
+        </div>
       </div>
 
       <div class="ds-split__pane ds-split__pane--clinical">
@@ -2075,7 +2083,7 @@ export function renderGuidelinesPage(
       <div class="ds-guidelines-preview">
         ${
           activeRes
-            ? `<div class="ds-card ds-guidelines-preview__card">
+            ? `<div class="ds-card ds-guidelines-preview__card" data-pdf-pane>
                 <div class="ds-guidelines-preview__toolbar">
                   <div class="ds-cluster" style="gap:var(--ds-space-2)">
                     <span class="ds-label">${iconSvg("ic-file-pdf")} Aperçu : <code class="ds-mono">${esc(activeRes.filename)}</code></span>
@@ -2098,7 +2106,15 @@ export function renderGuidelinesPage(
                     </a>
                   </div>
                 </div>
-                <iframe class="ds-pdf-frame" style="height:46rem" src="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Aperçu du référentiel ${esc(activeRes.filename)}"></iframe>
+                <div class="ds-pdf-mobile-bar">
+                  <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le PDF (${esc(activeRes.filename)})" data-label-hide="Masquer le PDF (${esc(activeRes.filename)})" data-testid="btn_mobile_guideline_pdf_toggle">
+                    ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le PDF (${esc(activeRes.filename)})</span>
+                  </button>
+                </div>
+                <div class="ds-pdf-viewer-wrap">
+                  <iframe class="ds-pdf-frame" style="height:46rem" src="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Aperçu du référentiel ${esc(activeRes.filename)}"></iframe>
+                  <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/resources/${encodeURIComponent(activeRes.filename)}?domain=${domainParam}" data-pdf-filename="${esc(activeRes.filename)}"></div>
+                </div>
               </div>`
             : `<div class="ds-empty"><span class="ds-empty__title">Aucun référentiel PDF sélectionné</span></div>`
         }
