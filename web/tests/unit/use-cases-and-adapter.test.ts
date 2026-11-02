@@ -236,4 +236,22 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
 
     timeoutSpy.mockRestore();
   });
+
+  it("returns null from getDossier (for 404 page) when a patient ID does not exist in FastAPI", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      headers: new Headers({ "content-type": "application/json" }),
+      json: async () => ({ detail: "Le dossier patient 'toto' n'existe pas." }),
+    });
+
+    const adapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    const dossierUseCase = new PatientDossierUseCase(adapter);
+
+    const dossier = await dossierUseCase.getDossier("toto", "sma", "fr");
+    expect(dossier).toBeNull();
+  });
 });

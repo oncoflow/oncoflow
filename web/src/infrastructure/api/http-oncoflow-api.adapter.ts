@@ -461,6 +461,12 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       return this.mapRawDetail(res, domain);
     } catch (err) {
       if (this.fallback) return this.fallback.getFormDetail(filename, domain);
+      if (
+        err instanceof Error &&
+        (err.message.includes("HTTP 404") || err.message.includes("HTTP 400"))
+      ) {
+        return null;
+      }
       throw err;
     }
   }
@@ -498,7 +504,10 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       });
     } catch (err) {
       if (this.fallback) return this.fallback.getPatientForms(patientId, domain);
-      if (err instanceof Error && err.message.includes("HTTP 404")) {
+      if (
+        err instanceof Error &&
+        (err.message.includes("HTTP 404") || err.message.includes("HTTP 400"))
+      ) {
         return [];
       }
       throw err;
