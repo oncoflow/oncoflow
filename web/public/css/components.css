@@ -1762,6 +1762,12 @@ div[data-href] {
   white-space: nowrap;
   border-bottom: 1px solid var(--ds-color-border);
 }
+.ds-table thead tr:first-child th:first-child {
+  border-top-left-radius: calc(var(--ds-radius-lg) - 1px);
+}
+.ds-table thead tr:first-child th:last-child {
+  border-top-right-radius: calc(var(--ds-radius-lg) - 1px);
+}
 .ds-table tbody tr {
   transition: background var(--ds-duration-fast) var(--ds-ease);
 }
@@ -1772,6 +1778,12 @@ div[data-href] {
 }
 .ds-table tbody tr:hover { background: var(--ds-surface-container); }
 .ds-table tbody tr:last-child td { border-bottom: 0; }
+.ds-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: calc(var(--ds-radius-lg) - 1px);
+}
+.ds-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: calc(var(--ds-radius-lg) - 1px);
+}
 .ds-table--dense th, .ds-table--dense td { padding: var(--ds-space-2) var(--ds-space-3); }
 .ds-table--comfortable th, .ds-table--comfortable td { padding: var(--ds-space-3) var(--ds-space-4); font-size: var(--ds-text-md); }
 .ds-table__num { text-align: right !important; }
@@ -4220,6 +4232,7 @@ a.ds-timeline__link:hover {
   .ds-bottom-nav__pill {
     position: relative;
     isolation: isolate;
+    overflow: visible;
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -4236,6 +4249,7 @@ a.ds-timeline__link:hover {
     background: var(--ds-sidebar-active-bg);
     opacity: 0;
     pointer-events: none;
+    will-change: transform;
   }
   .ds-bottom-nav__item[aria-current="page"] {
     color: var(--ds-sidebar-active-text);
@@ -5307,10 +5321,18 @@ a.ds-timeline__link:hover {
   }
   .ds-card.ds-agenda-item.is-dragging,
   .ds-agenda-item.is-dragging {
-    opacity: 0.65;
+    opacity: 0.96;
     box-shadow: var(--ds-shadow-lg) !important;
     outline: 2px solid var(--ds-color-primary);
-    z-index: 20;
+    z-index: 1000;
+    will-change: transform;
+  }
+  .ds-agenda-item-placeholder {
+    border-radius: var(--ds-radius-lg, 1rem);
+    border: 2px dashed var(--ds-color-primary);
+    background: color-mix(in srgb, var(--ds-color-primary-soft) 35%, transparent);
+    box-sizing: border-box;
+    list-style: none;
   }
   .ds-card.ds-agenda-item.is-drop-before,
   .ds-agenda-item.is-drop-before {

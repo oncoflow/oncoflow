@@ -932,29 +932,71 @@
       var prev = JSON.parse(raw);
       if (!prev || !prev.group || Date.now() - Number(prev.ts || 0) > 2000) return;
 
-      var targetBg =
-        prev.group === "bottom-nav"
-          ? document.querySelector(".ds-bottom-nav__item[aria-current='page'] .ds-bottom-nav__bg")
-          : document.querySelector(".ds-nav__link[aria-current='page'] > .ds-nav__bg");
-      if (!targetBg || typeof targetBg.animate !== "function") return;
+      if (prev.group === "bottom-nav") {
+        var bottomNav = document.querySelector(".ds-bottom-nav");
+        var targetBg = bottomNav
+          ? bottomNav.querySelector(".ds-bottom-nav__item[aria-current='page'] .ds-bottom-nav__bg")
+          : null;
+        if (!bottomNav || !targetBg || typeof targetBg.animate !== "function") return;
 
-      var curRect = targetBg.getBoundingClientRect();
-      if (curRect.width === 0 && curRect.height === 0) return;
+        var curRect = targetBg.getBoundingClientRect();
+        if (curRect.width === 0 && curRect.height === 0) return;
 
-      var dx = Number(prev.left) - curRect.left;
-      var dy = Number(prev.top) - curRect.top;
-      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+        var bottomItems = Array.prototype.slice.call(
+          bottomNav.querySelectorAll(".ds-bottom-nav__item"),
+        );
+        var prevItem =
+          typeof prev.index === "number" && bottomItems[prev.index]
+            ? bottomItems[prev.index]
+            : null;
+        var prevPill = prevItem ? prevItem.querySelector(".ds-bottom-nav__pill") : null;
+        var prevLeft = prevPill ? prevPill.getBoundingClientRect().left : Number(prev.left);
+        var dx = prevLeft - curRect.left;
+        if (Math.abs(dx) < 1) return;
 
-      targetBg.animate(
-        [
-          { transform: "translate3d(" + dx + "px, " + dy + "px, 0)" },
-          { transform: "translate3d(0, 0, 0)" },
-        ],
-        {
-          duration: 250,
-          easing: "cubic-bezier(0.2, 0, 0, 1)",
-        },
-      );
+        // Strictly horizontal movement (dy = 0) from the previous mobile button to the new one
+        targetBg.animate(
+          [
+            { transform: "translate3d(" + dx + "px, 0, 0)" },
+            { transform: "translate3d(0, 0, 0)" },
+          ],
+          {
+            duration: 250,
+            easing: "cubic-bezier(0.2, 0, 0, 1)",
+          },
+        );
+        return;
+      }
+
+      if (prev.group === "side-nav") {
+        var sideTargetBg = document.querySelector(
+          ".ds-nav__link[aria-current='page'] > .ds-nav__bg",
+        );
+        if (!sideTargetBg || typeof sideTargetBg.animate !== "function") return;
+
+        var sideCurRect = sideTargetBg.getBoundingClientRect();
+        if (sideCurRect.width === 0 && sideCurRect.height === 0) return;
+
+        var navLinks = Array.prototype.slice.call(document.querySelectorAll(".ds-nav__link"));
+        var prevNavLink =
+          typeof prev.index === "number" && navLinks[prev.index] ? navLinks[prev.index] : null;
+        var prevNavBg = prevNavLink ? prevNavLink.querySelector(".ds-nav__bg") : null;
+        var prevTop = prevNavBg ? prevNavBg.getBoundingClientRect().top : Number(prev.top);
+        var dy = prevTop - sideCurRect.top;
+        if (Math.abs(dy) < 1) return;
+
+        // Strictly vertical movement (dx = 0) from the previous sidebar button to the new one
+        sideTargetBg.animate(
+          [
+            { transform: "translate3d(0, " + dy + "px, 0)" },
+            { transform: "translate3d(0, 0, 0)" },
+          ],
+          {
+            duration: 250,
+            easing: "cubic-bezier(0.2, 0, 0, 1)",
+          },
+        );
+      }
     } catch (_err) {}
   })();
 
@@ -962,6 +1004,10 @@
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     var bottomLink = e.target.closest(".ds-bottom-nav__item");
     if (bottomLink) {
+      var bottomNav = bottomLink.closest(".ds-bottom-nav");
+      var bottomItems = bottomNav
+        ? Array.prototype.slice.call(bottomNav.querySelectorAll(".ds-bottom-nav__item"))
+        : [];
       var curBottom = document.querySelector(".ds-bottom-nav__item[aria-current='page']");
       var curBottomBg = curBottom ? curBottom.querySelector(".ds-bottom-nav__bg") : null;
       if (curBottom && curBottom !== bottomLink && curBottomBg && window.sessionStorage) {
@@ -972,6 +1018,7 @@
               NAV_BG_STORAGE_KEY,
               JSON.stringify({
                 group: "bottom-nav",
+                index: bottomItems.indexOf(curBottom),
                 left: bRect.left,
                 top: bRect.top,
                 width: bRect.width,
@@ -987,6 +1034,7 @@
 
     var navLink = e.target.closest(".ds-nav__link");
     if (navLink) {
+      var navLinks = Array.prototype.slice.call(document.querySelectorAll(".ds-nav__link"));
       var curNav = document.querySelector(".ds-nav__link[aria-current='page']");
       var curNavBg = curNav ? curNav.querySelector(".ds-nav__bg") : null;
       if (curNav && curNav !== navLink && curNavBg && window.sessionStorage) {
@@ -997,6 +1045,7 @@
               NAV_BG_STORAGE_KEY,
               JSON.stringify({
                 group: "side-nav",
+                index: navLinks.indexOf(curNav),
                 left: nRect.left,
                 top: nRect.top,
                 width: nRect.width,
@@ -1405,19 +1454,36 @@
   });
 
   // Desktop Drag-and-Drop reordering on the RCP Agenda passage rank badge (.ds-agenda-item__rank)
+  // Holding the mouse button on the rank number lifts the card directly under the cursor so it follows the mouse 1:1.
   var agendaDragState = null;
 
   function getAgendaRows(list) {
     return list ? Array.prototype.slice.call(list.querySelectorAll(".ds-agenda-item")) : [];
   }
 
-  function clearAgendaDropIndicators(list) {
-    getAgendaRows(list).forEach(function (row) {
-      row.classList.remove("is-drop-before", "is-drop-after");
-    });
-  }
+  function renumberAgendaItems(list, activeState) {
+    if (!list) return;
+    if (activeState && activeState.placeholder && activeState.row) {
+      var slots = Array.prototype.slice
+        .call(list.children)
+        .filter(function (el) {
+          return (
+            el !== activeState.row &&
+            (el.classList.contains("ds-agenda-item") || el === activeState.placeholder)
+          );
+        });
+      slots.forEach(function (slot, idx) {
+        var row = slot === activeState.placeholder ? activeState.row : slot;
+        var pos = idx + 1;
+        row.setAttribute("data-position", String(pos));
+        var posEl = row.querySelector(".ds-agenda-item__pos");
+        if (posEl) posEl.textContent = "#" + pos;
+        var rankEl = row.querySelector(".ds-agenda-item__rank");
+        if (rankEl) rankEl.setAttribute("aria-label", "Rang de passage " + pos);
+      });
+      return;
+    }
 
-  function renumberAgendaItems(list) {
     getAgendaRows(list).forEach(function (row, idx) {
       var pos = idx + 1;
       row.setAttribute("data-position", String(pos));
@@ -1456,13 +1522,47 @@
     form.submit();
   }
 
-  function finalizeAgendaDrag(state) {
+  function cleanupFloatingAgendaRow(row) {
+    if (!row) return;
+    row.classList.remove("is-dragging");
+    row.style.position = "";
+    row.style.left = "";
+    row.style.top = "";
+    row.style.width = "";
+    row.style.height = "";
+    row.style.margin = "";
+    row.style.zIndex = "";
+    row.style.pointerEvents = "";
+    row.style.transform = "";
+    row.style.transition = "";
+  }
+
+  function finalizeAgendaDrag(state, cancelled) {
     if (!state || state.finalized) return;
     state.finalized = true;
     agendaDragState = null;
-    clearAgendaDropIndicators(state.list);
-    state.row.classList.remove("is-dragging");
-    renumberAgendaItems(state.list);
+
+    if (state.placeholder && state.placeholder.parentNode) {
+      if (cancelled) {
+        var currentRows = getAgendaRows(state.list).filter(function (r) {
+          return r !== state.row;
+        });
+        var refRow = currentRows[state.initialIndex] || null;
+        state.placeholder.remove();
+        if (refRow) {
+          refRow.before(state.row);
+        } else {
+          state.list.appendChild(state.row);
+        }
+      } else {
+        state.placeholder.replaceWith(state.row);
+      }
+    }
+
+    cleanupFloatingAgendaRow(state.row);
+    renumberAgendaItems(state.list, null);
+
+    if (cancelled) return;
     var rows = getAgendaRows(state.list);
     var finalIndex = rows.indexOf(state.row);
     if (finalIndex !== -1 && finalIndex !== state.initialIndex && state.patientId) {
@@ -1470,107 +1570,93 @@
     }
   }
 
-  document.addEventListener("dragstart", function (e) {
+  document.addEventListener("mousedown", function (e) {
+    if (e.button !== 0) return;
     var handle = e.target.closest ? e.target.closest("[data-agenda-drag-handle]") : null;
     if (!handle) return;
     if (window.matchMedia && !window.matchMedia("(min-width: 48rem)").matches) {
-      e.preventDefault();
       return;
     }
     var row = handle.closest(".ds-agenda-item");
     var list = row ? row.closest("[data-testid='agenda-items-list']") : null;
     if (!row || !list) return;
 
+    e.preventDefault();
     var rows = getAgendaRows(list);
     var initialIndex = rows.indexOf(row);
     var patientId = row.getAttribute("data-patient-id") || "";
+    var rect = row.getBoundingClientRect();
+
+    var placeholder = document.createElement("li");
+    placeholder.className = "ds-agenda-item-placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
+    placeholder.style.height = rect.height + "px";
+    row.before(placeholder);
+
+    row.classList.add("is-dragging");
+    row.style.position = "fixed";
+    row.style.left = rect.left + "px";
+    row.style.top = rect.top + "px";
+    row.style.width = rect.width + "px";
+    row.style.height = rect.height + "px";
+    row.style.margin = "0";
+    row.style.zIndex = "1000";
+    row.style.pointerEvents = "none";
+    row.style.transform = "translate3d(0, 0, 0)";
+    row.style.transition = "box-shadow 150ms cubic-bezier(0.2, 0, 0, 1)";
+
     agendaDragState = {
       row: row,
       list: list,
+      placeholder: placeholder,
       patientId: patientId,
       initialIndex: initialIndex,
+      startX: e.clientX,
+      startY: e.clientY,
       finalized: false,
     };
-    row.classList.add("is-dragging");
-
-    if (e.dataTransfer) {
-      e.dataTransfer.effectAllowed = "move";
-      try {
-        e.dataTransfer.setData("text/plain", patientId);
-      } catch (_err) {}
-      try {
-        if (typeof e.dataTransfer.setDragImage === "function") {
-          e.dataTransfer.setDragImage(row, 28, 28);
-        }
-      } catch (_err) {}
-    }
   });
 
-  document.addEventListener("dragover", function (e) {
+  window.addEventListener("mousemove", function (e) {
     if (!agendaDragState) return;
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = "move";
-    }
-    var overRow = e.target.closest ? e.target.closest(".ds-agenda-item") : null;
+    var dx = e.clientX - agendaDragState.startX;
+    var dy = e.clientY - agendaDragState.startY;
+    agendaDragState.row.style.transform = "translate3d(" + dx + "px, " + dy + "px, 0)";
+
+    var elUnder = document.elementFromPoint(e.clientX, e.clientY);
+    var overRow = elUnder && elUnder.closest ? elUnder.closest(".ds-agenda-item") : null;
     if (
       !overRow ||
       overRow === agendaDragState.row ||
       overRow.closest("[data-testid='agenda-items-list']") !== agendaDragState.list
     ) {
-      clearAgendaDropIndicators(agendaDragState.list);
       return;
     }
 
-    var rows = getAgendaRows(agendaDragState.list);
-    var dragIdx = rows.indexOf(agendaDragState.row);
-    var overIdx = rows.indexOf(overRow);
-    if (dragIdx === -1 || overIdx === -1) return;
-
-    var rect = overRow.getBoundingClientRect();
-    clearAgendaDropIndicators(agendaDragState.list);
-    if (dragIdx < overIdx) {
-      if (e.clientY === 0 || e.clientY >= rect.top + rect.height * 0.25) {
-        overRow.after(agendaDragState.row);
-        renumberAgendaItems(agendaDragState.list);
-      } else {
-        overRow.classList.add("is-drop-after");
+    var overRect = overRow.getBoundingClientRect();
+    var midpoint = overRect.top + overRect.height / 2;
+    if (e.clientY < midpoint) {
+      if (agendaDragState.placeholder.nextElementSibling !== overRow) {
+        overRow.before(agendaDragState.placeholder);
+        renumberAgendaItems(agendaDragState.list, agendaDragState);
       }
-    } else if (dragIdx > overIdx) {
-      if (e.clientY === 0 || e.clientY <= rect.bottom - rect.height * 0.25) {
-        overRow.before(agendaDragState.row);
-        renumberAgendaItems(agendaDragState.list);
-      } else {
-        overRow.classList.add("is-drop-before");
+    } else {
+      if (agendaDragState.placeholder.previousElementSibling !== overRow) {
+        overRow.after(agendaDragState.placeholder);
+        renumberAgendaItems(agendaDragState.list, agendaDragState);
       }
     }
   });
 
-  document.addEventListener("drop", function (e) {
+  window.addEventListener("mouseup", function () {
     if (!agendaDragState) return;
-    e.preventDefault();
-    var overRow = e.target.closest ? e.target.closest(".ds-agenda-item") : null;
-    if (
-      overRow &&
-      overRow !== agendaDragState.row &&
-      overRow.closest("[data-testid='agenda-items-list']") === agendaDragState.list
-    ) {
-      var rows = getAgendaRows(agendaDragState.list);
-      var dragIdx = rows.indexOf(agendaDragState.row);
-      var overIdx = rows.indexOf(overRow);
-      if (dragIdx < overIdx) {
-        overRow.after(agendaDragState.row);
-      } else if (dragIdx > overIdx) {
-        overRow.before(agendaDragState.row);
-      }
-      renumberAgendaItems(agendaDragState.list);
-    }
-    finalizeAgendaDrag(agendaDragState);
+    finalizeAgendaDrag(agendaDragState, false);
   });
 
-  document.addEventListener("dragend", function () {
-    if (!agendaDragState) return;
-    finalizeAgendaDrag(agendaDragState);
+  window.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && agendaDragState) {
+      finalizeAgendaDrag(agendaDragState, true);
+    }
   });
 
   // Live SSE Queue Banner stream

@@ -235,8 +235,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=24">
-  <link rel="stylesheet" href="/public/css/components.css?v=24">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=26">
+  <link rel="stylesheet" href="/public/css/components.css?v=26">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -480,7 +480,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=24"></script>
+  <script src="/public/js/app.js?v=26"></script>
 </body>
 </html>`;
 }
@@ -663,9 +663,6 @@ export function renderWorklistPage(
         }</p>
       </div>
       <div class="ds-page-header__actions">
-        <a class="ds-btn ds-btn--primary" href="/agenda?domain=${domainParam}&onboarding=1" data-testid="btn_worklist_schedule_meeting">
-          ${iconSvg("ic-add")} Programmer une nouvelle réunion
-        </a>
         <a class="ds-btn ds-btn--tonal" href="/agenda?domain=${domainParam}" data-testid="btn_go_agenda">
           ${iconSvg("ic-calendar")} ${esc(t("nav.agenda", lang))}
         </a>
@@ -2662,7 +2659,7 @@ export function renderAgendaPage(
                 activeFocusExpert !== null && !item.requiredExperts.includes(activeFocusExpert);
 
               return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-href="${dossierHref}" data-patient-id="${esc(item.patientId)}" data-position="${item.position}" data-required-experts="${esc(item.requiredExperts.join("|"))}" title="Cliquer pour ouvrir le dossier de ${esc(item.patientName)}" data-testid="agenda-item-${esc(item.patientId)}">
-                <div class="ds-agenda-item__rank ${rankTone}" draggable="true" data-agenda-drag-handle="true" data-testid="agenda-rank-${esc(item.patientId)}" title="Maintenir cliqué et glisser pour modifier l'ordre de passage" aria-label="Rang de passage ${item.position}">
+                <div class="ds-agenda-item__rank ${rankTone}" data-agenda-drag-handle="true" data-testid="agenda-rank-${esc(item.patientId)}" title="Maintenir cliqué et glisser pour modifier l'ordre de passage" aria-label="Rang de passage ${item.position}">
                   <span class="ds-agenda-item__pos">#${item.position}</span>
                   ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-lock", "ds-icon--xs")}</span>` : ""}
                 </div>
