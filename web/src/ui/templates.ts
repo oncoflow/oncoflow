@@ -1,6 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ChatReply } from "../application/ports/oncoflow-api.port.js";
 import type { BugListResult } from "../application/use-cases/feedback.use-case.js";
 import type { GuidelinesOverview } from "../application/use-cases/guidelines.use-case.js";
@@ -35,78 +32,41 @@ import {
   renderChatLogMessagePartial,
   resolveCitationPdfHref,
 } from "./components/ai-chat.component.js";
+import {
+  INLINE_ICONS_SVG,
+  SafeHtml,
+  deriveRcpTone,
+  esc,
+  escapeHtml,
+  extractDobFromPatientId,
+  formatDurationMinSec,
+  formatPatientSubtitle,
+  html,
+  iconSvg,
+  raw,
+  stripDomainQuery,
+} from "./views/html.js";
+import { type StatusPageOptions, renderStatusPage } from "./views/status.view.js";
 
 export {
+  SafeHtml,
+  type StatusPageOptions,
+  deriveRcpTone,
+  esc,
+  escapeHtml,
+  extractDobFromPatientId,
+  formatDurationMinSec,
+  formatPatientSubtitle,
+  html,
+  iconSvg,
+  raw,
   renderAiChatComponent,
   renderAiChatDrawer,
   renderAiThinkingModule,
   renderChatLogMessagePartial,
+  renderStatusPage,
+  stripDomainQuery,
 };
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ICONS_SVG_PATH = path.resolve(__dirname, "../../public/img/icons.svg");
-const INLINE_ICONS_SVG = fs.existsSync(ICONS_SVG_PATH)
-  ? fs.readFileSync(ICONS_SVG_PATH, "utf8")
-  : "";
-
-export function esc(val: unknown): string {
-  if (val === null || val === undefined) return "";
-  return String(val)
-    .replace(/(\d{4})-(\d{2})-(\d{2})T00:00:00(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/g, "$3/$2/$1")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-/**
- * Formats a duration in seconds as "X min YY s" (e.g., "0 min 12 s", "1 min 08 s").
- */
-export function formatDurationMinSec(seconds: number): string {
-  const totalSec = Math.max(0, Math.round(Number(seconds) || 0));
-  const mins = Math.floor(totalSec / 60);
-  const secs = totalSec % 60;
-  return `${mins} min ${String(secs).padStart(2, "0")} s`;
-}
-
-export function iconSvg(id: string, sizeClass = ""): string {
-  const cls = sizeClass ? `ds-icon ${sizeClass}` : "ds-icon";
-  return `<svg class="${cls}" aria-hidden="true"><use href="#${esc(id)}"/></svg>`;
-}
-
-export function deriveRcpTone(
-  priorityLevel: string | undefined,
-  isComplete = true,
-): "red" | "orange" | "green" {
-  const norm = (priorityLevel ?? "").toLowerCase();
-  if (norm === "high" || (norm.includes("urgent") && !norm.includes("semi"))) {
-    return "red";
-  }
-  if (norm === "medium" || norm.includes("semi") || norm.includes("mod") || !isComplete) {
-    return "orange";
-  }
-  return "green";
-}
-
-export function extractDobFromPatientId(id: string | null | undefined): string | null {
-  if (!id) return null;
-  const m = id.match(/(?:_|-)(\d{4})[_-](\d{2})[_-](\d{2})$/);
-  if (!m) return null;
-  return `${m[3]}/${m[2]}/${m[1]}`;
-}
-
-export function formatPatientSubtitle(id: string, rcpCount: number): string {
-  const rcpLabel = `${rcpCount} ${rcpCount > 1 ? "séances RCP" : "séance RCP"}`;
-  const dob = extractDobFromPatientId(id);
-  if (dob) {
-    return `Né(e) le ${dob} · ${rcpLabel}`;
-  }
-  if (id && !id.includes("_") && !id.toLowerCase().endsWith(".pdf")) {
-    return `Dossier ${id} · ${rcpLabel}`;
-  }
-  return rcpLabel;
-}
 
 export interface ShellLayoutOptions {
   title: string;
@@ -167,15 +127,6 @@ function resolveQueueJobHref(j: QueueJobItem, fallbackDomain: string): string {
     return `/guidelines?domain=${dom}&file=${encodeURIComponent(j.filename)}`;
   }
   return `/resolve?target=${encodeURIComponent(j.filename)}&domain=${dom}`;
-}
-
-export function stripDomainQuery(input: string): string {
-  return input
-    .replace(/<input type="hidden" name="domain" value="(?:oncology|sma)">\s*/g, "")
-    .replace(/ data-domain="(?:oncology|sma)"/g, "")
-    .replace(/\?domain=(?:oncology|sma)&/g, "?")
-    .replace(/&domain=(?:oncology|sma)(?=[&#"'\s]|$)/g, "")
-    .replace(/\?domain=(?:oncology|sma)(?=[#"'\s]|$)/g, "");
 }
 
 export function renderLayout(opts: ShellLayoutOptions): string {
@@ -3142,104 +3093,4 @@ export function renderAgendaPage(
     queueJobs,
     bodyHtml,
   });
-}
-
-export interface StatusPageOptions {
-  statusCode: number;
-  kind?: "not_found" | "maintenance" | "server_error";
-  title?: string;
-  message?: string;
-  session: UserSession;
-}
-
-export function renderStatusPage(opts: StatusPageOptions): string {
-  const { statusCode, session } = opts;
-  const lang = session.language;
-  const kind =
-    opts.kind ??
-    (statusCode === 404 ? "not_found" : statusCode === 503 ? "maintenance" : "server_error");
-  const domainParam = encodeURIComponent(session.domain);
-  const homeHref = session.hostBoundDomain ? "/worklist" : `/worklist?domain=${domainParam}`;
-
-  const badgeHtml =
-    kind === "not_found"
-      ? `<span class="ds-badge ds-badge--warning">${iconSvg("ic-warning")} 404 · ${lang === "fr" ? "Page introuvable" : "Page Not Found"}</span>`
-      : kind === "maintenance"
-        ? `<span class="ds-badge ds-badge--info">${iconSvg("ic-clock")} 503 · ${lang === "fr" ? "Maintenance en cours" : "Scheduled Maintenance"}</span>`
-        : `<span class="ds-badge ds-badge--danger">${iconSvg("ic-error")} ${statusCode} · ${lang === "fr" ? "Incident technique" : "Server Error"}</span>`;
-
-  const defaultTitle =
-    kind === "not_found"
-      ? lang === "fr"
-        ? "Page ou dossier introuvable"
-        : "Page or record not found"
-      : kind === "maintenance"
-        ? lang === "fr"
-          ? "Plateforme en cours de maintenance"
-          : "Platform under maintenance"
-        : lang === "fr"
-          ? "Service temporairement indisponible"
-          : "Service temporarily unavailable";
-
-  const defaultMessage =
-    kind === "not_found"
-      ? lang === "fr"
-        ? "L'adresse demandée n'existe pas ou le dossier clinique a été déplacé."
-        : "The requested URL does not exist or the clinical record has been moved."
-      : kind === "maintenance"
-        ? lang === "fr"
-          ? "Une mise à jour ou une maintenance technique est en cours. Vos dossiers patients et analyses RCP locales sont intégralement préservés."
-          : "A system update or maintenance is in progress. Your local patient records and MDT analyses remain safely preserved."
-        : lang === "fr"
-          ? "Une erreur interne est survenue lors du traitement de la requête. Veuillez réessayer dans quelques instants ou revenir à l'accueil."
-          : "An internal error occurred while processing your request. Please try again in a moment or return to the home page.";
-
-  const title = opts.title ?? defaultTitle;
-  const message = opts.message ?? defaultMessage;
-  const iconName =
-    kind === "not_found" ? "ic-folder-open" : kind === "maintenance" ? "ic-clock" : "ic-error";
-
-  const html = `<!doctype html>
-<html lang="${esc(lang)}" data-theme="${esc(session.theme)}" data-theme-pref="${esc(session.theme)}">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>${esc(title)} (${statusCode}) — DataSyntis</title>
-  <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=29">
-  <link rel="stylesheet" href="/public/css/components.css?v=29">
-</head>
-<body class="ds-shell" style="min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:var(--ds-space-6)">
-  ${INLINE_ICONS_SVG}
-  <main id="main" style="width:100%;max-width:34rem">
-    <section class="ds-card" style="padding:var(--ds-space-6);text-align:center;align-items:center;gap:var(--ds-space-4)" data-testid="status-page-${statusCode}">
-      <a class="ds-brand" href="${homeHref}" style="justify-content:center;margin-bottom:var(--ds-space-1)">
-        <img class="ds-brand__logo" src="/public/img/datasyntis-icon.svg" alt="" width="36" height="36">
-        <span class="ds-brand__text" style="text-align:left">
-          <span class="ds-brand__name">Data<b>Syntis</b></span>
-          <span class="ds-brand__domain">${session.domain === "sma" ? "RCP Maladies Rares · SMA" : "RCP Oncologie Digestive"}</span>
-        </span>
-      </a>
-      <div>${badgeHtml}</div>
-      <div class="ds-empty__icon" style="margin-inline:auto">${iconSvg(iconName, "ds-icon--lg")}</div>
-      <h1 style="font-size:var(--ds-text-xl);margin:0">${esc(title)}</h1>
-      <p class="ds-muted" style="margin:0;max-width:28rem;line-height:1.5">${esc(message)}</p>
-      <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:var(--ds-space-3);margin-top:var(--ds-space-2)">
-        <a class="ds-btn ds-btn--primary" href="${homeHref}" data-testid="btn_status_home">
-          ${iconSvg("ic-worklist")} ${lang === "fr" ? "Retour à l'accueil" : "Back to home"}
-        </a>
-        ${
-          kind !== "not_found"
-            ? `<a class="ds-btn ds-btn--tonal" href="" data-testid="btn_status_retry">
-                 ${iconSvg("ic-refresh")} ${lang === "fr" ? "Réessayer" : "Retry"}
-               </a>`
-            : ""
-        }
-      </div>
-    </section>
-  </main>
-</body>
-</html>`;
-
-  return session.hostBoundDomain ? stripDomainQuery(html) : html;
 }

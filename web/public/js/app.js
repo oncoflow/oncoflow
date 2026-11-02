@@ -311,8 +311,31 @@
 
         li.addEventListener("click", chooseOption);
         li.addEventListener("keydown", function (ev) {
+          var optionsList = Array.prototype.slice.call(
+            panel.querySelectorAll(".ds-m3-select__option"),
+          );
+          var curIdx = optionsList.indexOf(li);
           if (ev.key === "Enter" || ev.key === " ") {
             chooseOption(ev);
+          } else if (ev.key === "ArrowDown") {
+            ev.preventDefault();
+            var nextOpt = optionsList[(curIdx + 1) % optionsList.length];
+            if (nextOpt) nextOpt.focus();
+          } else if (ev.key === "ArrowUp") {
+            ev.preventDefault();
+            var prevOpt = optionsList[(curIdx - 1 + optionsList.length) % optionsList.length];
+            if (prevOpt) prevOpt.focus();
+          } else if (ev.key === "Home") {
+            ev.preventDefault();
+            if (optionsList[0]) optionsList[0].focus();
+          } else if (ev.key === "End") {
+            ev.preventDefault();
+            if (optionsList[optionsList.length - 1]) optionsList[optionsList.length - 1].focus();
+          } else if (ev.key === "Escape") {
+            ev.preventDefault();
+            wrapper.classList.remove("is-open");
+            trigger.setAttribute("aria-expanded", "false");
+            trigger.focus();
           }
         });
         panel.appendChild(li);
@@ -321,13 +344,41 @@
       syncFromSelect();
       select.addEventListener("change", syncFromSelect);
 
+      function openOrToggleM3Select(focusFirstOption) {
+        var willOpen = !wrapper.classList.contains("is-open");
+        closeAllMenus(wrapper);
+        if (willOpen && typeof wrapper.getBoundingClientRect === "function") {
+          var rect = wrapper.getBoundingClientRect();
+          wrapper.classList.toggle("ds-m3-select--flip", rect.bottom + 240 > window.innerHeight);
+        }
+        wrapper.classList.toggle("is-open", willOpen);
+        trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        if (willOpen && focusFirstOption) {
+          var activeLi =
+            panel.querySelector(".ds-m3-select__option[aria-selected='true']") ||
+            panel.querySelector(".ds-m3-select__option");
+          if (activeLi) activeLi.focus();
+        }
+      }
+
       trigger.addEventListener("click", function (ev) {
         ev.preventDefault();
         ev.stopPropagation();
-        var willOpen = !wrapper.classList.contains("is-open");
-        closeAllMenus(wrapper);
-        wrapper.classList.toggle("is-open", willOpen);
-        trigger.setAttribute("aria-expanded", willOpen ? "true" : "false");
+        openOrToggleM3Select(false);
+      });
+
+      trigger.addEventListener("keydown", function (ev) {
+        if (ev.key === "ArrowDown" || ev.key === "ArrowUp") {
+          ev.preventDefault();
+          if (!wrapper.classList.contains("is-open")) {
+            openOrToggleM3Select(true);
+          } else {
+            var activeLi =
+              panel.querySelector(".ds-m3-select__option[aria-selected='true']") ||
+              panel.querySelector(".ds-m3-select__option");
+            if (activeLi) activeLi.focus();
+          }
+        }
       });
 
       wrapper.appendChild(trigger);
@@ -1623,10 +1674,10 @@
     }
   }
 
-  document.addEventListener("mousedown", function (e) {
-    if (e.button !== 0) return;
-    var handle = e.target.closest ? e.target.closest("[data-agenda-drag-handle]") : null;
-    if (!handle) return;
+  function startAgendaDrag(e) {
+    if (typeof e.button === "number" && e.button !== 0) return;
+    var handle = e.target && e.target.closest ? e.target.closest("[data-agenda-drag-handle]") : null;
+    if (!handle || agendaDragState) return;
     if (window.matchMedia && !window.matchMedia("(min-width: 48rem)").matches) {
       return;
     }
@@ -1668,13 +1719,21 @@
       startY: e.clientY,
       finalized: false,
     };
-  });
+  }
 
-  window.addEventListener("mousemove", function (e) {
+  function moveAgendaDrag(e) {
     if (!agendaDragState) return;
     var dx = e.clientX - agendaDragState.startX;
     var dy = e.clientY - agendaDragState.startY;
     agendaDragState.row.style.transform = "translate3d(" + dx + "px, " + dy + "px, 0)";
+
+    // Auto-scroll viewport when dragging near top or bottom edges
+    var edgeZone = 72;
+    if (e.clientY < edgeZone) {
+      window.scrollBy(0, -12);
+    } else if (e.clientY > window.innerHeight - edgeZone) {
+      window.scrollBy(0, 12);
+    }
 
     var elUnder = document.elementFromPoint(e.clientX, e.clientY);
     var overRow = elUnder && elUnder.closest ? elUnder.closest(".ds-agenda-item") : null;
@@ -1699,12 +1758,19 @@
         renumberAgendaItems(agendaDragState.list, agendaDragState);
       }
     }
-  });
+  }
 
-  window.addEventListener("mouseup", function () {
+  function endAgendaDrag() {
     if (!agendaDragState) return;
     finalizeAgendaDrag(agendaDragState, false);
-  });
+  }
+
+  document.addEventListener("pointerdown", startAgendaDrag);
+  document.addEventListener("mousedown", startAgendaDrag);
+  window.addEventListener("pointermove", moveAgendaDrag, { passive: true });
+  window.addEventListener("mousemove", moveAgendaDrag, { passive: true });
+  window.addEventListener("pointerup", endAgendaDrag);
+  window.addEventListener("mouseup", endAgendaDrag);
 
   window.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && agendaDragState) {

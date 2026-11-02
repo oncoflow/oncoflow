@@ -24,6 +24,13 @@ import type {
   QueueStats,
   ResourceDocument,
 } from "../../domain/types.js";
+import {
+  RawBugReportSchema,
+  RawQueueJobSchema,
+  RawQueueStatsSchema,
+  RawResourceSchema,
+  formatCleanIsoDate,
+} from "../validation/schemas.js";
 
 export interface HttpOncoflowApiAdapterOptions {
   baseUrl: string;
@@ -31,6 +38,7 @@ export interface HttpOncoflowApiAdapterOptions {
   proxySecret?: string;
   fetchImpl?: typeof fetch;
   fallbackPort?: OncoflowApiPort;
+  timeoutMs?: number;
 }
 
 export class HttpOncoflowApiAdapter implements OncoflowApiPort {
@@ -39,6 +47,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   private readonly proxySecret: string;
   private readonly fetchImpl: typeof fetch;
   private readonly fallback?: OncoflowApiPort;
+  private readonly timeoutMs: number;
 
   constructor(options: HttpOncoflowApiAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
@@ -46,6 +55,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     this.proxySecret = options.proxySecret ?? "";
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.fallback = options.fallbackPort;
+    this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
   private buildHeaders(
@@ -78,9 +88,15 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       domain,
       (init.headers as Record<string, string> | undefined) ?? {},
     );
+    const signal =
+      init.signal ??
+      (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+        ? AbortSignal.timeout(this.timeoutMs)
+        : undefined);
     const resp = await this.fetchImpl(url, {
       ...init,
       headers,
+      signal,
     });
     if (!resp.ok) {
       throw new Error(`HTTP ${resp.status} on ${path}`);
@@ -89,22 +105,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   }
 
   private formatIsoDate(rawVal: unknown): string | null {
-    if (!rawVal) return null;
-    const str = String(rawVal).trim();
-    if (
-      !str ||
-      str === "Not_given" ||
-      str === "not_given" ||
-      str === "Non spécifié" ||
-      str === "None" ||
-      str === "null"
-    ) {
-      return null;
-    }
-    if (str.includes("T") && str.length >= 10) {
-      return str.slice(0, 10);
-    }
-    return str;
+    return formatCleanIsoDate(rawVal);
   }
 
   private mapRawCard(raw: Record<string, unknown>, domain: ClinicalDomain): MdtFormCard {
@@ -781,13 +782,16 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         `/api/v1/resources?domain=${encodeURIComponent(domain)}`,
         domain,
       );
-      return rows.map((r) => ({
-        filename: String(r.filename ?? r.name ?? ""),
-        sizeBytes: Number(r.size_bytes ?? r.size ?? 0),
-        indexed: Boolean(r.is_indexed ?? r.indexed ?? false),
-        chunkCount: Number(r.chunk_count ?? r.chunks ?? 0),
-        updatedAt: r.updated_at ? String(r.updated_at) : null,
-      }));
+      return rows.map((rawRow) => {
+        const r = RawResourceSchema.parse(rawRow);
+        return {
+          filename: String(r.filename ?? r.name ?? ""),
+          sizeBytes: Number(r.size_bytes ?? r.size ?? 0),
+          indexed: Boolean(r.is_indexed ?? r.indexed ?? false),
+          chunkCount: Number(r.chunk_count ?? r.chunks ?? 0),
+          updatedAt: r.updated_at ? String(r.updated_at) : null,
+        };
+      });
     } catch (err) {
       if (this.fallback) return this.fallback.listResources(domain);
       throw err;
@@ -958,24 +962,27 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         `/api/v1/bug-reports?domain=${encodeURIComponent(domain)}`,
         domain,
       );
-      return rows.map((r) => ({
-        id: String(r.bug_id ?? r.id ?? r._id ?? ""),
-        title: String(r.title ?? ""),
-        description: String(r.description ?? ""),
-        category: String(r.category ?? "other"),
-        severity: String(r.severity ?? "medium"),
-        status: String(r.status ?? "open"),
-        domain: String(r.domain ?? domain),
-        patientOrFile: r.patient_or_file
-          ? String(r.patient_or_file)
-          : r.patient_id
-            ? String(r.patient_id)
-            : r.rcp_file
-              ? String(r.rcp_file)
-              : null,
-        author: r.author ? String(r.author) : r.reporter ? String(r.reporter) : null,
-        createdAt: this.formatIsoDate(r.created_at) ?? String(r.created_at ?? ""),
-      }));
+      return rows.map((rawRow) => {
+        const r = RawBugReportSchema.parse(rawRow);
+        return {
+          id: String(r.bug_id ?? r.id ?? r._id ?? ""),
+          title: String(r.title ?? ""),
+          description: String(r.description ?? ""),
+          category: String(r.category ?? "other"),
+          severity: String(r.severity ?? "medium"),
+          status: String(r.status ?? "open"),
+          domain: String(r.domain ?? domain),
+          patientOrFile: r.patient_or_file
+            ? String(r.patient_or_file)
+            : r.patient_id
+              ? String(r.patient_id)
+              : r.rcp_file
+                ? String(r.rcp_file)
+                : null,
+          author: r.author ? String(r.author) : r.reporter ? String(r.reporter) : null,
+          createdAt: this.formatIsoDate(r.created_at) ?? String(r.created_at ?? ""),
+        };
+      });
     } catch (err) {
       if (this.fallback) return this.fallback.listBugs(domain);
       throw err;
@@ -1075,15 +1082,16 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
 
   async getQueueStats(domain: ClinicalDomain, allDomains = true): Promise<QueueStats> {
     try {
-      const res = await this.requestJson<Record<string, unknown>>(
+      const rawRes = await this.requestJson<Record<string, unknown>>(
         `/api/v1/queue/stats?domain=${encodeURIComponent(domain)}&all_domains=${String(allDomains)}`,
         domain,
       );
-      const pending = Number(res.pending ?? 0);
+      const res = RawQueueStatsSchema.parse(rawRes);
+      const pending = res.pending;
       const running = Number(res.processing ?? res.running ?? 0);
-      const completed = Number(res.completed ?? 0);
-      const failed = Number(res.failed ?? 0);
-      const cancelled = Number(res.cancelled ?? 0);
+      const completed = res.completed;
+      const failed = res.failed;
+      const cancelled = res.cancelled;
       const total = Number(res.total ?? pending + running + completed + failed + cancelled);
 
       let activeFormFile = res.active_filename ? String(res.active_filename) : null;
@@ -1132,22 +1140,25 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         `/api/v1/queue/jobs?domain=${encodeURIComponent(domain)}&all_domains=${String(allDomains)}`,
         domain,
       );
-      return rows.map((r) => ({
-        jobId: String(r.job_id ?? r.id ?? ""),
-        jobType: String(r.job_type ?? "FULL_EXTRACTION"),
-        status: String(r.status ?? "PENDING"),
-        priority: Number(r.priority ?? 2),
-        domain: String(r.domain ?? domain),
-        filename: r.filename ? String(r.filename) : null,
-        section: r.model_name ? String(r.model_name) : r.section ? String(r.section) : null,
-        progressPct: Number(r.progress_pct ?? 0),
-        step: r.current_step ? String(r.current_step) : r.step ? String(r.step) : null,
-        createdAt: r.created_at ? String(r.created_at) : null,
-        startedAt: r.started_at ? String(r.started_at) : null,
-        completedAt: r.completed_at ? String(r.completed_at) : null,
-        error: r.error_message ? String(r.error_message) : r.error ? String(r.error) : null,
-        preserveManualEdits: Boolean(r.preserve_manual_edits ?? true),
-      }));
+      return rows.map((rawRow) => {
+        const r = RawQueueJobSchema.parse(rawRow);
+        return {
+          jobId: String(r.job_id ?? r.id ?? ""),
+          jobType: String(r.job_type ?? "FULL_EXTRACTION"),
+          status: String(r.status ?? "PENDING"),
+          priority: r.priority,
+          domain: String(r.domain ?? domain),
+          filename: r.filename ? String(r.filename) : null,
+          section: r.model_name ? String(r.model_name) : r.section ? String(r.section) : null,
+          progressPct: r.progress_pct,
+          step: r.current_step ? String(r.current_step) : r.step ? String(r.step) : null,
+          createdAt: r.created_at ? String(r.created_at) : null,
+          startedAt: r.started_at ? String(r.started_at) : null,
+          completedAt: r.completed_at ? String(r.completed_at) : null,
+          error: r.error_message ? String(r.error_message) : r.error ? String(r.error) : null,
+          preserveManualEdits: Boolean(r.preserve_manual_edits ?? true),
+        };
+      });
     } catch (err) {
       if (this.fallback) return this.fallback.listQueueJobs(domain, allDomains);
       throw err;

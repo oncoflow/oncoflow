@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
+import type fs from "node:fs";
+import fsp from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import zlib from "node:zlib";
 import fastifyCookie from "@fastify/cookie";
 import fastifyFormbody from "@fastify/formbody";
 import fastifyMultipart from "@fastify/multipart";
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import type { OncoflowApiPort } from "../application/ports/oncoflow-api.port.js";
 import { AgendaUseCase } from "../application/use-cases/agenda.use-case.js";
 import { FeedbackUseCase } from "../application/use-cases/feedback.use-case.js";
@@ -16,14 +18,21 @@ import { PatientDossierUseCase } from "../application/use-cases/patient-dossier.
 import { QueueAdminUseCase } from "../application/use-cases/queue-admin.use-case.js";
 import { WorklistUseCase } from "../application/use-cases/worklist.use-case.js";
 import type { WebAppConfig } from "../config.js";
-import type {
-  ClinicalDomain,
-  Language,
-  MdtAgendaSortStrategy,
-  ThemeMode,
-  UserSession,
-  WorklistFilter,
-} from "../domain/types.js";
+import type { ClinicalDomain, Language, ThemeMode, UserSession } from "../domain/types.js";
+import {
+  AgendaEnrollBodySchema,
+  AgendaMoveBodySchema,
+  AgendaOptionsBodySchema,
+  AgendaScheduleBodySchema,
+  ChatBodySchema,
+  FeedbackCreateBodySchema,
+  FeedbackStatusBodySchema,
+  MissingItemsBodySchema,
+  PreferencesBodySchema,
+  QueueCleanBodySchema,
+  normalizeFormStringList,
+  parseWorklistFilter,
+} from "../infrastructure/validation/schemas.js";
 import {
   renderAgendaPage,
   renderAgentsPage,
@@ -97,7 +106,61 @@ const PUBLIC_MIME_TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
+const gunzipAsync = promisify(zlib.gunzip);
 const gunzipCache = new Map<string, Buffer>();
+const staticAssetCache = new Map<string, { mtimeMs: number; etag: string; content: Buffer }>();
+let styleguideHtmlCache: { mtimeMs: number; html: string } | null = null;
+
+async function fileStatOrNull(filePath: string): Promise<fs.Stats | null> {
+  try {
+    const st = await fsp.stat(filePath);
+    return st.isFile() ? st : null;
+  } catch {
+    return null;
+  }
+}
+
+function sendPdfBufferWithRange(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  buf: Buffer,
+  filename: string,
+) {
+  const etag = `"pdf-${buf.byteLength}-${crypto.createHash("sha1").update(buf.subarray(0, 4096)).digest("hex").slice(0, 16)}"`;
+  reply.header("Content-Type", "application/pdf");
+  reply.header("Accept-Ranges", "bytes");
+  reply.header("ETag", etag);
+  reply.header(
+    "Content-Disposition",
+    `inline; filename="${sanitizeContentDispositionFilename(filename)}"`,
+  );
+
+  if (req.headers["if-none-match"] === etag) {
+    return reply.code(304).send();
+  }
+
+  const rangeHeader = req.headers.range;
+  if (typeof rangeHeader === "string" && rangeHeader.startsWith("bytes=")) {
+    const parts = rangeHeader.replace(/bytes=/, "").split("-");
+    const start = Number.parseInt(parts[0] ?? "0", 10);
+    const end = parts[1] ? Number.parseInt(parts[1], 10) : buf.byteLength - 1;
+    if (
+      !Number.isNaN(start) &&
+      !Number.isNaN(end) &&
+      start >= 0 &&
+      end < buf.byteLength &&
+      start <= end
+    ) {
+      const chunk = buf.subarray(start, end + 1);
+      reply.header("Content-Range", `bytes ${start}-${end}/${buf.byteLength}`);
+      reply.header("Content-Length", String(chunk.byteLength));
+      return reply.code(206).send(chunk);
+    }
+  }
+
+  reply.header("Content-Length", String(buf.byteLength));
+  return reply.send(buf);
+}
 
 export interface BuildServerOptions {
   config: WebAppConfig;
@@ -116,7 +179,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     },
   });
 
-  // Hardened canonical static asset server for /public/* (zero external glob/send attack surface)
+  // Hardened canonical async static asset server for /public/* (non-blocking I/O + ETag cache)
   app.get("/public/*", async (req, reply) => {
     const wildcard = ((req.params as Record<string, string>)["*"] ?? "").replace(/^\/+/, "");
     if (!wildcard || wildcard.includes("\0") || wildcard.includes("..")) {
@@ -131,16 +194,30 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (!mime) {
       return reply.code(404).send("Ressource statique introuvable");
     }
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+    const st = await fileStatOrNull(resolved);
+    if (st) {
+      let cached = staticAssetCache.get(resolved);
+      if (!cached || cached.mtimeMs !== st.mtimeMs) {
+        const content = await fsp.readFile(resolved);
+        const etag = `"${st.size.toString(16)}-${Math.trunc(st.mtimeMs).toString(16)}"`;
+        cached = { mtimeMs: st.mtimeMs, etag, content };
+        staticAssetCache.set(resolved, cached);
+      }
       reply.header("Content-Type", mime);
+      reply.header("ETag", cached.etag);
       reply.header("Cache-Control", "no-store, max-age=0");
-      return reply.send(fs.readFileSync(resolved));
+      if (req.headers["if-none-match"] === cached.etag) {
+        return reply.code(304).send();
+      }
+      return reply.send(cached.content);
     }
     const gzResolved = `${resolved}.gz`;
-    if (fs.existsSync(gzResolved) && fs.statSync(gzResolved).isFile()) {
+    const gzStat = await fileStatOrNull(gzResolved);
+    if (gzStat) {
       let unzipped = gunzipCache.get(gzResolved);
       if (!unzipped) {
-        unzipped = zlib.gunzipSync(fs.readFileSync(gzResolved));
+        const gzBuf = await fsp.readFile(gzResolved);
+        unzipped = await gunzipAsync(gzBuf);
         gunzipCache.set(gzResolved, unzipped);
       }
       reply.header("Content-Type", mime);
@@ -342,14 +419,20 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   });
 
   app.get("/styleguide", async (_req, reply) => {
-    const rawHtml = fs.readFileSync(STYLEGUIDE_PATH, "utf8");
-    const servedHtml = rawHtml.replace(/\.\.\/public\//g, "/public/");
-    return reply.type("text/html; charset=utf-8").send(servedHtml);
+    const st = await fileStatOrNull(STYLEGUIDE_PATH);
+    if (!styleguideHtmlCache || (st && styleguideHtmlCache.mtimeMs !== st.mtimeMs)) {
+      const rawHtml = await fsp.readFile(STYLEGUIDE_PATH, "utf8");
+      styleguideHtmlCache = {
+        mtimeMs: st?.mtimeMs ?? Date.now(),
+        html: rawHtml.replace(/\.\.\/public\//g, "/public/"),
+      };
+    }
+    return reply.type("text/html; charset=utf-8").send(styleguideHtmlCache.html);
   });
 
   // 2. Preferences (Theme, Language, Domain, Expert Mode)
   app.post("/preferences", async (req, reply) => {
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
+    const body = PreferencesBodySchema.parse(req.body ?? {});
     const cookieOpts = {
       path: "/",
       httpOnly: false,
@@ -357,16 +440,16 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       secure: config.devMode === false,
     };
 
-    if (body.theme === "auto" || body.theme === "light" || body.theme === "dark") {
+    if (body.theme) {
       reply.setCookie("ds_theme", body.theme, cookieOpts);
     }
-    if (body.language === "fr" || body.language === "en") {
+    if (body.language) {
       reply.setCookie("ds_lang", body.language, cookieOpts);
     }
-    if (body.domain === "oncology" || body.domain === "sma") {
+    if (body.domain) {
       reply.setCookie("ds_domain", body.domain, cookieOpts);
     }
-    if (body.expertMode === "true" || body.expertMode === "false") {
+    if (body.expertMode) {
       reply.setCookie("ds_expert", body.expertMode, cookieOpts);
     }
 
@@ -374,7 +457,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply.code(204).send();
     }
 
-    if (body.domain === "oncology" || body.domain === "sma") {
+    if (body.domain) {
       return reply.redirect(`/worklist?domain=${encodeURIComponent(body.domain)}`);
     }
     return reply.redirect(sanitizeLocalRedirect(req.headers.referer, "/worklist"));
@@ -399,37 +482,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       );
     const defaultDisplay = isMobileUa ? "cards" : "table";
 
-    const filter: WorklistFilter = {
-      query: query.q,
-      completeness:
-        query.completeness === "complete" || query.completeness === "incomplete"
-          ? query.completeness
-          : "all",
-      priority:
-        query.priority === "high" || query.priority === "medium" || query.priority === "low"
-          ? query.priority
-          : "all",
-      orientation:
-        query.orientation === "adapt" ||
-        query.orientation === "standard" ||
-        query.orientation === "pending"
-          ? query.orientation
-          : "all",
-      viewMode: query.viewMode === "rcp" ? "rcp" : "patients",
-      displayMode:
-        query.display === "cards" ? "cards" : query.display === "table" ? "table" : defaultDisplay,
-      sortBy:
-        query.sortBy === "priority" ||
-        query.sortBy === "patient" ||
-        query.sortBy === "date" ||
-        query.sortBy === "completeness" ||
-        query.sortBy === "orientation" ||
-        query.sortBy === "specialties"
-          ? query.sortBy
-          : "priority",
-      sortDir: query.sortDir === "desc" ? "desc" : "asc",
-      domain: session.domain,
-    };
+    const filter = parseWorklistFilter(req.query, session.domain, defaultDisplay);
 
     const [view, { queueStats, queueJobs }] = await Promise.all([
       worklistUseCase.execute(session.domain, filter),
@@ -477,49 +530,25 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/agenda/options", async (req, reply) => {
     const session = resolveSession(req);
-    const body = (req.body ?? {}) as Record<string, string | string[] | undefined>;
-    const rawStrategy = typeof body.sortStrategy === "string" ? body.sortStrategy : undefined;
-    const sortStrategy: MdtAgendaSortStrategy | undefined =
-      rawStrategy === "hybrid" ||
-      rawStrategy === "urgency_first" ||
-      rawStrategy === "expert_grouping" ||
-      rawStrategy === "manual"
-        ? rawStrategy
-        : undefined;
+    const body = AgendaOptionsBodySchema.parse(req.body ?? {});
 
     const deferIncompleteFiles =
       body.deferIncompleteFilesPresent === "true"
         ? body.deferIncompleteFiles === "true"
         : undefined;
 
-    const toggleExpert =
-      typeof body.toggleExpert === "string" && body.toggleExpert.trim()
-        ? body.toggleExpert.trim()
-        : undefined;
-
-    let attendingExperts: string[] | undefined;
-    if (body.attendingExpertsPresent === "true") {
-      if (Array.isArray(body.attendingExperts)) {
-        attendingExperts = body.attendingExperts.map((x) => x.trim()).filter(Boolean);
-      } else if (typeof body.attendingExperts === "string" && body.attendingExperts.trim()) {
-        attendingExperts = [body.attendingExperts.trim()];
-      } else {
-        attendingExperts = [];
-      }
-    }
-
-    const sessionDate =
-      typeof body.sessionDate === "string" && body.sessionDate.trim()
-        ? body.sessionDate.trim()
-        : undefined;
+    const attendingExperts = normalizeFormStringList(
+      body.attendingExpertsPresent,
+      body.attendingExperts,
+    );
 
     await agendaUseCase.updateOptions(
       {
-        sessionDate,
-        sortStrategy,
+        sessionDate: body.sessionDate,
+        sortStrategy: body.sortStrategy,
         deferIncompleteFiles,
         attendingExperts,
-        toggleExpert,
+        toggleExpert: body.toggleExpert,
       },
       session.domain,
     );
@@ -528,47 +557,18 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/agenda/schedule", async (req, reply) => {
     const session = resolveSession(req);
-    const body = (req.body ?? {}) as Record<string, string | string[] | undefined>;
-    const rawStrategy = typeof body.sortStrategy === "string" ? body.sortStrategy : undefined;
-    const sortStrategy: MdtAgendaSortStrategy =
-      rawStrategy === "hybrid" ||
-      rawStrategy === "urgency_first" ||
-      rawStrategy === "expert_grouping" ||
-      rawStrategy === "manual"
-        ? rawStrategy
-        : "hybrid";
+    const body = AgendaScheduleBodySchema.parse(req.body ?? {});
 
-    const sessionDate =
-      typeof body.sessionDate === "string" && body.sessionDate.trim()
-        ? body.sessionDate.trim()
-        : undefined;
-
-    let attendingExperts: string[] | undefined;
-    if (body.attendingExpertsPresent === "true") {
-      if (Array.isArray(body.attendingExperts)) {
-        attendingExperts = body.attendingExperts.map((x) => x.trim()).filter(Boolean);
-      } else if (typeof body.attendingExperts === "string" && body.attendingExperts.trim()) {
-        attendingExperts = [body.attendingExperts.trim()];
-      } else {
-        attendingExperts = [];
-      }
-    }
-
-    let patientIds: string[] | undefined;
-    if (body.patientIdsPresent === "true") {
-      if (Array.isArray(body.patientIds)) {
-        patientIds = body.patientIds.map((x) => x.trim()).filter(Boolean);
-      } else if (typeof body.patientIds === "string" && body.patientIds.trim()) {
-        patientIds = [body.patientIds.trim()];
-      } else {
-        patientIds = [];
-      }
-    }
+    const attendingExperts = normalizeFormStringList(
+      body.attendingExpertsPresent,
+      body.attendingExperts,
+    );
+    const patientIds = normalizeFormStringList(body.patientIdsPresent, body.patientIds);
 
     await agendaUseCase.updateOptions(
       {
-        sessionDate,
-        sortStrategy,
+        sessionDate: body.sessionDate,
+        sortStrategy: body.sortStrategy,
         deferIncompleteFiles: false,
         attendingExperts,
         patientIds,
@@ -581,21 +581,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/agenda/patients", async (req, reply) => {
     const session = resolveSession(req);
-    const body = (req.body ?? {}) as Record<string, string | string[] | undefined>;
-    const patientId = typeof body.patientId === "string" ? body.patientId.trim() : undefined;
-    const patientIds = Array.isArray(body.patientIds)
-      ? body.patientIds.map((x) => x.trim()).filter(Boolean)
-      : undefined;
-    const enrollAllCandidates = body.enrollAllCandidates === "true";
-    const filterMode =
-      body.filterMode === "complete" || body.filterMode === "urgent" ? body.filterMode : "all";
+    const body = AgendaEnrollBodySchema.parse(req.body ?? {});
 
     await agendaUseCase.enrollPatients(
       {
-        patientId,
-        patientIds,
-        enrollAllCandidates,
-        filterMode,
+        patientId: body.patientId,
+        patientIds: body.patientIds,
+        enrollAllCandidates: body.enrollAllCandidates,
+        filterMode: body.filterMode,
       },
       session.domain,
     );
@@ -618,18 +611,15 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.post("/agenda/patients/:patientId/move", async (req, reply) => {
     const session = resolveSession(req);
     const { patientId } = req.params as { patientId: string };
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    const direction =
-      body.direction === "up" || body.direction === "down" ? body.direction : undefined;
-    const targetPosition =
-      body.targetPosition !== undefined && !Number.isNaN(Number(body.targetPosition))
-        ? Number(body.targetPosition)
-        : undefined;
-    const pinned = body.pinned === "true" ? true : body.pinned === "false" ? false : undefined;
+    const body = AgendaMoveBodySchema.parse(req.body ?? {});
 
     await agendaUseCase.movePatient(
       patientId,
-      { direction, targetPosition, pinned },
+      {
+        direction: body.direction,
+        targetPosition: body.targetPosition,
+        pinned: body.pinned,
+      },
       session.domain,
     );
     return reply.redirect(`/agenda?domain=${encodeURIComponent(session.domain)}`);
@@ -899,22 +889,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.post("/forms/:filename/missing-items", async (req, reply) => {
     const session = resolveSession(req);
     const { filename } = req.params as { filename: string };
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    const toggleItem = body.toggle_item?.trim() || undefined;
-    const hideAll =
-      body.hide_missing_items === "true"
-        ? true
-        : body.hide_missing_items === "false"
-          ? false
-          : undefined;
-    const restoreAll = body.restore_all === "true";
+    const body = MissingItemsBodySchema.parse(req.body ?? {});
 
     await dossierUseCase.updateMissingItems(
       filename,
       {
-        toggleItem,
-        hideMissingItems: restoreAll ? false : hideAll,
-        hiddenMissingItems: restoreAll ? [] : undefined,
+        toggleItem: body.toggle_item,
+        hideMissingItems: body.restore_all ? false : body.hide_missing_items,
+        hiddenMissingItems: body.restore_all ? [] : undefined,
         editedBy: session.userName,
       },
       session.domain,
@@ -967,26 +949,24 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.post("/patients/:patientId/chat", async (req, reply) => {
     const session = resolveSession(req);
     const { patientId } = req.params as { patientId: string };
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    const question = (body.question ?? "").trim();
-    const scope = body.scope === "form" ? "form" : "patient";
+    const body = ChatBodySchema.parse(req.body ?? {});
     const target =
-      scope === "form" && body.filename
+      body.scope === "form" && body.filename
         ? { filename: body.filename }
         : { patientId, filename: body.filename };
 
     const chatReply = await dossierUseCase.askQuestion(
       target,
-      question,
+      body.question,
       session.domain,
       session.language,
-      body.agentName || undefined,
+      body.agentName,
     );
 
     if (req.headers["hx-request"] === "true") {
       return reply
         .type("text/html; charset=utf-8")
-        .send(renderChatLogMessagePartial(question, chatReply, session.domain, body.filename));
+        .send(renderChatLogMessagePartial(body.question, chatReply, session.domain, body.filename));
     }
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
@@ -998,7 +978,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       .type("text/html; charset=utf-8")
       .send(
         renderDossierPage(dossier, session, queueStats, queueJobs, [
-          { question, reply: chatReply },
+          { question: body.question, reply: chatReply },
         ]),
       );
   });
@@ -1006,21 +986,20 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.post("/forms/:filename/chat", async (req, reply) => {
     const session = resolveSession(req);
     const { filename } = req.params as { filename: string };
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    const question = (body.question ?? "").trim();
+    const body = ChatBodySchema.parse(req.body ?? {});
 
     const chatReply = await dossierUseCase.askQuestion(
       { filename },
-      question,
+      body.question,
       session.domain,
       session.language,
-      body.agentName || undefined,
+      body.agentName,
     );
 
     if (req.headers["hx-request"] === "true") {
       return reply
         .type("text/html; charset=utf-8")
-        .send(renderChatLogMessagePartial(question, chatReply, session.domain, filename));
+        .send(renderChatLogMessagePartial(body.question, chatReply, session.domain, filename));
     }
 
     const [dossier, { queueStats, queueJobs }] = await Promise.all([
@@ -1032,12 +1011,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       .type("text/html; charset=utf-8")
       .send(
         renderDossierPage(dossier, session, queueStats, queueJobs, [
-          { question, reply: chatReply },
+          { question: body.question, reply: chatReply },
         ]),
       );
   });
 
-  // 6. Same-Origin PDF Streaming (Forms & Guidelines)
+  // 6. Same-Origin PDF Streaming (Forms & Guidelines with HTTP Byte-Range & ETag support)
   app.get("/files/forms/:filename/pdf", async (req, reply) => {
     const session = resolveSession(req);
     const { filename } = req.params as { filename: string };
@@ -1050,12 +1029,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (!buf) {
       return reply.code(404).send("PDF introuvable");
     }
-    reply.header("Content-Type", "application/pdf");
-    reply.header(
-      "Content-Disposition",
-      `inline; filename="${sanitizeContentDispositionFilename(filename)}"`,
-    );
-    return reply.send(buf);
+    return sendPdfBufferWithRange(req, reply, buf, filename);
   });
 
   app.get("/files/resources/:filename", async (req, reply) => {
@@ -1084,12 +1058,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (!buf) {
       return reply.code(404).send("Référentiel PDF introuvable");
     }
-    reply.header("Content-Type", "application/pdf");
-    reply.header(
-      "Content-Disposition",
-      `inline; filename="${sanitizeContentDispositionFilename(filename)}"`,
-    );
-    return reply.send(buf);
+    return sendPdfBufferWithRange(req, reply, buf, filename);
   });
 
   // 7. Guidelines & Specialty Agents
@@ -1156,31 +1125,29 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/guidelines/chat", async (req, reply) => {
     const session = resolveSession(req);
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    const question = (body.question ?? "").trim();
-    const filename = (body.filename ?? "").trim() || undefined;
+    const body = ChatBodySchema.parse(req.body ?? {});
     const chatReply = await guidelinesUseCase.askGuidelineQuestion(
-      question,
+      body.question,
       session.domain,
       session.language,
-      filename,
+      body.filename,
     );
 
     if (req.headers["hx-request"] === "true") {
       return reply
         .type("text/html; charset=utf-8")
-        .send(renderChatLogMessagePartial(question, chatReply, session.domain, body.filename));
+        .send(renderChatLogMessagePartial(body.question, chatReply, session.domain, body.filename));
     }
 
     const [overview, { queueStats, queueJobs }] = await Promise.all([
-      guidelinesUseCase.getOverview(session.domain, session.language, filename),
+      guidelinesUseCase.getOverview(session.domain, session.language, body.filename),
       loadShellQueue(session.domain),
     ]);
     return reply
       .type("text/html; charset=utf-8")
       .send(
         renderGuidelinesPage(overview, session, queueStats, queueJobs, [
-          { question, reply: chatReply },
+          { question: body.question, reply: chatReply },
         ]),
       );
   });
@@ -1203,14 +1170,14 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/feedback", async (req, reply) => {
     const session = resolveSession(req);
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
+    const body = FeedbackCreateBodySchema.parse(req.body ?? {});
     await feedbackUseCase.createBug({
-      title: (body.title ?? "Signalement").trim(),
-      description: (body.description ?? "").trim(),
-      category: body.category ?? "extraction",
-      severity: body.severity ?? "medium",
+      title: body.title,
+      description: body.description,
+      category: body.category,
+      severity: body.severity,
       domain: session.domain,
-      patientOrFile: body.patientOrFile?.trim() || null,
+      patientOrFile: body.patientOrFile,
       author: session.userName,
     });
     return reply.redirect(`/feedback?domain=${encodeURIComponent(session.domain)}`);
@@ -1219,8 +1186,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.post("/feedback/:bugId/status", async (req, reply) => {
     const session = resolveSession(req);
     const { bugId } = req.params as { bugId: string };
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    await feedbackUseCase.updateStatus(bugId, body.status ?? "open", session.domain);
+    const body = FeedbackStatusBodySchema.parse(req.body ?? {});
+    await feedbackUseCase.updateStatus(bugId, body.status, session.domain);
     return reply.redirect(`/feedback?domain=${encodeURIComponent(session.domain)}`);
   });
 
@@ -1257,9 +1224,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     if (!session.isAdmin) {
       return reply.code(403).send("Accès réservé aux administrateurs.");
     }
-    const body = (req.body ?? {}) as Record<string, string | undefined>;
-    const mode = body.mode === "failed" || body.mode === "all" ? body.mode : ("completed" as const);
-    await queueAdminUseCase.cleanQueue(mode, session.domain);
+    const body = QueueCleanBodySchema.parse(req.body ?? {});
+    await queueAdminUseCase.cleanQueue(body.mode, session.domain);
     return reply.redirect(`/admin/queue?domain=${encodeURIComponent(session.domain)}`);
   });
 
@@ -1276,10 +1242,11 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const session = resolveSession(req);
     const stats = await api.getQueueStats(session.domain, true);
     const bannerHtml = renderQueueBannerPartial(stats, session).replace(/\n/g, " ");
+    const retryMs = stats.running > 0 || stats.pending > 0 ? 3000 : 8000;
     reply.header("Content-Type", "text/event-stream; charset=utf-8");
     reply.header("Cache-Control", "no-cache, no-transform");
     reply.header("Connection", "keep-alive");
-    return reply.send(`event: banner\ndata: ${bannerHtml}\n\n`);
+    return reply.send(`retry: ${retryMs}\nevent: banner\ndata: ${bannerHtml}\n\n`);
   });
 
   // 10. Maintenance, 404 Not Found & 5xx Server Error Pages

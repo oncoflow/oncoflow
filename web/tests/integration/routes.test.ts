@@ -11,6 +11,7 @@ import {
   sanitizeLocalRedirect,
   verifyProxySecret,
 } from "../../src/ui/server.js";
+import { html, raw } from "../../src/ui/templates.js";
 
 async function createTestApp() {
   const api = new InMemoryOncoflowApiFake();
@@ -536,5 +537,56 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(partial).toContain('class="ds-chat__markdown"');
     expect(partial).toContain("<strong>Conclusion</strong>");
+  });
+
+  it("auto-escapes XSS in html tagged templates, supports HTTP Range (206) & ETag (304) on PDFs/assets, and emits SSE retry directives", async () => {
+    const untrusted = '<img src=x onerror="alert(1)">';
+    const trusted = "<strong>Validé</strong>";
+    const rendered = html`<div data-date="${"2026-11-06T00:00:00Z"}">${untrusted} ${raw(trusted)}</div>`;
+    expect(rendered).toBe(
+      '<div data-date="06/11/2026">&lt;img src=x onerror=&quot;alert(1)&quot;&gt; <strong>Validé</strong></div>',
+    );
+
+    const { app } = await createTestApp();
+
+    // 1. Static asset ETag + 304 Not Modified
+    const assetRes = await app.inject({ method: "GET", url: "/public/css/tokens.css" });
+    expect(assetRes.statusCode).toBe(200);
+    const assetEtag = assetRes.headers.etag;
+    expect(assetEtag).toBeTruthy();
+
+    const assetCached = await app.inject({
+      method: "GET",
+      url: "/public/css/tokens.css",
+      headers: { "if-none-match": String(assetEtag) },
+    });
+    expect(assetCached.statusCode).toBe(304);
+
+    // 2. PDF Byte-Range (206 Partial Content) + ETag (304 Not Modified)
+    const rangeRes = await app.inject({
+      method: "GET",
+      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf",
+      headers: { range: "bytes=0-4" },
+    });
+    expect(rangeRes.statusCode).toBe(206);
+    expect(rangeRes.headers["accept-ranges"]).toBe("bytes");
+    expect(rangeRes.headers["content-range"]).toMatch(/^bytes 0-4\/\d+$/);
+    expect(rangeRes.rawPayload.byteLength).toBe(5);
+
+    const pdfEtag = rangeRes.headers.etag;
+    const pdfNotModified = await app.inject({
+      method: "GET",
+      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf",
+      headers: { "if-none-match": String(pdfEtag) },
+    });
+    expect(pdfNotModified.statusCode).toBe(304);
+
+    // 3. SSE /events/queue includes adaptive retry directive
+    const sseRes = await app.inject({ method: "GET", url: "/events/queue" });
+    expect(sseRes.statusCode).toBe(200);
+    expect(sseRes.headers["content-type"]).toContain("text/event-stream");
+    expect(sseRes.body).toContain("retry: 3000\nevent: banner\ndata: ");
+
+    await app.close();
   });
 });
