@@ -1710,7 +1710,7 @@ a.ds-kpi:hover {
 .ds-patient-card--orange > .ds-card__header,
 .ds-patient-card--red > .ds-card__header {
   padding: var(--ds-space-3) var(--ds-space-5);
-  border-radius: calc(var(--ds-radius-lg) - 1px) calc(var(--ds-radius-lg) - 1px) 0 0;
+  border-radius: var(--ds-radius-lg) var(--ds-radius-lg) 0 0;
 }
 .ds-patient-card--green > .ds-card__header {
   background: var(--ds-rcp-green-grad);
@@ -1763,10 +1763,10 @@ div[data-href] {
   border-bottom: 1px solid var(--ds-color-border);
 }
 .ds-table thead tr:first-child th:first-child {
-  border-top-left-radius: calc(var(--ds-radius-lg) - 1px);
+  border-top-left-radius: var(--ds-radius-lg);
 }
 .ds-table thead tr:first-child th:last-child {
-  border-top-right-radius: calc(var(--ds-radius-lg) - 1px);
+  border-top-right-radius: var(--ds-radius-lg);
 }
 .ds-table tbody tr {
   transition: background var(--ds-duration-fast) var(--ds-ease);
@@ -1779,10 +1779,10 @@ div[data-href] {
 .ds-table tbody tr:hover { background: var(--ds-surface-container); }
 .ds-table tbody tr:last-child td { border-bottom: 0; }
 .ds-table tbody tr:last-child td:first-child {
-  border-bottom-left-radius: calc(var(--ds-radius-lg) - 1px);
+  border-bottom-left-radius: var(--ds-radius-lg);
 }
 .ds-table tbody tr:last-child td:last-child {
-  border-bottom-right-radius: calc(var(--ds-radius-lg) - 1px);
+  border-bottom-right-radius: var(--ds-radius-lg);
 }
 .ds-table--dense th, .ds-table--dense td { padding: var(--ds-space-2) var(--ds-space-3); }
 .ds-table--comfortable th, .ds-table--comfortable td { padding: var(--ds-space-3) var(--ds-space-4); font-size: var(--ds-text-md); }
@@ -4927,7 +4927,7 @@ a.ds-timeline__link:hover {
   padding: 0;
   list-style: none;
 }
-/* Mobile-First Agenda Item: M3 Filled Surface Container (soft tonal background, no border) */
+/* Mobile-First Agenda Item: M3 Filled Surface Container with subtle M3 interactive hover */
 .ds-card.ds-agenda-item,
 .ds-agenda-item {
   display: grid;
@@ -4935,19 +4935,45 @@ a.ds-timeline__link:hover {
   align-items: start;
   gap: var(--ds-space-2);
   padding: var(--ds-space-3);
-  border: 0 !important;
-  box-shadow: none !important;
+  border: 1px solid var(--ds-border-nested);
+  box-shadow: none;
   border-radius: var(--ds-radius-lg, 1rem);
   background: var(--ds-color-surface-sunken);
-  transition: background-color var(--ds-duration-fast) var(--ds-ease), opacity var(--ds-duration-fast) var(--ds-ease);
+  transition:
+    background-color var(--ds-duration-normal) var(--ds-ease),
+    border-color var(--ds-duration-normal) var(--ds-ease),
+    box-shadow var(--ds-duration-normal) var(--ds-ease),
+    transform var(--ds-duration-normal) var(--ds-ease-decelerate),
+    opacity var(--ds-duration-fast) var(--ds-ease);
+}
+.ds-card.ds-agenda-item:hover:not(.is-dragging),
+.ds-agenda-item:hover:not(.is-dragging),
+.ds-card.ds-agenda-item:focus-within:not(.is-dragging),
+.ds-agenda-item:focus-within:not(.is-dragging) {
+  background: color-mix(in srgb, var(--ds-color-primary-soft) 18%, var(--ds-color-surface-sunken));
+  border-color: var(--ds-color-border-strong);
+  box-shadow: var(--ds-shadow-sm);
+  transform: translateY(-1px);
 }
 .ds-card.ds-agenda-item--quorum-warn,
 .ds-agenda-item--quorum-warn {
   background: color-mix(in srgb, var(--ds-color-warning-bg) 35%, var(--ds-color-surface-sunken));
+  border-color: color-mix(in srgb, var(--ds-color-warning) 32%, var(--ds-border-nested));
+}
+.ds-card.ds-agenda-item--quorum-warn:hover:not(.is-dragging),
+.ds-agenda-item--quorum-warn:hover:not(.is-dragging) {
+  background: color-mix(in srgb, var(--ds-color-warning-bg) 48%, var(--ds-color-surface-sunken));
+  border-color: var(--ds-color-warning);
 }
 .ds-card.ds-agenda-item--urgent,
 .ds-agenda-item--urgent {
   background: color-mix(in srgb, var(--ds-color-danger-bg) 35%, var(--ds-color-surface-sunken));
+  border-color: color-mix(in srgb, var(--ds-color-danger) 32%, var(--ds-border-nested));
+}
+.ds-card.ds-agenda-item--urgent:hover:not(.is-dragging),
+.ds-agenda-item--urgent:hover:not(.is-dragging) {
+  background: color-mix(in srgb, var(--ds-color-danger-bg) 48%, var(--ds-color-surface-sunken));
+  border-color: var(--ds-color-danger);
 }
 .ds-agenda-item__rank {
   display: flex;

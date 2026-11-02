@@ -885,8 +885,8 @@ export function renderWorklistPage(
         <div class="ds-field">
           <label class="ds-label" for="f-display">Affichage</label>
           <select id="f-display" name="display" class="ds-select" data-autosubmit="true" data-testid="select-displaymode">
-            <option value="table" ${(filter.displayMode ?? "table") === "table" ? "selected" : ""}>Vue Table</option>
-            <option value="cards" ${filter.displayMode === "cards" ? "selected" : ""}>Vue Cartes</option>
+            <option value="table" ${(filter.displayMode ?? "table") === "table" ? "selected" : ""}>Table</option>
+            <option value="cards" ${filter.displayMode === "cards" ? "selected" : ""}>Cartes</option>
           </select>
         </div>
         <div class="ds-toolbar__end">
