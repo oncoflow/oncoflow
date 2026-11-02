@@ -235,8 +235,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=23">
-  <link rel="stylesheet" href="/public/css/components.css?v=23">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=24">
+  <link rel="stylesheet" href="/public/css/components.css?v=24">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -268,24 +268,28 @@ export function renderLayout(opts: ShellLayoutOptions): string {
       <ul class="ds-nav">
         <li>
           <a class="ds-nav__link" href="/worklist?domain=${domainParam}" ${activeNav === "worklist" || activeNav === "dossier" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.worklist", lang))}" title="${esc(t("nav.worklist", lang))}" data-testid="nav-worklist">
+            <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-worklist")}</span>
             <span class="ds-nav__label">${esc(t("nav.worklist", lang))}</span>
           </a>
         </li>
         <li>
           <a class="ds-nav__link" href="/agenda?domain=${domainParam}" ${activeNav === "agenda" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.agenda", lang))}" title="${esc(t("nav.agenda", lang))}" data-testid="nav-agenda">
+            <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-calendar")}</span>
             <span class="ds-nav__label">${esc(t("nav.agenda", lang))}</span>
           </a>
         </li>
         <li>
           <a class="ds-nav__link" href="/guidelines?domain=${domainParam}" ${activeNav === "guidelines" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.guidelines", lang))}" title="${esc(t("nav.guidelines", lang))}" data-testid="nav-guidelines">
+            <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-book")}</span>
             <span class="ds-nav__label">${esc(t("nav.guidelines", lang))}</span>
           </a>
         </li>
         <li>
           <a class="ds-nav__link" href="/agents?domain=${domainParam}" ${activeNav === "agents" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.agents", lang))}" title="${esc(t("nav.agents", lang))}" data-testid="nav-agents">
+            <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-users")}</span>
             <span class="ds-nav__label">${esc(t("nav.agents", lang))}</span>
           </a>
@@ -296,6 +300,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
       <ul class="ds-nav">
         <li>
           <a class="ds-nav__link" href="/admin/queue?domain=${domainParam}" ${activeNav === "queue" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.queue", lang))}" title="${esc(t("nav.queue", lang))}" data-testid="nav-queue">
+            <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-layers")}</span>
             <span class="ds-nav__label">${esc(t("nav.queue", lang))}</span>
             ${activeCount > 0 ? `<span class="ds-nav__count">${activeCount}</span>` : ""}
@@ -303,6 +308,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
         </li>
         <li>
           <a class="ds-nav__link" href="/feedback?domain=${domainParam}" ${activeNav === "feedback" ? 'aria-current="page"' : ""} data-rail-label="${esc(t("nav.feedback", lang))}" title="${esc(t("nav.feedback", lang))}" data-testid="nav-feedback">
+            <span class="ds-nav__bg" aria-hidden="true"></span>
             <span class="ds-nav__indicator">${iconSvg("ic-bug")}</span>
             <span class="ds-nav__label">${esc(t("nav.feedback", lang))}</span>
           </a>
@@ -311,6 +317,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
           session.expertMode
             ? `<li>
                 <a class="ds-nav__link" href="/styleguide" data-rail-label="${esc(t("nav.styleguide", lang))}" title="${esc(t("nav.styleguide", lang))}" data-testid="nav-styleguide">
+                  <span class="ds-nav__bg" aria-hidden="true"></span>
                   <span class="ds-nav__indicator">${iconSvg("ic-palette")}</span>
                   <span class="ds-nav__label">${esc(t("nav.styleguide", lang))}</span>
                 </a>
@@ -452,28 +459,28 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <!-- ===================== Mobile Bottom Navigation Bar (M3 Compact < 48rem) ===================== -->
   <nav class="ds-bottom-nav" aria-label="${lang === "fr" ? "Navigation principale mobile" : "Mobile primary navigation"}" data-testid="bottom-nav">
     <a class="ds-bottom-nav__item" href="/worklist?domain=${domainParam}" ${activeNav === "worklist" || activeNav === "dossier" ? 'aria-current="page"' : ""}>
-      <span class="ds-bottom-nav__pill">${iconSvg("ic-worklist")}</span>
+      <span class="ds-bottom-nav__pill"><span class="ds-bottom-nav__bg" aria-hidden="true"></span>${iconSvg("ic-worklist")}</span>
       <span class="ds-bottom-nav__label">${esc(t("nav.worklist", lang))}</span>
     </a>
     <a class="ds-bottom-nav__item" href="/agenda?domain=${domainParam}" ${activeNav === "agenda" ? 'aria-current="page"' : ""}>
-      <span class="ds-bottom-nav__pill">${iconSvg("ic-calendar")}</span>
+      <span class="ds-bottom-nav__pill"><span class="ds-bottom-nav__bg" aria-hidden="true"></span>${iconSvg("ic-calendar")}</span>
       <span class="ds-bottom-nav__label">${lang === "fr" ? "Ordre RCP" : "Agenda"}</span>
     </a>
     <a class="ds-bottom-nav__item" href="/ingest?domain=${domainParam}" ${activeNav === "ingest" ? 'aria-current="page"' : ""}>
-      <span class="ds-bottom-nav__pill">${iconSvg("ic-add")}</span>
+      <span class="ds-bottom-nav__pill"><span class="ds-bottom-nav__bg" aria-hidden="true"></span>${iconSvg("ic-add")}</span>
       <span class="ds-bottom-nav__label">${lang === "fr" ? "Importer" : "Upload"}</span>
     </a>
     <a class="ds-bottom-nav__item" href="/guidelines?domain=${domainParam}" ${activeNav === "guidelines" ? 'aria-current="page"' : ""}>
-      <span class="ds-bottom-nav__pill">${iconSvg("ic-book")}</span>
+      <span class="ds-bottom-nav__pill"><span class="ds-bottom-nav__bg" aria-hidden="true"></span>${iconSvg("ic-book")}</span>
       <span class="ds-bottom-nav__label">${lang === "fr" ? "Référentiels" : "Guidelines"}</span>
     </a>
     <a class="ds-bottom-nav__item" href="/agents?domain=${domainParam}" ${activeNav === "agents" ? 'aria-current="page"' : ""}>
-      <span class="ds-bottom-nav__pill">${iconSvg("ic-users")}</span>
+      <span class="ds-bottom-nav__pill"><span class="ds-bottom-nav__bg" aria-hidden="true"></span>${iconSvg("ic-users")}</span>
       <span class="ds-bottom-nav__label">${lang === "fr" ? "Experts IA" : "AI Experts"}</span>
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=23" defer></script>
+  <script src="/public/js/app.js?v=24"></script>
 </body>
 </html>`;
 }

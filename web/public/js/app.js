@@ -320,6 +320,11 @@
   // M3 Non-blocking Co-Pilot Side Sheet (#ai-chat-drawer) & M3 Expressive FAB Menu (#ai-chat-fab)
   function syncVisualViewportForAiDrawer() {
     var drawer = document.getElementById("ai-chat-drawer");
+    if (!drawer || !drawer.classList.contains("is-open")) {
+      root.classList.remove("is-keyboard-open");
+      if (drawer) drawer.classList.remove("is-keyboard-open");
+      return;
+    }
     var vv = window.visualViewport;
     var isMobile = window.innerWidth <= 768;
     var vvh = vv ? vv.height : window.innerHeight;
@@ -339,13 +344,11 @@
       isMobile && (vvh < window.innerHeight * 0.82 || isChatInputFocused);
 
     root.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
-    if (drawer) {
-      drawer.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
-      if (drawer.classList.contains("is-open") && keyboardLikelyOpen) {
-        var log = drawer.querySelector(".ds-chat__log");
-        if (log) {
-          log.scrollTop = log.scrollHeight;
-        }
+    drawer.classList.toggle("is-keyboard-open", keyboardLikelyOpen);
+    if (keyboardLikelyOpen) {
+      var log = drawer.querySelector(".ds-chat__log");
+      if (log) {
+        log.scrollTop = log.scrollHeight;
       }
     }
   }
@@ -396,6 +399,9 @@
       fab.classList.toggle("is-hidden", isOpen);
     }
     syncVisualViewportForAiDrawer();
+    if (isOpen && typeof syncAllSegmentedPills === "function") {
+      syncAllSegmentedPills();
+    }
     if (isOpen && window.innerWidth > 768) {
       var input = drawer.querySelector("textarea");
       if (input) {
@@ -487,6 +493,13 @@
       syncM3FieldState(field, control);
       if (field.getAttribute("data-m3-field-bound") === "true") return;
       field.setAttribute("data-m3-field-bound", "true");
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(function () {
+          field.classList.add("is-ready");
+        });
+      } else {
+        field.classList.add("is-ready");
+      }
 
       control.addEventListener("input", function () {
         syncM3FieldState(field, control);
@@ -822,6 +835,24 @@
       tablist.querySelector("[role='tab'][aria-selected='true']") || tabs[0] || null;
     if (initialActive) syncTabIndicator(initialActive);
 
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var requestedTab = params.get("tab");
+      if (requestedTab) {
+        tabs.forEach(function (t, i) {
+          if (t.id === "tab-" + requestedTab) selectTab(i, false);
+        });
+      }
+    } catch (_e) {}
+
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () {
+        tablist.classList.add("is-ready");
+      });
+    } else {
+      tablist.classList.add("is-ready");
+    }
+
     window.addEventListener(
       "resize",
       function () {
@@ -845,19 +876,19 @@
         }
       });
     });
-
-    try {
-      var params = new URLSearchParams(window.location.search);
-      var requestedTab = params.get("tab");
-      if (requestedTab) {
-        tabs.forEach(function (t, i) {
-          if (t.id === "tab-" + requestedTab) selectTab(i, false);
-        });
-      }
-    } catch (_e) {}
   });
 
-  // M3 Segmented Button background pill slider (.ds-segmented__pill — icons & labels stay fixed)
+  // M3 Segmented Button background pill slider (.ds-segmented__pill — only the colored background moves)
+  function syncAllSegmentedPills() {
+    document.querySelectorAll(".ds-segmented").forEach(function (seg) {
+      var pill = seg.querySelector(".ds-segmented__pill");
+      var checkedLabel = seg.querySelector("input:checked + label");
+      if (!checkedLabel || !pill || checkedLabel.offsetWidth === 0) return;
+      pill.style.width = checkedLabel.offsetWidth + "px";
+      pill.style.transform = "translate3d(" + checkedLabel.offsetLeft + "px, 0, 0)";
+    });
+  }
+
   document.querySelectorAll(".ds-segmented").forEach(function (seg) {
     var pill = seg.querySelector(".ds-segmented__pill");
     if (!pill) {
@@ -866,34 +897,116 @@
       pill.setAttribute("aria-hidden", "true");
       seg.insertBefore(pill, seg.firstChild);
     }
-    function syncSegmentedPill() {
-      var checkedLabel = seg.querySelector("input:checked + label");
-      if (!checkedLabel || !pill) return;
+    var checkedLabel = seg.querySelector("input:checked + label");
+    if (checkedLabel && checkedLabel.offsetWidth > 0) {
       pill.style.width = checkedLabel.offsetWidth + "px";
       pill.style.transform = "translate3d(" + checkedLabel.offsetLeft + "px, 0, 0)";
     }
-    syncSegmentedPill();
-    seg.addEventListener("change", syncSegmentedPill);
-    window.addEventListener("resize", syncSegmentedPill, { passive: true });
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(function () {
+        seg.classList.add("is-ready");
+      });
+    } else {
+      seg.classList.add("is-ready");
+    }
+    seg.addEventListener("change", syncAllSegmentedPills);
   });
+  window.addEventListener("resize", syncAllSegmentedPills, { passive: true });
 
-  // In-place M3 active pill expansion on Left Rail & Mobile Bottom Nav (icons never move)
+  // M3 Sliding Colored Background Pill across navigation buttons (.ds-nav__bg & .ds-bottom-nav__bg)
+  // Icons & labels stay 100% static; only the colored pill background slides from the previous button to the new button.
+  var NAV_BG_STORAGE_KEY = "ds_m3_nav_bg";
+
+  (function playPendingNavBackgroundSlide() {
+    try {
+      if (!window.sessionStorage) return;
+      var raw = window.sessionStorage.getItem(NAV_BG_STORAGE_KEY);
+      if (!raw) return;
+      window.sessionStorage.removeItem(NAV_BG_STORAGE_KEY);
+      if (
+        window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ) {
+        return;
+      }
+      var prev = JSON.parse(raw);
+      if (!prev || !prev.group || Date.now() - Number(prev.ts || 0) > 2000) return;
+
+      var targetBg =
+        prev.group === "bottom-nav"
+          ? document.querySelector(".ds-bottom-nav__item[aria-current='page'] .ds-bottom-nav__bg")
+          : document.querySelector(".ds-nav__link[aria-current='page'] > .ds-nav__bg");
+      if (!targetBg || typeof targetBg.animate !== "function") return;
+
+      var curRect = targetBg.getBoundingClientRect();
+      if (curRect.width === 0 && curRect.height === 0) return;
+
+      var dx = Number(prev.left) - curRect.left;
+      var dy = Number(prev.top) - curRect.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return;
+
+      targetBg.animate(
+        [
+          { transform: "translate3d(" + dx + "px, " + dy + "px, 0)" },
+          { transform: "translate3d(0, 0, 0)" },
+        ],
+        {
+          duration: 250,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+        },
+      );
+    } catch (_err) {}
+  })();
+
   document.addEventListener("click", function (e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-    var navLink = e.target.closest(".ds-nav__link");
-    if (navLink) {
-      document.querySelectorAll(".ds-nav__link[aria-current='page']").forEach(function (el) {
-        if (el !== navLink) el.removeAttribute("aria-current");
-      });
-      navLink.setAttribute("aria-current", "page");
-      return;
-    }
     var bottomLink = e.target.closest(".ds-bottom-nav__item");
     if (bottomLink) {
-      document.querySelectorAll(".ds-bottom-nav__item[aria-current='page']").forEach(function (el) {
-        if (el !== bottomLink) el.removeAttribute("aria-current");
-      });
-      bottomLink.setAttribute("aria-current", "page");
+      var curBottom = document.querySelector(".ds-bottom-nav__item[aria-current='page']");
+      var curBottomBg = curBottom ? curBottom.querySelector(".ds-bottom-nav__bg") : null;
+      if (curBottom && curBottom !== bottomLink && curBottomBg && window.sessionStorage) {
+        var bRect = curBottomBg.getBoundingClientRect();
+        if (bRect.width > 0) {
+          try {
+            window.sessionStorage.setItem(
+              NAV_BG_STORAGE_KEY,
+              JSON.stringify({
+                group: "bottom-nav",
+                left: bRect.left,
+                top: bRect.top,
+                width: bRect.width,
+                height: bRect.height,
+                ts: Date.now(),
+              }),
+            );
+          } catch (_err) {}
+        }
+      }
+      return;
+    }
+
+    var navLink = e.target.closest(".ds-nav__link");
+    if (navLink) {
+      var curNav = document.querySelector(".ds-nav__link[aria-current='page']");
+      var curNavBg = curNav ? curNav.querySelector(".ds-nav__bg") : null;
+      if (curNav && curNav !== navLink && curNavBg && window.sessionStorage) {
+        var nRect = curNavBg.getBoundingClientRect();
+        if (nRect.width > 0) {
+          try {
+            window.sessionStorage.setItem(
+              NAV_BG_STORAGE_KEY,
+              JSON.stringify({
+                group: "side-nav",
+                left: nRect.left,
+                top: nRect.top,
+                width: nRect.width,
+                height: nRect.height,
+                ts: Date.now(),
+              }),
+            );
+          } catch (_err) {}
+        }
+      }
     }
   });
 
