@@ -235,8 +235,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=28">
-  <link rel="stylesheet" href="/public/css/components.css?v=28">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=29">
+  <link rel="stylesheet" href="/public/css/components.css?v=29">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -480,7 +480,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=28"></script>
+  <script src="/public/js/app.js?v=29"></script>
 </body>
 </html>`;
 }
@@ -1739,8 +1739,8 @@ export function renderDossierPage(
     <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
       <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf" data-pdf-pane>
         <div class="ds-pdf-mobile-bar">
-          <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le PDF (${esc(dossier.currentForm.file)})" data-label-hide="Masquer le PDF (${esc(dossier.currentForm.file)})" data-testid="btn_mobile_pdf_toggle">
-            ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le PDF (${esc(dossier.currentForm.file)})</span>
+          <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le fichier source" data-label-hide="Masquer le fichier source" data-testid="btn_mobile_pdf_toggle">
+            ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le fichier source</span>
           </button>
         </div>
         <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
@@ -2107,8 +2107,8 @@ export function renderGuidelinesPage(
                   </div>
                 </div>
                 <div class="ds-pdf-mobile-bar">
-                  <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le PDF (${esc(activeRes.filename)})" data-label-hide="Masquer le PDF (${esc(activeRes.filename)})" data-testid="btn_mobile_guideline_pdf_toggle">
-                    ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le PDF (${esc(activeRes.filename)})</span>
+                  <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le fichier source" data-label-hide="Masquer le fichier source" data-testid="btn_mobile_guideline_pdf_toggle">
+                    ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le fichier source</span>
                   </button>
                 </div>
                 <div class="ds-pdf-viewer-wrap">

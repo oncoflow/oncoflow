@@ -1698,7 +1698,10 @@
     if (!pdfJsPromise) {
       pdfJsPromise = import("/public/vendor/pdfjs/pdf.mjs").then(function (mod) {
         if (mod && mod.GlobalWorkerOptions) {
-          mod.GlobalWorkerOptions.workerSrc = "/public/vendor/pdfjs/pdf.worker.mjs";
+          mod.GlobalWorkerOptions.workerSrc = new URL(
+            "/public/vendor/pdfjs/pdf.worker.mjs",
+            window.location.origin,
+          ).href;
         }
         return mod;
       });
@@ -1711,25 +1714,42 @@
     var filename = viewerEl.getAttribute("data-pdf-filename") || "document.pdf";
     if (!pdfUrl || viewerEl.getAttribute("data-pdf-rendered") === "loading") return;
     viewerEl.setAttribute("data-pdf-rendered", "loading");
+    viewerEl.textContent = "";
 
-    viewerEl.innerHTML =
-      '<div class="ds-pdf-canvas-viewer__bar">' +
-      '<span data-pdf-status>Chargement du PDF…</span>' +
-      '<div class="ds-cluster" style="gap:var(--ds-space-2)">' +
-      '<a class="ds-btn ds-btn--ghost ds-btn--sm" href="' +
-      escHtml(pdfUrl) +
-      '" target="_blank" rel="noopener">Ouvrir</a>' +
-      '<a class="ds-btn ds-btn--secondary ds-btn--sm" href="' +
-      escHtml(pdfUrl) +
-      '" download="' +
-      escHtml(filename) +
-      '">Télécharger</a>' +
-      "</div>" +
-      "</div>" +
-      '<div class="ds-pdf-canvas-viewer__pages" data-pdf-pages></div>';
+    var barEl = document.createElement("div");
+    barEl.className = "ds-pdf-canvas-viewer__bar";
 
-    var statusEl = viewerEl.querySelector("[data-pdf-status]");
-    var pagesEl = viewerEl.querySelector("[data-pdf-pages]");
+    var statusEl = document.createElement("span");
+    statusEl.setAttribute("data-pdf-status", "");
+    statusEl.textContent = "Chargement du fichier source…";
+    barEl.appendChild(statusEl);
+
+    var actionsEl = document.createElement("div");
+    actionsEl.className = "ds-cluster";
+    actionsEl.style.gap = "var(--ds-space-2)";
+
+    var openLink = document.createElement("a");
+    openLink.className = "ds-btn ds-btn--ghost ds-btn--sm";
+    openLink.href = pdfUrl;
+    openLink.target = "_blank";
+    openLink.rel = "noopener";
+    openLink.textContent = "Ouvrir";
+    actionsEl.appendChild(openLink);
+
+    var dlLink = document.createElement("a");
+    dlLink.className = "ds-btn ds-btn--secondary ds-btn--sm";
+    dlLink.href = pdfUrl;
+    dlLink.setAttribute("download", filename);
+    dlLink.textContent = "Télécharger";
+    actionsEl.appendChild(dlLink);
+
+    barEl.appendChild(actionsEl);
+    viewerEl.appendChild(barEl);
+
+    var pagesEl = document.createElement("div");
+    pagesEl.className = "ds-pdf-canvas-viewer__pages";
+    pagesEl.setAttribute("data-pdf-pages", "");
+    viewerEl.appendChild(pagesEl);
 
     Promise.all([
       loadLocalPdfJs(),
@@ -1748,11 +1768,9 @@
       })
       .then(function (pdfDoc) {
         var total = pdfDoc.numPages || 1;
-        if (statusEl) {
-          statusEl.textContent = filename + " · " + total + (total > 1 ? " pages" : " page");
-        }
+        statusEl.textContent = total + (total > 1 ? " pages" : " page");
         var dpr = Math.min(window.devicePixelRatio || 1, 2);
-        var containerWidth = Math.max(260, (pagesEl && pagesEl.clientWidth) || 340);
+        var containerWidth = Math.max(260, pagesEl.clientWidth || viewerEl.clientWidth || 340);
 
         var chain = Promise.resolve();
         var _loop = function (pageNum) {
@@ -1765,7 +1783,7 @@
               canvas.className = "ds-pdf-canvas-viewer__canvas";
               canvas.width = Math.floor(viewport.width);
               canvas.height = Math.floor(viewport.height);
-              if (pagesEl) pagesEl.appendChild(canvas);
+              pagesEl.appendChild(canvas);
               var ctx = canvas.getContext("2d");
               if (!ctx) return;
               return page.render({ canvasContext: ctx, viewport: viewport }).promise;
@@ -1779,11 +1797,13 @@
           viewerEl.setAttribute("data-pdf-rendered", "true");
         });
       })
-      .catch(function () {
+      .catch(function (err) {
+        pdfJsPromise = null;
         viewerEl.setAttribute("data-pdf-rendered", "error");
-        if (statusEl) {
-          statusEl.textContent = "Aperçu indisponible — utilisez « Ouvrir » ou « Télécharger ».";
-        }
+        statusEl.textContent =
+          "Aperçu indisponible (" +
+          (err && err.message ? err.message : "erreur") +
+          ") — utilisez « Ouvrir » ou « Télécharger ».";
       });
   }
 
