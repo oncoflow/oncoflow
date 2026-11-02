@@ -329,6 +329,20 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(citationPdf.statusCode).toBe(200);
     expect(citationPdf.headers["content-type"]).toContain("application/pdf");
+
+    const pdfJsMod = await app.inject({
+      method: "GET",
+      url: "/public/vendor/pdfjs/pdf.mjs",
+    });
+    expect(pdfJsMod.statusCode).toBe(200);
+    expect(pdfJsMod.headers["content-type"]).toContain("application/javascript");
+
+    const pdfWorkerMod = await app.inject({
+      method: "GET",
+      url: "/public/vendor/pdfjs/pdf.worker.mjs",
+    });
+    expect(pdfWorkerMod.statusCode).toBe(200);
+    expect(pdfWorkerMod.headers["content-type"]).toContain("application/javascript");
     await app.close();
   });
 
