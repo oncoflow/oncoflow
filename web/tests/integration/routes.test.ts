@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import { loadConfig } from "../../src/config.js";
 import { InMemoryOncoflowApiFake } from "../../src/infrastructure/api/in-memory-oncoflow-api.fake.js";
 import {
+  renderChatLogMessagePartial,
+  renderSafeMarkdown,
+} from "../../src/ui/components/ai-chat.component.js";
+import {
   buildServer,
   isSafeFilename,
   sanitizeLocalRedirect,
@@ -504,5 +508,33 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(maintenanceRes.body).toContain('data-testid="btn_status_retry"');
 
     await app.close();
+  });
+
+  it("renders Markdown safely via marked inside AI chat assistant replies", () => {
+    const markdown = [
+      "## Synthèse clinique",
+      "Le patient présente un **adénocarcinome** avec mutation `KRAS`.",
+      "",
+      "- Stade : *cT3N1M0*",
+      "- Traitement : FOLFOX",
+      "",
+      "<script>alert(1)</script>",
+    ].join("\n");
+
+    const html = renderSafeMarkdown(markdown);
+    expect(html).toContain("<h2>Synthèse clinique</h2>");
+    expect(html).toContain("<strong>adénocarcinome</strong>");
+    expect(html).toContain("<code>KRAS</code>");
+    expect(html).toContain("<ul>");
+    expect(html).toContain("<em>cT3N1M0</em>");
+    expect(html).not.toContain("<script>");
+    expect(html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+
+    const partial = renderChatLogMessagePartial("Quel bilan ?", {
+      answer: "**Conclusion** : discuter en RCP.",
+      references: [],
+    });
+    expect(partial).toContain('class="ds-chat__markdown"');
+    expect(partial).toContain("<strong>Conclusion</strong>");
   });
 });

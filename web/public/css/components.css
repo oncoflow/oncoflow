@@ -2930,6 +2930,125 @@ a.ds-timeline__link:hover {
 .ds-chat__msg--assistant .ds-refs { margin-top: var(--ds-space-2); background: var(--ds-surface-nested); }
 .ds-chat__msg--thinking { width: min(30rem, 92%); max-width: 92%; }
 
+/* Clinical Markdown Typography Inside AI Assistant Bubbles */
+.ds-chat__markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  font-size: var(--ds-text-sm);
+  line-height: 1.55;
+  color: var(--ds-color-text);
+}
+.ds-chat__markdown > :first-child { margin-top: 0; }
+.ds-chat__markdown > :last-child { margin-bottom: 0; }
+.ds-chat__markdown p {
+  margin: 0;
+}
+.ds-chat__markdown h1,
+.ds-chat__markdown h2,
+.ds-chat__markdown h3 {
+  margin: 0.25rem 0 0;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-bold);
+  color: var(--ds-color-primary-text);
+  line-height: 1.35;
+}
+.ds-chat__markdown h4,
+.ds-chat__markdown h5,
+.ds-chat__markdown h6 {
+  margin: 0.2rem 0 0;
+  font-size: var(--ds-text-xs);
+  font-weight: var(--ds-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ds-color-text-muted);
+  line-height: 1.35;
+}
+.ds-chat__markdown ul,
+.ds-chat__markdown ol {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.ds-chat__markdown li {
+  padding-left: 0.15rem;
+}
+.ds-chat__markdown li::marker {
+  color: var(--ds-color-primary-text);
+  font-weight: var(--ds-weight-semibold);
+}
+.ds-chat__markdown blockquote {
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  border-left: 3px solid var(--ds-color-primary);
+  border-radius: 0 var(--ds-radius-xs) var(--ds-radius-xs) 0;
+  background: var(--ds-surface-nested);
+  color: var(--ds-color-text-muted);
+  font-style: italic;
+}
+.ds-chat__markdown :not(pre) > code {
+  padding: 0.1rem 0.35rem;
+  border-radius: var(--ds-radius-xs);
+  background: var(--ds-surface-nested);
+  border: 1px solid var(--ds-border-nested);
+  font-family: var(--ds-font-mono);
+  font-size: 0.85em;
+  color: var(--ds-color-primary-text);
+}
+.ds-chat__markdown pre {
+  margin: 0;
+  padding: var(--ds-space-2) var(--ds-space-3);
+  border-radius: var(--ds-radius-sm);
+  background: var(--ds-surface-nested);
+  border: 1px solid var(--ds-border-nested);
+  overflow-x: auto;
+  font-family: var(--ds-font-mono);
+  font-size: var(--ds-text-xs);
+  line-height: 1.45;
+}
+.ds-chat__markdown pre > code {
+  font-family: inherit;
+  color: var(--ds-color-text);
+  white-space: pre;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.ds-chat__markdown hr {
+  border: 0;
+  border-top: 1px solid var(--ds-border-nested);
+  margin: 0.25rem 0;
+}
+.ds-chat__markdown table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--ds-text-xs);
+  border: 1px solid var(--ds-border-nested);
+  border-radius: var(--ds-radius-sm);
+  overflow: hidden;
+}
+.ds-chat__markdown th,
+.ds-chat__markdown td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--ds-border-nested);
+}
+.ds-chat__markdown th {
+  background: var(--ds-surface-nested);
+  font-weight: var(--ds-weight-semibold);
+  color: var(--ds-color-text-muted);
+}
+.ds-chat__markdown tbody tr:last-child td {
+  border-bottom: 0;
+}
+.ds-chat__markdown a {
+  color: var(--ds-color-primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* Dedicated M3 AI Thinking / Reflection Pending UX Module */
 .ds-ai-thinking {
   display: flex;

@@ -1,3 +1,4 @@
+import { Marked } from "marked";
 import type { ChatReply } from "../../application/ports/oncoflow-api.port.js";
 import type { AgentModuleInfo, ClinicalDomain } from "../../domain/types.js";
 
@@ -14,6 +15,35 @@ function esc(value: unknown): string {
 function iconSvg(id: string, extraClass = ""): string {
   const cls = extraClass ? `ds-icon ${extraClass}` : "ds-icon";
   return `<svg class="${cls}" aria-hidden="true" focusable="false"><use href="#${id}"/></svg>`;
+}
+
+const clinicalMarkdown = new Marked({
+  gfm: true,
+  breaks: true,
+  renderer: {
+    html({ text }) {
+      return esc(text);
+    },
+    link({ href, title, tokens }) {
+      const label = this.parser.parseInline(tokens);
+      const safeHref = (href ?? "").trim();
+      if (!/^(?:https?:\/\/|mailto:|\/|#)/i.test(safeHref)) {
+        return label;
+      }
+      const titleAttr = title ? ` title="${esc(title)}"` : "";
+      return `<a href="${esc(safeHref)}"${titleAttr} target="_blank" rel="noopener noreferrer">${label}</a>`;
+    },
+  },
+});
+
+/**
+ * Safely renders clinical LLM Markdown replies into sanitized semantic HTML using `marked`.
+ * Raw HTML blocks/tags are escaped via the custom `html` renderer.
+ */
+export function renderSafeMarkdown(markdown: string): string {
+  const normalized = String(markdown ?? "").trim();
+  if (!normalized) return "";
+  return clinicalMarkdown.parse(normalized, { async: false }) as string;
 }
 
 export function resolveCitationPdfHref(
@@ -125,7 +155,7 @@ export function renderChatLogMessagePartial(
   <li class="ds-chat__msg ds-chat__msg--assistant" data-testid="chat-assistant-reply">
     <span class="ds-chat__author">${iconSvg("ic-sparkle", "ds-icon--xs")} Assistant clinique</span>
     <div class="ds-chat__bubble">
-      <p style="white-space:pre-wrap">${esc(reply.answer)}</p>
+      <div class="ds-chat__markdown">${renderSafeMarkdown(reply.answer)}</div>
       ${refsHtml}
     </div>
   </li>`;
