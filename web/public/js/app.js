@@ -782,10 +782,57 @@
     }
   });
 
-  // ARIA tabs navigation
+  // ARIA tabs navigation with M3 GPU FLIP sliding indicator (zero stutter)
+  var prefersReducedMotion =
+    window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function animateFlipElement(targetEl, fromRect, opts) {
+    if (
+      prefersReducedMotion ||
+      !targetEl ||
+      !fromRect ||
+      typeof targetEl.animate !== "function"
+    ) {
+      return;
+    }
+    var toRect = targetEl.getBoundingClientRect();
+    if (!toRect.width || !toRect.height) return;
+    var dx = fromRect.left + fromRect.width / 2 - (toRect.left + toRect.width / 2);
+    var dy = fromRect.top + fromRect.height / 2 - (toRect.top + toRect.height / 2);
+    var sx = Math.max(0.25, Math.min(3.5, fromRect.width / toRect.width));
+    var sy = opts && opts.lockY ? 1 : Math.max(0.5, Math.min(2.5, fromRect.height / toRect.height));
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sx - 1) < 0.02) return;
+    try {
+      targetEl.animate(
+        [
+          {
+            transform:
+              "translate3d(" +
+              dx.toFixed(1) +
+              "px, " +
+              (opts && opts.lockY ? "0px" : dy.toFixed(1) + "px") +
+              ", 0) scale(" +
+              sx.toFixed(3) +
+              ", " +
+              sy.toFixed(3) +
+              ")",
+          },
+          { transform: "translate3d(0, 0, 0) scale(1, 1)" },
+        ],
+        {
+          duration: (opts && opts.duration) || 220,
+          easing: "cubic-bezier(0.2, 0, 0, 1)",
+          pseudoElement: (opts && opts.pseudoElement) || undefined,
+        },
+      );
+    } catch (_err) {}
+  }
+
   document.querySelectorAll(".ds-tabs[role='tablist']").forEach(function (tablist) {
     var tabs = Array.prototype.slice.call(tablist.querySelectorAll("[role='tab']"));
     function selectTab(idx, focus) {
+      var prevTab = tablist.querySelector("[role='tab'][aria-selected='true']");
+      var prevRect = prevTab ? prevTab.getBoundingClientRect() : null;
       tabs.forEach(function (t, i) {
         var on = i === idx;
         t.setAttribute("aria-selected", String(on));
@@ -794,7 +841,15 @@
         var panel = panelId ? document.getElementById(panelId) : null;
         if (panel) panel.hidden = !on;
       });
-      if (focus && tabs[idx]) tabs[idx].focus();
+      var nextTab = tabs[idx];
+      if (nextTab && prevTab && nextTab !== prevTab && prevRect) {
+        animateFlipElement(nextTab, prevRect, {
+          lockY: true,
+          duration: 220,
+          pseudoElement: "::after",
+        });
+      }
+      if (focus && nextTab) nextTab.focus();
     }
     tabs.forEach(function (tab, i) {
       tab.addEventListener("click", function () {
@@ -820,6 +875,77 @@
         });
       }
     } catch (_e) {}
+  });
+
+  // Smooth M3 FLIP button-to-button transition for Segmented Controls, Chips, Nav Rail & Bottom Nav
+  document.querySelectorAll(".ds-segmented").forEach(function (seg) {
+    var lastCheckedLabel = seg.querySelector("input:checked + label");
+    seg.addEventListener("change", function () {
+      var nextCheckedLabel = seg.querySelector("input:checked + label");
+      if (lastCheckedLabel && nextCheckedLabel && lastCheckedLabel !== nextCheckedLabel) {
+        animateFlipElement(nextCheckedLabel, lastCheckedLabel.getBoundingClientRect(), {
+          lockY: true,
+          duration: 200,
+        });
+      }
+      lastCheckedLabel = nextCheckedLabel;
+    });
+  });
+
+  // Cross-page & instant M3 Navigation Pill FLIP (Left Rail & Mobile Bottom Nav)
+  function captureNavFlip(groupKey, fromEl, toEl, pillSelector) {
+    if (!fromEl || !toEl || fromEl === toEl) return;
+    var fromPill = pillSelector ? fromEl.querySelector(pillSelector) || fromEl : fromEl;
+    var toPill = pillSelector ? toEl.querySelector(pillSelector) || toEl : toEl;
+    var rect = fromPill.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    try {
+      sessionStorage.setItem(
+        "ds_flip_" + groupKey,
+        JSON.stringify({
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          ts: Date.now(),
+        }),
+      );
+    } catch (_err) {}
+    fromEl.removeAttribute("aria-current");
+    toEl.setAttribute("aria-current", "page");
+    animateFlipElement(toPill, rect, { duration: 220 });
+  }
+
+  document.addEventListener("click", function (e) {
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var navLink = e.target.closest(".ds-nav__link");
+    if (navLink) {
+      var prevNav = document.querySelector(".ds-nav__link[aria-current='page']");
+      captureNavFlip("rail", prevNav, navLink, ".ds-nav__indicator");
+      return;
+    }
+    var bottomLink = e.target.closest(".ds-bottom-nav__item");
+    if (bottomLink) {
+      var prevBottom = document.querySelector(".ds-bottom-nav__item[aria-current='page']");
+      captureNavFlip("bottom", prevBottom, bottomLink, ".ds-bottom-nav__pill");
+    }
+  });
+
+  ["rail", "bottom"].forEach(function (groupKey) {
+    try {
+      var raw = sessionStorage.getItem("ds_flip_" + groupKey);
+      if (!raw) return;
+      sessionStorage.removeItem("ds_flip_" + groupKey);
+      var saved = JSON.parse(raw);
+      if (!saved || Date.now() - (saved.ts || 0) > 2500) return;
+      var activePill =
+        groupKey === "rail"
+          ? document.querySelector(".ds-nav__link[aria-current='page'] .ds-nav__indicator")
+          : document.querySelector(".ds-bottom-nav__item[aria-current='page'] .ds-bottom-nav__pill");
+      if (activePill) {
+        animateFlipElement(activePill, saved, { duration: 220 });
+      }
+    } catch (_err) {}
   });
 
   // Inline section edit link (progressive enhancement)

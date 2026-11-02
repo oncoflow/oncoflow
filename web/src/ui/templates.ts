@@ -213,7 +213,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
                     : iconSvg("ic-clock");
             const jobHref = resolveQueueJobHref(j, session.domain);
             const jobDataAttr = jobHref
-              ? ` data-href="${jobHref}" tabindex="0" role="link" title="${lang === "fr" ? "Cliquer pour ouvrir" : "Click to open"} ${esc(j.filename ?? j.jobType)}"`
+              ? ` data-href="${jobHref}" title="${lang === "fr" ? "Cliquer pour ouvrir" : "Click to open"} ${esc(j.filename ?? j.jobType)}"`
               : "";
             return `<div class="ds-job"${jobDataAttr} data-testid="drawer-job-${esc(j.jobId)}">
               <span class="ds-job__title">${jobHref ? `<a class="ds-table__primary-link" href="${jobHref}">${esc(j.filename ?? j.jobType)}</a>` : esc(j.filename ?? j.jobType)}</span>
@@ -235,8 +235,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=21">
-  <link rel="stylesheet" href="/public/css/components.css?v=21">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=22">
+  <link rel="stylesheet" href="/public/css/components.css?v=22">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -473,7 +473,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=20" defer></script>
+  <script src="/public/js/app.js?v=22" defer></script>
 </body>
 </html>`;
 }
@@ -771,7 +771,7 @@ export function renderWorklistPage(
                     ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
                     : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
                   const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
-                  return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" tabindex="0" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+                  return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
                     <div class="ds-card__header">
                       <h2 class="ds-patient-card__name"><a href="${dossierHref}">${esc(c.patientName)}</a></h2>
                       <span class="ds-patient-card__id">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>

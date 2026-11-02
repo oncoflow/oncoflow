@@ -20,23 +20,34 @@
 }
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 140ms;
-  animation-timing-function: var(--ds-ease-standard);
+  animation-duration: 160ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+::view-transition-group(ds-rail-active-pill),
+::view-transition-group(ds-bottom-active-pill) {
+  animation-duration: 240ms;
+  animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
 }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-old(root),
-  ::view-transition-new(root) {
+  ::view-transition-new(root),
+  ::view-transition-group(ds-rail-active-pill),
+  ::view-transition-group(ds-bottom-active-pill) {
     animation-duration: 1ms;
   }
 }
 
 *,
 *::before,
-*::after { box-sizing: border-box; }
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
 
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
   overflow-x: clip;
   overflow-anchor: none;
   max-width: 100vw;
@@ -74,12 +85,29 @@ a {
 
 code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
 
+a,
+button,
+summary,
+label,
+input,
+select,
+textarea,
+[role="tab"],
+[role="menuitem"],
+[role="menuitemradio"],
+[data-href] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
 :focus-visible {
   outline: 2px solid var(--ds-color-focus);
   outline-offset: 2px;
-  border-radius: var(--ds-radius-xs);
 }
-:focus:not(:focus-visible) { outline: none; }
+:focus:not(:focus-visible),
+[data-href]:focus:not(:focus-visible) {
+  outline: none;
+}
 
 .ds-sr-only {
   position: absolute !important;
@@ -349,6 +377,9 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   color: var(--ds-sidebar-active-text);
   font-weight: var(--ds-weight-semibold);
 }
+.ds-nav__link[aria-current="page"] .ds-nav__indicator {
+  view-transition-name: ds-rail-active-pill;
+}
 .ds-nav__indicator {
   position: relative;
   display: inline-flex;
@@ -358,6 +389,7 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   height: 2rem;
   border-radius: var(--ds-radius-pill);
   flex: none;
+  will-change: transform, background-color;
   transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-nav__label {
@@ -1287,23 +1319,9 @@ body > .ds-queue-banner--idle,
 .ds-chip.is-active:hover {
   background: color-mix(in srgb, var(--ds-orientation-adapt-fg) 10%, var(--ds-color-primary-soft));
 }
-.ds-chip:not(:has(.ds-icon))::before {
-  content: "✓";
-  display: inline-block;
-  max-width: 0;
-  opacity: 0;
-  transform: scale(0.6);
-  overflow: hidden;
-  font-weight: var(--ds-weight-bold);
-  transition:
-    max-width var(--ds-duration-short4) var(--ds-ease-standard),
-    opacity var(--ds-duration-short3) var(--ds-ease-standard),
-    transform var(--ds-duration-short4) var(--ds-ease-standard);
-}
 .ds-chip[aria-pressed="true"]:not(:has(.ds-icon))::before {
-  max-width: 1rem;
-  opacity: 1;
-  transform: scale(1);
+  content: "✓";
+  font-weight: var(--ds-weight-bold);
 }
 
 .ds-dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--ds-color-neutral); flex: none; }
@@ -1813,6 +1831,8 @@ div[data-href] {
 
 /* M3 Segmented Button (https://m3.material.io/components/segmented-buttons) */
 .ds-segmented {
+  position: relative;
+  isolation: isolate;
   display: inline-flex;
   border: 1px solid var(--ds-color-border-strong);
   border-radius: var(--ds-radius-pill);
@@ -1822,6 +1842,7 @@ div[data-href] {
 .ds-segmented input { position: absolute; opacity: 0; pointer-events: none; }
 .ds-segmented label {
   position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1831,37 +1852,22 @@ div[data-href] {
   font-size: var(--ds-text-xs);
   font-weight: var(--ds-weight-semibold);
   cursor: pointer;
+  user-select: none;
   background: transparent;
   color: var(--ds-color-text);
   transition:
-    background-color var(--ds-duration-short4) var(--ds-ease-standard),
-    color var(--ds-duration-short4) var(--ds-ease-standard),
-    transform var(--ds-duration-short2) var(--ds-ease-standard);
+    background-color 180ms var(--ds-ease-standard),
+    color 180ms var(--ds-ease-standard);
 }
 .ds-segmented label:hover { background: var(--ds-color-surface-hover); }
-.ds-segmented label:active { transform: scale(0.98); }
 .ds-segmented label:not(:first-of-type) { border-left: 1px solid var(--ds-color-border-strong); }
 .ds-segmented input:checked + label {
   background: var(--ds-color-primary-soft);
   color: var(--ds-orientation-adapt-fg);
 }
-.ds-segmented label:not(:has(.ds-icon))::before {
-  content: "✓";
-  display: inline-block;
-  max-width: 0;
-  opacity: 0;
-  transform: scale(0.6);
-  overflow: hidden;
-  font-weight: var(--ds-weight-bold);
-  transition:
-    max-width var(--ds-duration-short4) var(--ds-ease-standard),
-    opacity var(--ds-duration-short3) var(--ds-ease-standard),
-    transform var(--ds-duration-short4) var(--ds-ease-standard);
-}
 .ds-segmented input:checked + label:not(:has(.ds-icon))::before {
-  max-width: 1rem;
-  opacity: 1;
-  transform: scale(1);
+  content: "✓";
+  font-weight: var(--ds-weight-bold);
 }
 .ds-segmented input:focus-visible + label {
   box-shadow: inset 0 0 0 2px var(--ds-color-focus);
@@ -1884,7 +1890,7 @@ div[data-href] {
   font-weight: var(--ds-weight-semibold);
   color: var(--ds-color-text-muted);
 }
-/* Floated on top border (active / populated / select / date / file state) */
+/* Floated on top border (active / populated / select / date / file state) — GPU transform only */
 .ds-field > .ds-label {
   position: absolute;
   top: 0;
@@ -1902,44 +1908,31 @@ div[data-href] {
   max-width: calc(100% - 1.2rem);
   overflow: hidden;
   text-overflow: ellipsis;
-  transform: translateY(0);
+  transform-origin: left center;
+  transform: translate3d(0, 0, 0) scale(1);
+  will-change: transform, color;
   transition:
-    top 180ms var(--ds-ease-standard),
-    transform 180ms var(--ds-ease-standard),
-    left 180ms var(--ds-ease-standard),
-    font-size 180ms var(--ds-ease-standard),
-    padding 180ms var(--ds-ease-standard),
-    color 180ms var(--ds-ease-standard),
-    background-color 150ms var(--ds-ease-standard);
+    transform 180ms cubic-bezier(0.2, 0, 0, 1),
+    color 180ms cubic-bezier(0.2, 0, 0, 1),
+    background-color 150ms cubic-bezier(0.2, 0, 0, 1);
 }
-/* Resting state: label inside the field when unfocused & empty (M3 Outlined Text Field) */
+/* Resting state: label inside the field when unfocused & empty (100% GPU translate3d + scale, zero font-size reflow) */
 .ds-field:has(> .ds-input:not([type="date"]):not([type="file"]):not([type="hidden"])):not(:focus-within):not(.has-value):not(:has(.ds-input:not(:placeholder-shown))) > .ds-label,
 .ds-field.is-empty:has(> .ds-input:not([type="date"]):not([type="file"]):not([type="hidden"])):not(:focus-within) > .ds-label {
-  top: calc(0.45rem + 1.3125rem);
-  left: 0.7rem;
-  transform: translateY(-50%);
-  padding: 0 0.15rem;
+  transform: translate3d(0.1rem, 1.25rem, 0) scale(1.18);
   background: transparent;
-  font-size: var(--ds-text-sm);
-  font-weight: var(--ds-weight-regular);
+  font-weight: var(--ds-weight-medium);
   color: var(--ds-color-text-muted);
 }
 .ds-field:has(> .ds-input--sm:not([type="date"]):not([type="file"])):not(:focus-within):not(.has-value):not(:has(.ds-input:not(:placeholder-shown))) > .ds-label,
 .ds-field.is-empty:has(> .ds-input--sm:not([type="date"]):not([type="file"])):not(:focus-within) > .ds-label {
-  top: calc(0.45rem + 1rem);
-  left: 0.55rem;
-  transform: translateY(-50%);
-  font-size: var(--ds-text-xs);
+  transform: translate3d(0.05rem, 0.95rem, 0) scale(1.06);
 }
 .ds-field:has(> .ds-textarea):not(:focus-within):not(.has-value):not(:has(.ds-textarea:not(:placeholder-shown))) > .ds-label,
 .ds-field.is-empty:has(> .ds-textarea):not(:focus-within) > .ds-label {
-  top: 1.05rem;
-  left: 0.7rem;
-  transform: translateY(0);
-  padding: 0 0.15rem;
+  transform: translate3d(0.1rem, 1.15rem, 0) scale(1.18);
   background: transparent;
-  font-size: var(--ds-text-sm);
-  font-weight: var(--ds-weight-regular);
+  font-weight: var(--ds-weight-medium);
   color: var(--ds-color-text-muted);
 }
 /* M3 Hover state (unfocused): label & outline turn On-Surface (--ds-color-text) */
@@ -1977,8 +1970,7 @@ div[data-href] {
   transition:
     border-color var(--ds-duration-short3) var(--ds-ease-standard),
     box-shadow var(--ds-duration-short3) var(--ds-ease-standard),
-    background-color var(--ds-duration-short3) var(--ds-ease-standard),
-    padding-right var(--ds-duration-short3) var(--ds-ease-standard);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard);
 }
 /* Hide native browser search clear icon so our M3 trailing clear button (.ds-field__clear) is used consistently */
 input[type="search"].ds-input::-webkit-search-cancel-button,
@@ -2570,7 +2562,7 @@ input[type="search"].ds-input::-webkit-search-decoration {
   opacity: 0;
   transition: opacity var(--ds-duration-fast) var(--ds-ease);
 }
-/* M3 3px rounded pill active indicator */
+/* M3 3px rounded pill active indicator (slides smoothly via FLIP in app.js) */
 .ds-tab::after {
   content: "";
   position: absolute;
@@ -2580,15 +2572,23 @@ input[type="search"].ds-input::-webkit-search-decoration {
   height: 3px;
   border-radius: 3px 3px 0 0;
   background: var(--ds-color-primary);
-  transform: scaleX(0);
-  transition: transform var(--ds-duration-normal) var(--ds-ease-spring);
+  opacity: 0;
+  transform-origin: center bottom;
+  transform: scaleX(0.35);
+  will-change: transform, opacity;
+  transition:
+    transform 200ms cubic-bezier(0.2, 0, 0, 1),
+    opacity 150ms cubic-bezier(0.2, 0, 0, 1);
 }
 .ds-tab:hover { color: var(--ds-color-text); text-decoration: none; }
 .ds-tab:hover::before { opacity: var(--ds-state-hover); }
 .ds-tab[aria-selected="true"],
 .ds-tab[aria-current="page"] { color: var(--ds-color-primary-text); }
 .ds-tab[aria-selected="true"]::after,
-.ds-tab[aria-current="page"]::after { transform: scaleX(1); }
+.ds-tab[aria-current="page"]::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
 .ds-tab:focus-visible { outline-offset: -2px; }
 .ds-tabpanel {
   padding-top: var(--ds-space-4);
@@ -4214,6 +4214,7 @@ a.ds-timeline__link:hover {
     max-width: 100%;
     height: 1.75rem;
     border-radius: var(--ds-radius-pill);
+    will-change: transform, background-color;
     transition: background-color var(--ds-duration-short3) var(--ds-ease-standard);
   }
   .ds-bottom-nav__item[aria-current="page"] {
@@ -4223,6 +4224,7 @@ a.ds-timeline__link:hover {
   .ds-bottom-nav__item[aria-current="page"] .ds-bottom-nav__pill {
     background: var(--ds-sidebar-active-bg);
     color: var(--ds-sidebar-active-text);
+    view-transition-name: ds-bottom-active-pill;
   }
   .ds-bottom-nav__label {
     max-width: 100%;
