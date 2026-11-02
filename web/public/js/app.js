@@ -432,7 +432,7 @@
     if (e.defaultPrevented) return;
     if (
       e.target.closest(
-        "a, button, summary, details, input, select, textarea, dialog, form, label, .ds-m3-select, .ds-hovercard, .ds-field__clear",
+        "a, button, summary, details, input, select, textarea, dialog, form, label, .ds-m3-select, .ds-hovercard, .ds-field__clear, .ds-agenda-item__rank, [data-agenda-drag-handle]",
       )
     ) {
       return;
@@ -1289,6 +1289,175 @@
     var currentlyPressed = focusTrigger.getAttribute("aria-pressed") === "true";
     var nextExpert = !clickedExpert || currentlyPressed ? "" : clickedExpert;
     applyAgendaSpecialtyFocus(nextExpert);
+  });
+
+  // Desktop Drag-and-Drop reordering on the RCP Agenda passage rank badge (.ds-agenda-item__rank)
+  var agendaDragState = null;
+
+  function getAgendaRows(list) {
+    return list ? Array.prototype.slice.call(list.querySelectorAll(".ds-agenda-item")) : [];
+  }
+
+  function clearAgendaDropIndicators(list) {
+    getAgendaRows(list).forEach(function (row) {
+      row.classList.remove("is-drop-before", "is-drop-after");
+    });
+  }
+
+  function renumberAgendaItems(list) {
+    getAgendaRows(list).forEach(function (row, idx) {
+      var pos = idx + 1;
+      row.setAttribute("data-position", String(pos));
+      var posEl = row.querySelector(".ds-agenda-item__pos");
+      if (posEl) posEl.textContent = "#" + pos;
+      var rankEl = row.querySelector(".ds-agenda-item__rank");
+      if (rankEl) rankEl.setAttribute("aria-label", "Rang de passage " + pos);
+    });
+  }
+
+  function persistAgendaMove(list, patientId, targetPosition) {
+    if (!list || !patientId || !targetPosition) return;
+    var domain = list.getAttribute("data-domain") || "oncology";
+    var form = document.createElement("form");
+    form.method = "post";
+    form.action =
+      "/agenda/patients/" +
+      encodeURIComponent(patientId) +
+      "/move?domain=" +
+      encodeURIComponent(domain);
+    form.style.display = "none";
+
+    var posInput = document.createElement("input");
+    posInput.type = "hidden";
+    posInput.name = "targetPosition";
+    posInput.value = String(targetPosition);
+    form.appendChild(posInput);
+
+    var pinInput = document.createElement("input");
+    pinInput.type = "hidden";
+    pinInput.name = "pinned";
+    pinInput.value = "true";
+    form.appendChild(pinInput);
+
+    document.body.appendChild(form);
+    form.submit();
+  }
+
+  function finalizeAgendaDrag(state) {
+    if (!state || state.finalized) return;
+    state.finalized = true;
+    agendaDragState = null;
+    clearAgendaDropIndicators(state.list);
+    state.row.classList.remove("is-dragging");
+    renumberAgendaItems(state.list);
+    var rows = getAgendaRows(state.list);
+    var finalIndex = rows.indexOf(state.row);
+    if (finalIndex !== -1 && finalIndex !== state.initialIndex && state.patientId) {
+      persistAgendaMove(state.list, state.patientId, finalIndex + 1);
+    }
+  }
+
+  document.addEventListener("dragstart", function (e) {
+    var handle = e.target.closest ? e.target.closest("[data-agenda-drag-handle]") : null;
+    if (!handle) return;
+    if (window.matchMedia && !window.matchMedia("(min-width: 48rem)").matches) {
+      e.preventDefault();
+      return;
+    }
+    var row = handle.closest(".ds-agenda-item");
+    var list = row ? row.closest("[data-testid='agenda-items-list']") : null;
+    if (!row || !list) return;
+
+    var rows = getAgendaRows(list);
+    var initialIndex = rows.indexOf(row);
+    var patientId = row.getAttribute("data-patient-id") || "";
+    agendaDragState = {
+      row: row,
+      list: list,
+      patientId: patientId,
+      initialIndex: initialIndex,
+      finalized: false,
+    };
+    row.classList.add("is-dragging");
+
+    if (e.dataTransfer) {
+      e.dataTransfer.effectAllowed = "move";
+      try {
+        e.dataTransfer.setData("text/plain", patientId);
+      } catch (_err) {}
+      try {
+        if (typeof e.dataTransfer.setDragImage === "function") {
+          e.dataTransfer.setDragImage(row, 28, 28);
+        }
+      } catch (_err) {}
+    }
+  });
+
+  document.addEventListener("dragover", function (e) {
+    if (!agendaDragState) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = "move";
+    }
+    var overRow = e.target.closest ? e.target.closest(".ds-agenda-item") : null;
+    if (
+      !overRow ||
+      overRow === agendaDragState.row ||
+      overRow.closest("[data-testid='agenda-items-list']") !== agendaDragState.list
+    ) {
+      clearAgendaDropIndicators(agendaDragState.list);
+      return;
+    }
+
+    var rows = getAgendaRows(agendaDragState.list);
+    var dragIdx = rows.indexOf(agendaDragState.row);
+    var overIdx = rows.indexOf(overRow);
+    if (dragIdx === -1 || overIdx === -1) return;
+
+    var rect = overRow.getBoundingClientRect();
+    clearAgendaDropIndicators(agendaDragState.list);
+    if (dragIdx < overIdx) {
+      if (e.clientY === 0 || e.clientY >= rect.top + rect.height * 0.25) {
+        overRow.after(agendaDragState.row);
+        renumberAgendaItems(agendaDragState.list);
+      } else {
+        overRow.classList.add("is-drop-after");
+      }
+    } else if (dragIdx > overIdx) {
+      if (e.clientY === 0 || e.clientY <= rect.bottom - rect.height * 0.25) {
+        overRow.before(agendaDragState.row);
+        renumberAgendaItems(agendaDragState.list);
+      } else {
+        overRow.classList.add("is-drop-before");
+      }
+    }
+  });
+
+  document.addEventListener("drop", function (e) {
+    if (!agendaDragState) return;
+    e.preventDefault();
+    var overRow = e.target.closest ? e.target.closest(".ds-agenda-item") : null;
+    if (
+      overRow &&
+      overRow !== agendaDragState.row &&
+      overRow.closest("[data-testid='agenda-items-list']") === agendaDragState.list
+    ) {
+      var rows = getAgendaRows(agendaDragState.list);
+      var dragIdx = rows.indexOf(agendaDragState.row);
+      var overIdx = rows.indexOf(overRow);
+      if (dragIdx < overIdx) {
+        overRow.after(agendaDragState.row);
+      } else if (dragIdx > overIdx) {
+        overRow.before(agendaDragState.row);
+      }
+      renumberAgendaItems(agendaDragState.list);
+    }
+    finalizeAgendaDrag(agendaDragState);
+  });
+
+  document.addEventListener("dragend", function () {
+    if (!agendaDragState) return;
+    finalizeAgendaDrag(agendaDragState);
   });
 
   // Live SSE Queue Banner stream

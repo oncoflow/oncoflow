@@ -29,6 +29,8 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     expect(res.body).toContain("MODÈLE Paul");
     expect(res.body).toContain('data-testid="agenda-expert-chips"');
     expect(res.body).toContain('data-testid="btn_schedule_new_meeting"');
+    expect(res.body).toContain('data-agenda-drag-handle="true"');
+    expect(res.body).toContain('data-testid="agenda-rank-A-1042"');
     expect(res.body).not.toContain("Reléguer les dossiers incomplets");
 
     // Focus on specialty "pancreas expert" highlights matching RCP dossiers and dims others
@@ -133,6 +135,17 @@ describe("Next RCP / MDT Session Agenda Builder (/agenda)", () => {
     const agendaAfterMove = await api.getMdtAgenda("oncology");
     expect(agendaAfterMove.items[0]?.patientId).toBe("A-1042");
     expect(agendaAfterMove.items[0]?.pinned).toBe(true);
+
+    // 2b. Move A-1042 to targetPosition 2 via drag-and-drop endpoint
+    await app.inject({
+      method: "POST",
+      url: "/agenda/patients/A-1042/move?domain=oncology",
+      payload: { targetPosition: "2", pinned: "true" },
+    });
+    const agendaAfterDragMove = await api.getMdtAgenda("oncology");
+    expect(agendaAfterDragMove.items[1]?.patientId).toBe("A-1042");
+    expect(agendaAfterDragMove.items[1]?.position).toBe(2);
+    expect(agendaAfterDragMove.items[1]?.pinned).toBe(true);
 
     // 3. Remove A-1037 -> moves to candidates pool
     await app.inject({
