@@ -159,6 +159,16 @@ export function renderQueueBannerPartial(stats: QueueStats, session: UserSession
   </div>`;
 }
 
+function resolveQueueJobHref(j: QueueJobItem, fallbackDomain: string): string {
+  if (!j.filename) return "";
+  const dom = encodeURIComponent(j.domain || fallbackDomain);
+  const upperType = (j.jobType ?? "").toUpperCase();
+  if (upperType.includes("RESOURCE") || upperType.includes("GUIDELINE")) {
+    return `/guidelines?domain=${dom}&file=${encodeURIComponent(j.filename)}`;
+  }
+  return `/resolve?target=${encodeURIComponent(j.filename)}&domain=${dom}`;
+}
+
 export function renderLayout(opts: ShellLayoutOptions): string {
   const { session, queueStats, queueJobs, activeNav, breadcrumbs, bodyHtml, title } = opts;
   const lang = session.language;
@@ -201,8 +211,12 @@ export function renderLayout(opts: ShellLayoutOptions): string {
                   : j.status === "COMPLETED"
                     ? iconSvg("ic-check-circle")
                     : iconSvg("ic-clock");
-            return `<div class="ds-job">
-              <span class="ds-job__title">${esc(j.filename ?? j.jobType)}</span>
+            const jobHref = resolveQueueJobHref(j, session.domain);
+            const jobDataAttr = jobHref
+              ? ` data-href="${jobHref}" tabindex="0" role="link" title="${lang === "fr" ? "Cliquer pour ouvrir" : "Click to open"} ${esc(j.filename ?? j.jobType)}"`
+              : "";
+            return `<div class="ds-job"${jobDataAttr} data-testid="drawer-job-${esc(j.jobId)}">
+              <span class="ds-job__title">${jobHref ? `<a class="ds-table__primary-link" href="${jobHref}">${esc(j.filename ?? j.jobType)}</a>` : esc(j.filename ?? j.jobType)}</span>
               <span class="ds-badge ${badgeCls} ds-badge--sm">${badgeIcon} ${esc(j.status)}</span>
               <span class="ds-job__meta">${esc(j.step ?? j.jobType)}${j.section ? ` · ${esc(j.section)}` : ""}${j.error ? ` · ${esc(j.error)}` : ""}</span>
               ${
@@ -221,8 +235,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=20">
-  <link rel="stylesheet" href="/public/css/components.css?v=20">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=21">
+  <link rel="stylesheet" href="/public/css/components.css?v=21">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -545,7 +559,7 @@ export function renderWorklistPage(
             const complSortVal = c.isComplete ? "1" : String(2 + c.missingCount);
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
 
-            return `<tr class="${c.priorityLevel === "high" ? "is-urgent" : ""}" data-href="${dossierHref}" title="Double-cliquez pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+            return `<tr class="${c.priorityLevel === "high" ? "is-urgent" : ""}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
               <td data-label="Priorité" data-sort-value="${prioSortVal}">
                 <span class="ds-badge ${prio.badgeClass} ds-badge--sm" data-testid="badge-priority-${esc(c.priorityLevel)}">
                   ${iconSvg(prio.icon)} ${esc(prio.label)}
@@ -757,7 +771,7 @@ export function renderWorklistPage(
                     ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
                     : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
                   const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
-                  return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" title="Double-cliquez pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+                  return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" tabindex="0" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
                     <div class="ds-card__header">
                       <h2 class="ds-patient-card__name"><a href="${dossierHref}">${esc(c.patientName)}</a></h2>
                       <span class="ds-patient-card__id">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
@@ -2404,11 +2418,19 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
   const { stats, jobs } = dashboard;
 
   const jobsRows = jobs
-    .map(
-      (j) => `<tr data-testid="queue-job-row-${esc(j.jobId)}">
+    .map((j) => {
+      const jobHref = resolveQueueJobHref(j, session.domain);
+      const rowDataAttr = jobHref
+        ? ` data-href="${jobHref}" title="Cliquer pour ouvrir ${esc(j.filename ?? j.jobId)}"`
+        : "";
+      const fileCellHtml =
+        j.filename && jobHref
+          ? `<a class="ds-table__primary-link" href="${jobHref}">${esc(j.filename)}</a>`
+          : esc(j.filename ?? "—");
+      return `<tr${rowDataAttr} data-testid="queue-job-row-${esc(j.jobId)}">
         <td data-label="ID Job" class="ds-mono">${esc(j.jobId)}</td>
         <td data-label="Domaine"><span class="ds-badge ${j.domain === "sma" ? "ds-badge--domain-sma" : "ds-badge--domain-onco"} ds-badge--sm">${iconSvg(j.domain === "sma" ? "ic-dna" : "ic-ribbon")} ${esc(j.domain)}</span></td>
-        <td data-label="Fichier" class="ds-mono ds-table__primary-cell">${esc(j.filename ?? "—")}</td>
+        <td data-label="Fichier" class="ds-mono ds-table__primary-cell">${fileCellHtml}</td>
         <td data-label="Étape">${esc(j.section ?? j.jobType)}</td>
         <td data-label="Statut">
           <span class="ds-badge ${j.status === "RUNNING" ? "ds-badge--info" : j.status === "FAILED" ? "ds-badge--danger" : j.status === "COMPLETED" ? "ds-badge--success" : "ds-badge--neutral"} ds-badge--sm">
@@ -2432,8 +2454,8 @@ export function renderQueueAdminPage(dashboard: QueueDashboardView, session: Use
             </form>
           </div>
         </td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join("");
 
   const bodyHtml = `
@@ -2632,7 +2654,7 @@ export function renderAgendaPage(
               const isItemDimmed =
                 activeFocusExpert !== null && !item.requiredExperts.includes(activeFocusExpert);
 
-              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-required-experts="${esc(item.requiredExperts.join("|"))}" data-testid="agenda-item-${esc(item.patientId)}">
+              return `<li class="ds-card ds-agenda-item ${item.priorityLevel === "high" ? "ds-agenda-item--urgent" : ""} ${!item.quorumMet ? "ds-agenda-item--quorum-warn" : ""} ${isItemFocused ? "ds-agenda-item--focused" : ""} ${isItemDimmed ? "ds-agenda-item--dimmed" : ""}" data-href="${dossierHref}" data-required-experts="${esc(item.requiredExperts.join("|"))}" title="Cliquer pour ouvrir le dossier de ${esc(item.patientName)}" data-testid="agenda-item-${esc(item.patientId)}">
                 <div class="ds-agenda-item__rank ${rankTone}" aria-label="Rang de passage ${item.position}">
                   <span class="ds-agenda-item__pos">#${item.position}</span>
                   ${item.pinned ? `<span class="ds-agenda-item__pin-indicator" title="Position verrouillée manuellement">${iconSvg("ic-lock", "ds-icon--xs")}</span>` : ""}

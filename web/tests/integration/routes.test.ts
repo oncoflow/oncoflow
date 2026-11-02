@@ -241,6 +241,24 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.statusCode).toBe(200);
     expect(res.body).toContain("job-running-1042");
     expect(res.body).toContain("job-failed-1039");
+    expect(res.body).toContain(
+      'data-href="/resolve?target=jeanne_fictive_2026_11_06.pdf&domain=oncology"',
+    );
+    expect(res.body).toContain('data-testid="drawer-job-job-running-1042"');
+
+    const resolveKnown = await app.inject({
+      method: "GET",
+      url: "/resolve?target=jeanne_fictive_2026_11_06.pdf&domain=oncology",
+    });
+    expect(resolveKnown.statusCode).toBe(302);
+    expect(resolveKnown.headers.location).toContain("/patients/A-1042");
+
+    const resolvePending = await app.inject({
+      method: "GET",
+      url: "/resolve?target=courrier_scan_illisible_1039.pdf&domain=oncology",
+    });
+    expect(resolvePending.statusCode).toBe(302);
+    expect(resolvePending.headers.location).toContain("/admin/queue?domain=oncology");
 
     const retryRes = await app.inject({
       method: "POST",

@@ -648,13 +648,20 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     const query = (req.query ?? {}) as Record<string, string | undefined>;
     const target = query.target ?? "";
     const resolved = await api.resolveTarget(target, session.domain);
-    if (resolved.patientId) {
+    const lookupKey = resolved.patientId ?? resolved.filename ?? target;
+    const existingDossier = lookupKey
+      ? await dossierUseCase.getDossier(lookupKey, session.domain)
+      : null;
+    if (!existingDossier) {
+      return reply.redirect(`/admin/queue?domain=${encodeURIComponent(session.domain)}`);
+    }
+    if (existingDossier.patientId) {
       return reply.redirect(
-        `/patients/${encodeURIComponent(resolved.patientId)}?domain=${encodeURIComponent(session.domain)}`,
+        `/patients/${encodeURIComponent(existingDossier.patientId)}?domain=${encodeURIComponent(session.domain)}`,
       );
     }
     return reply.redirect(
-      `/forms/${encodeURIComponent(resolved.filename ?? target)}?domain=${encodeURIComponent(session.domain)}`,
+      `/forms/${encodeURIComponent(existingDossier.currentForm.file)}?domain=${encodeURIComponent(session.domain)}`,
     );
   });
 

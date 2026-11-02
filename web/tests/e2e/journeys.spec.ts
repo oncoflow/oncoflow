@@ -21,13 +21,21 @@ test.describe("DataSyntis Material Design 3 Web UI — End-to-End Clinical & Erg
     await page.getByTestId("worklist-row-A-1042").locator("td").first().dblclick();
     await expect(page).toHaveURL(/\/patients\/A-1042/);
 
-    // Filter by incomplete records and verify cards display mode
+    // Filter by incomplete records and verify cards display mode + one-click card navigation + M3 text field clear button
     await page.goto("/worklist?domain=oncology&completeness=incomplete");
     await expect(page.getByTestId("worklist-table")).toContainText("FICTIVE Jeanne");
     await expect(page.getByTestId("worklist-table")).not.toContainText("MODÈLE Paul");
 
+    const searchInput = page.getByTestId("input-search");
+    await searchInput.fill("Jeanne");
+    await expect(page.getByTestId("btn_clear_q")).toBeVisible();
+    await page.getByTestId("btn_clear_q").click();
+    await expect(searchInput).toHaveValue("");
+
     await page.goto("/worklist?domain=oncology&display=cards");
     await expect(page.locator(".ds-patient-grid")).toBeVisible();
+    await page.getByTestId("worklist-row-A-1042").locator(".ds-card__body").click();
+    await expect(page).toHaveURL(/\/patients\/A-1042/);
 
     // Navigate to Ingest via the M3 Navigation Rail + Importer PDF FAB and upload a PDF
     await page.getByTestId("rail-fab-ingest").click();

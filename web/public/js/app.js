@@ -427,14 +427,22 @@
     }
   });
 
-  // Double-click on a worklist dossier row or card opens the dossier directly
-  document.addEventListener("dblclick", function (e) {
+  // One-click & double-click on a card, worklist row, agenda item, or queue job ([data-href]) opens it directly
+  function handleDataHrefNavigation(e) {
+    if (e.defaultPrevented) return;
     if (
       e.target.closest(
-        "a, button, summary, details, input, select, textarea, dialog, form, label, .ds-m3-select",
+        "a, button, summary, details, input, select, textarea, dialog, form, label, .ds-m3-select, .ds-hovercard, .ds-field__clear",
       )
     ) {
       return;
+    }
+    if (e.type === "click") {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      try {
+        var sel = window.getSelection ? String(window.getSelection()).trim() : "";
+        if (sel.length > 0) return;
+      } catch (_err) {}
     }
     var row = e.target.closest("[data-href]");
     if (!row) return;
@@ -442,7 +450,86 @@
     if (href) {
       window.location.href = href;
     }
+  }
+  document.addEventListener("click", handleDataHrefNavigation);
+  document.addEventListener("dblclick", handleDataHrefNavigation);
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Enter" || e.defaultPrevented) return;
+    var active = document.activeElement;
+    if (!active || !active.hasAttribute || !active.hasAttribute("data-href")) return;
+    var href = active.getAttribute("data-href");
+    if (href) {
+      e.preventDefault();
+      window.location.href = href;
+    }
   });
+
+  // Material Design 3 Outlined Text Fields (floating inner-to-border label + trailing ✕ clear button)
+  function syncM3FieldState(field, control) {
+    if (!field || !control) return;
+    var val = String(control.value || "");
+    var hasVal = val.length > 0;
+    field.classList.toggle("has-value", hasVal);
+    field.classList.toggle("is-empty", !hasVal);
+    field.classList.toggle("is-invalid", control.getAttribute("aria-invalid") === "true");
+  }
+
+  function initM3TextFields(rootScope) {
+    var scope = rootScope || document;
+    scope.querySelectorAll(".ds-field").forEach(function (field) {
+      var control = field.querySelector(
+        "input.ds-input:not([type='date']):not([type='file']):not([type='hidden']), textarea.ds-textarea",
+      );
+      if (!control) return;
+      if (!control.hasAttribute("placeholder")) {
+        control.setAttribute("placeholder", " ");
+      }
+      syncM3FieldState(field, control);
+      if (field.getAttribute("data-m3-field-bound") === "true") return;
+      field.setAttribute("data-m3-field-bound", "true");
+
+      control.addEventListener("input", function () {
+        syncM3FieldState(field, control);
+      });
+      control.addEventListener("change", function () {
+        syncM3FieldState(field, control);
+      });
+      if (control.form) {
+        control.form.addEventListener("reset", function () {
+          window.setTimeout(function () {
+            syncM3FieldState(field, control);
+          }, 0);
+        });
+      }
+
+      if (
+        control.tagName === "INPUT" &&
+        !control.disabled &&
+        !control.readOnly &&
+        !field.querySelector(".ds-field__clear")
+      ) {
+        var clearBtn = document.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "ds-field__clear";
+        clearBtn.setAttribute("aria-label", "Effacer le champ");
+        clearBtn.setAttribute("title", "Effacer");
+        clearBtn.setAttribute("data-testid", "btn_clear_" + (control.id || control.name || "field"));
+        clearBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+        clearBtn.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          ev.stopPropagation();
+          control.value = "";
+          syncM3FieldState(field, control);
+          control.dispatchEvent(new Event("input", { bubbles: true }));
+          control.dispatchEvent(new Event("change", { bubbles: true }));
+          control.focus();
+        });
+        field.appendChild(clearBtn);
+      }
+    });
+  }
+  initM3TextFields(document);
 
   document.addEventListener("click", function (e) {
     var parentMenu = e.target.closest(
@@ -749,7 +836,10 @@
       })
       .then(function (html) {
         var host = document.getElementById(targetId);
-        if (host) host.outerHTML = html;
+        if (host) {
+          host.outerHTML = html;
+          initM3TextFields(document);
+        }
       });
   });
 

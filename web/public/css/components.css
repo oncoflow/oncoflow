@@ -15,6 +15,21 @@
    ========================================================================== */
 
 /* 0. Base & accessibility ================================================= */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 140ms;
+  animation-timing-function: var(--ds-ease-standard);
+}
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation-duration: 1ms;
+  }
+}
+
 *,
 *::before,
 *::after { box-sizing: border-box; }
@@ -324,7 +339,9 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   font-weight: var(--ds-weight-medium);
   transition:
     background-color var(--ds-duration-short3) var(--ds-ease-standard),
-    color var(--ds-duration-short3) var(--ds-ease-standard);
+    color var(--ds-duration-short3) var(--ds-ease-standard),
+    border-radius var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short2) var(--ds-ease-standard);
 }
 .ds-nav__link:hover { background: var(--ds-sidebar-bg-hover); }
 .ds-nav__link[aria-current="page"] {
@@ -722,7 +739,9 @@ code, kbd, pre { font-family: var(--ds-font-mono); font-size: 0.9em; }
   white-space: nowrap;
   transition:
     background-color var(--ds-duration-short3) var(--ds-ease-standard),
-    color var(--ds-duration-short3) var(--ds-ease-standard);
+    color var(--ds-duration-short3) var(--ds-ease-standard),
+    border-radius var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short2) var(--ds-ease-standard);
 }
 .ds-menu__panel > .ds-menu__item:first-child {
   border-radius: 11px 11px 6px 6px;
@@ -975,9 +994,26 @@ body > .ds-queue-banner--idle,
   border: 1px solid var(--ds-color-border);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-color-surface);
-  transition: background var(--ds-duration-normal) var(--ds-ease), border-color var(--ds-duration-normal) var(--ds-ease);
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    border-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard),
+    transform var(--ds-duration-short4) var(--ds-ease-decelerate);
 }
-.ds-job:hover { background: var(--ds-surface-container-low); border-color: var(--ds-color-border-strong); }
+.ds-job[data-href] {
+  cursor: pointer;
+}
+.ds-job:hover {
+  background: var(--ds-surface-container-low);
+  border-color: var(--ds-color-border-strong);
+}
+.ds-job[data-href]:hover {
+  box-shadow: var(--ds-shadow-sm);
+  transform: translateY(-1px);
+}
+.ds-job[data-href]:active {
+  transform: scale(0.99);
+}
 .ds-job__title { font-weight: var(--ds-weight-semibold); min-width: 0; overflow-wrap: anywhere; }
 .ds-job__meta { grid-column: 1 / -1; font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); }
 .ds-job__progress { grid-column: 1 / -1; }
@@ -1016,7 +1052,12 @@ body > .ds-queue-banner--idle,
   text-decoration: none;
   white-space: nowrap;
   cursor: pointer;
-  transition: background var(--ds-duration-normal) var(--ds-ease), box-shadow var(--ds-duration-normal) var(--ds-ease), transform var(--ds-duration-fast) var(--ds-ease), border-color var(--ds-duration-normal) var(--ds-ease);
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    color var(--ds-duration-short4) var(--ds-ease-standard),
+    border-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard),
+    transform var(--ds-duration-short3) var(--ds-ease-standard);
 }
 /* M3 State Layer via color-mix (8% on hover, 14% on press) — keeps ::after free for [data-tooltip] */
 .ds-btn:hover {
@@ -1224,7 +1265,12 @@ body > .ds-queue-banner--idle,
   font-weight: var(--ds-weight-semibold);
   text-decoration: none;
   cursor: pointer;
-  transition: background var(--ds-duration-normal) var(--ds-ease), border-color var(--ds-duration-normal) var(--ds-ease), transform var(--ds-duration-fast) var(--ds-ease);
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    color var(--ds-duration-short4) var(--ds-ease-standard),
+    border-color var(--ds-duration-short4) var(--ds-ease-standard),
+    box-shadow var(--ds-duration-short4) var(--ds-ease-standard),
+    transform var(--ds-duration-short3) var(--ds-ease-standard);
 }
 .ds-chip:hover {
   background: var(--ds-color-surface-hover);
@@ -1241,9 +1287,23 @@ body > .ds-queue-banner--idle,
 .ds-chip.is-active:hover {
   background: color-mix(in srgb, var(--ds-orientation-adapt-fg) 10%, var(--ds-color-primary-soft));
 }
-.ds-chip[aria-pressed="true"]:not(:has(.ds-icon))::before {
+.ds-chip:not(:has(.ds-icon))::before {
   content: "✓";
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  transform: scale(0.6);
+  overflow: hidden;
   font-weight: var(--ds-weight-bold);
+  transition:
+    max-width var(--ds-duration-short4) var(--ds-ease-standard),
+    opacity var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short4) var(--ds-ease-standard);
+}
+.ds-chip[aria-pressed="true"]:not(:has(.ds-icon))::before {
+  max-width: 1rem;
+  opacity: 1;
+  transform: scale(1);
 }
 
 .ds-dot { display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--ds-color-neutral); flex: none; }
@@ -1672,7 +1732,9 @@ a.ds-kpi:hover {
 .ds-table th,
 .ds-table td { padding: var(--ds-space-3) var(--ds-space-4); text-align: left; vertical-align: middle; border-bottom: 1px solid var(--ds-color-border); overflow-wrap: anywhere; }
 tr[data-href],
-article[data-href] {
+article[data-href],
+li[data-href],
+div[data-href] {
   cursor: pointer;
 }
 .ds-table thead th {
@@ -1771,23 +1833,41 @@ article[data-href] {
   cursor: pointer;
   background: transparent;
   color: var(--ds-color-text);
-  transition: background var(--ds-duration-normal) var(--ds-ease), color var(--ds-duration-normal) var(--ds-ease);
+  transition:
+    background-color var(--ds-duration-short4) var(--ds-ease-standard),
+    color var(--ds-duration-short4) var(--ds-ease-standard),
+    transform var(--ds-duration-short2) var(--ds-ease-standard);
 }
 .ds-segmented label:hover { background: var(--ds-color-surface-hover); }
+.ds-segmented label:active { transform: scale(0.98); }
 .ds-segmented label:not(:first-of-type) { border-left: 1px solid var(--ds-color-border-strong); }
 .ds-segmented input:checked + label {
   background: var(--ds-color-primary-soft);
   color: var(--ds-orientation-adapt-fg);
 }
-.ds-segmented input:checked + label:not(:has(.ds-icon))::before {
+.ds-segmented label:not(:has(.ds-icon))::before {
   content: "✓";
+  display: inline-block;
+  max-width: 0;
+  opacity: 0;
+  transform: scale(0.6);
+  overflow: hidden;
   font-weight: var(--ds-weight-bold);
+  transition:
+    max-width var(--ds-duration-short4) var(--ds-ease-standard),
+    opacity var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short4) var(--ds-ease-standard);
+}
+.ds-segmented input:checked + label:not(:has(.ds-icon))::before {
+  max-width: 1rem;
+  opacity: 1;
+  transform: scale(1);
 }
 .ds-segmented input:focus-visible + label {
   box-shadow: inset 0 0 0 2px var(--ds-color-focus);
 }
 
-/* 9. M3 Outlined Text Fields & M3 Switch (https://m3.material.io/components/text-fields) */
+/* 9. M3 Outlined Text Fields & M3 Switch (https://m3.material.io/components/text-fields/guidelines) */
 .ds-field {
   position: relative;
   display: flex;
@@ -1804,6 +1884,7 @@ article[data-href] {
   font-weight: var(--ds-weight-semibold);
   color: var(--ds-color-text-muted);
 }
+/* Floated on top border (active / populated / select / date / file state) */
 .ds-field > .ds-label {
   position: absolute;
   top: 0;
@@ -1815,24 +1896,70 @@ article[data-href] {
   line-height: 1.1;
   font-weight: var(--ds-weight-semibold);
   color: var(--ds-color-text-muted);
-  border-radius: 2px;
+  border-radius: 3px;
   pointer-events: none;
   white-space: nowrap;
+  max-width: calc(100% - 1.2rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transform: translateY(0);
   transition:
-    color var(--ds-duration-short3) var(--ds-ease-standard),
-    transform var(--ds-duration-short3) var(--ds-ease-standard);
+    top 180ms var(--ds-ease-standard),
+    transform 180ms var(--ds-ease-standard),
+    left 180ms var(--ds-ease-standard),
+    font-size 180ms var(--ds-ease-standard),
+    padding 180ms var(--ds-ease-standard),
+    color 180ms var(--ds-ease-standard),
+    background-color 150ms var(--ds-ease-standard);
 }
-.ds-field:hover > .ds-label {
+/* Resting state: label inside the field when unfocused & empty (M3 Outlined Text Field) */
+.ds-field:has(> .ds-input:not([type="date"]):not([type="file"]):not([type="hidden"])):not(:focus-within):not(.has-value):not(:has(.ds-input:not(:placeholder-shown))) > .ds-label,
+.ds-field.is-empty:has(> .ds-input:not([type="date"]):not([type="file"]):not([type="hidden"])):not(:focus-within) > .ds-label {
+  top: calc(0.45rem + 1.3125rem);
+  left: 0.7rem;
+  transform: translateY(-50%);
+  padding: 0 0.15rem;
+  background: transparent;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-regular);
+  color: var(--ds-color-text-muted);
+}
+.ds-field:has(> .ds-input--sm:not([type="date"]):not([type="file"])):not(:focus-within):not(.has-value):not(:has(.ds-input:not(:placeholder-shown))) > .ds-label,
+.ds-field.is-empty:has(> .ds-input--sm:not([type="date"]):not([type="file"])):not(:focus-within) > .ds-label {
+  top: calc(0.45rem + 1rem);
+  left: 0.55rem;
+  transform: translateY(-50%);
+  font-size: var(--ds-text-xs);
+}
+.ds-field:has(> .ds-textarea):not(:focus-within):not(.has-value):not(:has(.ds-textarea:not(:placeholder-shown))) > .ds-label,
+.ds-field.is-empty:has(> .ds-textarea):not(:focus-within) > .ds-label {
+  top: 1.05rem;
+  left: 0.7rem;
+  transform: translateY(0);
+  padding: 0 0.15rem;
+  background: transparent;
+  font-size: var(--ds-text-sm);
+  font-weight: var(--ds-weight-regular);
+  color: var(--ds-color-text-muted);
+}
+/* M3 Hover state (unfocused): label & outline turn On-Surface (--ds-color-text) */
+.ds-field:hover:not(:focus-within) > .ds-label {
   color: var(--ds-color-text);
 }
+/* M3 Focused state: floating label turns Primary */
 .ds-field:focus-within > .ds-label,
 .ds-field:has(.ds-m3-select.is-open) > .ds-label {
   color: var(--ds-color-primary-text);
   transition-timing-function: var(--ds-ease-standard-decelerate);
 }
+/* M3 Error state: floating label turns Error (--ds-color-danger-text) */
+.ds-field:has([aria-invalid="true"]) > .ds-label,
+.ds-field.is-invalid > .ds-label {
+  color: var(--ds-color-danger-text) !important;
+}
 .ds-label__optional { font-weight: var(--ds-weight-regular); color: var(--ds-color-text-subtle); }
-.ds-hint { font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); }
-.ds-error-text { font-size: var(--ds-text-xs); color: var(--ds-color-danger-text); font-weight: var(--ds-weight-semibold); }
+.ds-hint { font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); padding-inline: 0.75rem; }
+.ds-error-text { font-size: var(--ds-text-xs); color: var(--ds-color-danger-text); font-weight: var(--ds-weight-semibold); padding-inline: 0.75rem; }
 
 .ds-input,
 .ds-select,
@@ -1840,26 +1967,116 @@ article[data-href] {
   width: 100%;
   min-height: 2.625rem;
   padding: 0.55rem 0.75rem;
-  border: 1.5px solid var(--ds-color-border-strong);
+  border: 1px solid var(--ds-color-border-strong); /* M3 1dp Outlined resting border */
   border-radius: var(--ds-radius-xs); /* M3 Outlined Text Field 4px corner radius */
   background: transparent;
   color: var(--ds-color-text);
+  caret-color: var(--ds-color-primary);
   font: inherit;
   font-size: var(--ds-text-sm);
   transition:
     border-color var(--ds-duration-short3) var(--ds-ease-standard),
     box-shadow var(--ds-duration-short3) var(--ds-ease-standard),
-    background-color var(--ds-duration-short3) var(--ds-ease-standard);
+    background-color var(--ds-duration-short3) var(--ds-ease-standard),
+    padding-right var(--ds-duration-short3) var(--ds-ease-standard);
+}
+/* Hide native browser search clear icon so our M3 trailing clear button (.ds-field__clear) is used consistently */
+input[type="search"].ds-input::-webkit-search-cancel-button,
+input[type="search"].ds-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+/* Hide placeholder while the resting label sits inside the field; reveal smoothly on focus */
+.ds-field:has(> .ds-label) > .ds-input::placeholder,
+.ds-field:has(> .ds-label) > .ds-textarea::placeholder {
+  opacity: 0;
+  transition: opacity 140ms var(--ds-ease-standard);
+}
+.ds-field:focus-within > .ds-input::placeholder,
+.ds-field:focus-within > .ds-textarea::placeholder {
+  opacity: 1;
+}
+/* Reserve trailing space when the M3 clear button (✕) is present and visible */
+.ds-field.has-value > .ds-input:not([type="date"]):not([type="file"]) {
+  padding-right: 2.35rem;
+}
+/* M3 Trailing Clear Icon Button ("la croix" ✕) */
+.ds-field__clear {
+  position: absolute;
+  right: 0.35rem;
+  top: calc(0.45rem + 1.3125rem);
+  transform: translateY(-50%) scale(0.8);
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--ds-radius-pill);
+  background: transparent;
+  color: var(--ds-color-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 150ms var(--ds-ease-standard),
+    transform 150ms var(--ds-ease-standard),
+    background-color 150ms var(--ds-ease-standard),
+    color 150ms var(--ds-ease-standard);
+}
+.ds-field:has(> .ds-input--sm) > .ds-field__clear {
+  top: calc(0.45rem + 1rem);
+  width: 1.45rem;
+  height: 1.45rem;
+}
+.ds-field.has-value > .ds-field__clear,
+.ds-field:not(.is-empty):has(> .ds-input:not(:placeholder-shown)) > .ds-field__clear {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(-50%) scale(1);
+}
+.ds-field__clear:hover {
+  background: var(--ds-color-surface-hover);
+  color: var(--ds-color-text);
+}
+.ds-field__clear:active {
+  background: var(--ds-surface-container-highest);
+  transform: translateY(-50%) scale(0.92);
+}
+.ds-field__clear:focus-visible {
+  outline: none;
+  box-shadow: var(--ds-focus-ring);
+}
+.ds-field__clear svg {
+  width: 1rem;
+  height: 1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ds-field:has([aria-invalid="true"]) > .ds-field__clear,
+.ds-field.is-invalid > .ds-field__clear {
+  color: var(--ds-color-danger-text);
 }
 .ds-input--sm {
   min-height: 2rem;
   padding: 0.3rem 0.6rem;
   font-size: var(--ds-text-xs);
 }
-.ds-input:hover:not(:disabled),
-.ds-select:hover:not(:disabled),
-.ds-textarea:hover:not(:disabled) {
+.ds-input:hover:not(:disabled):not(:focus-visible),
+.ds-select:hover:not(:disabled):not(:focus-visible),
+.ds-textarea:hover:not(:disabled):not(:focus-visible) {
   border-color: var(--ds-color-text);
+}
+.ds-input[aria-invalid="true"]:hover:not(:disabled),
+.ds-select[aria-invalid="true"]:hover:not(:disabled),
+.ds-textarea[aria-invalid="true"]:hover:not(:disabled) {
+  border-color: var(--ds-color-danger);
 }
 .ds-textarea { min-height: 6rem; resize: vertical; line-height: var(--ds-leading-normal); }
 .ds-select { appearance: none; padding-right: 2rem; background-color: var(--ds-color-surface); background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: calc(100% - 1rem) 55%, calc(100% - 0.7rem) 55%; background-size: 0.3rem 0.3rem; background-repeat: no-repeat; }
@@ -1981,7 +2198,9 @@ article[data-href] {
   user-select: none;
   transition:
     background-color var(--ds-duration-short3) var(--ds-ease-standard),
-    color var(--ds-duration-short3) var(--ds-ease-standard);
+    color var(--ds-duration-short3) var(--ds-ease-standard),
+    border-radius var(--ds-duration-short3) var(--ds-ease-standard),
+    transform var(--ds-duration-short2) var(--ds-ease-standard);
 }
 .ds-m3-select__option:first-child {
   border-radius: 11px 11px 6px 6px;
@@ -2050,9 +2269,20 @@ article[data-href] {
   white-space: nowrap;
 }
 .ds-input::placeholder, .ds-textarea::placeholder { color: var(--ds-color-text-subtle); }
-.ds-input:focus-visible, .ds-select:focus-visible, .ds-textarea:focus-visible { outline: none; border-color: var(--ds-color-primary); box-shadow: inset 0 0 0 1px var(--ds-color-primary); }
+.ds-input:focus, .ds-input:focus-visible,
+.ds-select:focus, .ds-select:focus-visible,
+.ds-textarea:focus, .ds-textarea:focus-visible {
+  outline: none;
+  border-color: var(--ds-color-primary);
+  box-shadow: inset 0 0 0 1px var(--ds-color-primary); /* M3 2dp active outline without layout shift */
+}
 .ds-input:disabled, .ds-select:disabled, .ds-textarea:disabled { background: var(--ds-surface-container); color: var(--ds-color-text-muted); cursor: not-allowed; }
-.ds-input[aria-invalid="true"], .ds-select[aria-invalid="true"], .ds-textarea[aria-invalid="true"] { border-color: var(--ds-color-danger); box-shadow: inset 0 0 0 1px var(--ds-color-danger); }
+.ds-input[aria-invalid="true"], .ds-select[aria-invalid="true"], .ds-textarea[aria-invalid="true"],
+.ds-input[aria-invalid="true"]:focus, .ds-select[aria-invalid="true"]:focus, .ds-textarea[aria-invalid="true"]:focus {
+  border-color: var(--ds-color-danger);
+  box-shadow: inset 0 0 0 1px var(--ds-color-danger);
+  caret-color: var(--ds-color-danger);
+}
 
 .ds-check { display: inline-flex; align-items: center; gap: var(--ds-space-2); cursor: pointer; font-size: var(--ds-text-sm); }
 .ds-check input:not(.ds-toggle) { width: 1.125rem; height: 1.125rem; margin: 0; accent-color: var(--ds-color-primary); flex: none; }
@@ -2365,6 +2595,24 @@ article[data-href] {
   display: flex;
   flex-direction: column;
   gap: var(--ds-space-3);
+}
+.ds-tabpanel:not([hidden]) {
+  animation: ds-tab-enter 160ms var(--ds-ease-decelerate) both;
+}
+@keyframes ds-tab-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-tabpanel:not([hidden]) {
+    animation: none;
+  }
 }
 .ds-tabpanel[hidden] { display: none; }
 
