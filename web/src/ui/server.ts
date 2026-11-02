@@ -391,6 +391,13 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       });
     }
 
+    const isMobileUa =
+      req.headers["sec-ch-ua-mobile"] === "?1" ||
+      /Mobile|Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(
+        String(req.headers["user-agent"] || ""),
+      );
+    const defaultDisplay = isMobileUa ? "cards" : "table";
+
     const filter: WorklistFilter = {
       query: query.q,
       completeness:
@@ -408,7 +415,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
           ? query.orientation
           : "all",
       viewMode: query.viewMode === "rcp" ? "rcp" : "patients",
-      displayMode: query.display === "cards" ? "cards" : "table",
+      displayMode:
+        query.display === "cards" ? "cards" : query.display === "table" ? "table" : defaultDisplay,
       sortBy:
         query.sortBy === "priority" ||
         query.sortBy === "patient" ||

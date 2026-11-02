@@ -60,6 +60,18 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     const cardsRes = await app.inject({ method: "GET", url: "/worklist?display=cards" });
     expect(cardsRes.statusCode).toBe(200);
     expect(cardsRes.body).toContain("ds-patient-grid");
+
+    // Mobile User-Agent defaults to Cards view on /worklist when display is not explicitly passed
+    const mobileCardsRes = await app.inject({
+      method: "GET",
+      url: "/worklist",
+      headers: {
+        "user-agent":
+          "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      },
+    });
+    expect(mobileCardsRes.statusCode).toBe(200);
+    expect(mobileCardsRes.body).toContain('<option value="cards" selected>');
     await app.close();
   });
 

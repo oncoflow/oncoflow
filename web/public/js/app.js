@@ -150,6 +150,28 @@
   syncMobileCollapsibleDrawers();
   window.addEventListener("resize", syncMobileCollapsibleDrawers, { passive: true });
 
+  // Default worklist to Cards view on mobile viewports (<= 768px) unless display=table is explicitly requested
+  function syncMobileWorklistDefaultDisplay() {
+    if (window.innerWidth > 768) return;
+    try {
+      var sp = new URLSearchParams(window.location.search);
+      if (sp.get("display") === "table" || sp.get("display") === "cards") return;
+    } catch (_e) {}
+    var tpl = document.getElementById("worklist-mobile-cards-tpl");
+    var tableWrap = document.querySelector(".ds-table-wrap");
+    if (tpl && tpl.content && tableWrap && tableWrap.parentNode) {
+      var clone = tpl.content.cloneNode(true);
+      tableWrap.parentNode.replaceChild(clone, tableWrap);
+      tpl.parentNode.removeChild(tpl);
+      var displaySelect = document.getElementById("f-display");
+      if (displaySelect && displaySelect.value !== "cards") {
+        displaySelect.value = "cards";
+      }
+    }
+  }
+  syncMobileWorklistDefaultDisplay();
+  window.addEventListener("resize", syncMobileWorklistDefaultDisplay, { passive: true });
+
   // Toggle all accordions, toggle PDF expand, quick prompt chips, M3 Contextual Menus (...), and M3 Exposed Dropdown Menus
   function closeAllMenus(exceptEl) {
     document

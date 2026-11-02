@@ -662,6 +662,149 @@ export function renderWorklistPage(
           })
           .join("");
 
+  const cardsGridHtml =
+    cards.length === 0
+      ? ""
+      : `<div class="ds-patient-grid" id="worklist" data-testid="worklist-table">
+          ${cards
+            .map((c) => {
+              const prio = derivePriorityBadgeInfo(c.priorityLevel, lang, true);
+              const compl = deriveCompletenessInfo(
+                {
+                  is_complete: c.isComplete,
+                  missing_count: c.missingCount,
+                  missing_items: c.missingItems,
+                },
+                lang,
+              );
+              const orient = deriveOrientationInfo(
+                {
+                  care_adaptation_suggested: c.careAdaptationSuggested,
+                  proposed_care_type: c.proposedCareType,
+                },
+                lang,
+              );
+              const dossierHref = c.patientId
+                ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
+                : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
+              const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
+              return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+                <div class="ds-card__header">
+                  <h2 class="ds-patient-card__name"><a href="${dossierHref}">${esc(c.patientName)}</a></h2>
+                  <span class="ds-patient-card__id">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
+                </div>
+                <div class="ds-card__body">
+                  <div class="ds-cluster">
+                    <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
+                    ${
+                      !c.isComplete && c.missingItems.length > 0
+                        ? `<div class="ds-hovercard" tabindex="0">
+                            <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
+                            <div class="ds-hovercard__panel" role="tooltip">
+                              <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
+                              <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+                            </div>
+                          </div>`
+                        : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`
+                    }
+                    ${
+                      c.proposedCareType || c.summaryText
+                        ? `<div class="ds-hovercard" tabindex="0">
+                            <span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>
+                            <div class="ds-hovercard__panel" role="tooltip">
+                              <span class="ds-hovercard__title">${iconSvg("ic-compass")} Orientation pré-RCP</span>
+                              ${c.proposedCareType ? `<p style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${esc(c.proposedCareType)}</p>` : ""}
+                              ${c.summaryText ? `<p>${esc(c.summaryText)}</p>` : ""}
+                            </div>
+                          </div>`
+                        : `<span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>`
+                    }
+                  </div>
+                  ${c.summaryText ? `<p class="ds-small">${esc(c.summaryText)}</p>` : ""}
+                </div>
+                <div class="ds-card__footer">
+                  <span class="ds-small ds-muted">RCP : ${esc(c.mdtDate ?? "—")}</span>
+                  <div class="ds-card__footer-end">
+                    <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_${esc(c.id)}">Ouvrir</a>
+                    <details class="ds-menu" data-testid="menu-patient-${esc(c.id)}">
+                      <summary class="ds-menu__trigger" aria-label="Actions contextuelles pour ${esc(c.patientName)}" title="Actions patient">
+                        ${iconSvg("ic-more-vert")}
+                      </summary>
+                      <div class="ds-menu__panel" role="menu">
+                        <div class="ds-menu__header">${esc(c.patientName)}</div>
+                        <a class="ds-menu__item" role="menuitem" href="${dossierHref}">
+                          ${iconSvg("ic-folder")}
+                          <span>Ouvrir le dossier longitudinal</span>
+                        </a>
+                        <a class="ds-menu__item" role="menuitem" href="${dossierHref}&tab=opinions#panel-opinions">
+                          ${iconSvg("ic-compass")}
+                          <span>Avis &amp; orientation pré-RCP</span>
+                        </a>
+                        <a class="ds-menu__item" role="menuitem" href="/ingest?domain=${domainParam}&patientId=${encodeURIComponent(c.patientId ?? c.id)}">
+                          ${iconSvg("ic-upload")}
+                          <span>Importer une pièce PDF</span>
+                        </a>
+                        <hr class="ds-menu__divider">
+                        <a class="ds-menu__item" role="menuitem" href="/feedback?domain=${domainParam}&patientId=${encodeURIComponent(c.patientId ?? c.id)}">
+                          ${iconSvg("ic-bug")}
+                          <span>Signaler une anomalie</span>
+                        </a>
+                      </div>
+                    </details>
+                  </div>
+                </div>
+              </article>`;
+            })
+            .join("")}
+        </div>`;
+
+  const tableWrapHtml =
+    cards.length === 0
+      ? ""
+      : `<div class="ds-table-wrap">
+          <table class="ds-table ds-table--dense" id="worklist" data-testid="worklist-table">
+            <caption class="ds-sr-only">Worklist RCP triée par priorité</caption>
+            <thead>
+              <tr>
+                ${(
+                  [
+                    { key: "priority", label: "Priorité", col: 0 },
+                    { key: "patient", label: "Patient", col: 1 },
+                    { key: "completeness", label: "Complétude", col: 2 },
+                    { key: "orientation", label: "Orientation pré-RCP", col: 3 },
+                    { key: "specialties", label: "Spécialités requises", col: 4 },
+                    { key: "mdtDate", label: "Dernière RCP", col: 5 },
+                  ] as const
+                )
+                  .map((colDef) => {
+                    const activeSort = filter.sortBy ?? "priority";
+                    const activeDir = filter.sortDir ?? "asc";
+                    const isSorted = activeSort === colDef.key;
+                    const nextDir = isSorted && activeDir === "asc" ? "desc" : "asc";
+                    const ariaSort = isSorted
+                      ? activeDir === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none";
+                    const sortUrl = `/worklist?domain=${domainParam}&sortBy=${colDef.key}&sortDir=${nextDir}${filter.query ? `&q=${encodeURIComponent(filter.query)}` : ""}${filter.completeness && filter.completeness !== "all" ? `&completeness=${encodeURIComponent(filter.completeness)}` : ""}${filter.priority && filter.priority !== "all" ? `&priority=${encodeURIComponent(filter.priority)}` : ""}${filter.viewMode ? `&viewMode=${encodeURIComponent(filter.viewMode)}` : ""}`;
+                    return `<th scope="col" aria-sort="${ariaSort}" data-sort-col="${colDef.col}">
+                      <a class="ds-sort ${isSorted ? "is-sorted" : ""}" href="${sortUrl}" data-sort-trigger="${colDef.col}" data-testid="sort-${colDef.key}">
+                        <span>${colDef.label}</span>
+                        <span class="ds-sort__icon" aria-hidden="true">${isSorted ? (activeDir === "asc" ? "↑" : "↓") : "↕"}</span>
+                      </a>
+                    </th>`;
+                  })
+                  .join("")}
+                <th scope="col" class="ds-table__actions"><span class="ds-sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rowsHtml}
+            </tbody>
+          </table>
+        </div>
+        <template id="worklist-mobile-cards-tpl">${cardsGridHtml}</template>`;
+
   const bodyHtml = `
     <div class="ds-page-header">
       <div class="ds-page-header__text">
@@ -762,140 +905,8 @@ export function renderWorklistPage(
             <a class="ds-btn ds-btn--primary" href="/ingest?domain=${domainParam}">${iconSvg("ic-upload")} Importer des PDF</a>
           </div>`
         : filter.displayMode === "cards"
-          ? `<div class="ds-patient-grid" id="worklist" data-testid="worklist-table">
-              ${cards
-                .map((c) => {
-                  const prio = derivePriorityBadgeInfo(c.priorityLevel, lang, true);
-                  const compl = deriveCompletenessInfo(
-                    {
-                      is_complete: c.isComplete,
-                      missing_count: c.missingCount,
-                      missing_items: c.missingItems,
-                    },
-                    lang,
-                  );
-                  const orient = deriveOrientationInfo(
-                    {
-                      care_adaptation_suggested: c.careAdaptationSuggested,
-                      proposed_care_type: c.proposedCareType,
-                    },
-                    lang,
-                  );
-                  const dossierHref = c.patientId
-                    ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
-                    : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
-                  const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
-                  return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
-                    <div class="ds-card__header">
-                      <h2 class="ds-patient-card__name"><a href="${dossierHref}">${esc(c.patientName)}</a></h2>
-                      <span class="ds-patient-card__id">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
-                    </div>
-                    <div class="ds-card__body">
-                      <div class="ds-cluster">
-                        <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
-                        ${
-                          !c.isComplete && c.missingItems.length > 0
-                            ? `<div class="ds-hovercard" tabindex="0">
-                                <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
-                                <div class="ds-hovercard__panel" role="tooltip">
-                                  <span class="ds-hovercard__title">${iconSvg("ic-warning")} Éléments manquants</span>
-                                  <ul class="ds-hovercard__list">${c.missingItems.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
-                                </div>
-                              </div>`
-                            : `<span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>`
-                        }
-                        ${
-                          c.proposedCareType || c.summaryText
-                            ? `<div class="ds-hovercard" tabindex="0">
-                                <span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>
-                                <div class="ds-hovercard__panel" role="tooltip">
-                                  <span class="ds-hovercard__title">${iconSvg("ic-compass")} Orientation pré-RCP</span>
-                                  ${c.proposedCareType ? `<p style="font-weight:var(--ds-weight-semibold);margin-bottom:4px">${esc(c.proposedCareType)}</p>` : ""}
-                                  ${c.summaryText ? `<p>${esc(c.summaryText)}</p>` : ""}
-                                </div>
-                              </div>`
-                            : `<span class="ds-badge ${orient.badgeClass} ds-badge--sm">${iconSvg(orient.icon)} ${esc(orient.label)}</span>`
-                        }
-                      </div>
-                      ${c.summaryText ? `<p class="ds-small">${esc(c.summaryText)}</p>` : ""}
-                    </div>
-                    <div class="ds-card__footer">
-                      <span class="ds-small ds-muted">RCP : ${esc(c.mdtDate ?? "—")}</span>
-                      <div class="ds-card__footer-end">
-                        <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_${esc(c.id)}">Ouvrir</a>
-                        <details class="ds-menu" data-testid="menu-patient-${esc(c.id)}">
-                          <summary class="ds-menu__trigger" aria-label="Actions contextuelles pour ${esc(c.patientName)}" title="Actions patient">
-                            ${iconSvg("ic-more-vert")}
-                          </summary>
-                          <div class="ds-menu__panel" role="menu">
-                            <div class="ds-menu__header">${esc(c.patientName)}</div>
-                            <a class="ds-menu__item" role="menuitem" href="${dossierHref}">
-                              ${iconSvg("ic-folder")}
-                              <span>Ouvrir le dossier longitudinal</span>
-                            </a>
-                            <a class="ds-menu__item" role="menuitem" href="${dossierHref}&tab=opinions#panel-opinions">
-                              ${iconSvg("ic-compass")}
-                              <span>Avis &amp; orientation pré-RCP</span>
-                            </a>
-                            <a class="ds-menu__item" role="menuitem" href="/ingest?domain=${domainParam}&patientId=${encodeURIComponent(c.patientId ?? c.id)}">
-                              ${iconSvg("ic-upload")}
-                              <span>Importer une pièce PDF</span>
-                            </a>
-                            <hr class="ds-menu__divider">
-                            <a class="ds-menu__item" role="menuitem" href="/feedback?domain=${domainParam}&patientId=${encodeURIComponent(c.patientId ?? c.id)}">
-                              ${iconSvg("ic-bug")}
-                              <span>Signaler une anomalie</span>
-                            </a>
-                          </div>
-                        </details>
-                      </div>
-                    </div>
-                  </article>`;
-                })
-                .join("")}
-            </div>`
-          : `<div class="ds-table-wrap">
-            <table class="ds-table ds-table--dense" id="worklist" data-testid="worklist-table">
-              <caption class="ds-sr-only">Worklist RCP triée par priorité</caption>
-              <thead>
-                <tr>
-                  ${(
-                    [
-                      { key: "priority", label: "Priorité", col: 0 },
-                      { key: "patient", label: "Patient", col: 1 },
-                      { key: "completeness", label: "Complétude", col: 2 },
-                      { key: "orientation", label: "Orientation pré-RCP", col: 3 },
-                      { key: "specialties", label: "Spécialités requises", col: 4 },
-                      { key: "mdtDate", label: "Dernière RCP", col: 5 },
-                    ] as const
-                  )
-                    .map((colDef) => {
-                      const activeSort = filter.sortBy ?? "priority";
-                      const activeDir = filter.sortDir ?? "asc";
-                      const isSorted = activeSort === colDef.key;
-                      const nextDir = isSorted && activeDir === "asc" ? "desc" : "asc";
-                      const ariaSort = isSorted
-                        ? activeDir === "asc"
-                          ? "ascending"
-                          : "descending"
-                        : "none";
-                      const sortUrl = `/worklist?domain=${domainParam}&sortBy=${colDef.key}&sortDir=${nextDir}${filter.query ? `&q=${encodeURIComponent(filter.query)}` : ""}${filter.completeness && filter.completeness !== "all" ? `&completeness=${encodeURIComponent(filter.completeness)}` : ""}${filter.priority && filter.priority !== "all" ? `&priority=${encodeURIComponent(filter.priority)}` : ""}${filter.viewMode ? `&viewMode=${encodeURIComponent(filter.viewMode)}` : ""}`;
-                      return `<th scope="col" aria-sort="${ariaSort}" data-sort-col="${colDef.col}">
-                        <a class="ds-sort ${isSorted ? "is-sorted" : ""}" href="${sortUrl}" data-sort-trigger="${colDef.col}" data-testid="sort-${colDef.key}">
-                          <span>${colDef.label}</span>
-                          <span class="ds-sort__icon" aria-hidden="true">${isSorted ? (activeDir === "asc" ? "↑" : "↓") : "↕"}</span>
-                        </a>
-                      </th>`;
-                    })
-                    .join("")}
-                  <th scope="col" class="ds-table__actions"><span class="ds-sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rowsHtml}
-              </tbody>
-            </table>
-          </div>`
+          ? cardsGridHtml
+          : tableWrapHtml
     }
   `;
 
