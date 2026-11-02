@@ -462,3 +462,43 @@ class TestOncowflowAgent(unittest.TestCase):
             0
         ]["content"]
         self.assertIn("exceeded the model context window", retry_prompt)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_chat_agent_starts_with_clean_context_and_retries_3_times_before_raising(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        from src.application.agent.agent import ChatResponse
+
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=ChatResponse,
+        )
+
+        # Verify ChatResponse system prompt explicitly prevents unnecessary tool calls on "test"
+        passed_system_prompt = mock_create_agent.call_args.kwargs.get(
+            "system_prompt", ""
+        )
+        self.assertIn("no pre-initialized conversation", passed_system_prompt)
+        self.assertIn("WITHOUT calling any tools", passed_system_prompt)
+
+        # Simulate 3 failed attempts -> raises ValueError after exactly 3 attempts
+        mock_agent_executor.invoke.side_effect = [
+            RuntimeError("litellm.ContextWindowExceededError: 77038 > 64000 tokens"),
+            RuntimeError("litellm.ContextWindowExceededError: 77038 > 64000 tokens"),
+            RuntimeError("litellm.ContextWindowExceededError: 77038 > 64000 tokens"),
+        ]
+
+        with self.assertRaises(ValueError):
+            agent.ask("test")
+
+        self.assertEqual(mock_agent_executor.invoke.call_count, 3)
+        for call in mock_agent_executor.invoke.call_args_list:
+            msgs = call.args[0]["messages"]
+            self.assertEqual(len(msgs), 1)
+            self.assertEqual(msgs[0]["role"], "user")

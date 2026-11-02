@@ -19,7 +19,7 @@ from src.application.agent.tools import (
     Context,
     PatientContext,
 )
-from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
+from langchain.agents.middleware import ToolRetryMiddleware
 
 
 def _strip_thinking(text: str) -> str:
@@ -152,6 +152,7 @@ class OncowflowAgent:
     additionnal_readers: list[DocumentReader] = []
     patient_readers: list[DocumentReader] = []
     reasoning_budget: int | None = 2048
+    DEFAULT_MAX_RETRIES: ClassVar[int] = 3
     # Retry prompt budget (characters, ~3.5 chars/token): keeps corrections small
     # enough for local models with a limited context window.
     RETRY_MAX_OUTPUT_CHARS: ClassVar[int] = 2000
@@ -227,18 +228,26 @@ class OncowflowAgent:
             or self.ressources
             or additionnal_readers
         )
-        step1_block = (
-            f"""## STEP 1 — Gather information (use tools)
+        is_chat_mode = self.output_format is ChatResponse
+        if not has_tools:
+            step1_block = """## STEP 1 — Analyze the provided context
+        - Use strictly the information provided in the user prompt.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+        elif is_chat_mode:
+            step1_block = f"""## STEP 1 — Understand the user message and gather information ONLY if needed
+        - You are a fresh agent instance with no pre-initialized conversation or document context.
+        - If the user message is a greeting, a short connectivity test (e.g. "test", "bonjour"), or does NOT require reading the patient record or scientific guidelines, answer directly in STEP 2 WITHOUT calling any tools.
+        - Only when the user asks a clinical or administrative question about the patient record or scientific guidelines:
+          - Call `{mtd_tool_name}` at most ONCE to retrieve the patient record text.{history_tool_instruction}
+          - Call `search_on_ressources` (at most 1 or 2 targeted searches with `k=2`) ONLY if scientific guideline evidence is needed.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+        else:
+            step1_block = f"""## STEP 1 — Gather information (use tools)
         If the required information is NOT already in your context, call the appropriate tools FIRST:
         - Call `{mtd_tool_name}` to retrieve the full patient record text.{history_tool_instruction}
         - Call `search_on_ressources` to search reference guidelines if needed.
         - You MAY call tools multiple times to find all required fields.
         - Do NOT guess, mock, or fabricate any clinical information."""
-            if has_tools
-            else """## STEP 1 — Analyze the provided context
-        - Use strictly the information provided in the user prompt.
-        - Do NOT guess, mock, or fabricate any clinical information."""
-        )
 
         schema_dict = self.output_format.model_json_schema()
         required_keys = schema_dict.get("required", [])
@@ -298,7 +307,10 @@ class OncowflowAgent:
             cast(Any, PatientContext) if self.patient_readers else cast(Any, Context)
         )
 
-        # Create the LangChain agent with specific tools and context
+        # Create the LangChain agent with specific tools and context.
+        # Model-level retries are handled by OncowflowAgent.ask() (3 attempts, each
+        # resetting the conversation context from scratch) so a single attempt never
+        # loops 4x on a polluted or oversized context window.
         self.agent = create_agent(
             model=llm_client.chat(
                 models_list[0],
@@ -310,12 +322,7 @@ class OncowflowAgent:
             tools=tools,
             middleware=[
                 ToolRetryMiddleware[Any, Any](
-                    max_retries=3,
-                    backoff_factor=2.0,
-                    initial_delay=1.0,
-                ),
-                ModelRetryMiddleware[Any, Any](
-                    max_retries=3,
+                    max_retries=2,
                     backoff_factor=2.0,
                     initial_delay=1.0,
                 ),
@@ -379,18 +386,22 @@ class OncowflowAgent:
         question: str | None = None,
         output_format: type[BaseModel] | str | None = None,
         callbacks: list | None = None,
+        retry: int = DEFAULT_MAX_RETRIES,
     ) -> Any:
         """
         Ask a question to the agent.
 
         Args:
             question (str, optional): The question to ask. Defaults to self.question.
+            output_format (type[BaseModel] | str | None, optional): Expected output schema.
+            callbacks (list, optional): LangChain callbacks.
+            retry (int, optional): Number of attempts before raising ValueError. Defaults to 3.
 
         Returns:
             dict: The parsed JSON response from the agent matching the output_format.
 
         Raises:
-            ValueError: If the agent fails to provide a valid response matching the schema.
+            ValueError: If the agent fails to provide a valid response matching the schema after `retry` attempts.
         """
         if question is None:
             question = self.question
@@ -398,26 +409,27 @@ class OncowflowAgent:
         if output_format is None:
             output_format = self.output_format
 
+        self.latest_thinking = ""
         self.logger.info('Ask "%s" to agent ...', question)
 
-        retry = 3
+        retry = max(1, int(retry))
         validation_error = None
         result = None
         last_failed_output = None
         original_question = question
 
         for r in range(retry):
-            # Invoke the agent with the user question and context (readers)
+            # Invoke the agent with a clean single-message input and isolated runtime context
             runtime_context = (
                 PatientContext(
-                    patient_readers=self.patient_readers,
-                    additionnal_readers=self.additionnal_readers,
+                    patient_readers=list(self.patient_readers),
+                    additionnal_readers=list(self.additionnal_readers),
                     logger=self.logger,
                 )
                 if self.patient_readers
                 else Context(
                     reader=self.reader,
-                    additionnal_readers=self.additionnal_readers,
+                    additionnal_readers=list(self.additionnal_readers),
                     logger=self.logger,
                 )
             )

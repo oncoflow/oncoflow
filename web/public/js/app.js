@@ -1348,6 +1348,11 @@
         body: chatBody,
       })
         .then(function (r) {
+          if (!r.ok) {
+            var err = new Error("HTTP " + r.status);
+            err.status = r.status;
+            throw err;
+          }
           return r.text();
         })
         .then(function (html) {
@@ -1360,12 +1365,41 @@
             log.scrollTop = log.scrollHeight;
           }
         })
-        .catch(function () {
+        .catch(function (err) {
           if (timerInterval) window.clearInterval(timerInterval);
           if (log) {
             log.querySelectorAll("[data-chat-temp='true']").forEach(function (el) {
               el.remove();
             });
+            var errUserLi = document.createElement("li");
+            errUserLi.className = "ds-chat__msg ds-chat__msg--user";
+            var errUserAuthor = document.createElement("span");
+            errUserAuthor.className = "ds-chat__author";
+            errUserAuthor.textContent = "Vous";
+            var errUserBubble = document.createElement("div");
+            errUserBubble.className = "ds-chat__bubble";
+            errUserBubble.textContent = questionText;
+            errUserLi.appendChild(errUserAuthor);
+            errUserLi.appendChild(errUserBubble);
+            log.appendChild(errUserLi);
+
+            var errLi = document.createElement("li");
+            errLi.className = "ds-chat__msg ds-chat__msg--assistant";
+            errLi.setAttribute("data-testid", "chat-assistant-error");
+            var errAuthor = document.createElement("span");
+            errAuthor.className = "ds-chat__author";
+            errAuthor.textContent = agentLabel || "Assistant clinique";
+            var errBubble = document.createElement("div");
+            errBubble.className = "ds-chat__bubble";
+            var statusLabel = err && err.status ? " (erreur " + err.status + ")" : "";
+            errBubble.textContent =
+              "L'assistant n'a pas pu répondre après 3 tentatives" +
+              statusLabel +
+              ". Veuillez reformuler votre question ou réessayer.";
+            errLi.appendChild(errAuthor);
+            errLi.appendChild(errBubble);
+            log.appendChild(errLi);
+            log.scrollTop = log.scrollHeight;
           }
         })
         .finally(function () {

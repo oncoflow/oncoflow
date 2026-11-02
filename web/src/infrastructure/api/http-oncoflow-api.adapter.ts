@@ -39,6 +39,7 @@ export interface HttpOncoflowApiAdapterOptions {
   fetchImpl?: typeof fetch;
   fallbackPort?: OncoflowApiPort;
   timeoutMs?: number;
+  chatTimeoutMs?: number;
 }
 
 export class HttpOncoflowApiAdapter implements OncoflowApiPort {
@@ -48,6 +49,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   private readonly fetchImpl: typeof fetch;
   private readonly fallback?: OncoflowApiPort;
   private readonly timeoutMs: number;
+  private readonly chatTimeoutMs: number;
 
   constructor(options: HttpOncoflowApiAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
@@ -56,6 +58,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.fallback = options.fallbackPort;
     this.timeoutMs = options.timeoutMs ?? 30_000;
+    this.chatTimeoutMs = options.chatTimeoutMs ?? Math.max(this.timeoutMs, 300_000);
   }
 
   private buildHeaders(
@@ -82,16 +85,20 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     path: string,
     domain: ClinicalDomain,
     init: RequestInit = {},
+    timeoutOverrideMs?: number,
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`;
     const headers = this.buildHeaders(
       domain,
       (init.headers as Record<string, string> | undefined) ?? {},
     );
+    const effectiveTimeout = timeoutOverrideMs ?? this.timeoutMs;
     const signal =
       init.signal ??
-      (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
-        ? AbortSignal.timeout(this.timeoutMs)
+      (effectiveTimeout > 0 &&
+      typeof AbortSignal !== "undefined" &&
+      typeof AbortSignal.timeout === "function"
+        ? AbortSignal.timeout(effectiveTimeout)
         : undefined);
     const resp = await this.fetchImpl(url, {
       ...init,
@@ -99,7 +106,11 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       signal,
     });
     if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status} on ${path}`);
+      const httpErr = new Error(`HTTP ${resp.status} on ${path}`) as Error & {
+        statusCode?: number;
+      };
+      httpErr.statusCode = resp.status;
+      throw httpErr;
     }
     return (await resp.json()) as T;
   }
@@ -687,15 +698,20 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       const path = target.patientId
         ? `/api/v1/patientmdtform/patients/${encodeURIComponent(target.patientId)}/chat?domain=${encodeURIComponent(domain)}`
         : `/api/v1/patientmdtform/${encodeURIComponent(target.filename ?? "")}/chat?domain=${encodeURIComponent(domain)}`;
-      const res = await this.requestJson<Record<string, unknown>>(path, domain, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agent_name: resolvedAgent,
-          message: question,
-          language: apiLang,
-        }),
-      });
+      const res = await this.requestJson<Record<string, unknown>>(
+        path,
+        domain,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agent_name: resolvedAgent,
+            message: question,
+            language: apiLang,
+          }),
+        },
+        this.chatTimeoutMs,
+      );
       return {
         answer: String(res.answer ?? res.response ?? ""),
         references: Array.isArray(res.references)
@@ -941,6 +957,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message: question, language: apiLang }),
         },
+        this.chatTimeoutMs,
       );
       return {
         answer: String(res.answer ?? res.response ?? ""),

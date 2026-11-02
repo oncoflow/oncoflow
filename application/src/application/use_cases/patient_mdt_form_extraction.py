@@ -884,10 +884,12 @@ class PatientMDTFormExtractionService:
     def build_patient_readers(
         self,
         filenames: list[str],
+        preload_documents: bool = False,
     ) -> list[DocumentReader]:
         """
         Build the list of `DocumentReader` instances for a `PatientRecord` multi-document chat,
         attaching `.sections` on each reader for the `get_patient_ai_history` tool.
+        Documents are loaded lazily on tool invocation unless `preload_documents=True`.
         """
         docs_by_file: dict[str, dict[str, Any]] = {}
         for d in self.mdt_form_repo.list_by_files(filenames):
@@ -897,7 +899,8 @@ class PatientMDTFormExtractionService:
         readers: list[DocumentReader] = []
         for fname in filenames:
             reader = DocumentReader(self.config, fname)
-            reader.read_document()
+            if preload_documents:
+                reader.read_document()
             reader.sections = docs_by_file.get(fname, {"file": fname})  # type: ignore[attr-defined]
             readers.append(reader)
         return readers

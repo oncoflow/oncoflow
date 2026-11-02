@@ -186,4 +186,54 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     expect(headers["X-App-Token"]).toBe("secret-server-token");
     expect(headers["X-Oncoflow-Domain"]).toBe("oncology");
   });
+
+  it("waits for chat responses with extended chatTimeoutMs and preserves HTTP 500 statusCode after backend retries fail", async () => {
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ response: "Réponse après retry backend" }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        headers: new Headers({ "content-type": "application/json" }),
+        json: async () => ({ detail: "Erreur interne lors de la communication avec l'agent." }),
+      });
+
+    const adapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      timeoutMs: 30_000,
+      chatTimeoutMs: 300_000,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    const reply = await adapter.askDossierQuestion(
+      { patientId: "A-1042" },
+      "test",
+      "sma",
+      "fr",
+      "neurologist expert",
+    );
+    expect(reply.answer).toBe("Réponse après retry backend");
+    expect(timeoutSpy).toHaveBeenCalledWith(300_000);
+
+    await expect(
+      adapter.askDossierQuestion(
+        { patientId: "A-1042" },
+        "test",
+        "sma",
+        "fr",
+        "neurologist expert",
+      ),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining("HTTP 500"),
+      statusCode: 500,
+    });
+
+    timeoutSpy.mockRestore();
+  });
 });

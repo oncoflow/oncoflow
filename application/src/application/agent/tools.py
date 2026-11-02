@@ -6,6 +6,14 @@ from langchain.tools import tool, ToolRuntime
 from src.application.reader import DocumentReader
 
 MAX_SEARCH_K_PER_READER = 4
+MAX_TOOL_OUTPUT_CHARS = 48_000
+
+
+def _cap_tool_output(text: str, max_chars: int = MAX_TOOL_OUTPUT_CHARS) -> str:
+    """Bound tool output length so a single tool call cannot overflow a 64k context window."""
+    if not isinstance(text, str) or len(text) <= max_chars:
+        return text
+    return f"{text[:max_chars]}\n\n[... {len(text) - max_chars} characters truncated to fit context window]"
 
 
 def _normalize_k(k: Any, default: int = 3, max_k: int = MAX_SEARCH_K_PER_READER) -> int:
@@ -111,7 +119,7 @@ def get_mtd_markdown(runtime: ToolRuntime[Context]):
         reader, "read_document"
     ):
         reader.read_document()
-    return reader.markdown_exporter[0].page_content
+    return _cap_tool_output(reader.markdown_exporter[0].page_content)
 
 
 @tool(response_format="content")
@@ -126,10 +134,11 @@ def get_patient_mtds_markdown(runtime: ToolRuntime[PatientContext]):
     for r in patient_readers:
         if not getattr(r, "markdown_exporter", None) and hasattr(r, "read_document"):
             r.read_document()
-    return "\n\n".join(
+    combined = "\n\n".join(
         f"=== FICHE RCP : {r.document} ===\n{r.markdown_exporter[0].page_content}"
         for r in patient_readers
     )
+    return _cap_tool_output(combined)
 
 
 @tool(response_format="content")
@@ -146,7 +155,7 @@ def get_patient_ai_history(runtime: ToolRuntime[PatientContext]):
     entries = [
         (r.document, getattr(r, "sections", None) or {}) for r in patient_readers
     ]
-    return PatientMDTForm.format_ai_history_entries(entries)
+    return _cap_tool_output(PatientMDTForm.format_ai_history_entries(entries))
 
 
 @tool(response_format="content_and_artifact")
@@ -312,7 +321,9 @@ def search_on_ressources(
         f"search_on_ressources - retrieved_docs : {retrieved_docs}"
     )
     if retrieved_docs:
-        serialized = "\n\n".join(_format_doc_for_llm(doc) for doc in retrieved_docs)
+        serialized = _cap_tool_output(
+            "\n\n".join(_format_doc_for_llm(doc) for doc in retrieved_docs)
+        )
         return serialized, retrieved_docs
 
     return "No additionnal ressources provided", []

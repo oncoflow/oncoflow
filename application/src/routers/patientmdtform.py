@@ -648,7 +648,6 @@ def chat_with_patient_agent(
             else config
         )
         reader = DocumentReader(config=effective_config, document=filename)
-        reader.read_document()
         agent_cls = available_agents[request.agent_name]
         agent = agent_cls(config=effective_config, mtd=reader)
         resp = agent.ask(request.message)
