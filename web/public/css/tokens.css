@@ -47,7 +47,7 @@
   --ds-color-surface: var(--ds-surface-container-lowest); /* #FFFFFF */
   --ds-color-surface-sunken: var(--ds-surface-container); /* #F0F0F3 */
   --ds-color-surface-hover: var(--ds-surface-container-high); /* #EAEAEF */
-  --ds-surface-nested: #F4F5F8;                         /* Level 2 inner blocks (.ds-kv, .ds-rationale, .ds-m3-select) */
+  --ds-surface-nested: #EEEEF2;                         /* Level 2 inner blocks (.ds-kv, .ds-rationale, .ds-subcard) */
   --ds-surface-well: #F2F3F7;                           /* Recessed container (.ds-chat__log) */
   --ds-surface-bubble: #FFFFFF;                         /* Elevated bubble inside well (.ds-chat__bubble) */
   --ds-border-nested: #DCDCE4;
@@ -71,6 +71,7 @@
   --ds-color-primary: #386B66;
   --ds-color-primary-hover: #295450;
   --ds-color-on-primary: #FFFFFF;
+  --ds-color-primary-contrast: var(--ds-color-on-primary);
   --ds-color-primary-text: #295450;
   --ds-color-primary-soft: #D6EAE7;             /* M3 Secondary/Primary Container */
 
@@ -223,6 +224,7 @@
   --ds-radius-pill: 9999px;  /* Full — M3 Buttons, Segmented, Nav items */
 
   /* ---- M3 Elevation (whisper-soft ambient + key light) ----------------- */
+  --ds-shadow-xs: 0 1px 2px rgb(0 0 0 / 0.03);
   --ds-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.03);
   --ds-shadow-md: 0 2px 6px rgb(0 0 0 / 0.06), 0 1px 2px rgb(0 0 0 / 0.04);
   --ds-shadow-lg: 0 6px 18px rgb(0 0 0 / 0.09), 0 2px 6px rgb(0 0 0 / 0.04);
@@ -287,7 +289,7 @@
   --ds-color-surface: var(--ds-surface-container-low);   /* #131720 — Level 1 Cards & Drawers */
   --ds-color-surface-sunken: var(--ds-surface-container);/* #1E2433 — Level 2 Inner Blocks */
   --ds-color-surface-hover: var(--ds-surface-container-high); /* #283044 — Level 3 Hover */
-  --ds-surface-nested: #1E2433;                          /* Level 2 inner blocks (.ds-kv, .ds-rationale, .ds-m3-select) */
+  --ds-surface-nested: #202738;                          /* Level 2 inner blocks (.ds-kv, .ds-rationale, .ds-subcard) */
   --ds-surface-well: #0D1017;                            /* Recessed container (.ds-chat__log) */
   --ds-surface-bubble: #1F2636;                          /* Elevated bubble inside well (.ds-chat__bubble) */
   --ds-border-nested: #333D52;
@@ -308,6 +310,7 @@
   --ds-color-primary: #7BB3AD;
   --ds-color-primary-hover: #96C8C2;
   --ds-color-on-primary: #0F2926;
+  --ds-color-primary-contrast: var(--ds-color-on-primary);
   --ds-color-primary-text: #8FC4BE;
   --ds-color-primary-soft: #1E3D3A;
 
@@ -392,6 +395,7 @@
   --ds-rcp-red-muted: #FECDD6;
   --ds-rcp-red-accent: #FB7190;
 
+  --ds-shadow-xs: 0 1px 2px rgb(0 0 0 / 0.28);
   --ds-shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.25);
   --ds-shadow-md: 0 4px 10px rgb(0 0 0 / 0.42), 0 1px 3px rgb(0 0 0 / 0.3);
   --ds-shadow-lg: 0 8px 24px rgb(0 0 0 / 0.55);
@@ -413,7 +417,7 @@
     --ds-color-surface: var(--ds-surface-container-low);
     --ds-color-surface-sunken: var(--ds-surface-container);
     --ds-color-surface-hover: var(--ds-surface-container-high);
-    --ds-surface-nested: #1E2433;
+    --ds-surface-nested: #202738;
     --ds-surface-well: #0D1017;
     --ds-surface-bubble: #1F2636;
     --ds-border-nested: #333D52;
@@ -434,6 +438,7 @@
     --ds-color-primary: #7BB3AD;
     --ds-color-primary-hover: #96C8C2;
     --ds-color-on-primary: #0F2926;
+    --ds-color-primary-contrast: var(--ds-color-on-primary);
     --ds-color-primary-text: #8FC4BE;
     --ds-color-primary-soft: #1E3D3A;
 
@@ -516,6 +521,7 @@
     --ds-rcp-red-muted: #FECDD6;
     --ds-rcp-red-accent: #FB7190;
 
+    --ds-shadow-xs: 0 1px 2px rgb(0 0 0 / 0.28);
     --ds-shadow-sm: 0 1px 3px rgb(0 0 0 / 0.35), 0 1px 2px rgb(0 0 0 / 0.25);
     --ds-shadow-md: 0 4px 10px rgb(0 0 0 / 0.42), 0 1px 3px rgb(0 0 0 / 0.3);
     --ds-shadow-lg: 0 8px 24px rgb(0 0 0 / 0.55);
