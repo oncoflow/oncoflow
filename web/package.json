@@ -18,6 +18,7 @@
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "e2e": "playwright test",
     "lint": "biome check src tests && tsc --noEmit && node scripts/check-contrast.mjs",
@@ -35,6 +36,7 @@
     "@biomejs/biome": "^1.9.4",
     "@playwright/test": "^1.64.1",
     "@types/node": "^22.20.5",
+    "@vitest/coverage-v8": "^5.0.5",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5"

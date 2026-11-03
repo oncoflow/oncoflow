@@ -227,7 +227,7 @@
       arrowSpan.className = "ds-m3-select__arrow";
       arrowSpan.setAttribute("aria-hidden", "true");
       arrowSpan.innerHTML =
-        '<svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></svg>';
+        '<svg class="ds-icon ds-icon--md" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>';
 
       trigger.appendChild(valueSpan);
       trigger.appendChild(arrowSpan);

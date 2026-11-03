@@ -3,7 +3,7 @@ FROM python:3.14-slim-trixie
 
 # Installation de uv et des outils de compilation / librairies graphiques et système
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
     build-essential \
     gcc \
     curl \

@@ -35,10 +35,28 @@
     <path d="M9.5 8V6.5a2.5 2.5 0 0 1 5 0V8M4 13h3m10 0h3M5 8.5l2.5 1.5m9 0L19 8.5M5 18.5 7.5 17m9 0 2.5 1.5M12 11v9"/>
   </symbol>
   <symbol id="ic-chevron-left" viewBox="0 0 24 24">
-    <path d="m14.5 6-6 6 6 6"/>
+    <path d="m15 6-6 6 6 6"/>
   </symbol>
   <symbol id="ic-chevron-right" viewBox="0 0 24 24">
-    <path d="m9.5 6 6 6-6 6"/>
+    <path d="m9 6 6 6-6 6"/>
+  </symbol>
+  <symbol id="ic-chevron-up" viewBox="0 0 24 24">
+    <path d="m18 15-6-6-6 6"/>
+  </symbol>
+  <symbol id="ic-chevron-down" viewBox="0 0 24 24">
+    <path d="m6 9 6 6 6-6"/>
+  </symbol>
+  <symbol id="ic-arrow-up" viewBox="0 0 24 24">
+    <path d="M12 19V5m0 0-6 6m6-6 6 6"/>
+  </symbol>
+  <symbol id="ic-arrow-down" viewBox="0 0 24 24">
+    <path d="M12 5v14m0 0-6-6m6 6 6-6"/>
+  </symbol>
+  <symbol id="ic-arrow-left" viewBox="0 0 24 24">
+    <path d="M19 12H5m0 0 6-6m-6 6 6 6"/>
+  </symbol>
+  <symbol id="ic-arrow-right" viewBox="0 0 24 24">
+    <path d="M5 12h14m0 0-6-6m6 6-6 6"/>
   </symbol>
   <symbol id="ic-close" viewBox="0 0 24 24">
     <path d="M6 6l12 12M18 6 6 18"/>

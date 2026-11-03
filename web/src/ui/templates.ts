@@ -801,7 +801,10 @@ export function renderWorklistPage(
     <details class="ds-toolbar-drawer" open data-mobile-collapsible="true" data-testid="worklist-filters-drawer">
       <summary class="ds-toolbar-drawer__summary" data-testid="btn_toggle_filters">
         <span class="ds-toolbar-drawer__title">${iconSvg("ic-search", "ds-icon--sm")} ${lang === "fr" ? "Rechercher & filtrer les dossiers" : "Search & filter records"}</span>
-        <span class="ds-badge ds-badge--neutral ds-badge--sm">${cards.length} ${lang === "fr" ? "dossier(s)" : "record(s)"}</span>
+        <span class="ds-cluster" style="gap:var(--ds-space-2)">
+          <span class="ds-badge ds-badge--neutral ds-badge--sm">${cards.length} ${lang === "fr" ? "dossier(s)" : "record(s)"}</span>
+          <svg class="ds-icon ds-icon--md ds-toolbar-drawer__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+        </span>
       </summary>
       <form class="ds-toolbar" method="get" action="/worklist" role="search" data-testid="worklist-filters">
         <input type="hidden" name="domain" value="${esc(session.domain)}">
@@ -1527,10 +1530,10 @@ export function renderDossierPage(
           ${
             agendaNav.prevPatientId
               ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.prevPatientId)}?domain=${domainParam}&from=agenda${agendaNav.prevFilename ? `&file=${encodeURIComponent(agendaNav.prevFilename)}` : ""}" aria-label="Dossier précédent" title="${esc(agendaNav.prevPatientName ?? "")}" data-testid="btn_agenda_prev_dossier">
-                  ← <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>précédent (#${agendaNav.position - 1})<span class="ds-agenda-dossier-nav__patient-name">${agendaNav.prevPatientName ? ` · ${esc(agendaNav.prevPatientName)}` : ""}</span>
+                  ${iconSvg("ic-arrow-left", "ds-icon--md")} <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>précédent (#${agendaNav.position - 1})<span class="ds-agenda-dossier-nav__patient-name">${agendaNav.prevPatientName ? ` · ${esc(agendaNav.prevPatientName)}` : ""}</span>
                 </a>`
               : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled aria-label="Dossier précédent" data-testid="btn_agenda_prev_dossier">
-                  ← <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>précédent
+                  ${iconSvg("ic-arrow-left", "ds-icon--md")} <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>précédent
                 </button>`
           }
         </div>
@@ -1546,10 +1549,10 @@ export function renderDossierPage(
           ${
             agendaNav.nextPatientId
               ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agendaNav.nextPatientId)}?domain=${domainParam}&from=agenda${agendaNav.nextFilename ? `&file=${encodeURIComponent(agendaNav.nextFilename)}` : ""}" aria-label="Dossier suivant" title="${esc(agendaNav.nextPatientName ?? "")}" data-testid="btn_agenda_next_dossier">
-                  <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>suivant (#${agendaNav.position + 1})<span class="ds-agenda-dossier-nav__patient-name">${agendaNav.nextPatientName ? ` · ${esc(agendaNav.nextPatientName)}` : ""}</span> →
+                  <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>suivant (#${agendaNav.position + 1})<span class="ds-agenda-dossier-nav__patient-name">${agendaNav.nextPatientName ? ` · ${esc(agendaNav.nextPatientName)}` : ""}</span> ${iconSvg("ic-arrow-right", "ds-icon--md")}
                 </a>`
               : `<button type="button" class="ds-btn ds-btn--ghost ds-btn--sm" disabled aria-label="Dossier suivant" data-testid="btn_agenda_next_dossier">
-                  <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>suivant →
+                  <span class="ds-agenda-dossier-nav__btn-prefix">Dossier </span>suivant ${iconSvg("ic-arrow-right", "ds-icon--md")}
                 </button>`
           }
         </div>
@@ -1695,7 +1698,7 @@ export function renderDossierPage(
             </span>
             <span class="ds-timeline-drawer__toggle">
               <span class="ds-small ds-muted">Séance affichée : ${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)}</span>
-              <svg class="ds-icon ds-icon--xs ds-timeline-drawer__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+              <svg class="ds-icon ds-icon--md ds-timeline-drawer__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
             </span>
           </summary>
           <nav aria-label="Historique longitudinal des séances RCP" class="ds-timeline-drawer__body">
@@ -2686,25 +2689,25 @@ export function renderAgendaPage(
                   <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
                     <input type="hidden" name="direction" value="up">
                     <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon" ${isFirst ? "disabled" : ""} title="Monter d'un rang" aria-label="Monter ${esc(item.patientName)}" data-testid="btn_move_up_${esc(item.patientId)}">
-                      ↑
+                      ${iconSvg("ic-arrow-up", "ds-icon--md")}
                     </button>
                   </form>
                   <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
                     <input type="hidden" name="direction" value="down">
                     <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--icon" ${isLast ? "disabled" : ""} title="Descendre d'un rang" aria-label="Descendre ${esc(item.patientName)}" data-testid="btn_move_down_${esc(item.patientId)}">
-                      ↓
+                      ${iconSvg("ic-arrow-down", "ds-icon--md")}
                     </button>
                   </form>
                   <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/move?domain=${domainParam}">
                     <input type="hidden" name="pinned" value="${item.pinned ? "false" : "true"}">
                     <button type="submit" class="ds-btn ${item.pinned ? "ds-btn--tonal" : "ds-btn--ghost"} ds-btn--sm ds-btn--icon" aria-pressed="${item.pinned ? "true" : "false"}" title="${item.pinned ? "Déverrouiller la position" : "Verrouiller à ce rang"}" aria-label="${item.pinned ? "Déverrouiller" : "Verrouiller"} ${esc(item.patientName)}" data-testid="btn_pin_${esc(item.patientId)}">
-                      ${iconSvg(item.pinned ? "ic-lock" : "ic-unlock", "ds-icon--xs")}
+                      ${iconSvg(item.pinned ? "ic-lock" : "ic-unlock", "ds-icon--sm")}
                     </button>
                   </form>
                   <a class="ds-btn ds-btn--tonal ds-btn--sm" href="${dossierHref}" data-testid="btn_open_agenda_${esc(item.patientId)}">Ouvrir</a>
                   <form method="post" action="/agenda/patients/${encodeURIComponent(item.patientId)}/remove?domain=${domainParam}">
                     <button type="submit" class="ds-btn ds-btn--danger-soft ds-btn--sm ds-btn--icon" title="Retirer de la séance RCP" aria-label="Retirer ${esc(item.patientName)} de la séance" data-testid="btn_del_agenda_${esc(item.patientId)}">
-                      ${iconSvg("ic-close", "ds-icon--xs")}
+                      ${iconSvg("ic-close", "ds-icon--sm")}
                     </button>
                   </form>
                 </div>
@@ -2826,7 +2829,7 @@ export function renderAgendaPage(
           </span>
           <span class="ds-agenda-config-section__meta">
             <span class="ds-small ds-muted ds-agenda-config-section__hint">Date, mode d'organisation, spécialistes présents et patients</span>
-            <svg class="ds-icon ds-icon--xs ds-agenda-config-section__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
+            <svg class="ds-icon ds-icon--md ds-agenda-config-section__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
           </span>
         </summary>
 
@@ -2874,6 +2877,7 @@ export function renderAgendaPage(
             <details class="ds-agenda-dropdown" data-testid="agenda-expert-chips">
               <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_expert_selector">
                 <span>${agenda.attendingExperts.length}/${agenda.availableExperts.length} présents</span>
+                <svg class="ds-icon ds-icon--md ds-agenda-dropdown__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
               </summary>
               <div class="ds-agenda-dropdown__panel" data-testid="agenda-expert-windows">
                 <div class="ds-agenda-dropdown__header">
@@ -2892,6 +2896,7 @@ export function renderAgendaPage(
             <details class="ds-agenda-dropdown" data-testid="agenda-candidate-pool">
               <summary class="ds-select ds-agenda-dropdown__trigger" data-testid="btn_toggle_candidate_selector">
                 <span>${agenda.candidates.length > 0 ? `+ Ajouter (${agenda.candidates.length} dispo.)` : "Tous inscrits"}</span>
+                <svg class="ds-icon ds-icon--md ds-agenda-dropdown__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
               </summary>
               <div class="ds-agenda-dropdown__panel ds-agenda-dropdown__panel--right">
                 ${

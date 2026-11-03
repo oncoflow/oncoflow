@@ -229,7 +229,7 @@ export function renderAiChatComponent(opts: AiChatComponentOptions): string {
             <span>${esc(opts.submitLabel)}</span>
           </button>
           <button type="button" class="ds-split-btn__toggle" data-split-prompt-toggle aria-haspopup="menu" aria-expanded="false" aria-label="Questions suggérées" title="Insérer une question suggérée">
-            <svg class="ds-icon ds-icon--xs" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9.5 6 6 6-6"/></svg>
+            <svg class="ds-icon ds-icon--md" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
           </button>
           <div class="ds-split-btn__menu" role="menu" aria-label="Questions suggérées">
             <div class="ds-menu__header">${esc(opts.quickPromptsHeading || "Questions suggérées")}</div>
