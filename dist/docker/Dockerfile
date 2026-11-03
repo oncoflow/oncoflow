@@ -14,7 +14,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libxext6 \
     libxrender1 \
     && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /usr/local/lib/python*/site-packages/pip* /usr/local/bin/pip*
+    && uv pip uninstall --system pip
 
 # Création d'un utilisateur non-root pour l'exécution et du répertoire /app
 RUN groupadd -g 1002 appuser && \
@@ -33,14 +33,14 @@ USER appuser
 # Copie des fichiers de définition de projet
 COPY --chown=appuser:appuser application/pyproject.toml application/uv.lock ./
 
-# Installation des dépendances (sans les outils de dev) avec purge du cache de téléchargement
-RUN uv sync --frozen --no-dev --no-install-project && rm -rf /tmp/.uv-cache
+# Installation des dépendances (socle + groupe ui, sans les outils de dev) avec purge du cache
+RUN uv sync --frozen --no-dev --group ui --no-install-project && rm -rf /tmp/.uv-cache
 
 # Copie du code de l'application
 COPY --chown=appuser:appuser application application
 
 # Installation du projet et configuration du PATH pour utiliser le venv créé par uv
-RUN uv sync --frozen --no-dev && rm -rf /tmp/.uv-cache
+RUN uv sync --frozen --no-dev --group ui && rm -rf /tmp/.uv-cache
 ENV PATH="/app/.venv/bin:$PATH"
 ENV UV_PYTHON=/app/.venv/bin/python
 
@@ -48,5 +48,5 @@ WORKDIR /app/application
 
 EXPOSE 8501
 
-# Lancement de l'application
+# Lancement de l'application Streamlit
 CMD ["uv", "run", "--no-sync", "streamlit", "run", "app-ui.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

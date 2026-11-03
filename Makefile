@@ -46,7 +46,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web e2e-web build-web docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -326,6 +326,18 @@ build-web:
 	@echo -e "$(CYAN)--> Compilation TypeScript de $(WEB_DIR)/...$(RESET)"
 	npm --prefix $(WEB_DIR) run build
 
+## Construit l'image Docker dédiée de l'API FastAPI Cross-Domains (dist/docker/Dockerfile.api)
+docker-build-api:
+	@echo -e "$(CYAN)--> Construction de l'image Docker API ($${ONCOFLOW_API_IMAGE:-ghcr.io/oncoflow/oncoflow-api}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile.api -t $${ONCOFLOW_API_IMAGE:-ghcr.io/oncoflow/oncoflow-api}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(GREEN)--> Image Docker API construite avec succès !$(RESET)"
+
+## Construit l'image Docker Streamlit optionnelle (dist/docker/Dockerfile)
+docker-build-ui:
+	@echo -e "$(CYAN)--> Construction de l'image Docker Streamlit ($${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
+	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
+	@echo -e "$(GREEN)--> Image Docker Streamlit construite avec succès !$(RESET)"
+
 ## Construit l'image Docker durcie de l'interface web Node.js (dist/docker/Dockerfile.web)
 docker-build-web:
 	@echo -e "$(CYAN)--> Construction de l'image Docker Web ($${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
@@ -534,13 +546,26 @@ mongo-init-prod:
 		print("  [OK] MongoDB Replica Set (rs0) initialisé."); \
 	' 2>/dev/null || echo -e "  [$(GREEN)OK$(RESET)] MongoDB Replica Set prêt."
 
-## Construit les images Docker applicatives de production (Python FastAPI/Streamlit + Node.js Web UI M3)
-build-prod: docker-build-web
-	@echo -e "$(CYAN)--> Construction de l'image Docker de production ($${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest})...$(RESET)"
-	docker build -f dist/docker/Dockerfile -t $${ONCOFLOW_IMAGE:-ghcr.io/oncoflow/oncoflow}:$${ONCOFLOW_TAG:-latest} .
-	@echo -e "$(GREEN)--> Images Docker de production (App + Web M3) construites avec succès !$(RESET)"
+## Construit en parallèle les images Docker applicatives de production (API FastAPI + Node.js Web UI M3 ; définir WITH_STREAMLIT=1 pour Streamlit)
+build-prod:
+	@echo -e "$(CYAN)--> Construction en parallèle des images Docker de production (API + Web M3)...$(RESET)"
+	@$(MAKE) docker-build-api & PID_API=$$!; \
+	$(MAKE) docker-build-web & PID_WEB=$$!; \
+	PID_UI=""; \
+	if [ "$(WITH_STREAMLIT)" = "1" ]; then \
+		$(MAKE) docker-build-ui & PID_UI=$$!; \
+	fi; \
+	FAIL=0; \
+	wait $$PID_API || FAIL=1; \
+	wait $$PID_WEB || FAIL=1; \
+	if [ -n "$$PID_UI" ]; then wait $$PID_UI || FAIL=1; fi; \
+	if [ $$FAIL -ne 0 ]; then \
+		echo -e "$(RED)--> Échec lors de la construction parallèle des images Docker.$(RESET)"; \
+		exit 1; \
+	fi
+	@echo -e "$(GREEN)--> Images Docker de production construites en parallèle avec succès !$(RESET)"
 
-## Démarre les conteneurs Docker de production (Multi-Domaines Web M3 oncologic & sma ; définir WITH_STREAMLIT=1 pour activer *-st)
+## Démarre les conteneurs Docker de production (API + Web M3 oncologic & sma uniquement ; définir WITH_STREAMLIT=1 pour activer Streamlit *-st)
 docker-up-prod:
 	@if [ ! -f "$(ENV_PROD)" ]; then \
 		echo -e "  [$(RED)ERREUR$(RESET)] Fichier $(ENV_PROD) introuvable. Lancez d'abord 'make init-prod' et configurez vos identifiants GitHub OAuth."; \
@@ -554,13 +579,11 @@ docker-up-prod:
 	@chmod 777 /data/meddatasyntis/common/{mongodb,mongodb_config,milvus,etcd,minio,logs,queue} 2>/dev/null || true
 	@echo -e "$(CYAN)--> Démarrage de Milvus Standalone...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> Préparation de l'image Web UI M3 (oncoflow-web pour oncologic & sma)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-web 2>/dev/null || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
-	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
+	@echo -e "$(CYAN)--> Démarrage de la stack de production MedDataSyntis (L4 GPU + API + Web M3 Oncology/SMA + OAuth2 Proxy + Caddy)...$(RESET)"
 	@if [ "$(WITH_STREAMLIT)" = "1" ]; then \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-build; \
 	else \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-build; \
 	fi
 	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || true
 
@@ -629,9 +652,8 @@ prod-update:
 	@echo -e "$(CYAN)--> [2/5] Mise à jour de Milvus Standalone (v3.0)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
-	@echo -e "$(CYAN)--> [3/5] Téléchargement / construction des dernières images applicatives (Web M3 oncologic/sma, oncoflow-api, oauth2-proxy, caddy, litellm)...$(RESET)"
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-api oauth2-proxy caddy litellm
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
+	@echo -e "$(CYAN)--> [3/5] Téléchargement des dernières images applicatives (oncoflow-api, oncoflow-web, oauth2-proxy, caddy, litellm)...$(RESET)"
+	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull oncoflow-api oncoflow-web oauth2-proxy caddy litellm
 	@echo -e "$(CYAN)--> [4/5] Recréation à chaud des conteneurs applicatifs (LLM conservé en VRAM)...$(RESET)"
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-deps oncoflow-web oncoflow-api oauth2-proxy caddy litellm
 	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
@@ -649,13 +671,16 @@ prod-update-all:
 	@echo -e "$(CYAN)--> Mise à jour complète de la stack de production (infra + LLM + Web M3)...$(RESET)"
 	git pull --ff-only
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) pull
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull --ignore-buildable
-	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) build oncoflow-web
+	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit pull; \
+	else \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) pull; \
+	fi
 	docker compose --env-file $(ENV_PROD) -f $(COMPOSE_MILVUS) up -d
 	@if docker ps --format '{{.Names}}' | grep -q '^oncoflow-ui-'; then \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) --profile streamlit up -d --no-build; \
 	else \
-		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d; \
+		docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) up -d --no-build; \
 	fi
 	@docker exec oncoflow-caddy caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || docker compose --env-file $(ENV_PROD) -f $(COMPOSE_PROD) restart caddy
 	@docker image prune -f >/dev/null 2>&1 || true

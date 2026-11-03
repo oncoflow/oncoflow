@@ -29,9 +29,6 @@ dependencies = [
     "pymupdf>=2.0",
     "pymongo>=4.19.0",
     "python-slugify>=9.1.3",
-    "streamlit>=1.66.1",
-    "streamlit-authenticator>=0.4.2",
-    "streamlit-pdf-viewer>=0.0.30",
     "torch",
     "torchvision",
     "unstructured[pdf]>=0.27.36",
@@ -65,7 +62,13 @@ torchvision = [
 ]
 
 [dependency-groups]
+ui = [
+  "streamlit>=1.66.1",
+  "streamlit-authenticator>=0.4.2",
+  "streamlit-pdf-viewer>=0.0.30",
+]
 dev = [
+  { include-group = "ui" },
   "pytest>=9.2.0,<10",
   "pytest-cov>=7.1.0",
   "ruff>=0.17.3,<0.18",

@@ -298,6 +298,7 @@ services:
   # ─── API Cross-Domains & File de Traitement intégrée (queue.PriorityQueue) ──
   oncoflow-api:
     <<: *ui-common
+    image: ${ONCOFLOW_API_IMAGE:-ghcr.io/oncoflow/oncoflow-api}:${ONCOFLOW_TAG:-latest}
     container_name: oncoflow-api
     command: ["uv", "run", "--no-sync", "python", "app-api.py"]
     ports:
@@ -354,9 +355,6 @@ services:
   # ─── Interface Web Material Design 3 (Fastify BFF Multi-Domaines) ───────────
   oncoflow-web:
     image: ${ONCOFLOW_WEB_IMAGE:-ghcr.io/oncoflow/oncoflow-web}:${ONCOFLOW_TAG:-latest}
-    build:
-      context: ../../..
-      dockerfile: dist/docker/Dockerfile.web
     container_name: oncoflow-web
     restart: unless-stopped
     logging: *default-logging

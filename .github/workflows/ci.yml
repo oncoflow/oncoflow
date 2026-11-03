@@ -82,18 +82,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image
+      - name: Build API and Streamlit Docker images in parallel
         id: build_image
         run: |
-          IMAGE_ID=ghcr.io/${{ github.repository }}
-          # Conversion en minuscules pour respecter le format docker
-          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          BASE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[A-Z]' '[a-z]')
+          API_IMAGE_ID="${BASE_ID}-api"
+          UI_IMAGE_ID="${BASE_ID}"
           VERSION=${{ github.sha }}
-          echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
+          echo "api_image_id=$API_IMAGE_ID" >> $GITHUB_OUTPUT
+          echo "image_id=$UI_IMAGE_ID" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          docker build -f dist/docker/Dockerfile -t $IMAGE_ID:$VERSION -t $IMAGE_ID:latest .
+          docker build -f dist/docker/Dockerfile.api -t $API_IMAGE_ID:$VERSION -t $API_IMAGE_ID:latest . &
+          PID_API=$!
+          docker build -f dist/docker/Dockerfile -t $UI_IMAGE_ID:$VERSION -t $UI_IMAGE_ID:latest . &
+          PID_UI=$!
+          wait $PID_API
+          wait $PID_UI
 
-      - name: Detect CVEs in Docker image (Trivy Image)
+      - name: Detect CVEs in API Docker image (Trivy Image)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: "image"
+          image-ref: "${{ steps.build_image.outputs.api_image_id }}:${{ steps.build_image.outputs.version }}"
+          format: "table"
+          exit-code: "1"
+          severity: "CRITICAL,HIGH"
+          scanners: "vuln,secret"
+          ignore-unfixed: true
+          trivyignores: ".trivyignore"
+
+      - name: Detect CVEs in Streamlit Docker image (Trivy Image)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: "image"
@@ -105,14 +123,19 @@ jobs:
           ignore-unfixed: true
           trivyignores: ".trivyignore"
 
-      - name: Push Docker image
+      - name: Push API and Streamlit Docker images
         if: github.event_name == 'push'
         continue-on-error: true
         run: |
+          API_IMAGE_ID=${{ steps.build_image.outputs.api_image_id }}
           IMAGE_ID=${{ steps.build_image.outputs.image_id }}
           VERSION=${{ steps.build_image.outputs.version }}
-          if ! (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest); then
-            echo "::warning title=GHCR Push Failed::Failed to push Docker image to ghcr.io ($IMAGE_ID:$VERSION / latest). Check GitHub Packages permissions in organization/repository settings."
+          (docker push $API_IMAGE_ID:$VERSION && docker push $API_IMAGE_ID:latest) &
+          PID_API=$!
+          (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest) &
+          PID_UI=$!
+          if ! (wait $PID_API && wait $PID_UI); then
+            echo "::warning title=GHCR Push Failed::Failed to push Docker images to ghcr.io ($API_IMAGE_ID / $IMAGE_ID). Check GitHub Packages permissions in organization/repository settings."
           fi
 
   web-quality-test:
