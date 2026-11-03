@@ -315,7 +315,7 @@ services:
 
   # ─── Reverse Proxy TLS (Caddy — Let's Encrypt auto pour oncologic.* et sma.*)
   caddy:
-    image: caddy:2.10.2-alpine
+    image: caddy:2.11.7-alpine
     container_name: oncoflow-caddy
     restart: unless-stopped
     logging: *default-logging
