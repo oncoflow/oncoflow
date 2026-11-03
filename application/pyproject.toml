@@ -19,7 +19,7 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "langchain-openai>=1.7.3",
     "langchain-litellm>=0.11.2",
-    "openai>=3.41.0",
+    "openai>=3.42.0",
     "docling>=2.145.0",
     "ollama-ocr>=0.1.6",
     "openparse>=0.7.0",
@@ -39,13 +39,13 @@ dependencies = [
     "json-repair>=0.64.2",
     "filetype>=1.2.0",
     "pillow>=13.0.0",
-    "filelock>=4.2.4",
+    "filelock>=4.2.5",
 ]
 
 [tool.uv]
 override-dependencies = [
     "pillow>=13.0.0",
-    "filelock>=4.2.4",
+    "filelock>=4.2.5",
 ]
 
 [[tool.uv.index]]
