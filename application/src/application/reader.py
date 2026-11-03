@@ -33,6 +33,7 @@ import threading
 from langchain_docling.loader import MetaExtractor
 
 from src.application.config import AppConfig
+from src.application.paths import safe_path
 from src.application.tools import timed
 
 from src.infrastructure.parsers.openparse import OpenParseDocumentLoader
@@ -73,11 +74,15 @@ class DocumentReader:
     _docling_lock = threading.Lock()
 
     @classmethod
-    def get_docling_components(cls):
+    def get_docling_components(cls, device: str = "cpu"):
         if cls._docling_converter is None or cls._docling_chunker is None:
             with cls._docling_lock:
                 if cls._docling_converter is None or cls._docling_chunker is None:
                     from docling.chunking import HybridChunker
+                    from docling_core.transforms.chunker.tokenizer.huggingface import (
+                        HuggingFaceTokenizer,
+                    )
+                    from docling.datamodel.accelerator_options import AcceleratorOptions
                     from docling.datamodel.base_models import InputFormat
                     from docling.datamodel.pipeline_options import (
                         PdfPipelineOptions,
@@ -90,7 +95,11 @@ class DocumentReader:
 
                     print("Preloading RapidOCR models and Docling Converter...")
                     ocr_options = RapidOcrOptions()
-                    pipeline_options = PdfPipelineOptions(ocr_options=ocr_options)
+                    accelerator_options = AcceleratorOptions(device=device)
+                    pipeline_options = PdfPipelineOptions(
+                        ocr_options=ocr_options,
+                        accelerator_options=accelerator_options,
+                    )
                     pipeline_options.allow_external_plugins = True
 
                     converter = DocumentConverter(
@@ -100,7 +109,11 @@ class DocumentReader:
                             ),
                         },
                     )
-                    chunker = HybridChunker(tokenizer="intfloat/multilingual-e5-base")
+                    chunker = HybridChunker(
+                        tokenizer=HuggingFaceTokenizer.from_pretrained(
+                            model_name="intfloat/multilingual-e5-base"
+                        )
+                    )
                     cls._docling_chunker = chunker
                     cls._docling_converter = converter
         return cls._docling_converter, cls._docling_chunker
@@ -129,9 +142,9 @@ class DocumentReader:
         self.current_model = None
 
         if document_type == "mtd":
-            self.document_path = f"{config.rcp.path}/{document}"
+            self.document_path = str(safe_path(config.rcp.path, document))
         elif document_type == "ressource":
-            self.document_path = f"{config.rcp.additional_path}/{document}"
+            self.document_path = str(safe_path(config.rcp.additional_path, document))
         else:
             raise ValueError(f"{document_type} not yet supported")
 
@@ -179,7 +192,9 @@ class DocumentReader:
             if loader_type == "openparse":
                 return OpenParseDocumentLoader(document).load()
             elif loader_type == "docling":
-                converter, chunker = self.get_docling_components()
+                converter, chunker = self.get_docling_components(
+                    device=self.config.rcp.docling_device
+                )
 
                 conv_res = converter.convert(source=document)
                 dl_doc = conv_res.document
@@ -376,6 +391,17 @@ class DocumentReader:
             self.default_loader,
         )
         self.chunked_documents = self._load_document(self.document_path)
+        if not self.markdown_exporter and self.chunked_documents:
+            self.markdown_exporter = [
+                Document(
+                    page_content="\n\n".join(
+                        doc.page_content
+                        for doc in self.chunked_documents
+                        if doc.page_content
+                    ),
+                    metadata={"source": self.document_path, "file": self.document},
+                )
+            ]
 
         # pyrefly: ignore [missing-attribute]
         self.vecdb.add_chunked_to_collection(self.chunked_documents, flush_before=True)

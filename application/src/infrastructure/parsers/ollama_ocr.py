@@ -27,7 +27,7 @@ class OllamaOcrDocumentLoader(BaseLoader):
             language="fr",
         )
 
-        print(result)
+        # NOTE: never print/log `result` — it contains patient data (GDPR).
 
         return [
             Document(

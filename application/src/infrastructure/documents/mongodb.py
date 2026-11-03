@@ -1,6 +1,97 @@
+from datetime import date, datetime
+from enum import Enum
+from pathlib import Path
+import threading
+from typing import Any
+from urllib.parse import quote_plus
+from uuid import UUID
+
+from bson.codec_options import CodecOptions, TypeCodec, TypeRegistry
+from pydantic import BaseModel
 from pymongo import MongoClient
 
+from src.application.app_functions import to_naive
 from src.application.config import AppConfig
+
+
+class _DateIsoCodec(TypeCodec):
+    """BSON TypeCodec that encodes Python `datetime.date` objects into ISO-8601 strings."""
+
+    python_type = date
+    bson_type = str
+
+    def transform_python(self, value: date) -> str:
+        return value.isoformat()
+
+    def transform_bson(self, value: str) -> str:
+        return value
+
+
+_BSON_CODEC_OPTIONS: CodecOptions = CodecOptions(
+    type_registry=TypeRegistry([_DateIsoCodec()])
+)
+
+
+def sanitize_bson_payload(data: Any) -> Any:
+    """
+    Recursively convert non-BSON-native Python types (`datetime.date`, `Enum`,
+    `BaseModel`, `set`, `tuple`, `Path`, `UUID`, aware `datetime`) into BSON-safe values.
+    """
+    if isinstance(data, BaseModel):
+        return sanitize_bson_payload(data.model_dump())
+    if isinstance(data, dict):
+        return {str(k): sanitize_bson_payload(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple, set)):
+        return [sanitize_bson_payload(i) for i in data]
+    if isinstance(data, datetime):
+        return to_naive(data)
+    if isinstance(data, date):
+        return data.isoformat()
+    if isinstance(data, Enum):
+        return data.value
+    if isinstance(data, (Path, UUID)):
+        return str(data)
+    return data
+
+
+# One MongoClient per connection URI for the whole process.
+# MongoClient is thread-safe and owns a connection pool + monitoring threads:
+# creating one per request / rerun / job wastes sockets and threads.
+_CLIENTS: dict[str, MongoClient] = {}
+_CLIENTS_LOCK = threading.Lock()
+
+
+def build_connection_string(config: AppConfig) -> str:
+    """Build the MongoDB URI with URL-escaped credentials."""
+    connection_string = "mongodb://"
+    if config.mongodb.user:
+        connection_string += (
+            f"{quote_plus(config.mongodb.user)}:"
+            f"{quote_plus(config.mongodb.password or '')}@"
+        )
+    connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
+    return connection_string
+
+
+def get_mongo_client(config: AppConfig) -> MongoClient:
+    """Return the process-wide MongoClient for this configuration (created lazily)."""
+    uri = build_connection_string(config)
+    client = _CLIENTS.get(uri)
+    if client is None:
+        with _CLIENTS_LOCK:
+            client = _CLIENTS.get(uri)
+            if client is None:
+                client = MongoClient(uri)
+                _CLIENTS[uri] = client
+    return client
+
+
+def close_all_mongo_clients() -> None:
+    """Close every shared MongoClient (call once at process shutdown)."""
+    with _CLIENTS_LOCK:
+        for client in _CLIENTS.values():
+            client.close()
+        _CLIENTS.clear()
 
 
 class Mongodb:
@@ -10,6 +101,9 @@ class Mongodb:
     This class initializes a connection to a MongoDB database specified by the provided configuration,
     and provides methods for inserting documents into collections, logging information about the
     connection and operations performed, and closing the database connection when done.
+
+    The underlying `MongoClient` is shared per URI (see `get_mongo_client`), so creating
+    `Mongodb` instances is cheap and `close()` does not tear down the shared pool.
     """
 
     def __init__(self, config: AppConfig) -> None:
@@ -18,24 +112,23 @@ class Mongodb:
             "mongodb",
             default_context={
                 "host": config.mongodb.host,
-                "user": config.mongodb.user,
                 "database": config.mongodb.database,
             },
         )
-        connection_string = "mongodb://"
-        if config.mongodb.user is not None:
-            connection_string += f"{config.mongodb.user}:{config.mongodb.password}@"
-        connection_string += f"{config.mongodb.host}:{config.mongodb.port}"
-
-        self.client = MongoClient(connection_string)
-        self.database = self.client[config.mongodb.database]
+        self.client = get_mongo_client(config)
+        self.database = self.client.get_database(
+            config.mongodb.database,
+            codec_options=_BSON_CODEC_OPTIONS,
+        )
 
         self.documents_to_insert = {}
 
         self.logger.info("Succefully init")
 
     def close(self):
-        self.client.close()
+        """Release this handle. The shared pool is closed by `close_all_mongo_clients()`."""
+        if hasattr(self, "documents_to_insert"):
+            self.documents_to_insert.clear()
 
     def set_uniq_index(self, collection, field):
         collection = self.database[collection]
@@ -55,20 +148,29 @@ class Mongodb:
     def prepare_insert_doc(self, collection, document):
         if collection not in self.documents_to_insert:
             self.documents_to_insert[collection] = []
-        # if "timestamp" not in document:
-        #     document["timestamp"]
-        self.documents_to_insert[collection].append(document)
+        self.documents_to_insert[collection].append(sanitize_bson_payload(document))
 
     def update_docs(self, collection, filter, value):
         self.logger.info("Start update documents")
         self.logger.debug("List of document to update : %s", filter)
         collection = self.database[collection]
-        collection.update_many(filter=filter, update=value)
+        collection.update_many(filter=filter, update=sanitize_bson_payload(value))
         self.logger.info("Success updating documents")
 
-    def update_doc(self, collection, filter: dict, upsertable_data: dict = {}):
-        self.logger.info("Start update document : %s", upsertable_data)
-        self.logger.debug("List of document to update : %s", filter)
+    def update_doc(
+        self,
+        collection,
+        filter: dict,
+        upsertable_data: dict | None = None,
+    ):
+        upsertable_data = sanitize_bson_payload(upsertable_data or {})
+        # Never log `upsertable_data` values: they can contain patient PII (GDPR).
+        self.logger.info(
+            "Start update document in %s (keys=%s)",
+            collection,
+            sorted(upsertable_data.keys()),
+        )
+        self.logger.debug("Filter keys for update : %s", sorted(filter.keys()))
         collection = self.database[collection]
         infos = collection.update_one(
             filter,
@@ -79,7 +181,10 @@ class Mongodb:
 
     def insert_docs(self):
         self.logger.info("Start inserting documents")
-        self.logger.debug("List of document to insert : %s", self.documents_to_insert)
+        self.logger.debug(
+            "Collections to insert : %s",
+            {col: len(docs) for col, docs in self.documents_to_insert.items()},
+        )
         for collection, documents in self.documents_to_insert.items():
             collection = self.database[collection]
             collection.insert_many(documents)
@@ -123,16 +228,24 @@ class Mongodb:
         )
 
     def delete_document_cache(
-        self, file_hash: str | None = None, file_name: str | None = None
+        self,
+        file_hash: str | None = None,
+        file_name: str | None = None,
+        clear_all: bool = False,
     ) -> None:
         """
-        Deletes cached documents from document_cache by file_hash, file_name, or clears all if none specified.
+        Deletes cached documents from document_cache by file_hash, file_name,
+        or clears all if ``clear_all=True`` is explicitly passed.
         """
         filter_query = {}
         if file_hash:
             filter_query["hash"] = file_hash
         elif file_name:
             filter_query["file"] = file_name
+        elif not clear_all:
+            raise ValueError(
+                "Refusing to clear the entire document_cache without clear_all=True, file_hash, or file_name."
+            )
         self.delete_docs(["document_cache"], filter_query)
 
     # --- Patient Collection Methods ---
@@ -156,9 +269,9 @@ class Mongodb:
         Finds an existing patient by normalized identity (last_name + first_name + date_birth),
         with a fallback to (last_name + first_name) if date_birth is missing on either side.
         """
-        from src.application.patient import build_name_key, build_patient_id
+        from src.domain.patient import Patient
 
-        exact_id = build_patient_id(
+        exact_id = Patient.build_id(
             first_name=first_name,
             last_name=last_name,
             date_birth=date_birth,
@@ -168,7 +281,7 @@ class Mongodb:
         if found is not None:
             return found
 
-        name_key = build_name_key(first_name=first_name, last_name=last_name)
+        name_key = Patient.build_name_key(first_name=first_name, last_name=last_name)
         if not name_key:
             return None
 
@@ -187,13 +300,13 @@ class Mongodb:
         Ensures a unique index on 'patient_id' and maintains the list of associated RCP files.
         """
         from datetime import datetime
-        from src.application.patient import build_name_key, build_patient_id
+        from src.domain.patient import Patient
 
         self.set_uniq_index("patients", "patient_id")
 
         patient_id = patient_data.get("patient_id")
         if not patient_id:
-            patient_id = build_patient_id(
+            patient_id = Patient.build_id(
                 first_name=patient_data.get("first_name"),
                 last_name=patient_data.get("last_name"),
                 date_birth=patient_data.get("date_birth"),
@@ -214,7 +327,7 @@ class Mongodb:
         if filename and filename not in files:
             files.append(filename)
 
-        name_key = build_name_key(
+        name_key = Patient.build_name_key(
             first_name=patient_data.get("first_name"),
             last_name=patient_data.get("last_name"),
         )
@@ -342,3 +455,25 @@ class Mongodb:
     def delete_bug_report(self, bug_id: str) -> None:
         """Deletes a bug report from the bug_reports collection by bug_id."""
         self.delete_docs(["bug_reports"], {"bug_id": bug_id})
+
+    # --- MDT Agendas Collection Methods ---
+
+    def get_mdt_agenda(self, agenda_id: str) -> dict | None:
+        """Retrieve an MDT agenda document from the `mdt_agendas` collection by `agenda_id`."""
+        return self.get_document("mdt_agendas", {"agenda_id": agenda_id})
+
+    def upsert_mdt_agenda(self, agenda_data: dict) -> dict:
+        """Create or update an MDT agenda document in the `mdt_agendas` collection."""
+        self.set_uniq_index("mdt_agendas", "agenda_id")
+        payload = sanitize_bson_payload(dict(agenda_data))
+        agenda_id = payload["agenda_id"]
+        self.update_doc(
+            collection="mdt_agendas",
+            filter={"agenda_id": agenda_id},
+            upsertable_data=payload,
+        )
+        return self.get_mdt_agenda(agenda_id) or payload
+
+    def delete_mdt_agenda(self, agenda_id: str) -> None:
+        """Delete an MDT agenda document from the `mdt_agendas` collection by `agenda_id`."""
+        self.delete_docs(["mdt_agendas"], {"agenda_id": agenda_id})

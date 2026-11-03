@@ -15,3 +15,5 @@ dist/docker/compose/volumes/*
 .env
 .env.prod
 .env.local
+application/config/*
+.vscode

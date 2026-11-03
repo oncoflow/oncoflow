@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class BugCategory(str, Enum):
-    """Catégories de signalement de bug ou d'amélioration."""
+    """Categories for bug reports or improvement suggestions."""
 
     ai_extraction = "ai_extraction"
     rag_guidelines = "rag_guidelines"
@@ -21,7 +21,7 @@ class BugCategory(str, Enum):
     def labels(cls) -> dict["BugCategory", str]:
         return {
             cls.ai_extraction: "Extraction IA / Résumé clinique",
-            cls.rag_guidelines: "Référentiels TNCD / RAG",
+            cls.rag_guidelines: "Référentiels cliniques (TNCD, PNDS) / RAG",
             cls.chat_agent: "Assistant IA / Débat d'experts",
             cls.ui: "Interface utilisateur / Affichage",
             cls.import_pdf: "Import PDF / OCR",
@@ -31,7 +31,7 @@ class BugCategory(str, Enum):
 
 
 class BugSeverity(str, Enum):
-    """Niveaux de sévérité d'un bug."""
+    """Severity levels for a bug report."""
 
     low = "low"
     medium = "medium"
@@ -49,7 +49,7 @@ class BugSeverity(str, Enum):
 
 
 class BugStatus(str, Enum):
-    """Statuts de suivi d'un rapport de bug."""
+    """Tracking statuses for a bug report."""
 
     open = "open"
     in_progress = "in_progress"
@@ -67,13 +67,13 @@ class BugStatus(str, Enum):
 
 
 def generate_bug_id() -> str:
-    """Génère un identifiant court et unique pour un rapport de bug."""
+    """Generate a short unique identifier for a bug report."""
     return f"bug_{uuid.uuid4().hex[:8]}"
 
 
 class BugReport(BaseModel):
     """
-    Modèle du domaine représentant un signalement de bug ou une suggestion utilisateur.
+    Domain model representing a bug report or user suggestion.
     """
 
     bug_id: str = Field(

@@ -1,11 +1,16 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from src.infrastructure.documents.mongodb import Mongodb
+from src.infrastructure.documents.mongodb import (
+    _BSON_CODEC_OPTIONS,
+    Mongodb,
+    close_all_mongo_clients,
+)
 
 
 class TestMongodbDocumentStore(unittest.TestCase):
     def setUp(self):
+        close_all_mongo_clients()
         # Configure a mock config object
         self.mock_config = MagicMock()
         self.mock_config.mongodb.host = "127.0.0.1"
@@ -18,6 +23,9 @@ class TestMongodbDocumentStore(unittest.TestCase):
         self.mock_logger = MagicMock()
         self.mock_config.set_logger.return_value = self.mock_logger
 
+    def tearDown(self):
+        close_all_mongo_clients()
+
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_init_success(self, mock_mongo_client_cls):
         mock_client = mock_mongo_client_cls.return_value
@@ -26,14 +34,22 @@ class TestMongodbDocumentStore(unittest.TestCase):
         # Asserts connection string & db name
         expected_conn_str = "mongodb://root:password@127.0.0.1:27017"
         mock_mongo_client_cls.assert_called_once_with(expected_conn_str)
-        self.assertEqual(db.database, mock_client[self.mock_config.mongodb.database])
+        mock_client.get_database.assert_called_once_with(
+            self.mock_config.mongodb.database,
+            codec_options=_BSON_CODEC_OPTIONS,
+        )
+        self.assertEqual(db.database, mock_client.get_database.return_value)
         self.mock_logger.info.assert_called_with("Succefully init")
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_close(self, mock_mongo_client_cls):
         mock_client = mock_mongo_client_cls.return_value
         db = Mongodb(self.mock_config)
+        db.prepare_insert_doc("rcp_info", {"file": "PDF1.pdf"})
         db.close()
+        self.assertEqual(db.documents_to_insert, {})
+        mock_client.close.assert_not_called()
+        close_all_mongo_clients()
         mock_client.close.assert_called_once()
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")
@@ -154,8 +170,10 @@ class TestMongodbDocumentStore(unittest.TestCase):
         db.delete_document_cache(file_hash="abc123hash")
         mock_collection.delete_many.assert_called_with({"hash": "abc123hash"})
 
-        # Delete all
-        db.delete_document_cache()
+        # Delete all requires explicit clear_all=True
+        with self.assertRaises(ValueError):
+            db.delete_document_cache()
+        db.delete_document_cache(clear_all=True)
         mock_collection.delete_many.assert_called_with({})
 
     @patch("src.infrastructure.documents.mongodb.MongoClient")

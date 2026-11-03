@@ -92,31 +92,39 @@ class MilvusDB(VectorialDataBase):
         self.token = config.milvus.token
         self.database = config.milvus.database
         retry = 3
+        last_error: Exception | None = None
         for r in range(retry):
             try:
-                connections.connect(
-                    host=config.milvus.host,
-                    port=config.milvus.port,
-                    token=config.milvus.token,
-                )
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", message=".*ORM-style.*")
+                    connections.connect(
+                        host=config.milvus.host,
+                        port=config.milvus.port,
+                        token=config.milvus.token,
+                    )
 
-                try:
-                    existing_databases = db.list_database()
-                    if config.milvus.database not in existing_databases:
-                        db.create_database(self.database)
                     try:
-                        db.using_database(self.database, using="default")
-                    except Exception:
-                        pass
-                    break
+                        existing_databases = db.list_database()
+                        if config.milvus.database not in existing_databases:
+                            db.create_database(self.database)
+                        try:
+                            db.using_database(self.database, using="default")
+                        except Exception:
+                            pass
+                        last_error = None
+                        break
 
-                except MilvusException as e:
-                    self.logger.error(f"An error occurred: {e}")
+                    except MilvusException as e:
+                        last_error = e
+                        self.logger.error(f"An error occurred: {e}")
             except MilvusException as e:
+                last_error = e
                 self.logger.info(
                     f"Milvus still starting ({config.milvus.host}:{config.milvus.port}), waiting... ({r + 1}/{retry}): {e}"
                 )
                 time.sleep(5)
+        if last_error is not None:
+            raise last_error
 
     def get_embedding(self):
         return self.llm_embeddings
@@ -161,7 +169,9 @@ class MilvusDB(VectorialDataBase):
         )
 
     def get_version(self):
-        return utility.get_server_version()
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", message=".*ORM-style.*")
+            return utility.get_server_version()
 
     def is_indexed(self) -> bool:
         try:

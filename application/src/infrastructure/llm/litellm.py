@@ -1,5 +1,4 @@
-import os
-from typing import List, Any
+from typing import List, Any, Optional
 import httpx
 
 
@@ -7,7 +6,12 @@ from langchain_litellm import ChatLiteLLM
 from langchain_litellm import LiteLLMEmbeddings
 
 from src.application.config import AppConfig
-from src.infrastructure.llm.base import LLMConnect
+from src.infrastructure.llm.base import (
+    LLMConnect,
+    LLMConnectionError,
+    build_base_url,
+    retry_connection,
+)
 
 
 class LiteLLMConnect(LLMConnect):
@@ -18,33 +22,18 @@ class LiteLLMConnect(LLMConnect):
     def __init__(self, config: AppConfig) -> None:
         self.config = config
 
-        # Build base URL. If port is empty or none, just use url.
+        # Build base URL (url[:port][/uri]).
         url = config.llm.url
         port = config.llm.port
-        if port and port.strip():
-            if f":{port}" not in url:
-                self.base_url = f"{url}:{port}"
-            else:
-                self.base_url = url
-        else:
-            self.base_url = url
-
-        # Avoid double slashes in base URL
-        self.base_url = self.base_url.rstrip("/")
-        uri = self.config.llm.uri.lstrip("/")
-        if uri:
-            self.base_url = f"{self.base_url}/{uri}"
+        uri = (self.config.llm.uri or "").lstrip("/")
+        self.base_url = build_base_url(url, port, uri)
 
         self.logger = config.set_logger(
             "litellm", default_context={"host": self.base_url}
         )
 
-        # Get API key from config, falling back to environment variable, then a mock key
-        self.api_key = (
-            config.llm.api_key
-            if config.llm.api_key
-            else os.environ.get("LITELLM_API_KEY", "mock-key")
-        )
+        # Get API key resolved natively via pydantic-settings (APP_CONFIGLLM_API_KEY / LITELLM_API_KEY)
+        self.api_key = config.llm.api_key if config.llm.api_key else "mock-key"
 
         self.test_connection()
 
@@ -79,10 +68,11 @@ class LiteLLMConnect(LLMConnect):
         model: str,
         output: Any = None,
         temperature: float | None = None,
-        tools: List[Any] = [],
+        tools: Optional[List[Any]] = None,
         reasoning: bool = False,
         reasoning_budget: int | None = None,
     ) -> Any:
+        tools = tools or []
         # If temperature is not provided, fallback to the config value
         temp = temperature if temperature is not None else self.config.llm.temp
 
@@ -126,9 +116,10 @@ class LiteLLMConnect(LLMConnect):
         return [self.config.llm.models]
 
     def test_connection(self) -> None:
-        try:
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+
+        def _probe():
             # We list models (via /models) as a connection check
-            headers = {"Authorization": f"Bearer {self.api_key}"}
             response = httpx.get(
                 f"{self.base_url}/models", headers=headers, timeout=5.0
             )
@@ -136,6 +127,16 @@ class LiteLLMConnect(LLMConnect):
                 self.logger.warning(
                     f"LiteLLM proxy /models returned status {response.status_code}"
                 )
+
+        try:
+            retry_connection(
+                _probe,
+                self.logger,
+                retry_on=(httpx.TimeoutException, httpx.ConnectError),
+                backend="LiteLLM proxy",
+            )
+        except LLMConnectionError:
+            raise
         except Exception as e:
             self.logger.error(f"Connection error to LiteLLM proxy: {e}")
-            exit(254)
+            raise LLMConnectionError(f"LiteLLM proxy error: {e}") from e

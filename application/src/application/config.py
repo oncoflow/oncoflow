@@ -18,10 +18,14 @@ Functions:
         to customize logging context.
 """
 
-import os
+import contextvars
+import ipaddress
+import sys
 import logging
 from logging.handlers import RotatingFileHandler
 import json
+from typing import Any
+from urllib.parse import urlparse
 import warnings
 from pathlib import Path
 
@@ -35,8 +39,49 @@ warnings.filterwarnings("ignore", message=".*ORM-style.*")
 # Streamlit PDF viewer compatibility warnings
 warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
-from pydantic import Field, field_validator  # noqa: E402
-from pydantic_settings import BaseSettings, SettingsConfigDict  # noqa: E402
+from pydantic import (  # noqa: E402
+    AliasChoices,
+    Field,
+    SecretStr,
+    field_validator,
+    model_validator,
+)
+from pydantic_settings import (  # noqa: E402
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
+
+
+def _detect_runtime_service(logger_name: str = "") -> str:
+    """
+    Automatically detect whether the current Python process is running
+    Streamlit ('ui') or FastAPI/Uvicorn ('api') by inspecting `sys.argv`
+    and `sys.modules` (without importing streamlit outside `src/ui/`).
+    """
+    argv_str = " ".join(sys.argv).lower()
+    if "app-ui" in argv_str or "streamlit" in argv_str:
+        return "ui"
+    if "app-api" in argv_str or "uvicorn" in argv_str or "fastapi" in argv_str:
+        return "api"
+
+    st_runtime = sys.modules.get("streamlit.runtime")
+    if st_runtime is not None and getattr(st_runtime, "exists", lambda: False)():
+        return "ui"
+
+    has_st = "streamlit" in sys.modules
+    has_fastapi = "fastapi" in sys.modules or "uvicorn" in sys.modules
+    if has_st and not has_fastapi:
+        return "ui"
+    if has_fastapi and not has_st:
+        return "api"
+
+    lname = (logger_name or "").lower()
+    if lname == "ui" or lname.startswith("oncoflow.ui"):
+        return "ui"
+    if lname == "api" or lname.startswith(("oncoflow.api", "oncoflow.queue")):
+        return "api"
+    return "ui" if has_st else ("api" if has_fastapi else "app")
 
 
 class LogSettings(BaseSettings):
@@ -44,7 +89,7 @@ class LogSettings(BaseSettings):
     Configuration for logging settings.
 
     Environment variables: APP_LOG_LEVEL, APP_LOG_LANGCHAINDEBUG, APP_LOG_TYPE,
-    APP_LOG_FILE, APP_LOG_MAX_BYTES, APP_LOG_BACKUP_COUNT
+    APP_LOG_SERVICE, APP_LOG_FILE, APP_LOG_MAX_BYTES, APP_LOG_BACKUP_COUNT
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_LOG_")
@@ -60,6 +105,10 @@ class LogSettings(BaseSettings):
     type: str = Field(
         default="text",
         description="Log output format. 'text' for human-readable logs, 'json' for structured JSON logs.",
+    )
+    service: str = Field(
+        default_factory=_detect_runtime_service,
+        description="Runtime service identifier ('ui', 'api', 'app'). Automatically detected from Streamlit/FastAPI runtime if APP_LOG_SERVICE is not set.",
     )
     file: str | None = Field(
         default=None,
@@ -133,6 +182,12 @@ class ConfigllmSettings(BaseSettings):
     )
     api_key: str = Field(
         default="ollama",
+        validation_alias=AliasChoices(
+            "APP_CONFIGLLM_API_KEY",
+            "LITELLM_API_KEY",
+            "OPENAI_API_KEY",
+            "LLAMACPP_API_KEY",
+        ),
         description="API key for the LLM backend (required for OpenAI/vLLM, defaults to 'ollama' for local Ollama).",
     )
 
@@ -242,29 +297,279 @@ class MongoDBSettings(BaseSettings):
     )
 
 
+class QueueSettings(BaseSettings):
+    """
+    Configuration for the background task queue and hardware batch sizing.
+
+    Environment variables: APP_QUEUE_ENABLED, APP_QUEUE_HARDWARE_PROFILE,
+    APP_QUEUE_BATCH_SIZE, APP_QUEUE_MAX_RETRIES, APP_QUEUE_API_URL
+    """
+
+    model_config = SettingsConfigDict(env_prefix="APP_QUEUE_")
+
+    enabled: bool = Field(
+        default=True,
+        description="Enable asynchronous processing queue via standard library queue.PriorityQueue.",
+    )
+    hardware_profile: str = Field(
+        default="l4_24gb",
+        description="Hardware profile preset (l4_24gb -> 1, a100_80gb -> 4, cpu_only -> 1, custom).",
+    )
+    batch_size: int = Field(
+        default=1,
+        ge=1,
+        description="Maximum number of RCP files processed concurrently by the worker pool (e.g. 1 for NVIDIA L4 24GB).",
+    )
+    max_retries: int = Field(
+        default=2,
+        ge=0,
+        description="Maximum automatic retry attempts when a queued task fails.",
+    )
+    api_url: str = Field(
+        default="http://127.0.0.1:8000",
+        description="URL of the cross-domain FastAPI service hosting the central PriorityQueue (e.g. http://127.0.0.1:8000 in dev, http://oncoflow-api:8000 in prod). Falls back to in-process PriorityQueue if unreachable.",
+    )
+
+
+class ApiSecuritySettings(BaseSettings):
+    """
+    Configuration for FastAPI server runtime, CORS, Trusted Hosts, HTTP Security Headers,
+    Rate Limiting, Payload Limits, and OpenAPI documentation access.
+
+    Environment variables:
+    - APP_API_HOST, APP_API_PORT, APP_API_WORKERS, APP_API_TIMEOUT_KEEP_ALIVE,
+      APP_API_PROXY_HEADERS, APP_API_FORWARDED_ALLOW_IPS
+    - APP_API_DOCS_ENABLED, APP_API_DOCS_REQUIRE_AUTH
+    - APP_API_CORS_ENABLED, APP_API_CORS_ORIGINS, APP_API_CORS_ORIGIN_REGEX,
+      APP_API_CORS_ALLOW_CREDENTIALS, APP_API_CORS_ALLOW_METHODS,
+      APP_API_CORS_ALLOW_HEADERS, APP_API_CORS_EXPOSE_HEADERS, APP_API_CORS_MAX_AGE
+    - APP_API_TRUSTED_HOSTS, APP_API_FORCE_HTTPS
+    - APP_API_GZIP_ENABLED, APP_API_GZIP_MINIMUM_SIZE
+    - APP_API_SECURITY_HEADERS_ENABLED, APP_API_HSTS_ENABLED, APP_API_HSTS_MAX_AGE,
+      APP_API_HSTS_INCLUDE_SUBDOMAINS, APP_API_CSP_POLICY, APP_API_FRAME_OPTIONS,
+      APP_API_REFERRER_POLICY, APP_API_PERMISSIONS_POLICY, APP_API_CACHE_CONTROL,
+      APP_API_COOP_POLICY, APP_API_CORP_POLICY
+    - APP_API_MAX_BODY_BYTES, APP_API_RATE_LIMIT_ENABLED,
+      APP_API_RATE_LIMIT_REQUESTS, APP_API_RATE_LIMIT_WINDOW_SECONDS
+    """
+
+    model_config = SettingsConfigDict(env_prefix="APP_API_", extra="ignore")
+
+    # --- Uvicorn & Network Bindings ---
+    host: str = Field(
+        default="127.0.0.1",
+        description="Bind address of the FastAPI server (APP_API_HOST). Use 0.0.0.0 only inside a private container network.",
+    )
+    port: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="TCP port of the FastAPI server (APP_API_PORT).",
+    )
+    workers: int = Field(
+        default=1,
+        ge=1,
+        description="Number of Uvicorn worker processes (APP_API_WORKERS). Keep at 1 when using in-process PriorityQueue.",
+    )
+    timeout_keep_alive: int = Field(
+        default=30,
+        ge=1,
+        description="Uvicorn HTTP keep-alive timeout in seconds (APP_API_TIMEOUT_KEEP_ALIVE).",
+    )
+    proxy_headers: bool = Field(
+        default=True,
+        description="Trust X-Forwarded-Proto and X-Forwarded-For headers from reverse proxies (APP_API_PROXY_HEADERS).",
+    )
+    forwarded_allow_ips: str = Field(
+        default="127.0.0.1,172.16.0.0/12,10.0.0.0/8,192.168.0.0/16",
+        description="Comma-separated IPs/CIDRs trusted to send X-Forwarded-* headers (APP_API_FORWARDED_ALLOW_IPS).",
+    )
+
+    # --- OpenAPI & Interactive Docs ---
+    docs_enabled: bool = Field(
+        default=True,
+        description="Enable /docs, /redoc, and /api/v1/openapi.json endpoints (APP_API_DOCS_ENABLED).",
+    )
+    docs_require_auth: bool = Field(
+        default=False,
+        description="Require APP_API_TOKEN authentication on /docs, /redoc, and /api/v1/openapi.json (APP_API_DOCS_REQUIRE_AUTH).",
+    )
+
+    # --- CORS (Cross-Origin Resource Sharing) ---
+    cors_enabled: bool = Field(
+        default=True,
+        description="Enable FastAPI CORSMiddleware (APP_API_CORS_ENABLED).",
+    )
+    cors_origins: str = Field(
+        default="http://127.0.0.1:3000,http://localhost:3000,http://127.0.0.1:8501,http://localhost:8501",
+        description="Comma-separated list of allowed CORS origins (APP_API_CORS_ORIGINS).",
+    )
+    cors_origin_regex: str | None = Field(
+        default=None,
+        description="Optional regex pattern matching allowed CORS origins (APP_API_CORS_ORIGIN_REGEX).",
+    )
+    cors_allow_credentials: bool = Field(
+        default=True,
+        description="Allow cookies and Authorization headers in cross-origin requests (APP_API_CORS_ALLOW_CREDENTIALS).",
+    )
+    cors_allow_methods: str = Field(
+        default="GET,POST,PUT,PATCH,DELETE,OPTIONS",
+        description="Comma-separated HTTP methods allowed for CORS (APP_API_CORS_ALLOW_METHODS).",
+    )
+    cors_allow_headers: str = Field(
+        default="Authorization,Content-Type,X-API-Key,X-Oncoflow-Domain,X-Oncoflow-User,X-Oncoflow-User-Name,X-Oncoflow-Proxy-Secret,X-Request-ID,Accept,Origin,X-Requested-With",
+        description="Comma-separated HTTP request headers allowed for CORS (APP_API_CORS_ALLOW_HEADERS).",
+    )
+    cors_expose_headers: str = Field(
+        default="X-Oncoflow-Domain,X-Request-ID,Content-Disposition",
+        description="Comma-separated response headers exposed to browser scripts via CORS (APP_API_CORS_EXPOSE_HEADERS).",
+    )
+    cors_max_age: int = Field(
+        default=600,
+        ge=0,
+        description="Maximum time in seconds browsers cache CORS preflight responses (APP_API_CORS_MAX_AGE).",
+    )
+
+    # --- Host Header Validation & TLS Redirect ---
+    trusted_hosts: str = Field(
+        default="*",
+        description="Comma-separated list of allowed Host header patterns for TrustedHostMiddleware (APP_API_TRUSTED_HOSTS).",
+    )
+    force_https: bool = Field(
+        default=False,
+        description="Redirect all plain HTTP requests to HTTPS via HTTPSRedirectMiddleware (APP_API_FORCE_HTTPS).",
+    )
+
+    # --- Compression ---
+    gzip_enabled: bool = Field(
+        default=True,
+        description="Enable GZip response compression for payloads larger than gzip_minimum_size (APP_API_GZIP_ENABLED).",
+    )
+    gzip_minimum_size: int = Field(
+        default=1000,
+        ge=100,
+        description="Minimum response size in bytes before applying GZip compression (APP_API_GZIP_MINIMUM_SIZE).",
+    )
+
+    # --- Hospital-Grade HTTP Security Headers ---
+    security_headers_enabled: bool = Field(
+        default=True,
+        description="Inject strict HTTP security headers on all API responses (APP_API_SECURITY_HEADERS_ENABLED).",
+    )
+    hsts_enabled: bool = Field(
+        default=False,
+        description="Send Strict-Transport-Security header (APP_API_HSTS_ENABLED).",
+    )
+    hsts_max_age: int = Field(
+        default=31536000,
+        ge=0,
+        description="Strict-Transport-Security max-age in seconds (APP_API_HSTS_MAX_AGE).",
+    )
+    hsts_include_subdomains: bool = Field(
+        default=True,
+        description="Include includeSubDomains directive in HSTS header (APP_API_HSTS_INCLUDE_SUBDOMAINS).",
+    )
+    csp_policy: str = Field(
+        default="default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+        description="Content-Security-Policy header applied to JSON API responses (APP_API_CSP_POLICY).",
+    )
+    frame_options: str = Field(
+        default="DENY",
+        description="X-Frame-Options header value for non-PDF API routes (APP_API_FRAME_OPTIONS).",
+    )
+    referrer_policy: str = Field(
+        default="no-referrer",
+        description="Referrer-Policy header value (APP_API_REFERRER_POLICY).",
+    )
+    permissions_policy: str = Field(
+        default="camera=(), microphone=(), geolocation=(), payment=(), usb=()",
+        description="Permissions-Policy header value disabling browser hardware APIs (APP_API_PERMISSIONS_POLICY).",
+    )
+    cache_control: str = Field(
+        default="no-store, no-cache, must-revalidate, max-age=0",
+        description="Cache-Control header preventing caching of confidential patient data (APP_API_CACHE_CONTROL).",
+    )
+    coop_policy: str = Field(
+        default="same-origin",
+        description="Cross-Origin-Opener-Policy header value (APP_API_COOP_POLICY).",
+    )
+    corp_policy: str = Field(
+        default="same-origin",
+        description="Cross-Origin-Resource-Policy header value (APP_API_CORP_POLICY).",
+    )
+
+    # --- Request Body Limit & Sliding-Window Rate Limiting ---
+    max_body_bytes: int = Field(
+        default=52_428_800,
+        ge=1024,
+        description="Maximum HTTP request payload size in bytes before returning HTTP 413 (APP_API_MAX_BODY_BYTES, default 50 MB).",
+    )
+    rate_limit_enabled: bool = Field(
+        default=False,
+        description="Enable per-IP sliding-window rate limiting on the REST API (APP_API_RATE_LIMIT_ENABLED).",
+    )
+    rate_limit_requests: int = Field(
+        default=300,
+        ge=1,
+        description="Maximum requests allowed per client IP within the rate-limit window (APP_API_RATE_LIMIT_REQUESTS).",
+    )
+    rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        description="Sliding-window duration in seconds for per-IP rate limiting (APP_API_RATE_LIMIT_WINDOW_SECONDS).",
+    )
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def cors_methods_list(self) -> list[str]:
+        return [
+            m.strip().upper() for m in self.cors_allow_methods.split(",") if m.strip()
+        ]
+
+    @property
+    def cors_headers_list(self) -> list[str]:
+        return [h.strip() for h in self.cors_allow_headers.split(",") if h.strip()]
+
+    @property
+    def cors_expose_headers_list(self) -> list[str]:
+        return [h.strip() for h in self.cors_expose_headers.split(",") if h.strip()]
+
+    @property
+    def trusted_hosts_list(self) -> list[str]:
+        hosts = [h.strip() for h in self.trusted_hosts.split(",") if h.strip()]
+        return hosts or ["*"]
+
+
 class RCPSettings(BaseSettings):
     """
     Configuration for the RCP (Réunion de Concertation Pluridisciplinaire) pipeline.
 
     Environment variables: APP_RCP_PATH, APP_RCP_ADDITIONAL_PATH, APP_RCP_DOC_TYPE,
-    APP_RCP_CHUNK_SIZE, APP_RCP_CHUNK_OVERLAP, APP_RCP_MANUAL_QUERY, APP_RCP_DISPLAY_TYPE
+    APP_RCP_DOCLING_DEVICE, APP_RCP_CHUNK_SIZE, APP_RCP_CHUNK_OVERLAP,
+    APP_RCP_MANUAL_QUERY, APP_RCP_DISPLAY_TYPE
     """
 
     model_config = SettingsConfigDict(env_prefix="APP_RCP_")
 
     path: Path = Field(
-        default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/PatientMDTForm",
+        default=Path(__file__).resolve().parent / "../../ressources/PatientMDTForm",
         description="Filesystem path to the directory containing patient MDT/RCP files.",
     )
     additional_path: Path = Field(
-        default=Path(os.path.dirname(os.path.realpath(__file__)))
-        / "../../ressources/documents",
+        default=Path(__file__).resolve().parent / "../../ressources/documents",
         description="Filesystem path to the directory containing additional reference files (e.g. TNCD guidelines).",
     )
     doc_type: str = Field(
         default="docling",
         description="Document parser type. See https://python.langchain.com/v0.1/docs/modules/data_connection/document_loaders/",
+    )
+    docling_device: str = Field(
+        default="cpu",
+        validation_alias=AliasChoices("APP_RCP_DOCLING_DEVICE", "DOCLING_DEVICE"),
+        description="Hardware device for Docling model inference ('cpu', 'cuda', 'mps', 'auto').",
     )
     chunk_size: int = Field(
         default=1000,
@@ -291,6 +596,82 @@ class RCPSettings(BaseSettings):
         return v
 
 
+_LOCAL_HOST_SUFFIXES = (".localhost", ".local", ".lan", ".internal", ".home.arpa")
+
+
+def is_local_host(url_or_host: str) -> bool:
+    """
+    Return True when the host is loopback, private (RFC 1918 / ULA), link-local,
+    a single-label name (Docker service / LAN host such as `litellm`, `mongod`)
+    or uses a local-only suffix (`.local`, `.lan`, `.internal`...).
+    """
+    value = (url_or_host or "").strip()
+    host = urlparse(value).hostname if "://" in value else value.split(":")[0]
+    host = (host or "").strip("[]").lower()
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return "." not in host
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+# Per-execution-context overrides (one Streamlit session = one script thread).
+# A ContextVar instead of a class-level dict: an override set by one user session
+# must never leak into other sessions or background worker threads.
+_RUNTIME_OVERRIDES: contextvars.ContextVar[dict[str, Any] | None] = (
+    contextvars.ContextVar("oncoflow_runtime_overrides", default=None)
+)
+
+_LOGGING_GLOBALS_CONFIGURED = False
+
+
+class _JsonFormatter(logging.Formatter):
+    """Serialize log records as valid JSON (messages are escaped by json.dumps)."""
+
+    def __init__(self, default_context: dict[str, Any], context_keys: list[str]):
+        super().__init__()
+        self.default_context = default_context
+        self.context_keys = context_keys
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "time": self.formatTime(record),
+            "level": record.levelname,
+            "service": getattr(record, "service", None),
+            "name": record.name,
+            "message": record.getMessage(),
+            "context": {"service": getattr(record, "service", None)}
+            | self.default_context
+            | {k: getattr(record, k, None) for k in self.context_keys},
+        }
+        if record.exc_info:
+            payload["exception"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str, ensure_ascii=False)
+
+
+class _RuntimeServiceFilter(logging.Filter):
+    """Injects `record.service` and `record.service_upper` from `LogSettings.service` (or runtime auto-detection)."""
+
+    def __init__(self, log_settings: LogSettings) -> None:
+        super().__init__()
+        self.log_settings = log_settings
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        configured = (self.log_settings.service or "").strip().lower()
+        if configured and configured not in ("auto", "app"):
+            svc = configured
+        else:
+            svc = _detect_runtime_service(record.name)
+            self.log_settings.service = svc
+        record.service = svc
+        record.service_upper = svc.upper()
+        return True
+
+
 class AppConfig(BaseSettings):
     """
     Main application configuration class.
@@ -315,9 +696,55 @@ class AppConfig(BaseSettings):
         extra="ignore",
     )
 
+    @classmethod
+    def set_runtime_override(cls, **kwargs: Any) -> None:
+        """
+        Register pydantic-settings runtime overrides for the current execution context
+        only (current Streamlit session thread), without mutating os.environ nor
+        affecting other sessions / worker threads.
+        """
+        current = dict(_RUNTIME_OVERRIDES.get() or {})
+        current.update(kwargs)
+        _RUNTIME_OVERRIDES.set(current)
+
+    @classmethod
+    def clear_runtime_overrides(cls) -> None:
+        """Remove all runtime overrides of the current execution context."""
+        _RUNTIME_OVERRIDES.set(None)
+
+    @classmethod
+    def get_runtime_overrides(cls) -> dict[str, Any]:
+        """Return a copy of the runtime overrides of the current execution context."""
+        return dict(_RUNTIME_OVERRIDES.get() or {})
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        def _runtime_source() -> dict[str, Any]:
+            return dict(_RUNTIME_OVERRIDES.get() or {})
+
+        return (
+            init_settings,
+            _runtime_source,
+            env_settings,
+            dotenv_settings,
+            file_secret_settings,
+        )
+
     domain: str = Field(
         default="oncology",
-        description="Domain of the application. Valid values: oncology, sma.",
+        description="Default domain of the application. Valid values: oncology, sma.",
+    )
+
+    allowed_domains: str = Field(
+        default="oncology,sma",
+        description="Comma-separated list of active domains supported by the cross-domain API and Queue (APP_ALLOWED_DOMAINS).",
     )
 
     language: str = Field(
@@ -333,6 +760,31 @@ class AppConfig(BaseSettings):
     auth_mode: str = Field(
         default="local",
         description="Authentication mode for the UI. Valid values: 'local' (streamlit-authenticator) or 'oauth_proxy' (HTTP headers injected by oauth2-proxy).",
+    )
+
+    api_token: SecretStr | None = Field(
+        default=None,
+        description="Shared secret required by the REST API (`Authorization: Bearer <token>` or `X-API-Key`). Mandatory when APP_DEV_MODE=false (APP_API_TOKEN).",
+    )
+
+    proxy_secret: SecretStr | None = Field(
+        default=None,
+        description="Shared secret injected by the reverse proxy (header `X-Oncoflow-Proxy-Secret`) in auth_mode=oauth_proxy. Identity headers are ignored when it does not match (APP_PROXY_SECRET).",
+    )
+
+    admin_users: str = Field(
+        default="",
+        description="Comma-separated usernames/emails allowed to use admin features (queue admin page, global cache purge). Empty = every authenticated user is admin (APP_ADMIN_USERS).",
+    )
+
+    api_host: str = Field(
+        default="127.0.0.1",
+        description="Bind address of the REST API when started with `python app-api.py` (APP_API_HOST). Use 0.0.0.0 only inside a private container network.",
+    )
+
+    allow_remote_llm: bool = Field(
+        default=False,
+        description="Allow LLM endpoints outside the local / private network (APP_ALLOW_REMOTE_LLM). Patient data must stay local: keep False except for explicit test deployments.",
     )
 
     llm: ConfigllmSettings = Field(
@@ -363,9 +815,22 @@ class AppConfig(BaseSettings):
         default_factory=MilvusDBSettings,
         description="Milvus vector database connection settings.",
     )
+    queue: QueueSettings = Field(
+        default_factory=QueueSettings,
+        description="Background processing queue and hardware batching settings.",
+    )
+    api: ApiSecuritySettings = Field(
+        default_factory=ApiSecuritySettings,
+        description="FastAPI server runtime, CORS, Trusted Hosts, HTTP Security Headers, and rate limiting settings.",
+    )
 
     def model_post_init(self, __context) -> None:
         super().model_post_init(__context)
+        # Keep top-level api_host synchronized with nested api.host
+        if self.api_host != "127.0.0.1" and self.api.host == "127.0.0.1":
+            self.api.host = self.api_host
+        elif self.api.host != "127.0.0.1" and self.api_host == "127.0.0.1":
+            self.api_host = self.api.host
         # Dynamically isolate paths, databases, and collections by domain (e.g., oncology, sma)
         if self.domain:
             self.rcp.additional_path = self.rcp.additional_path / self.domain
@@ -385,6 +850,71 @@ class AppConfig(BaseSettings):
             self.dbvec.collection = f"{self.dbvec.collection}_{self.domain}"
             self.milvus.database = f"{self.milvus.database}_{self.domain}"
 
+    @model_validator(mode="after")
+    def _enforce_local_llm(self) -> "AppConfig":
+        """Refuse to send patient data to non-local LLM endpoints unless explicitly allowed."""
+        if not self.allow_remote_llm and not is_local_host(self.llm.url):
+            raise ValueError(
+                f"LLM endpoint '{self.llm.url}' is not a local/private host. Patient data "
+                "must stay local: use a local endpoint or set APP_ALLOW_REMOTE_LLM=true "
+                "explicitly (test deployments only)."
+            )
+        if (
+            not self.dev_mode
+            and self.api.cors_enabled
+            and self.api.cors_allow_credentials
+            and "*" in self.api.cors_origins_list
+        ):
+            raise ValueError(
+                "CORS wildcard '*' with APP_API_CORS_ALLOW_CREDENTIALS=true is forbidden "
+                "when APP_DEV_MODE=false. Specify explicit origins in APP_API_CORS_ORIGINS."
+            )
+        return self
+
+    def is_admin(self, *identities: str | None) -> bool:
+        """Return True if one of the user identities (username, email) is an admin."""
+        admins = {u.strip().lower() for u in self.admin_users.split(",") if u.strip()}
+        if not admins:
+            return True
+        return any(i and i.strip().lower() in admins for i in identities)
+
+    @property
+    def enabled_domains_list(self) -> list[str]:
+        """Return normalized list of enabled domains configured in APP_ALLOWED_DOMAINS."""
+        domains = [
+            d.strip().lower() for d in self.allowed_domains.split(",") if d.strip()
+        ]
+        if self.domain and self.domain.lower() not in domains:
+            domains.append(self.domain.lower())
+        return domains or ["oncology"]
+
+    def for_domain(self, domain: str | None = None) -> "AppConfig":
+        """Return an AppConfig instance scoped to the requested domain after validating it."""
+        target = (domain or self.domain or "oncology").strip().lower()
+        if target not in self.enabled_domains_list:
+            raise ValueError(
+                f"Domain '{target}' is not enabled. Allowed domains: {self.enabled_domains_list}"
+            )
+        if target == self.domain:
+            return self
+        return AppConfig(
+            domain=target,
+            allowed_domains=self.allowed_domains,
+            language=self.language,
+            dev_mode=self.dev_mode,
+            auth_mode=self.auth_mode,
+            api_token=self.api_token,
+            proxy_secret=self.proxy_secret,
+            admin_users=self.admin_users,
+            api_host=self.api_host,
+            allow_remote_llm=self.allow_remote_llm,
+            llm=self.llm.model_copy(deep=True),
+            logs=self.logs.model_copy(deep=True),
+            chromadb=self.chromadb.model_copy(deep=True),
+            queue=self.queue.model_copy(deep=True),
+            api=self.api.model_copy(deep=True),
+        )
+
     @property
     def auth_config_path(self) -> Path:
         base_dir = Path(__file__).resolve().parent.parent.parent
@@ -393,25 +923,19 @@ class AppConfig(BaseSettings):
         else:
             return base_dir / "config/auth_config.yaml"
 
-    def set_logger(self, name, default_context={}, additional_context=None):
+    @staticmethod
+    def _configure_logging_globals() -> None:
+        """Process-wide logging tweaks, applied once (not on every `set_logger` call)."""
+        global _LOGGING_GLOBALS_CONFIGURED
+        if _LOGGING_GLOBALS_CONFIGURED:
+            return
+        _LOGGING_GLOBALS_CONFIGURED = True
 
         # --- Suppress noisy third-party loggers ---
         logging.getLogger("langchain.retrievers.multi_query").setLevel(logging.INFO)
         logging.getLogger("transformers").setLevel(logging.ERROR)
         logging.getLogger("pymilvus").setLevel(logging.ERROR)
         logging.getLogger("streamlit.runtime.scriptrunner").setLevel(logging.DEBUG)
-
-        # --- Suppress noisy third-party warnings ---
-        # Hugging Face __path__ access deprecation
-        warnings.filterwarnings("ignore", message=".*Accessing.*__path__.*")
-        # PyMilvus async client init failure (non-critical)
-        warnings.filterwarnings(
-            "ignore", message=".*Failed to initialize AsyncMilvusClient.*"
-        )
-        # PyMilvus ORM-style deprecation warnings
-        warnings.filterwarnings("ignore", message=".*ORM-style.*")
-        # Streamlit PDF viewer compatibility warnings
-        warnings.filterwarnings("ignore", message=".*streamlit-pdf-viewer.*")
 
         # Suppress HuggingFace transformers internal logging if available
         try:
@@ -420,6 +944,15 @@ class AppConfig(BaseSettings):
             transformers_logging.set_verbosity_error()
         except ImportError:
             pass
+
+    def set_logger(
+        self,
+        name: str,
+        default_context: dict[str, Any] | None = None,
+        additional_context: list[str] | None = None,
+    ) -> logging.Logger:
+        self._configure_logging_globals()
+        default_context = default_context or {}
 
         context = additional_context if additional_context is not None else []
 
@@ -436,22 +969,19 @@ class AppConfig(BaseSettings):
             set_verbose(True)
         elif self.logs.level == "DEBUG":
             set_verbose(True)
+
+        service_filter = _RuntimeServiceFilter(self.logs)
+        ch.addFilter(service_filter)
+
         if self.logs.type == "text":
-            formatlog = "%(asctime)s - %(levelname)s - %(name)s"
+            formatlog = "%(asctime)s - [%(service_upper)s] - %(levelname)s - %(name)s"
             for k, v in default_context.items():
                 formatlog = f"{formatlog} - {k}: {v}"
             for k in context:
                 formatlog = f"{formatlog} - {k}: %({k})s"
             formatter = logging.Formatter(f"{formatlog} - %(message)s")
         elif self.logs.type == "json":
-            formatlog = {
-                "time": "%(asctime)s",
-                "level": "%(levelname)s",
-                "name": "%(name)s",
-                "message": "%(message)s",
-                "context": default_context | {k: f"%({k})s" for k in context},
-            }
-            formatter = logging.Formatter(json.dumps(formatlog, default=str))
+            formatter = _JsonFormatter(default_context, list(context))
         else:
             raise ValueError(f"log type : {self.logs.type} not yet available")
         ch.setFormatter(formatter)
@@ -468,6 +998,7 @@ class AppConfig(BaseSettings):
                     encoding="utf-8",
                 )
                 fh.setLevel(level=self.logs.level)
+                fh.addFilter(service_filter)
                 fh.setFormatter(formatter)
                 logger.addHandler(fh)
             except Exception as e:

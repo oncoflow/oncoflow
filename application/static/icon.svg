@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="dsSlate" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B" />
+      <stop offset="100%" stop-color="#0F172A" />
+    </linearGradient>
+    <linearGradient id="dsTeal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#72A8A2" />
+      <stop offset="100%" stop-color="#3E7B76" />
+    </linearGradient>
+    <linearGradient id="dsSage" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#68A38E" />
+      <stop offset="100%" stop-color="#437A68" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="92" height="92" rx="22" fill="url(#dsSlate)" stroke="#334155" stroke-width="2" />
+  <!-- Feuillet documentaire consolidé en arrière-plan (Sarcelle) -->
+  <rect x="18" y="16" width="46" height="58" rx="8" fill="url(#dsTeal)" opacity="0.82" />
+  <!-- Fiche de synthèse clinique au premier plan -->
+  <rect x="28" y="24" width="48" height="58" rx="8" fill="#F8FAFC" stroke="url(#dsTeal)" stroke-width="2.5" />
+  <rect x="35" y="33" width="24" height="5.5" rx="2.75" fill="url(#dsTeal)" />
+  <circle cx="66.5" cy="35.75" r="3" fill="#D94668" />
+  <rect x="35" y="44" width="34" height="4.5" rx="2.25" fill="#64748B" />
+  <rect x="35" y="53" width="28" height="4.5" rx="2.25" fill="#64748B" />
+  <rect x="35" y="62" width="20" height="4.5" rx="2.25" fill="#94A3B8" />
+  <!-- Pastille de validation et conformité RCP (Sauge / Vert) -->
+  <circle cx="70" cy="68" r="13" fill="url(#dsSage)" stroke="#1E293B" stroke-width="2.5" />
+  <path d="M64.5 68 L68.5 72 L76 64" fill="none" stroke="#F8FAFC" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

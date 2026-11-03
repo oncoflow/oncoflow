@@ -125,11 +125,29 @@ pip install -e .
 
 ---
 
-### 4. Lancement de l'Interface Utilisateur (UI Streamlit)
+### 4. Lancement de l'Interface Utilisateur
 
-L'interface graphique est propulsée par Streamlit. Elle offre le tableau de bord des RCP, le suivi des patients, la gestion des imports PDF et la visualisation des agents.
+MedDataSyntis propose deux interfaces utilisateur complémentaires :
 
-Pour démarrer l'UI :
+#### A. Nouvelle Interface Web Material Design 3 (`web/` — Node.js 24 + Fastify)
+1. Depuis la racine du dépôt, installez les dépendances Node.js :
+   ```bash
+   make install-web
+   # ou directement : npm --prefix web install
+   ```
+2. Démarrez le serveur web en mode développement (avec rechargement automatique) :
+   ```bash
+   npm --prefix web run dev
+   ```
+   Ouvrez **`http://localhost:3000`** dans votre navigateur (en mode dev local `APP_DEV_MODE=true`, l'interface utilise un jeu de données cliniques fictives si l'API Python n'est pas démarrée, ou se connecte à `APP_API_URL=http://127.0.0.1:8000` lorsque FastAPI tourne).
+3. Pour exécuter les vérifications qualité, l'audit de contraste WCAG et les tests automatisés (unitaires, intégration et E2E Playwright) :
+   ```bash
+   npm --prefix web run lint
+   npm --prefix web run test
+   npm --prefix web run e2e
+   ```
+
+#### B. Interface Historique Streamlit (`application/app-ui.py`)
 1. Assurez-vous d'être dans le dossier `application/`
 2. Lancez le serveur Streamlit avec votre environnement virtuel actif :
 
@@ -155,13 +173,9 @@ Ouvrez **`http://localhost:8501`** dans votre navigateur pour accéder à l'appl
 
 ### 5. Options et Diagnostic de Débogage
 
-* **Mode console interactif (Debug sans interface graphique)** :
-  ```bash
-  uv run python3 app.py
-  ```
 * **Lister les Variables d'Environnement configurées et leurs valeurs par défaut** :
   ```bash
-  uv run python3 app.py -e
+  uv run python -c "import json; from src.application.config import AppConfig; print(json.dumps(AppConfig.model_json_schema(), indent=2))"
   ```
 * **Lancer l'UI avec un niveau de journalisation détaillé (DEBUG)** :
   ```bash

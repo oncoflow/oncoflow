@@ -1,19 +1,29 @@
-from src.application.config import AppConfig
-from src.infrastructure.documents.mongodb import Mongodb
+"""
+Database FastAPI dependency provider.
 
-app_conf = AppConfig()
+Note: HTTP middlewares (`AllowedDomainMiddleware`) and authentication/domain
+dependencies (`verify_api_token`, `DomainConfigDep`, `get_domain_config`) live in
+`src.routers.dependencies` and are re-exported here for backward compatibility.
+"""
 
+from src.routers.dependencies import (
+    AllowedDomainMiddleware,
+    DomainConfigDep,
+    get_base_config,
+    get_db,
+    get_domain_config,
+    get_domain_scoped_config,
+    require_db,
+    verify_api_token,
+)
 
-def get_db():
-    """
-    FastAPI dependency generator that yields the database client connection
-    and ensures it's closed after the request is finished.
-    """
-    if app_conf.rcp.display_type == "mongodb":
-        client = Mongodb(app_conf)
-        try:
-            yield client
-        finally:
-            client.close()
-    else:
-        yield None
+__all__ = [
+    "AllowedDomainMiddleware",
+    "DomainConfigDep",
+    "get_base_config",
+    "get_db",
+    "get_domain_config",
+    "get_domain_scoped_config",
+    "require_db",
+    "verify_api_token",
+]

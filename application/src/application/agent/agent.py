@@ -19,51 +19,109 @@ from src.application.agent.tools import (
     Context,
     PatientContext,
 )
-from langchain.agents.middleware import ToolRetryMiddleware, ModelRetryMiddleware
+from langchain.agents.middleware import ToolRetryMiddleware
+
+
+def _strip_thinking(text: str) -> str:
+    """
+    Strip ``<think>...</think>`` blocks, orphan prefixes before ``</think>``
+    (when ``<think>`` was injected by the chat template), and unclosed ``<think>`` tails.
+    """
+    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    if "</think>" in text_clean:
+        after_close = text_clean.rsplit("</think>", 1)[-1].strip()
+        if after_close:
+            text_clean = after_close
+    if "<think>" in text_clean:
+        before_open = text_clean.split("<think>", 1)[0].strip()
+        text_clean = before_open
+    return text_clean.strip()
+
+
+def extract_json_candidates(text: str, *, allow_repair: bool = True) -> list[str]:
+    """
+    Return candidate JSON object substrings found in ``text``, ordered from most
+    likely (fenced blocks, then final top-level ``{...}`` object) to least likely.
+    """
+    text_clean = _strip_thinking(text)
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def _add(candidate_str: str) -> None:
+        c = candidate_str.strip()
+        if c and c not in seen:
+            seen.add(c)
+            candidates.append(c)
+
+    # 1. Content inside ```json ... ``` blocks (final block first)
+    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
+    for block in reversed(json_blocks):
+        block_clean = block.strip()
+        try:
+            if isinstance(json.loads(block_clean), dict):
+                _add(block_clean)
+        except json.JSONDecodeError:
+            pass
+
+    # 2. Content inside general ``` ... ``` blocks (final block first)
+    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
+    for block in reversed(code_blocks):
+        block_clean = block.strip()
+        try:
+            if isinstance(json.loads(block_clean), dict):
+                _add(block_clean)
+        except json.JSONDecodeError:
+            pass
+
+    # 3. Scan top-level brace blocks in O(n) using JSONDecoder.raw_decode.
+    # Reverse order so the final JSON object in the message is tried first.
+    decoder = json.JSONDecoder()
+    brace_matches: list[str] = []
+    pos = 0
+    for match in re.finditer(r"\{", text_clean):
+        start = match.start()
+        if start < pos:
+            continue
+        try:
+            parsed, end = decoder.raw_decode(text_clean, start)
+            if isinstance(parsed, dict):
+                brace_matches.append(text_clean[start:end])
+                pos = end
+        except json.JSONDecodeError:
+            continue
+    for bm in reversed(brace_matches):
+        _add(bm)
+
+    # 4. Last resort: repair malformed JSON (trailing comma, single quotes, unclosed brace)
+    # Only attempted when no strict JSON object was found and the candidate looks like JSON key/value data.
+    if allow_repair and not candidates and "{" in text_clean and ":" in text_clean:
+        for brace_idx in dict.fromkeys((text_clean.rfind("{"), text_clean.find("{"))):
+            if brace_idx < 0:
+                continue
+            candidate = text_clean[brace_idx:]
+            try:
+                from json_repair import repair_json
+
+                repaired = repair_json(candidate, return_objects=False)
+                if isinstance(repaired, str) and repaired.strip():
+                    parsed = json.loads(repaired)
+                    if isinstance(parsed, dict) and parsed:
+                        _add(repaired)
+                        break
+            except Exception:
+                pass
+
+    return candidates
 
 
 def extract_json_str(text: str) -> str:
     """
     Extract the most likely valid JSON substring from text.
     """
-    # 0. Clean thinking blocks (<think>...</think>) from the text to isolate target JSON
-    text_clean = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
-
-    # 1. Try to find content inside ```json ... ``` blocks first
-    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
-    for block in json_blocks:
-        block_clean = block.strip()
-        try:
-            json.loads(block_clean)
-            return block_clean
-        except json.JSONDecodeError:
-            pass
-
-    # 2. Try to find content inside general ``` ... ``` blocks
-    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
-    for block in code_blocks:
-        block_clean = block.strip()
-        try:
-            json.loads(block_clean)
-            return block_clean
-        except json.JSONDecodeError:
-            pass
-
-    # 3. Try to scan all braces to find the first valid JSON object
-    open_braces = [m.start() for m in re.finditer(r"\{", text_clean)]
-    close_braces = [m.start() for m in re.finditer(r"\}", text_clean)]
-
-    for start in open_braces:
-        for end in reversed(close_braces):
-            if end > start:
-                candidate = text_clean[start : end + 1]
-                try:
-                    json.loads(candidate)
-                    return candidate
-                except json.JSONDecodeError:
-                    pass
-
-    return text_clean
+    candidates = extract_json_candidates(text, allow_repair=True)
+    if candidates:
+        return candidates[0]
+    return _strip_thinking(text)
 
 
 class ChatResponse(BaseModel):
@@ -93,7 +151,12 @@ class OncowflowAgent:
     agent_name: str = ""
     additionnal_readers: list[DocumentReader] = []
     patient_readers: list[DocumentReader] = []
-    reasoning_budget: int | None = 1024
+    reasoning_budget: int | None = 2048
+    DEFAULT_MAX_RETRIES: ClassVar[int] = 3
+    # Retry prompt budget (characters, ~3.5 chars/token): keeps corrections small
+    # enough for local models with a limited context window.
+    RETRY_MAX_OUTPUT_CHARS: ClassVar[int] = 2000
+    RETRY_MAX_ERROR_CHARS: ClassVar[int] = 800
 
     @classmethod
     def get_system_prompt(cls) -> str:
@@ -115,7 +178,7 @@ class OncowflowAgent:
         reasoning: bool = True,
         reasoning_budget: int | None = None,
         reader: DocumentReader | None = None,
-        additionnal_readers: list[DocumentReader] = [],
+        additionnal_readers: list[DocumentReader] | None = None,
         patient_readers: list[DocumentReader] | None = None,
     ):
         """
@@ -159,27 +222,56 @@ class OncowflowAgent:
             if self.patient_readers
             else ""
         )
+        has_tools = bool(
+            self.patient_readers
+            or mtd is not None
+            or self.ressources
+            or additionnal_readers
+        )
+        is_chat_mode = self.output_format is ChatResponse
+        if not has_tools:
+            step1_block = """## STEP 1 — Analyze the provided context
+        - Use strictly the information provided in the user prompt.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+        elif is_chat_mode:
+            step1_block = f"""## STEP 1 — Understand the user message and gather information ONLY if needed
+        - You are a fresh agent instance with no pre-initialized conversation or document context.
+        - If the user message is a greeting, a short connectivity test (e.g. "test", "bonjour"), or does NOT require reading the patient record or scientific guidelines, answer directly in STEP 2 WITHOUT calling any tools.
+        - Only when the user asks a clinical or administrative question about the patient record or scientific guidelines:
+          - Call `{mtd_tool_name}` at most ONCE to retrieve the patient record text.{history_tool_instruction}
+          - Call `search_on_ressources` (at most 1 or 2 targeted searches with `k=2`) ONLY if scientific guideline evidence is needed.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+        else:
+            step1_block = f"""## STEP 1 — Gather information (use tools)
+        If the required information is NOT already in your context, call the appropriate tools FIRST:
+        - Call `{mtd_tool_name}` to retrieve the full patient record text.{history_tool_instruction}
+        - Call `search_on_ressources` to search reference guidelines if needed.
+        - You MAY call tools multiple times to find all required fields.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+
+        schema_dict = self.output_format.model_json_schema()
+        required_keys = schema_dict.get("required", [])
+        required_keys_hint = (
+            f"\n        - Your root JSON object MUST contain all required top-level keys: {required_keys} (do NOT return an isolated item from `$defs`)."
+            if required_keys
+            else ""
+        )
 
         system_prompt = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
         You are a clinical data extraction assistant operating in a live production environment.
         {self.system_prompt}
 
-        ## STEP 1 — Gather information (use tools)
-        If the required information is NOT already in your context, call the appropriate tools FIRST:
-        - Call `{mtd_tool_name}` to retrieve the full patient record text.{history_tool_instruction}
-        - Call `search_on_ressources` to search reference guidelines if needed.
-        - You MAY call tools multiple times to find all required fields.
-        - Do NOT guess, mock, or fabricate any clinical information.
+        {step1_block}
 
         ## STEP 2 — Output your final answer (JSON only)
-        Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.
+        Once you have collected all the needed information from the tools, output your answer as a single, valid JSON object matching the schema below.{required_keys_hint}
         - All schema keys and enum values must remain strictly in English as defined by the schema.
         - Write only free-form text fields (summaries, diagnostics, recommendations) in {self.response_language}.
         - Output ONLY the raw JSON — no markdown fences, no explanation, no code blocks.
 
         ## STEP 3 — formatting outputs
         - You MUST respond with output JSON schema:
-        {json.dumps(self.output_format.model_json_schema(), indent=2)}
+        {json.dumps(schema_dict, indent=2)}
         """
         # Configure logging for the agent
         self.logger = config.set_logger(
@@ -206,7 +298,8 @@ class OncowflowAgent:
             for ressource in self.ressources
         ]
 
-        self.additionnal_readers.extend(additionnal_readers)
+        if additionnal_readers:
+            self.additionnal_readers.extend(additionnal_readers)
         if len(self.additionnal_readers) > 0:
             tools.append(search_on_ressources)
 
@@ -214,7 +307,10 @@ class OncowflowAgent:
             cast(Any, PatientContext) if self.patient_readers else cast(Any, Context)
         )
 
-        # Create the LangChain agent with specific tools and context
+        # Create the LangChain agent with specific tools and context.
+        # Model-level retries are handled by OncowflowAgent.ask() (3 attempts, each
+        # resetting the conversation context from scratch) so a single attempt never
+        # loops 4x on a polluted or oversized context window.
         self.agent = create_agent(
             model=llm_client.chat(
                 models_list[0],
@@ -226,12 +322,7 @@ class OncowflowAgent:
             tools=tools,
             middleware=[
                 ToolRetryMiddleware[Any, Any](
-                    max_retries=3,
-                    backoff_factor=2.0,
-                    initial_delay=1.0,
-                ),
-                ModelRetryMiddleware[Any, Any](
-                    max_retries=3,
+                    max_retries=2,
                     backoff_factor=2.0,
                     initial_delay=1.0,
                 ),
@@ -244,10 +335,12 @@ class OncowflowAgent:
         )
 
         self.logger.info(
-            f"""Agent succefully created with prompt (reasoning : {reasoning}, reasoning_budget : {self.reasoning_budget}) :
-        {system_prompt}
-        """
+            "Agent %s created (reasoning=%s, reasoning_budget=%s)",
+            self.agent_name or self.__class__.__name__,
+            reasoning,
+            self.reasoning_budget,
         )
+        self.logger.debug("Agent system prompt:\n%s", system_prompt)
         self.latest_thinking = ""
 
     def extract_thinking(self, messages: list) -> str:
@@ -293,56 +386,80 @@ class OncowflowAgent:
         question: str | None = None,
         output_format: type[BaseModel] | str | None = None,
         callbacks: list | None = None,
+        retry: int = DEFAULT_MAX_RETRIES,
     ) -> Any:
         """
         Ask a question to the agent.
 
         Args:
             question (str, optional): The question to ask. Defaults to self.question.
+            output_format (type[BaseModel] | str | None, optional): Expected output schema.
+            callbacks (list, optional): LangChain callbacks.
+            retry (int, optional): Number of attempts before raising ValueError. Defaults to 3.
 
         Returns:
             dict: The parsed JSON response from the agent matching the output_format.
 
         Raises:
-            ValueError: If the agent fails to provide a valid response matching the schema.
+            ValueError: If the agent fails to provide a valid response matching the schema after `retry` attempts.
         """
-        self.logger.info('Ask "%s" to agent ...', question)
-
         if question is None:
             question = self.question
 
         if output_format is None:
             output_format = self.output_format
 
-        retry = 3
+        self.latest_thinking = ""
+        self.logger.info('Ask "%s" to agent ...', question)
+
+        retry = max(1, int(retry))
         validation_error = None
         result = None
+        last_failed_output = None
+        original_question = question
 
         for r in range(retry):
-            # Invoke the agent with the user question and context (readers)
+            # Invoke the agent with a clean single-message input and isolated runtime context
             runtime_context = (
                 PatientContext(
-                    patient_readers=self.patient_readers,
-                    additionnal_readers=self.additionnal_readers,
+                    patient_readers=list(self.patient_readers),
+                    additionnal_readers=list(self.additionnal_readers),
                     logger=self.logger,
                 )
                 if self.patient_readers
                 else Context(
                     reader=self.reader,
-                    additionnal_readers=self.additionnal_readers,
+                    additionnal_readers=list(self.additionnal_readers),
                     logger=self.logger,
                 )
             )
-            result = self.agent.invoke(
-                {"messages": [{"role": "user", "content": question}]},
-                context=runtime_context,
-                config={
-                    "callbacks": callbacks,
-                    "tags": [self.agent_name] if self.agent_name else [],
-                }
-                if callbacks
-                else None,
-            )
+            try:
+                result = self.agent.invoke(
+                    {"messages": [{"role": "user", "content": question}]},
+                    context=runtime_context,
+                    config={
+                        "callbacks": callbacks,
+                        "tags": [self.agent_name] if self.agent_name else [],
+                    }
+                    if callbacks
+                    else None,
+                )
+            except Exception as invoke_exc:
+                validation_error = invoke_exc
+                last_failed_output = None
+                self.logger.info(
+                    "Error, previous result (attempt %d/%d) : <invoke_error> - error : %s",
+                    r + 1,
+                    retry,
+                    self._truncate(str(validation_error), 500),
+                )
+                question = self._build_correction_prompt(
+                    original_question=original_question,
+                    error=validation_error,
+                    failed_output=None,
+                )
+                continue
+
             # Extract and store the thinking process from the execution history
             self.latest_thinking = self.extract_thinking(result.get("messages", []))
 
@@ -354,69 +471,199 @@ class OncowflowAgent:
                     return result["structured_response"]
                 return json.loads(result["structured_response"])
 
-            # Iterate through messages to find the AI response and validate it against the schema
-            self.logger.info(f"AI response : {result}")
+            # Iterate from the most recent message: the final AI answer comes last,
+            # intermediate AI messages (tool calls, drafts) are only a fallback.
+            self.logger.debug("AI response : %s", result)
             last_failed_output = None
-            for msg in result["messages"]:
-                try:
-                    if (
-                        type(msg).__name__ in ("AIMessage", "AIMessageChunk")
-                        or getattr(msg, "type", None) == "ai"
-                    ):
-                        self.logger.debug(f"AI response : {result['messages']}")
-
-                        content = msg.content
-                        # Handle list of blocks (e.g. thinking / text parts)
-                        if isinstance(content, list):
-                            text_parts = []
-                            for part in content:
-                                if isinstance(part, dict):
-                                    if part.get("type") == "text":
-                                        text_parts.append(part.get("text", ""))
-                                    elif part.get("type") == "thinking":
-                                        # Do not append thinking to final output content
-                                        pass
-                                elif isinstance(part, str):
-                                    text_parts.append(part)
-                            content = "".join(text_parts)
-
-                        if isinstance(content, str):
-                            content = extract_json_str(content)
-
-                        last_failed_output = content
-
+            round_error = None
+            for msg in reversed(result["messages"]):
+                if not (
+                    type(msg).__name__ in ("AIMessage", "AIMessageChunk")
+                    or getattr(msg, "type", None) == "ai"
+                ):
+                    continue
+                raw_content = self._message_text(msg.content)
+                if not raw_content.strip():
+                    continue
+                strict_candidates = self._prioritize_root_schema_candidates(
+                    extract_json_candidates(raw_content, allow_repair=False)
+                )
+                candidates_to_try = (
+                    strict_candidates
+                    if strict_candidates
+                    else [_strip_thinking(raw_content)]
+                )
+                for candidate in candidates_to_try:
+                    try:
                         # Validate the content against the Pydantic model
                         if self.output_format is not None and issubclass(
                             self.output_format, BaseModel
                         ):
-                            return self.output_format.model_validate_json(content)
+                            validated = self.output_format.model_validate_json(
+                                candidate
+                            )
+                        else:
+                            validated = json.loads(candidate)
+                        self.logger.info("AI response : %s", validated)
+                        return validated
+                    except (ValidationError, ValueError, json.JSONDecodeError) as e:
+                        # Keep the error of the most recent AI message's primary candidate only
+                        if round_error is None:
+                            round_error = e
+                            last_failed_output = candidate
 
-                        return json.loads(content)
-                except (ValidationError, ValueError, json.JSONDecodeError) as e:
-                    validation_error = e
-                    continue
-            self.logger.info(f"Error, previous result : {last_failed_output or result}")
-            failed_representation = (
-                last_failed_output if last_failed_output else str(result)
+                # Only fall back to json_repair if strict parsing failed AND repaired JSON
+                # passes full schema validation (never pollute last_failed_output with repaired text).
+                for repaired_cand in extract_json_candidates(
+                    raw_content, allow_repair=True
+                ):
+                    if repaired_cand in strict_candidates:
+                        continue
+                    try:
+                        if self.output_format is not None and issubclass(
+                            self.output_format, BaseModel
+                        ):
+                            validated = self.output_format.model_validate_json(
+                                repaired_cand
+                            )
+                        else:
+                            validated = json.loads(repaired_cand)
+                        self.logger.info("AI response : %s", validated)
+                        return validated
+                    except (ValidationError, ValueError, json.JSONDecodeError):
+                        continue
+            validation_error = round_error or validation_error
+
+            self.logger.info(
+                "Error, previous result (attempt %d/%d) : %s - error : %s",
+                r + 1,
+                retry,
+                self._truncate(last_failed_output or "<empty>", 500),
+                self._truncate(str(validation_error), 500),
             )
-            if self.response_language == "french":
-                question = f"""Answer in French language, not mention it in the answer.
-                            Vous avez fait une erreur, veuillez corriger la sortie JSON pour correspondre exactement au schéma attendu.
+            question = self._build_correction_prompt(
+                original_question=original_question,
+                error=validation_error,
+                failed_output=last_failed_output,
+            )
 
-                            Erreur : {validation_error}
-
-                            Voici la sortie invalide précédente :
-                            {failed_representation}"""
-            else:
-                question = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
-                            You made a mistake, please correct the JSON output to match the expected schema exactly.
-
-                            Error: {validation_error}
-
-                            Here is the previous invalid output:
-                            {failed_representation}"""
-
-        # Raise error if no valid structured response was found
+        # Raise error if no valid structured response was found.
+        # Do not embed the full agent result: it contains tool outputs (patient records)
+        # and can be propagated to logs / HTTP error details.
         raise ValueError(
-            f"Unable to find message, latest error : {validation_error} - AI response {result}"
+            "Unable to find message, latest error : "
+            f"{self._truncate(str(validation_error), self.RETRY_MAX_ERROR_CHARS)} - "
+            f"AI response {self._truncate(last_failed_output or '<no AI text output>', self.RETRY_MAX_OUTPUT_CHARS)}"
         )
+
+    @staticmethod
+    def _message_text(content: Any) -> str:
+        """Return the textual part of a message content, ignoring thinking blocks."""
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            text_parts = []
+            for part in content:
+                if isinstance(part, dict):
+                    if part.get("type") == "text":
+                        text_parts.append(part.get("text", ""))
+                    # "thinking" blocks are intentionally excluded from the output
+                elif isinstance(part, str):
+                    text_parts.append(part)
+            return "".join(text_parts)
+        return str(content) if content is not None else ""
+
+    def _prioritize_root_schema_candidates(self, candidates: list[str]) -> list[str]:
+        """
+        Order JSON candidate strings so objects matching the root schema's required
+        or top-level properties are tried before nested `$defs` sub-objects.
+        """
+        if (
+            len(candidates) <= 1
+            or self.output_format is None
+            or not issubclass(self.output_format, BaseModel)
+        ):
+            return candidates
+
+        schema_dict = self.output_format.model_json_schema()
+        required_keys = set(schema_dict.get("required") or [])
+        top_props = set((schema_dict.get("properties") or {}).keys())
+        if not required_keys and not top_props:
+            return candidates
+
+        def _score(cand: str) -> tuple[int, int]:
+            try:
+                parsed = json.loads(cand)
+            except Exception:
+                return (0, 0)
+            if not isinstance(parsed, dict):
+                return (0, 0)
+            keys = set(parsed.keys())
+            has_all_req = int(bool(required_keys) and required_keys.issubset(keys))
+            matched_props = len(keys & (required_keys or top_props))
+            return (has_all_req, matched_props)
+
+        return sorted(candidates, key=_score, reverse=True)
+
+    @staticmethod
+    def _truncate(text: str, limit: int) -> str:
+        """Keep the head of `text` (JSON structure) within `limit` characters."""
+        if len(text) <= limit:
+            return text
+        return f"{text[:limit]}\n[... {len(text) - limit} caractères tronqués]"
+
+    def _build_correction_prompt(
+        self,
+        original_question: str,
+        error: Exception | None,
+        failed_output: str | None,
+    ) -> str:
+        """
+        Build a bounded correction prompt for the retry.
+
+        The original question is always re-sent (otherwise the agent loses its task),
+        but neither the full message history nor the tool outputs are replayed: the
+        previous output and the validation error are truncated so the retry fits in
+        the context window of small local models (e.g. Qwen 3.6).
+        """
+        is_context_exceeded = "ContextWindowExceededError" in (
+            failed_output or ""
+        ) or "ContextWindowExceededError" in str(error or "")
+        if is_context_exceeded:
+            return (
+                f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
+                f"{original_question}\n\n"
+                "IMPORTANT: The previous attempt exceeded the model context window because too many tool searches were performed. "
+                "Call `get_mtd_markdown` at most ONCE and `search_on_ressources` at most ONCE with `k=2`, then immediately output the final JSON object."
+            )
+
+        error_txt = self._truncate(
+            str(error) if error else "No JSON answer found.",
+            self.RETRY_MAX_ERROR_CHARS,
+        )
+        output_txt = (
+            self._truncate(failed_output, self.RETRY_MAX_OUTPUT_CHARS)
+            if failed_output
+            else None
+        )
+        if self.response_language == "french":
+            prompt = (
+                "Answer in French language, not mention it in the answer.\n"
+                f"{original_question}\n\n"
+                "Votre réponse précédente ne respectait pas le schéma JSON attendu. "
+                "Répondez à nouveau avec une sortie JSON correspondant exactement au schéma.\n\n"
+                f"Erreur : {error_txt}"
+            )
+            if output_txt:
+                prompt += f"\n\nSortie invalide précédente :\n{output_txt}"
+        else:
+            prompt = (
+                f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
+                f"{original_question}\n\n"
+                "Your previous answer did not match the expected JSON schema. "
+                "Answer again with a JSON output matching the schema exactly.\n\n"
+                f"Error: {error_txt}"
+            )
+            if output_txt:
+                prompt += f"\n\nPrevious invalid output:\n{output_txt}"
+        return prompt

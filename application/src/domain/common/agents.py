@@ -1,15 +1,13 @@
 import inspect
-from typing import ClassVar, Any
+from typing import Any, ClassVar
 
-
-from src.application.config import AppConfig
-from src.application.reader import DocumentReader
 from src.application.agent.agent import OncowflowAgent
+from src.application.config import AppConfig
 
 
 class Agents:
     def __init__(self) -> None:
-        self.list = {}
+        self.list: dict[str, type[OncowflowAgent]] = {}
         for name in dir(self.__class__):
             if name.startswith("__"):
                 continue
@@ -26,8 +24,10 @@ class Agents:
             if name.startswith("__"):
                 continue
             cls_attribute = getattr(self.__class__, name)
-            if inspect.isclass(cls_attribute) and issubclass(
-                cls_attribute, Agents.Expert_model
+            if (
+                inspect.isclass(cls_attribute)
+                and issubclass(cls_attribute, Agents.Expert_model)
+                and cls_attribute is not Agents.Expert_model
             ):
                 self.expert_agents.append(cls_attribute)
 
@@ -51,7 +51,7 @@ class Agents:
         You are a medical administrative assistant. Your goal is to extract precise information from the patient record without interpretation.
 
         Instructions:
-        1. Use the `get_mtd_markdown` tool to retrieve relevant information from the patient record.
+        1. Use the `get_mtd_markdown` tool (or `get_patient_mtds_markdown` and `get_patient_ai_history` when consulting across multiple MDT sessions) to retrieve relevant information from the patient record.
         2. Answer the user's question strictly using the extracted information.
         3. Do not infer missing details or provide medical opinions.
         4. If the information is not found, state clearly that it is missing from the record.
@@ -61,17 +61,16 @@ class Agents:
 
     class Coordinator_agent(OncowflowAgent):
         agent_name: str = "MDT Coordinator"
+        ressources: ClassVar[list[str]] = []
         system_prompt: ClassVar[str] = """
-        You are the coordinator of a multidisciplinary team (MDT). Your role is to ensure that all necessary information is gathered from the patient record and relevant scientific literature to make a treatment decision.
+        You are the coordinator of a multidisciplinary team (MDT). Your role is to synthesize the clinical opinions and arguments provided by the specialists in the prompt to reach a single consensus decision.
 
         Instructions:
-        1. Analyze the current MDT file and identify any missing information required for a complete treatment decision.
-        2. Use the `get_mtd_markdown` tool to retrieve relevant information from the patient record.
-        3. Use the `search_on_ressources` tool to retrieve scientific information to support your analysis.
-        4. Coordinate the different specialists to ensure all aspects of the patient's case are considered.
-        5. If information is missing, clearly state what is needed and why.
-        6. You can use tools multiple times for each element.
-        7. Respect strictly the response output format.
+        1. Analyze the expert opinions provided in the prompt and identify any missing information required for a complete treatment decision.
+        2. Coordinate and synthesize the different specialists' assessments so all aspects of the patient's case are considered.
+        3. Do not call external tools: rely strictly on the expert opinions provided in the prompt.
+        4. If information is missing according to the experts, clearly state what is needed and why.
+        5. Respect strictly the response output format.
         """
 
     class Expert_model(OncowflowAgent):
@@ -85,7 +84,7 @@ class Agents:
                 Your task is to answer user questions by synthesizing patient data with scientific informations.
 
                 Instructions:
-                1. Use the `get_mtd_markdown` tool to retrieve relevant information from the patient record.
+                1. Use the `get_mtd_markdown` tool (or `get_patient_mtds_markdown` and `get_patient_ai_history` when consulting across multiple MDT sessions) to retrieve relevant information from the patient record.
                 2. Use the `search_on_ressources` tool to retrieve scientific informations to support your clinical reasoning.
                 3. Answer the user's question by combining patient data and scientific evidence.
                 4. Respect stricly the response output format.
@@ -101,10 +100,23 @@ class Agents:
         def __init__(
             self,
             config: AppConfig,
-            mtd: DocumentReader | None = None,
+            mtd: Any = None,
             output_format: Any = None,
+            reasoning: bool = True,
+            reasoning_budget: int | None = None,
+            reader: Any = None,
+            additionnal_readers: list[Any] | None = None,
+            patient_readers: list[Any] | None = None,
         ) -> None:
-            self.__class__.system_prompt = self.get_system_prompt()
+            # Set on the instance (`self`), never mutating `self.__class__.system_prompt`
+            self.system_prompt = self.get_system_prompt()
             super(Agents.Expert_model, self).__init__(
-                config=config, mtd=mtd, output_format=output_format
+                config=config,
+                mtd=mtd,
+                output_format=output_format,
+                reasoning=reasoning,
+                reasoning_budget=reasoning_budget,
+                reader=reader,
+                additionnal_readers=additionnal_readers,
+                patient_readers=patient_readers,
             )

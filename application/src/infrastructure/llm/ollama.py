@@ -1,12 +1,18 @@
+from typing import Any, List, Optional
+
 from langchain_ollama import ChatOllama
 from langchain_ollama import OllamaEmbeddings
 
 import ollama
 
-from httpx import ConnectError
+from httpx import ConnectError, TimeoutException
 
 from src.application.config import AppConfig
-from src.infrastructure.llm.base import LLMConnect
+from src.infrastructure.llm.base import (
+    LLMConnect,
+    LLMConnectionError,
+    retry_connection,
+)
 
 
 class OllamaConnect(LLMConnect):
@@ -29,10 +35,11 @@ class OllamaConnect(LLMConnect):
         model,
         output=None,
         temperature=None,
-        tools=[],
+        tools: Optional[List[Any]] = None,
         reasoning=True,
         reasoning_budget=None,
     ):
+        tools = tools or []
         # In Ollama, format="json" or a schema forces strict JSON output.
         # If output is specified, we use its schema.
         # However, if tools/functions are provided, we MUST NOT force JSON mode
@@ -66,22 +73,15 @@ class OllamaConnect(LLMConnect):
 
     def test_connection(self):
         try:
-            self.client.list()
-        except (ollama.ResponseError, ConnectError) as e:
+            # Transient network errors are retried with bounded backoff.
+            retry_connection(
+                self.client.list,
+                self.logger,
+                retry_on=(ConnectError, TimeoutException),
+                backend="Ollama",
+            )
+        except LLMConnectionError:
+            raise
+        except ollama.ResponseError as e:
             self.logger.error(f"Connection error : {e.args}")
-            exit(254)
-
-    class Embedding(OllamaEmbeddings):
-        """
-        DEPRECATED
-        A subclass of OllamaEmbeddings that defines methods for embedding documents.
-
-        This class is a thin wrapper around the Ollama embeddings functionality,
-        providing convenience methods and custom docstrings.
-        """
-
-        def _embed_documents(self, texts):
-            return super().embed_documents(texts)
-
-        def __call__(self, input):
-            return self._embed_documents(input)
+            raise LLMConnectionError(f"Ollama backend error: {e}") from e

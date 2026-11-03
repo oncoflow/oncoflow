@@ -11,7 +11,8 @@
 <p align="left">
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/Python-%3E%3D%203.13-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python Version" /></a>
   <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/badge/Managed%20by-uv-DE5FE9?style=flat-square&logo=astral&logoColor=white" alt="uv Package Manager" /></a>
-  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Frontend-Streamlit%201.57+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit" /></a>
+  <a href="https://nodejs.org/"><img src="https://img.shields.io/badge/Web%20UI-Node.js%2024%20%2B%20Fastify%20M3-386B66?style=flat-square&logo=fastify&logoColor=white" alt="Fastify Material Design 3 Web UI" /></a>
+  <a href="https://streamlit.io/"><img src="https://img.shields.io/badge/Legacy%20UI-Streamlit%201.57+-FF4B4B?style=flat-square&logo=streamlit&logoColor=white" alt="Streamlit" /></a>
   <a href="https://www.langchain.com/"><img src="https://img.shields.io/badge/Orchestration-LangChain-1C3C3C?style=flat-square&logo=chainlink&logoColor=white" alt="LangChain" /></a>
   <a href="https://milvus.io/"><img src="https://img.shields.io/badge/Vector%20DB-Milvus%20Standalone-00b4d8?style=flat-square&logo=vector-store&logoColor=white" alt="Milvus" /></a>
   <a href="https://www.mongodb.com/"><img src="https://img.shields.io/badge/Metadata%20DB-MongoDB%20Cache-47A248?style=flat-square&logo=mongodb&logoColor=white" alt="MongoDB" /></a>
@@ -77,11 +78,13 @@ Vous êtes ingénieur de recherche, développeur ou administrateur système hosp
 
 ```mermaid
 flowchart TB
-    subgraph UI [Interface Utilisateur]
+    subgraph UI [Interfaces Utilisateur]
+        WebM3[Web UI Material Design 3 - Node.js / Fastify BFF]
         Streamlit[Streamlit Dashboard]
     end
 
-    subgraph APP [Orchestrateur Applicatif]
+    subgraph APP [API FastAPI & Orchestrateur Applicatif]
+        FastAPI[FastAPI REST & SSE /api/v1]
         Agent[Multi-Expert Agent LangChain]
         Reader[Document Reader & RAG]
         Config[AppConfig - pydantic-settings]
@@ -100,6 +103,8 @@ flowchart TB
         Backends[Backends : llama.cpp / Ollama / vLLM]
     end
 
+    WebM3 <--> FastAPI
+    FastAPI <--> Agent
     Streamlit <--> Agent
     Agent <--> Reader
     Reader <--> Config
@@ -113,10 +118,12 @@ flowchart TB
 ```
 
 ### Stack Technique Principale :
-* **Frontend Dashboard** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`)
+* **Nouvelle Interface Web Clinique (`web/`)** : Node.js 24, TypeScript strict, Fastify 5 (architecture hexagonale BFF), Design System Material Design 3 hospitalier (`ds-*`) 100 % auto-hébergé (CSP `default-src 'self'`), conforme WCAG 2.2 AA (thèmes Auto / Clair / Sombre, responsive Desktop & Mobile, E2E Playwright)
+* **Frontend Dashboard Historique (`application/`)** : Streamlit (`streamlit>=1.57.0`, `streamlit-pdf-viewer`, `streamlit-authenticator`)
+* **API Backend (`application/app-api.py`)** : FastAPI REST & Server-Sent Events (SSE) sous `/api/v1` (dossiers longitudinaux, ordre du jour RCP `/api/v1/mdt/agenda`, file GPU prioritaire `/api/v1/queue`)
 * **Moteur d'Inférence & Modèles** : LiteLLM Proxy (`langchain-litellm`, port 4000 par défaut avec `openai/agents` & `openai/embeddings`), compatible multi-moteurs (Ollama, llama.cpp, vLLM, OpenAI)
 * **Orchestration RAG** : LangChain (`langchain-core`, `langchain-litellm`, `langchain-milvus`, `langchain-mongodb`, `langchain-docling`)
-* **Indexation Vectorielle** : Milvus standalone (`pymilvus==2.6.14`, `langchain-milvus==0.3.3`) ou ChromaDB
+* **Indexation Vectorielle** : Milvus standalone (`pymilvus>=3.0.2`, `langchain-milvus>=0.4.0`) ou ChromaDB
 * **Base de données de Cache & Métadonnées** : MongoDB (`pymongo>=4.17.0`)
 * **Parsers de Documents** : Docling, MuPDF, OpenParse & Ollama OCR
 

@@ -13,6 +13,7 @@ def test_translation_french():
 
     # Test basic labels
     assert translate("First name of the patient") == "Prénom du patient"
+    assert translate("Name of the patient at birth") == "Nom de naissance du patient"
     assert translate("first_name") == "Prénom"
 
     # Test Enum with class labels (WHOPerformanceStatus)
@@ -46,7 +47,7 @@ def test_translation_french():
     assert translate_domain_fr("sma") == "Amyotrophie spinale"
 
     svg_onco = get_logo_svg("oncology")
-    assert "MedData" in svg_onco
+    assert "Data" in svg_onco
     assert "Syntis" in svg_onco
     assert "- Oncologie" in svg_onco
 

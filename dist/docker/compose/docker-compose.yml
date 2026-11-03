@@ -45,7 +45,7 @@ services:
   # you need to install additionnal package, take a look here : https://hub.docker.com/r/ollama/ollama
   # create directory ollama
   ollama:
-    image: ollama/ollama:0.30.6
+    image: ollama/ollama:0.40.11
     restart: always
     ports:
      - 11434:11434
@@ -128,7 +128,7 @@ services:
               capabilities: [gpu]
     command: >
       --hf-repo gpustack/bge-m3-GGUF
-      --hf-file bge-m3-Q4_K_M.gguf
+      --hf-file bge-m3-FP16.gguf
       --port 8080
       --host 0.0.0.0
       --embedding
@@ -146,6 +146,8 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     container_name: litellm-proxy
     network_mode: "host"
+    environment:
+      LITELLM_DANGEROUSLY_PERMIT_WEAK_OR_UNSET_MASTER_KEY: "true"
     ports:
      - 4000:4000
     volumes:

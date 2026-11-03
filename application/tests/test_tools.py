@@ -20,7 +20,7 @@ class TestAgentTools(unittest.TestCase):
         # Create a mock reader
         self.mock_reader = MagicMock()
         self.mock_reader.document = "rcp1.pdf"
-        self.mock_reader.mtd_datas = {
+        self.mock_reader.sections = {
             "file": "rcp1.pdf",
             "PatientAdministrative": {
                 "first_name": "Jean",
@@ -33,19 +33,19 @@ class TestAgentTools(unittest.TestCase):
         self.mock_exporter_doc.page_content = "# Mock Markdown Patient Record"
         self.mock_reader.markdown_exporter = [self.mock_exporter_doc]
 
-        # Create a second mock reader for patient dossier tests
+        # Create a second mock reader for patient record tests
         self.mock_reader2 = MagicMock()
         self.mock_reader2.document = "rcp2.pdf"
-        self.mock_reader2.mtd_datas = {
+        self.mock_reader2.sections = {
             "file": "rcp2.pdf",
             "PatientAdministrative": {
                 "first_name": "Jean",
                 "last_name": "Dupont",
                 "date_rcp": "2026-03-18T00:00:00",
             },
-            "isInterventionRequiered": {
-                "intervention_required": True,
-                "intervention_type": "Chirurgie",
+            "CareOrientationProposal": {
+                "care_adaptation_suggested": True,
+                "proposed_care_type": "Chirurgie",
             },
         }
         self.mock_exporter_doc2 = MagicMock()
@@ -85,6 +85,45 @@ class TestAgentTools(unittest.TestCase):
         self.assertEqual(result, "# Mock Markdown Patient Record")
         self.mock_logger.info.assert_called_with("tool get_mtd_markdown called")
 
+    def test_get_mtd_markdown_lazy_reads_document_when_exporter_empty(self):
+        """Ensure get_mtd_markdown calls reader.read_document() if markdown_exporter is initially empty."""
+        unloaded_reader = MagicMock()
+        unloaded_reader.document = "unloaded.pdf"
+        unloaded_reader.markdown_exporter = []
+
+        def _populate_exporter():
+            doc = MagicMock()
+            doc.page_content = "# Lazily Loaded PatientMDTForm Content"
+            unloaded_reader.markdown_exporter = [doc]
+
+        unloaded_reader.read_document.side_effect = _populate_exporter
+        self.mock_runtime.context["reader"] = unloaded_reader
+
+        result = get_mtd_markdown.func(self.mock_runtime)
+        unloaded_reader.read_document.assert_called_once()
+        self.assertEqual(result, "# Lazily Loaded PatientMDTForm Content")
+
+    def test_get_patient_mtds_markdown_lazy_reads_documents_when_exporter_empty(self):
+        """Ensure get_patient_mtds_markdown calls read_document() on any reader whose markdown_exporter is empty."""
+        unloaded_reader = MagicMock()
+        unloaded_reader.document = "rcp_lazy.pdf"
+        unloaded_reader.markdown_exporter = []
+
+        def _populate_exporter():
+            doc = MagicMock()
+            doc.page_content = "# Lazily Loaded PatientRecord Entry"
+            unloaded_reader.markdown_exporter = [doc]
+
+        unloaded_reader.read_document.side_effect = _populate_exporter
+        self.mock_patient_runtime.context["patient_readers"] = [unloaded_reader]
+
+        result = get_patient_mtds_markdown.func(self.mock_patient_runtime)
+        unloaded_reader.read_document.assert_called_once()
+        self.assertEqual(
+            result,
+            "=== FICHE RCP : rcp_lazy.pdf ===\n# Lazily Loaded PatientRecord Entry",
+        )
+
     def test_get_patient_mtds_markdown_success(self):
         result = get_patient_mtds_markdown.func(self.mock_patient_runtime)
         expected = (
@@ -107,7 +146,7 @@ class TestAgentTools(unittest.TestCase):
             "=== HISTORIQUE IA — FICHE RCP : rcp2.pdf (Date RCP : 2026-03-18) ===",
             result,
         )
-        self.assertIn('"intervention_type": "Chirurgie"', result)
+        self.assertIn('"proposed_care_type": "Chirurgie"', result)
         self.mock_logger.info.assert_called_with("tool get_patient_ai_history called")
 
     def test_search_on_mtd_success(self):
@@ -195,3 +234,69 @@ class TestAgentTools(unittest.TestCase):
 
         self.assertEqual(serialized, "No additionnal ressources provided")
         self.assertEqual(docs, [])
+
+    def test_search_on_ressources_strips_docling_dl_meta_and_pk(self):
+        """Ensure verbose Docling bbox/dl_meta and pk fields are stripped from serialized LLM context."""
+        doc = Document(
+            page_content="Risdiplam posologie et administration.",
+            metadata={
+                "pk": "7d7e66fc-d055-11f1-bab9-f28a890c7a45",
+                "source": "/app/ressources/documents/sma/amyotrophie_spinale_infantile_-_pnds.pdf",
+                "dl_meta": {
+                    "schema_name": "docling_core.transforms.chunker.DocMeta",
+                    "version": "1.0.0",
+                    "doc_items": [
+                        {
+                            "self_ref": "#/texts/374",
+                            "prov": [
+                                {
+                                    "page_no": 38,
+                                    "bbox": {
+                                        "l": 56.64,
+                                        "t": 559.8,
+                                        "r": 538.4,
+                                        "b": 511.1,
+                                        "coord_origin": "BOTTOMLEFT",
+                                    },
+                                    "charspan": [0, 333],
+                                }
+                            ],
+                        }
+                    ],
+                    "headings": ["7.2 Prise en charge thérapeutique"],
+                    "origin": {
+                        "mimetype": "application/pdf",
+                        "binary_hash": 8830968531653069611,
+                        "filename": "amyotrophie_spinale_infantile_-_pnds.pdf",
+                    },
+                },
+            },
+        )
+        self.mock_add_clientdb.max_marginal_relevance_search.return_value = [doc]
+
+        serialized, docs = search_on_ressources.func(
+            self.mock_runtime,
+            query="risdiplam",
+            k=1,
+        )
+
+        self.assertEqual(len(docs), 1)
+        self.assertNotIn("bbox", serialized)
+        self.assertNotIn("dl_meta", serialized)
+        self.assertNotIn("7d7e66fc-d055", serialized)
+        self.assertIn("amyotrophie_spinale_infantile_-_pnds.pdf", serialized)
+        self.assertIn("'page': 38", serialized)
+        self.assertIn("7.2 Prise en charge thérapeutique", serialized)
+
+    def test_search_clamps_excessive_k(self):
+        """Ensure LLM-provided excessive k values are clamped to MAX_SEARCH_K_PER_READER (4)."""
+        self.mock_add_clientdb.max_marginal_relevance_search.return_value = []
+        search_on_ressources.func(self.mock_runtime, query="sma", k=25)
+        self.mock_add_clientdb.max_marginal_relevance_search.assert_called_once_with(
+            "sma",
+            k=4,
+            fetch_k=20,
+            param=None,
+            expr=None,
+            timeout=None,
+        )

@@ -270,3 +270,235 @@ class TestOncowflowAgent(unittest.TestCase):
         result = agent.ask("Summarize patient history")
         self.assertEqual(result, self.output_format(**expected_dict))
         mock_patient_context_cls.assert_called_once()
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.DocumentReader")
+    def test_expert_model_init_with_patient_readers(
+        self, mock_doc_reader_cls, mock_create_agent, mock_get_llm_client
+    ):
+        from src.domain.oncology.agents import Agents
+
+        reader1 = MagicMock(spec=DocumentReader)
+        reader2 = MagicMock(spec=DocumentReader)
+
+        agent = Agents.Pancreas_expert_agent(
+            config=self.mock_config,
+            patient_readers=[reader1, reader2],
+        )
+
+        self.assertEqual(agent.patient_readers, [reader1, reader2])
+        self.assertIn("pancreas diseases", agent.system_prompt)
+        passed_tools = mock_create_agent.call_args.kwargs.get("tools", [])
+        tool_names = [getattr(t, "name", str(t)) for t in passed_tools]
+        self.assertIn("get_patient_mtds_markdown", tool_names)
+        self.assertIn("get_patient_ai_history", tool_names)
+        self.assertIn("search_on_ressources", tool_names)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_prefers_final_ai_message(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        intermediate = AIMessage(content=json.dumps({"response": "draft"}))
+        final = AIMessage(content=json.dumps({"response": "final"}))
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("q"), intermediate, ToolMessage("t"), final]
+        }
+
+        result = agent.ask("My question")
+        self.assertEqual(result, self.output_format(response="final"))
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_retry_prompt_is_bounded_and_keeps_question(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        huge_tool_output = "PATIENT RECORD " * 10_000
+        invalid = AIMessage(content='{"wrong_field": "' + "x" * 50_000 + '"}')
+        valid = AIMessage(content=json.dumps({"response": "ok"}))
+        mock_agent_executor.invoke.side_effect = [
+            {"messages": [HumanMessage("q"), ToolMessage(huge_tool_output), invalid]},
+            {"messages": [HumanMessage("q"), valid]},
+        ]
+
+        result = agent.ask("Original clinical question")
+
+        self.assertEqual(result, self.output_format(response="ok"))
+        self.assertEqual(mock_agent_executor.invoke.call_count, 2)
+        retry_prompt = mock_agent_executor.invoke.call_args_list[1].args[0]["messages"][
+            0
+        ]["content"]
+        # The original task is preserved...
+        self.assertIn("Original clinical question", retry_prompt)
+        # ...but neither tool outputs nor the full invalid answer are replayed.
+        self.assertNotIn("PATIENT RECORD", retry_prompt)
+        max_len = (
+            OncowflowAgent.RETRY_MAX_OUTPUT_CHARS
+            + OncowflowAgent.RETRY_MAX_ERROR_CHARS
+            + 1000
+        )
+        self.assertLess(len(retry_prompt), max_len)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_failure_message_does_not_dump_tool_outputs(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("q"), ToolMessage("SECRET PATIENT DATA")]
+        }
+
+        with self.assertRaises(ValueError) as cm:
+            agent.ask("My question")
+
+        self.assertNotIn("SECRET PATIENT DATA", str(cm.exception))
+
+    def test_extract_json_str_repairs_common_llm_malformations(self):
+        from src.application.agent.agent import extract_json_str
+
+        # Trailing comma + single quotes + unclosed brace repaired by json-repair
+        for raw in (
+            '```json\n{"response": "trailing comma",}\n```',
+            "{'response': 'single quotes'}",
+            '{"response": "unclosed object"',
+        ):
+            repaired = extract_json_str(raw)
+            parsed = self.output_format.model_validate_json(repaired)
+            self.assertTrue(parsed.response)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_handles_orphan_think_and_multiple_json_candidates(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=self.output_format,
+        )
+
+        # Orphan closing </think> with braces inside thinking + intermediate JSON snippet
+        # before the final schema-valid JSON object.
+        content = (
+            'Thinking about format {"draft": "ignore"} and {Sexe} [Age]\n'
+            "</think>\n"
+            'Note: intermediate {"wrong_key": 123}\n'
+            '{"response": "Valid final answer"}'
+        )
+        mock_agent_executor.invoke.return_value = {
+            "messages": [HumanMessage("q"), AIMessage(content=content)]
+        }
+
+        result = agent.ask("My question")
+        self.assertEqual(result, self.output_format(response="Valid final answer"))
+        mock_agent_executor.invoke.assert_called_once()
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_ask_prioritizes_root_schema_candidates_and_handles_context_exceeded(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        class NestedItem(BaseModel):
+            title: str
+
+        class RootSchema(BaseModel):
+            expert_relevant: bool
+            reference: NestedItem | None = None
+
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=RootSchema,
+        )
+
+        # 1st attempt raises ContextWindowExceededError, 2nd attempt outputs both a root object and a trailing $defs sub-object
+        second_msg_content = (
+            '```json\n{"expert_relevant": true, "reference": {"title": "PNDS"}}\n```\n'
+            '```json\n{"title": "Isolated nested item"}\n```'
+        )
+        mock_agent_executor.invoke.side_effect = [
+            RuntimeError("litellm.ContextWindowExceededError: 78553 > 64000 tokens"),
+            {"messages": [HumanMessage("q"), AIMessage(content=second_msg_content)]},
+        ]
+
+        result = agent.ask("Evaluate expert relevance")
+        self.assertEqual(result.expert_relevant, True)
+        self.assertEqual(result.reference.title, "PNDS")
+        self.assertEqual(mock_agent_executor.invoke.call_count, 2)
+        retry_prompt = mock_agent_executor.invoke.call_args_list[1].args[0]["messages"][
+            0
+        ]["content"]
+        self.assertIn("exceeded the model context window", retry_prompt)
+
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    @patch("src.application.agent.agent.Context")
+    def test_chat_agent_starts_with_clean_context_and_retries_3_times_before_raising(
+        self, mock_context_cls, mock_create_agent, mock_get_llm_client
+    ):
+        from src.application.agent.agent import ChatResponse
+
+        mock_agent_executor = MagicMock()
+        mock_create_agent.return_value = mock_agent_executor
+
+        agent = OncowflowAgent(
+            config=self.mock_config,
+            mtd=self.mock_reader,
+            output_format=ChatResponse,
+        )
+
+        # Verify ChatResponse system prompt explicitly prevents unnecessary tool calls on "test"
+        passed_system_prompt = mock_create_agent.call_args.kwargs.get(
+            "system_prompt", ""
+        )
+        self.assertIn("no pre-initialized conversation", passed_system_prompt)
+        self.assertIn("WITHOUT calling any tools", passed_system_prompt)
+
+        # Simulate 3 failed attempts -> raises ValueError after exactly 3 attempts
+        mock_agent_executor.invoke.side_effect = [
+            RuntimeError("litellm.ContextWindowExceededError: 77038 > 64000 tokens"),
+            RuntimeError("litellm.ContextWindowExceededError: 77038 > 64000 tokens"),
+            RuntimeError("litellm.ContextWindowExceededError: 77038 > 64000 tokens"),
+        ]
+
+        with self.assertRaises(ValueError):
+            agent.ask("test")
+
+        self.assertEqual(mock_agent_executor.invoke.call_count, 3)
+        for call in mock_agent_executor.invoke.call_args_list:
+            msgs = call.args[0]["messages"]
+            self.assertEqual(len(msgs), 1)
+            self.assertEqual(msgs[0]["role"], "user")

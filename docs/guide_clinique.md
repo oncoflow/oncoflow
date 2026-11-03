@@ -54,7 +54,52 @@ MedDataSyntis intègre nativement le **Thésaurus National de Cancérologie Dige
 
 ---
 
-## 🖥️ Navigation dans l'Interface Streamlit
+## 🖥️ Navigation dans la Nouvelle Interface Web Material Design 3 (`web/`)
+
+La nouvelle interface web **DataSyntis Material Design 3** a été pensée pour offrir une lisibilité hospitalière immédiate (zéro éblouissement en salle de projection grâce aux thèmes **Auto / Clair / Sombre**, conformité accessibilité **WCAG 2.2 AA**, et ergonomie adaptée aussi bien aux grands écrans de RCP qu'aux tablettes et mobiles).
+
+### 📋 1. Worklist RCP (`/worklist`)
+* **Indicateurs clés (KPI) cliquables** : visualisez en un coup d'œil le nombre de dossiers structurés, les cas en **Priorité haute**, les **Dossiers incomplets** et les **Adaptations suggérées**. Cliquez sur un KPI pour filtrer instantanément la liste.
+* **Vue Tableau dense ou Grille de cartes** :
+  * Tri multi-colonnes (Priorité, Patient, Complétude, Orientation pré-RCP, Spécialités requises, Dernière RCP).
+  * **Double-clic** sur n'importe quelle ligne pour ouvrir directement le dossier longitudinal du patient.
+  * **Menu d'actions rapides (`...`)** sur chaque patient pour ouvrir le dossier, consulter directement les avis pré-RCP, importer une nouvelle pièce PDF ou signaler une anomalie.
+
+### 🗓️ 2. Ordre du Jour de la Prochaine Séance RCP (`/agenda`)
+* **Programmation en 1 clic (`Programmer une nouvelle réunion`)** : choisissez la date de la réunion RCP, le mode d'organisation, les spécialistes présents et les dossiers inscrits.
+* **2 stratégies d'organisation automatique** :
+  * **Regroupement par spécialité & urgence** : regroupe les dossiers mobilisant les mêmes spécialistes dans des créneaux contigus afin de minimiser le temps de présence requis de chaque praticien, tout en plaçant les urgences en tête de chaque groupe.
+  * **Urgence clinique stricte** : classe tous les dossiers par niveau de priorité décroissant.
+* **Suivi du quorum et filtre visuel par spécialité** :
+  * Visualisez les créneaux de passage de chaque expert (`Dossiers #1 à #3`) et les éventuelles alertes de quorum si un spécialiste requis est absent.
+  * Mettez en évidence en temps réel tous les dossiers d'une spécialité (via le sélecteur ou en cliquant sur un badge de spécialité) et réordonnez/épinglez manuellement n'importe quel dossier.
+* **Conduite de la séance RCP** : cliquez sur **`Ouvrir le 1er dossier (#1)`** pour démarrer la séance et passer d'un patient au suivant grâce à la barre de navigation **`← Dossier précédent` / `Dossier suivant →`**.
+
+### 📁 3. Dossier Patient Longitudinal (`/patients/:id`)
+* **Carte synoptique unifiée & Frise chronologique RCP** :
+  * Bandeau supérieur regroupant l'identité, l'urgence, la complétude (avec infobulle des pièces manquantes), l'orientation pré-RCP et les spécialités requises.
+  * **Repères cliniques longitudinaux** toujours visibles avec calcul automatique des variations (**deltas** : ex. évolution du CA 19-9 en oncologie ou des scores moteurs HFMSE / CHOP-INTEND / RULM en SMA).
+  * **Frise chronologique RCP repliable** permettant de naviguer entre toutes les séances passées du patient ou d'ajouter une pièce pour la **`Prochaine séance`**.
+* **Vue scindée (Liseuse PDF + Synthèse structurée)** :
+  * **À gauche** : liseuse PDF native extensible en un clic (`Agrandir le PDF`).
+  * **À droite — Onglet `Données cliniques`** : rubriques cliniques regroupées par pôles, **repliées par défaut** avec leur conclusion visible dès le titre (`Tout déplier / Tout replier`).
+  * **Édition manuelle préservée (`✍️ Modifié manuellement`)** : chaque rubrique peut être corrigée manuellement par le clinicien ; toute modification humaine est tracée et **protégée contre l'écrasement** lors des relances IA ultérieures.
+  * **À droite — Onglet `Avis & Orientation pré-RCP`** :
+    * **Liste interactive des éléments manquants** : masquez ou restaurez individuellement les éléments signalés par l'IA une fois vérifiés par le secrétariat.
+    * **Proposition d'orientation pré-RCP & Avis par spécialité** : propositions argumentées et sourcées avec liens directs vers la page exacte du référentiel PDF (**TNCD** ou **PNDS**) ou du compte rendu patient.
+* **Tiroir latéral Assistant IA (`Co-Pilot Side Sheet`)** :
+  * Accessible à tout moment via le bouton flottant **`Assistant IA`** en bas à droite sans masquer la lecture du dossier.
+  * Permet de choisir la **spécialité médicale consultée**, le périmètre (**Tout le suivi longitudinal** ou **Séance courante**), et d'insérer des **questions cliniques suggérées** via le bouton partagé.
+
+### 📚 4. Référentiels (`/guidelines`), Experts IA (`/agents`) & Supervision
+* **Référentiels (`/guidelines`)** : consultation en plein écran des thésaurus scientifiques (**TNCD** en oncologie digestive, **PNDS** en SMA) accompagnée de l'Assistant IA documentaire sourcé.
+* **Catalogue des Experts IA (`/agents`)** : transparence complète sur les instructions système, les prompts d'extraction par rubrique et les référentiels rattachés à chaque agent.
+* **Import PDF par lot (`/ingest`)** : dépôt glisser-déposer de plusieurs comptes rendus PDF avec rattachement automatique ou manuel au patient et suivi d'avancement en direct.
+* **Supervision de la file GPU (`/admin/queue`) & Signalements (`/feedback`)** : suivi temps réel (SSE) des analyses en cours, relance des tâches en échec, libération des verrous GPU et remontée d'anomalies cliniques ou d'interface.
+
+---
+
+## 🖥️ Navigation dans l'Interface Historique Streamlit (`application/app-ui.py`)
 
 L'interface est structurée pour être simple et intuitive, accessible depuis n'importe quel navigateur interne à l'hôpital.
 

@@ -1,13 +1,25 @@
 exclude: '^(experiment/|docker/)'
 repos:
 -   repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v2.3.0
+    rev: v5.0.0
     hooks:
     -   id: check-yaml
     -   id: end-of-file-fixer
     -   id: trailing-whitespace
--   repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.14
+    -   id: check-added-large-files
+        args: ["--maxkb=1024"]
+    -   id: detect-private-key
+    -   id: check-merge-conflict
+# Ruff and pyrefly run from the uv-locked versions (same as CI), not a separate pin.
+-   repo: local
     hooks:
-    - id: ruff
-    - id: ruff-format
+    -   id: ruff-check
+        name: ruff check
+        entry: bash -c 'if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff check --config application/pyproject.toml --fix "$@"; else exec uv run --project application --frozen ruff check --config application/pyproject.toml --fix "$@"; fi' --
+        language: system
+        types: [python]
+    -   id: ruff-format
+        name: ruff format
+        entry: bash -c 'if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff format --config application/pyproject.toml "$@"; else exec uv run --project application --frozen ruff format --config application/pyproject.toml "$@"; fi' --
+        language: system
+        types: [python]

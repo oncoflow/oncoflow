@@ -2,7 +2,7 @@ import os
 import inspect
 from typing import Any
 from types import NoneType
-from datetime import datetime
+from datetime import date, datetime
 from enum import Enum
 import streamlit as st
 from streamlit_pdf_viewer import pdf_viewer
@@ -13,18 +13,35 @@ from pandas import DataFrame
 from pydantic import BaseModel
 from src.infrastructure.llm.factory import get_llm_client
 from src.application.config import AppConfig
-from src.application.app_functions import delete_document, full_read_mtd_agents
-from src.application.patient import (
-    extract_rcp_date,
-    resolve_patient_dossier,
-    select_latest_analyzed_rcp,
+from src.application.paths import UnsafePathError, is_safe_filename, safe_path
+from src.application.reader import DocumentReader
+from src.application.use_cases import (
+    PatientMDTFormExtractionService,
+    PatientRecordService,
 )
 from src.infrastructure.documents.mongodb import Mongodb
-from src.domain.agents import Agents
+from src.infrastructure.documents.repositories import (
+    MongoDocumentCacheRepository,
+    MongoPatientMDTFormRepository,
+    MongoPatientRepository,
+)
+from src.domain.agents import get_domain_agents
 from src.domain.patient import Patient
-from src.domain.patient_mdt_form import PatientMDTForm
-from src.domain.common.common_ressources import PatientPriority
-from src.ui.patient_mdt.translations import translate
+from src.domain.patient_mdt_form import PatientMDTForm, get_domain_mdt_form_cls
+from src.domain.common.common_ressources import (
+    ChemotherapyData,
+    ExpertSuggestion,
+    Gender,
+    MTDComplete,
+    PatientPriority,
+    PrimaryOrganEnum,
+    RadiologicExamType,
+    RadiologicalExamination,
+    Reference,
+    TreatmentToleranceEnum,
+    WHOPerformanceStatus,
+)
+from src.ui.patient_mdt.translations import get_agent_icon_and_label, translate
 
 
 class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
@@ -42,12 +59,10 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
         try:
             if self.ctx and not get_script_run_ctx():
                 add_script_run_ctx(threading.current_thread(), self.ctx)
-            # Reset thinking state for each new agent/LLM run to open a new expander
             self.thinking_container = None
             self.thinking_text = ""
             self.in_think = False
 
-            # Extract agent name from tags if present
             tags = kwargs.get("tags", [])
             self.agent_name = tags[0] if tags else "Assistant"
         except Exception as e:
@@ -86,7 +101,6 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
                     is_think_token = True
 
             if is_think_token:
-                # Do not show thinking if it's just general system/Assistant runs without an expert tag
                 if getattr(self, "agent_name", "Assistant") == "Assistant":
                     return
                 self.thinking_text += clean_token
@@ -101,9 +115,15 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
                         else "Assistant"
                     )
                     with st.expander(
-                        f"💭 Réflexion : {agent_display} / Thinking...", expanded=True
+                        f"Réflexion : {agent_display} / Thinking...",
+                        expanded=True,
+                        icon=":material/psychology:",
                     ):
-                        with st.container(height=250, border=False):
+                        with st.container(
+                            height=250,
+                            border=False,
+                            key="clinical_scroll_thinking",
+                        ):
                             st.write(self.thinking_text)
         except Exception as e:
             logger.warning(f"Callback on_llm_new_token failed: {e}")
@@ -116,7 +136,7 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
                 add_script_run_ctx(threading.current_thread(), self.ctx)
             tool_name = serialized.get("name", "tool")
             with self.parent_container:
-                st.write(f"🔧 *Appel de l'outil / Tool:* `{tool_name}`")
+                st.caption(f":material/build: Appel de l'outil : `{tool_name}`")
         except Exception as e:
             logger.warning(f"Callback on_tool_start failed: {e}")
 
@@ -125,7 +145,7 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
             if self.ctx and not get_script_run_ctx():
                 add_script_run_ctx(threading.current_thread(), self.ctx)
             with self.parent_container:
-                st.error(f"❌ *Erreur outil / Tool error:* {error}")
+                st.error(f"Erreur outil : {error}", icon=":material/error:")
         except Exception as e:
             logger.warning(f"Callback on_tool_error failed: {e}")
 
@@ -140,124 +160,645 @@ PAGES_DIR_SRC = "src/ui"
 logger = app_conf.set_logger("ui", default_context={"page": "datas"})
 
 
-@st.dialog("Êtes-vous sûr ?")
+def _get_record_service(conf: AppConfig | None = None) -> PatientRecordService:
+    """Instantiate a `PatientRecordService` for the active UI configuration."""
+    target_conf = conf or app_conf
+    return PatientRecordService.from_config(
+        target_conf, db_client=db_client if conf is None else None
+    )
+
+
+def _get_extraction_service(
+    conf: AppConfig | None = None,
+) -> PatientMDTFormExtractionService:
+    """Instantiate a `PatientMDTFormExtractionService` for the active UI configuration."""
+    target_conf = conf or app_conf
+    shared_db = db_client if conf is None else None
+    record_service = _get_record_service(target_conf)
+    return PatientMDTFormExtractionService(
+        config=target_conf,
+        patient_repo=MongoPatientRepository(target_conf, db_client=shared_db),
+        mdt_form_repo=MongoPatientMDTFormRepository(target_conf, db_client=shared_db),
+        cache_repo=MongoDocumentCacheRepository(target_conf, db_client=shared_db),
+        patient_record_service=record_service,
+    )
+
+
+@st.dialog("Confirmation de suppression")
 def delete(items: DataFrame):
-    st.write(f"Vous êtes sur le point de supprimer {items['file'].to_string()}")
-    if st.button("confirmer"):
+    st.error(
+        f"Vous êtes sur le point de supprimer définitivement : {items['file'].to_string()}",
+        icon=":material/warning:",
+    )
+    if st.button(
+        "Confirmer la suppression",
+        type="primary",
+        icon=":material/delete_forever:",
+        key="btn_danger_confirm_datas_del",
+    ):
+        record_service = _get_record_service()
         for doc in items["file"].to_list():
-            delete_document(app_conf, doc)
+            record_service.delete_patient_mdt_form_document(doc)
         st.rerun()
 
 
 def trigger_ai(pill_key: str, run_key: str):
     val = st.session_state.get(pill_key)
-    if val == ":material/robot: AI exec":
-        # Reset pills selection inside the callback (allowed in Streamlit)
+    if val:
         st.session_state[pill_key] = None
-        # Set trigger flag
         st.session_state[run_key] = True
 
 
 def update_date(filename, date):
     if db_client is not None:
-        db_client.update_docs(
-            "rcp_info", {"file": filename}, {"$set": {"ui_date": date}}
-        )
+        mdt_repo = MongoPatientMDTFormRepository(app_conf, db_client=db_client)
+        mdt_repo.update_fields(filename, {"ui_date": date})
+
+
+def _format_duration(seconds: float | int) -> str:
+    """Format an execution duration in seconds (< 60 s) or minutes and seconds (>= 60 s)."""
+    total_sec = float(seconds)
+    if total_sec < 60:
+        return f"{total_sec:.1f} s"
+    mins = int(total_sec // 60)
+    secs = int(round(total_sec % 60))
+    if secs == 60:
+        mins += 1
+        secs = 0
+    if mins >= 60:
+        hours = mins // 60
+        rem_mins = mins % 60
+        return f"{hours} h {rem_mins:02d} min {secs:02d} s"
+    return f"{mins} min {secs:02d} s"
+
+
+SECTION_META: dict[str, dict[str, Any]] = {
+    # Pole 1: Decision Support & MDT Conformity (MDT Opinions & Decision tab)
+    "CareOrientationProposal": {
+        "order": 10,
+        "tab": "decision",
+        "pole": None,
+        "icon": "🧭",
+        "title": "Proposition d'orientation pré-RCP",
+        "default_expanded": False,
+    },
+    "MTDCompleted": {
+        "order": 20,
+        "tab": "decision",
+        "pole": None,
+        "icon": "✅",
+        "title": "Contrôle de complétude du dossier",
+        "default_expanded": False,
+    },
+    "ExpertAnswer": {
+        "order": 30,
+        "tab": "decision",
+        "pole": None,
+        "icon": "🩺",
+        "title": "Avis des experts & Référentiels",
+        "default_expanded": False,
+    },
+    # Pole 2: Clinical & Biological Characterization (Clinical Record tab)
+    "TumorLocation": {
+        "order": 40,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🎯",
+        "title": "Localisation de la tumeur primitive",
+        "default_expanded": False,
+    },
+    "TumorBiology": {
+        "order": 50,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🧬",
+        "title": "Biologie tumorale (Statut MSI / MSS)",
+        "default_expanded": False,
+    },
+    "GeneticDiagnosis": {
+        "order": 45,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🧬",
+        "title": "Diagnostic génétique (SMN1 / SMN2)",
+        "default_expanded": False,
+    },
+    "PatientPerformanceStatus": {
+        "order": 60,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🏃",
+        "title": "Statut de performance OMS",
+        "default_expanded": False,
+    },
+    "MotorFunctionStatus": {
+        "order": 65,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🦿",
+        "title": "Classification clinique & scores moteurs",
+        "default_expanded": False,
+    },
+    "RespiratoryFunction": {
+        "order": 70,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🫁",
+        "title": "Fonction respiratoire & ventilation",
+        "default_expanded": False,
+    },
+    "OrthopedicAndSpineStatus": {
+        "order": 75,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🦴",
+        "title": "Statut orthopédique & rachidien",
+        "default_expanded": False,
+    },
+    "BulbarAndNutritionalStatus": {
+        "order": 80,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🍽️",
+        "title": "Statut bulbaire & nutritionnel",
+        "default_expanded": False,
+    },
+    # Pole 3: Paraclinical Assessment & Therapeutic History (Clinical Record tab)
+    "RadiologicExams": {
+        "order": 90,
+        "tab": "clinical",
+        "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
+        "icon": "🔬",
+        "title": "Examens radiologiques",
+        "default_expanded": False,
+    },
+    "PreviousCurativeSurgery": {
+        "order": 100,
+        "tab": "clinical",
+        "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
+        "icon": "🔪",
+        "title": "Chirurgie curative antérieure",
+        "default_expanded": False,
+    },
+    "ChemotherapyTreament": {
+        "order": 110,
+        "tab": "clinical",
+        "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
+        "icon": "💊",
+        "title": "Traitements par chimiothérapie",
+        "default_expanded": False,
+    },
+    "PlannedCurativeSurgery": {
+        "order": 120,
+        "tab": "clinical",
+        "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
+        "icon": "📅",
+        "title": "Chirurgie curative prévue",
+        "default_expanded": False,
+    },
+    # Pole 4: Administrative Information (Clinical Record tab)
+    "PatientAdministrative": {
+        "order": 200,
+        "tab": "clinical",
+        "pole": "👤 Données administratives extraites",
+        "icon": "👤",
+        "title": "Informations administratives du patient",
+        "default_expanded": False,
+    },
+}
 
 
 def get_form_models():
-    """Récupère dynamiquement les classes de modèles définies dans PatientMDTForm"""
+    """Dynamically retrieve the model classes defined in the domain's PatientMDTForm, ordered by clinical logic."""
     models = []
-    for name, obj in inspect.getmembers(PatientMDTForm):
+    form_cls = get_domain_mdt_form_cls(app_conf.domain)
+    for name, obj in inspect.getmembers(form_cls):
         if (
             inspect.isclass(obj)
             and issubclass(obj, BaseModel)
-            and name != "default_model"
+            and name not in ("default_model", "PatientMDTFormCheck")
         ):
             models.append(obj)
+    models.sort(key=lambda m: SECTION_META.get(m.__name__, {}).get("order", 150))
     return models
+
+
+def _format_date_fr(val: Any) -> str:
+    """Format a date, datetime, or ISO date string into DD/MM/YYYY."""
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, str):
+        try:
+            return datetime.fromisoformat(val).strftime("%d/%m/%Y")
+        except ValueError:
+            return val
+    return str(val)
+
+
+def _render_references_list(refs: list[Any], title_label: str | None = None):
+    """Render clinical guideline references (e.g., TNCD) as structured citations."""
+    if not refs:
+        return
+    if title_label:
+        st.markdown(f"**📖 {title_label} ({len(refs)}) :**")
+    for ref in refs:
+        d = (
+            ref.model_dump()
+            if isinstance(ref, BaseModel)
+            else (ref if isinstance(ref, dict) else {})
+        )
+        if not d:
+            continue
+        name = d.get("name") or "Référentiel"
+        page = d.get("page")
+        pos = d.get("position")
+        excerpt = d.get("excerpt") or ""
+        loc_parts = []
+        if page is not None:
+            loc_parts.append(f"p. {page}")
+        if pos:
+            loc_parts.append(str(pos))
+        loc_str = f" ({', '.join(loc_parts)})" if loc_parts else ""
+        st.markdown(
+            f"- 📖 **{name}**{loc_str}" + (f" — *« {excerpt} »*" if excerpt else "")
+        )
+
+
+def _render_radiologic_exam(exam: Any):
+    """Render a single RadiologicalExamination item as a structured clinical card."""
+    d = (
+        exam.model_dump()
+        if isinstance(exam, BaseModel)
+        else (exam if isinstance(exam, dict) else {})
+    )
+    exam_type = d.get("exam_type")
+    if isinstance(exam_type, Enum):
+        exam_type = exam_type.value
+    exam_type_str = str(exam_type or "Imagerie")
+    type_badge_map = {
+        "CT": ":blue-badge[🔬 TDM / Scanner (CT)]",
+        "MRI": ":violet-badge[🧲 IRM (MRI)]",
+        "PET": ":orange-badge[☢️ TEP-Scan (PET)]",
+        "EUS": ":green-badge[📡 Écho-endoscopie (EUS)]",
+    }
+    badge = type_badge_map.get(exam_type_str, f":blue-badge[🔬 {exam_type_str}]")
+    date_str = (
+        _format_date_fr(d.get("exam_date"))
+        if d.get("exam_date")
+        else "Date non précisée"
+    )
+    name_str = d.get("exam_name") or "Examen d'imagerie"
+    result_str = d.get("exam_result")
+
+    with st.container(border=True):
+        st.markdown(f"{badge} · 📅 **{date_str}** — **{name_str}**")
+        if result_str and result_str != "N/A":
+            st.caption(f"**Conclusions :** {result_str}")
+
+
+def _render_chemotherapy_item(chemo: Any):
+    """Render a single ChemotherapyData line as a structured clinical card."""
+    d = (
+        chemo.model_dump()
+        if isinstance(chemo, BaseModel)
+        else (chemo if isinstance(chemo, dict) else {})
+    )
+    name = d.get("chemotherapy_name") or "Protocole non précisé"
+    start = (
+        _format_date_fr(d.get("chemotherapy_start_date"))
+        if d.get("chemotherapy_start_date")
+        else None
+    )
+    end = (
+        _format_date_fr(d.get("chemotherapy_end_date"))
+        if d.get("chemotherapy_end_date")
+        else None
+    )
+    tol = d.get("chemotherapy_tolerance")
+    if isinstance(tol, Enum):
+        tol = tol.value
+    tol_str = str(tol or "")
+    tol_badge = (
+        ":green-badge[🟢 Tolérance : Bonne]"
+        if tol_str.lower() == "good"
+        else ":orange-badge[🟠 Tolérance : Moyenne]"
+        if tol_str.lower() == "medium"
+        else ":red-badge[🔴 Tolérance : Mauvaise]"
+        if tol_str.lower() == "poor"
+        else f":gray-badge[Tolérance : {translate(tol_str)}]"
+    )
+    if start and end:
+        period = f"du {start} au {end}"
+    elif start:
+        period = f"débutée le {start}"
+    elif end:
+        period = f"terminée le {end}"
+    else:
+        period = "dates non précisées"
+
+    with st.container(border=True):
+        st.markdown(f"💊 **{name}** · 📅 *{period}* · {tol_badge}")
+
+
+def _render_expert_suggestion(sugg: Any, index: int):
+    """Render an ExpertSuggestion with its clinical justification and guideline references."""
+    d = (
+        sugg
+        if isinstance(sugg, ExpertSuggestion)
+        else (ExpertSuggestion.model_validate(sugg) if isinstance(sugg, dict) else None)
+    )
+    if d is None:
+        return
+    ref_title = (
+        "Références scientifiques (TNCD)"
+        if app_conf.domain == "oncology"
+        else "Références scientifiques (PNDS / Référentiels)"
+    )
+    with st.container(border=True):
+        st.markdown(f"💡 **Proposition #{index} :** {d.suggestion}")
+        if d.why:
+            st.markdown(f"**Justification clinique :** {d.why}")
+        if d.references:
+            _render_references_list(d.references, title_label=ref_title)
+
+
+def render_expert_answer_model(pydantic_model: BaseModel):
+    """Render a single specialist's `ExpertAnswer` cleanly according to relevance."""
+    is_relevant = getattr(pydantic_model, "expert_relevant", False)
+    why_rel = getattr(pydantic_model, "why_relevant", "")
+    priority = getattr(pydantic_model, "patient_priority", None)
+    suggestions = getattr(pydantic_model, "suggestions", []) or []
+    sources = getattr(pydantic_model, "sources_relevant", []) or []
+
+    if not is_relevant:
+        st.markdown(
+            ":gray-badge[⚪ Spécialité non directement requise pour ce dossier]"
+        )
+        if why_rel:
+            st.caption(f"**Motif :** {why_rel}")
+        return
+
+    prio_badge = ":gray-badge[⚪ Priorité non spécifiée]"
+    if isinstance(priority, PatientPriority):
+        if priority.name == "urgent":
+            prio_badge = f":red-badge[🚨 {translate(priority)}]"
+        elif priority.name == "medium":
+            prio_badge = f":orange-badge[🟠 {translate(priority)}]"
+        elif priority.name == "low":
+            prio_badge = f":green-badge[🟢 {translate(priority)}]"
+
+    st.markdown(f":green-badge[✅ Expertise requise] {prio_badge}")
+    if why_rel:
+        st.markdown(f"**Analyse de l'expert :**\n\n{why_rel}")
+
+    if suggestions:
+        st.markdown(
+            f"**💡 Propositions thérapeutiques / diagnostiques ({len(suggestions)}) :**"
+        )
+        for idx, s in enumerate(suggestions, start=1):
+            _render_expert_suggestion(s, idx)
+
+    if sources:
+        with st.expander(
+            f"📖 Sources & Référentiels mobilisés ({len(sources)})", expanded=False
+        ):
+            _render_references_list(sources)
+
+
+def render_mtd_completed_model(pydantic_model: BaseModel):
+    """Render `MTDCompleted` without redundant nested model labels."""
+    mtd_comp: MTDComplete | None = getattr(pydantic_model, "mtd_complete", None)
+    if mtd_comp is None:
+        render_fields(pydantic_model)
+        return
+
+    if mtd_comp.is_mtd_complete and not mtd_comp.what_missing:
+        st.markdown(":green-badge[✅ Dossier complet et conforme aux prérequis RCP]")
+    else:
+        missing_count = len(mtd_comp.what_missing or [])
+        st.markdown(
+            f":orange-badge[⚠️ Dossier à compléter ({missing_count} élément(s) requis)]"
+        )
+
+    if mtd_comp.what_missing:
+        st.markdown("**⚠️ Éléments manquants requis avant ou pour la décision :**")
+        for item in mtd_comp.what_missing:
+            st.markdown(f"- {item}")
+
+    if mtd_comp.reflection:
+        st.markdown(f"**Synthèse collégiale :**\n\n{mtd_comp.reflection}")
+
+    if mtd_comp.references:
+        with st.expander(
+            f"📖 Références des prérequis ({len(mtd_comp.references)})", expanded=False
+        ):
+            _render_references_list(mtd_comp.references)
+
+
+def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
+    """Return a concise inline summary badge/text for the section expander title."""
+    if not isinstance(model_data, dict):
+        return ""
+
+    # Detect fallback DefaultResponse(value=None) when the LLM found no information in the record
+    non_meta_keys = {
+        k
+        for k in model_data.keys()
+        if k not in ("value", "reasoning_thinking", "time_execution")
+    }
+    if not non_meta_keys and model_data.get("value") is None:
+        return " — ⚪ Non mentionné"
+
+    if model_name == "CareOrientationProposal":
+        req = model_data.get("care_adaptation_suggested")
+        ctype = model_data.get("proposed_care_type")
+        if req is True:
+            short_ctype = (
+                f" ({translate(ctype)})" if ctype and len(str(ctype)) <= 28 else ""
+            )
+            return f" — 🧭 Adaptation suggérée{short_ctype}"
+        if req is False:
+            return " — Surveillance / Suivi habituel"
+    elif model_name == "MTDCompleted":
+        mc = model_data.get("mtd_complete")
+        if isinstance(mc, dict):
+            missing = mc.get("what_missing") or []
+            if missing:
+                return f" — ⚠️ {len(missing)} élément(s) à compléter"
+            if mc.get("is_mtd_complete") is True:
+                return " — ✅ Conforme"
+    elif model_name == "ExpertAnswer":
+        rel_count = sum(
+            1
+            for v in model_data.values()
+            if isinstance(v, dict) and v.get("expert_relevant") is True
+        )
+        return f" — {rel_count} spécialité(s) concernée(s)"
+    elif model_name == "TumorLocation":
+        loc = model_data.get("tumor_location")
+        if loc:
+            return f" — {translate(loc)}"
+    elif model_name == "TumorBiology":
+        msi = model_data.get("msi_state")
+        if msi is True:
+            return " — MSI (Instable)"
+        if msi is False:
+            return " — MSS (Stable)"
+    elif model_name == "PatientPerformanceStatus":
+        ps = model_data.get("performance_status")
+        if ps is not None:
+            return f" — OMS {ps}"
+    elif model_name == "RadiologicExams":
+        if "exams_list" in model_data or "radiological_exams" in model_data:
+            exams = (
+                model_data.get("exams_list")
+                or model_data.get("radiological_exams")
+                or []
+            )
+            if isinstance(exams, list):
+                return f" — {len(exams)} examen(s)"
+    elif model_name == "PreviousCurativeSurgery":
+        done = model_data.get("previous_curative_surgery")
+        dt = model_data.get("previous_curative_surgery_date")
+        if done is True:
+            return f" — Oui ({_format_date_fr(dt)})" if dt else " — Oui"
+        if done is False:
+            return " — Non"
+    elif model_name == "PlannedCurativeSurgery":
+        planned = model_data.get("planned_curative_surgery")
+        if planned is True:
+            return " — Oui"
+        if planned is False:
+            return " — Non"
+    elif model_name == "ChemotherapyTreament":
+        chemo = model_data.get("chemotherapy")
+        clist = model_data.get("chemotherapy_list") or []
+        if chemo is True:
+            return f" — Oui ({len(clist)} ligne(s))" if clist else " — Oui"
+        if chemo is False:
+            return " — Non"
+    elif model_name == "GeneticDiagnosis":
+        copies = model_data.get("smn2_copy_count")
+        if copies is not None:
+            return f" — {copies} copie(s) SMN2"
+    elif model_name == "MotorFunctionStatus":
+        stype = model_data.get("sma_type")
+        if stype:
+            return f" — {stype}"
+    return ""
 
 
 def resolve_patient_and_rcps() -> tuple[Patient | None, list[dict], str | None]:
     """
-    Résout le dossier patient, la liste chronologique de ses fiches RCP (de la plus récente à la plus ancienne),
-    ainsi que le fichier RCP actuellement sélectionné.
+    Resolve the PatientRecord, the chronological list of its PatientMDTForm records (newest first),
+    and the currently selected PatientMDTForm file.
     """
     patient_id_param = st.query_params.get("patient_id")
     file_param = st.query_params.get("file")
-    return resolve_patient_dossier(
-        db_client=db_client,
+    record_service = _get_record_service()
+    return record_service.resolve_patient_record(
         patient_id_param=patient_id_param,
         file_param=file_param,
-        logger=logger,
     )
 
 
-def render_field(label, value):
-    """Affiche un champ de manière formatée"""
-
+def render_field(label, value, field_name: str | None = None):
+    """Render a single field with clinical formatting for dates, enums, and domain models."""
     translated_label = translate(label)
+    is_en = st.session_state.get("language", "Français") == "English"
+
+    if field_name == "msi_state" and isinstance(value, bool):
+        msi_badge = (
+            ":orange-badge[🧬 MSI — Instabilité microsatellitaire]"
+            if value
+            else ":blue-badge[🧬 MSS — Microsatellite stable]"
+        )
+        st.markdown(f"**{translated_label} :** {msi_badge}")
+        return
 
     if isinstance(value, PatientPriority):
         translated_value = translate(value)
         if value.name == "urgent":
-            st.error(translated_value, icon="🚨")
+            st.markdown(f"**{translated_label} :** :red-badge[🚨 {translated_value}]")
         elif value.name == "medium":
-            st.warning(translated_value, icon="⚠️")
+            st.markdown(
+                f"**{translated_label} :** :orange-badge[🟠 {translated_value}]"
+            )
         elif value.name == "low":
-            st.success(translated_value)
-    elif isinstance(value, datetime):
-        st.markdown(f""" **{translated_label}:** {value.strftime("%d-%m-%Y")}""")
-    elif isinstance(value, bool):
-        if value:
-            st.success(translated_label, icon="✔️")
+            st.markdown(f"**{translated_label} :** :green-badge[🟢 {translated_value}]")
         else:
-            st.error(translated_label, icon="✖️")
+            st.markdown(f"**{translated_label} :** :gray-badge[{translated_value}]")
+    elif isinstance(value, (datetime, date)):
+        st.markdown(f"**{translated_label} :** 📅 {value.strftime('%d/%m/%Y')}")
+    elif isinstance(value, bool):
+        yes_label = "Yes" if is_en else "Oui"
+        no_label = "No" if is_en else "Non"
+        badge = f":blue-badge[✓ {yes_label}]" if value else f":gray-badge[✕ {no_label}]"
+        st.markdown(f"**{translated_label} :** {badge}")
     elif isinstance(value, list):
-        with st.expander(f"{translated_label}", expanded=False):
-            for item in value:
-                if isinstance(item, dict):
-                    with st.container(border=True):
-                        for k, v in item.items():
-                            st.markdown(f"**{translate(k)}:** {translate(v)}")
-                else:
-                    st.markdown(f"- {translate(item)}")
+        if not value:
+            empty_label = "None" if is_en else "Aucun élément"
+            st.markdown(f"**{translated_label} :** :gray-badge[{empty_label}]")
+        elif all(isinstance(x, RadiologicalExamination) for x in value):
+            for exam in value:
+                _render_radiologic_exam(exam)
+        elif all(isinstance(x, ChemotherapyData) for x in value):
+            for chemo in value:
+                _render_chemotherapy_item(chemo)
+        elif all(isinstance(x, ExpertSuggestion) for x in value):
+            for idx, sugg in enumerate(value, start=1):
+                _render_expert_suggestion(sugg, idx)
+        elif all(isinstance(x, Reference) for x in value):
+            _render_references_list(value, title_label=translated_label)
+        else:
+            with st.expander(
+                f"{translated_label} ({len(value)})",
+                expanded=False,
+                icon=":material/list:",
+            ):
+                for item in value:
+                    if isinstance(item, BaseModel):
+                        with st.container(border=True):
+                            render_fields(item)
+                    elif isinstance(item, dict):
+                        with st.container(border=True):
+                            for k, v in item.items():
+                                render_field(translate(k), v, field_name=k)
+                    else:
+                        st.markdown(f"- {translate(item)}")
     elif isinstance(value, dict):
-        for field_name, field_info in value.items():
-            render_field(translate(field_name), field_info)
+        for k, v in value.items():
+            render_field(translate(k), v, field_name=k)
     elif isinstance(value, Enum):
-        render_field(translated_label, translate(value))
+        render_field(translated_label, translate(value), field_name=field_name)
     elif isinstance(value, BaseModel):
-        render_field(translated_label, value.__dict__)
-    elif isinstance(value, int):
-        st.markdown(f"**{translated_label}:**  {translate(value)}")
+        render_fields(value)
+    elif isinstance(value, (int, float)):
+        st.markdown(f"**{translated_label} :** {translate(value)}")
     elif not isinstance(value, NoneType):
         translated_value = translate(value)
-        if len(str(translated_value)) > 30:
-            st.markdown(
-                f"""
-            **{translated_label}:**\\
-            {translated_value}"""
-            )
+        if len(str(translated_value)) > 60:
+            st.markdown(f"**{translated_label} :**\n\n{translated_value}")
         else:
-            st.markdown(f"**{translated_label}:**  {translated_value}")
+            st.markdown(f"**{translated_label} :** {translated_value}")
 
 
 def render_fields(data: BaseModel):
-    """Affiche les champs d'un modèle"""
-
+    """Render all fields of a Pydantic model."""
+    if isinstance(data, BaseModel) and data.__class__.__name__ == "ExpertAnswer":
+        render_expert_answer_model(data)
+        return
+    if isinstance(data, BaseModel) and data.__class__.__name__ == "MTDCompleted":
+        render_mtd_completed_model(data)
+        return
     for field_name, field_info in data.__class__.model_fields.items():
         label = field_info.description if field_info.description else field_name
-
-        render_field(translate(label), getattr(data, field_name))
+        render_field(translate(label), getattr(data, field_name), field_name=field_name)
 
 
 def render_model_data(data: BaseModel):
-    """Affiche les données d'un modèle Pydantic dynamiquement"""
-
-    for field_name, field_info in data.__class__.model_fields.items():
-        label = field_info.description if field_info.description else field_name
-        render_field(translate(label), getattr(data, field_name))
+    """Dynamically render data from a Pydantic model."""
+    render_fields(data)
 
 
 def rerun_all_models(filename: str, section_key: str = "default"):
@@ -268,6 +809,9 @@ def rerun_all_models(filename: str, section_key: str = "default"):
     for model_cls in models:
         model_name = model_cls.__name__
         title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
+        tab_name = SECTION_META.get(model_name, {}).get("tab", "clinical")
+        tab_suffix = "dec" if tab_name == "decision" else "clin"
+        st.session_state[f"run_ai_{section_key}_{tab_suffix}_{filename}_{title}"] = True
         st.session_state[f"run_ai_{section_key}_{filename}_{title}"] = True
     st.session_state["run_full"] = None
     st.rerun()
@@ -280,213 +824,921 @@ def get_mtd_reader(filename: str | None = None):
         or st.session_state["reader"] is None
         or getattr(st.session_state["reader"], "document", None) != target_file
     ):
-        st.session_state["reader"] = PatientMDTForm(app_conf, target_file)
+        reader = DocumentReader(app_conf, target_file)
+        reader.read_document()
+        st.session_state["reader"] = reader
+    elif not getattr(st.session_state["reader"], "markdown_exporter", None):
+        st.session_state["reader"].read_document()
     return st.session_state["reader"]
 
 
-def render_dossier_header(
+def _coerce_to_date(val: Any) -> date | None:
+    """Coerce a `datetime`, `date`, or ISO string into a `datetime.date` for Streamlit date inputs."""
+    if val is None or val == "":
+        return None
+    if isinstance(val, datetime):
+        return val.date()
+    if isinstance(val, date):
+        return val
+    if isinstance(val, str):
+        try:
+            return datetime.fromisoformat(val).date()
+        except ValueError:
+            return None
+    return None
+
+
+@st.dialog("👤 Identité du patient & Rattachement du dossier", width="large")
+def open_patient_identity_and_link_dialog(
     filename: str,
-    patient: Patient | None = None,
-):
-    """Affiche l'en-tête principal du dossier patient avec le bouton Retour."""
-    c1, c2 = st.columns([1, 6], vertical_alignment="center")
-    if c1.button("◀️ Retour", width="stretch", key="btn_back_dossier"):
-        st.query_params.clear()
-        st.rerun()
+    patient: Patient | None,
+    patient_rcps: list[dict],
+    active_doc: dict[str, Any] | None = None,
+    initial_mode: str = "edit",
+) -> None:
+    """
+    Modal dialog allowing clinicians to:
+    1. Manually edit or enter patient administrative identity and RCP date (recovering from AI failure).
+    2. Link the active RCP form (`filename`) to an existing `PatientRecord`.
+    """
+    record_service = _get_record_service()
+    extraction_service = _get_extraction_service()
 
-    if patient is not None:
-        c2.subheader(f"👤 Dossier Patient : {patient.display_label}")
-    else:
-        c2.subheader(f"Dossier : {filename}")
+    mode_options = [
+        "✏️ Modifier l'identité & Date RCP",
+        "🔗 Relier à un dossier patient existant",
+    ]
+    default_mode = mode_options[1] if initial_mode == "link" else mode_options[0]
+    selected_mode = st.segmented_control(
+        "Mode de gestion du dossier",
+        options=mode_options,
+        default=default_mode,
+        label_visibility="collapsed",
+        width="stretch",
+        key=f"dlg_identity_mode_{filename}",
+    )
+
+    admin_dict = (
+        dict(active_doc.get("PatientAdministrative"))
+        if isinstance(active_doc, dict)
+        and isinstance(active_doc.get("PatientAdministrative"), dict)
+        else {}
+    )
+    all_patients = [
+        p
+        for p in record_service.patient_repo.list_all()
+        if not p.patient_id.startswith("patient_") and p.full_name != "Inconnu"
+    ]
+    all_patients.sort(key=lambda p: (p.last_name.lower(), p.first_name.lower()))
+
+    is_power = bool(st.session_state.get("power"))
+
+    if selected_mode == mode_options[1]:
+        if is_power:
+            st.caption(f"📄 **Fiche RCP à rattacher :** `{filename}`")
+        link_candidates = [
+            p
+            for p in all_patients
+            if patient is None or p.patient_id != patient.patient_id
+        ]
+        if not link_candidates:
+            st.info(
+                "Aucun autre dossier patient identifié n'est disponible pour le rattachement. "
+                "Utilisez l'onglet **✏️ Modifier l'identité & Date RCP** pour créer ou qualifier ce dossier.",
+                icon=":material/info:",
+            )
+            return
+
+        def _format_patient_option(p: Patient) -> str:
+            dob_s = (
+                p.date_birth.strftime("%d/%m/%Y")
+                if isinstance(p.date_birth, (datetime, date))
+                else "Date de naissance non renseignée"
+            )
+            g_val = (
+                p.gender.value if hasattr(p.gender, "value") else str(p.gender or "")
+            )
+            return (
+                f"👤 {p.last_name.upper()} {p.first_name} — "
+                f"🎂 {dob_s} · ⚧️ {translate(g_val)} · 🗂️ {len(p.files)} RCP"
+            )
+
+        cand_by_id = {p.patient_id: p for p in link_candidates}
+        selected_pid = st.selectbox(
+            "Rechercher et sélectionner le dossier patient cible",
+            options=list(cand_by_id.keys()),
+            format_func=lambda pid: _format_patient_option(cand_by_id[pid]),
+            key=f"dlg_link_target_pid_{filename}",
+        )
+        target_p = cand_by_id.get(selected_pid)
+        if target_p is not None:
+            with st.container(border=True):
+                dob_s = (
+                    target_p.date_birth.strftime("%d/%m/%Y")
+                    if isinstance(target_p.date_birth, (datetime, date))
+                    else "Non renseignée"
+                )
+                born_s = (
+                    f" · *Nom de naissance : {target_p.born_name}*"
+                    if target_p.born_name
+                    else ""
+                )
+                st.markdown(
+                    f"**Aperçu du dossier cible :** 👤 **{target_p.full_name}** "
+                    f"(:blue-badge[🎂 {dob_s}] :gray-badge[🗂️ {len(target_p.files)} RCP]){born_s}"
+                )
+                if target_p.files and is_power:
+                    st.caption(
+                        "Fiches RCP déjà rattachées : "
+                        + ", ".join(f"`{f}`" for f in target_p.files)
+                    )
+
+        default_rcp_date = _coerce_to_date(admin_dict.get("date_rcp")) or (
+            _coerce_to_date(active_doc.get("ui_date")) if active_doc else None
+        )
+        link_rcp_date = st.date_input(
+            "Date de la séance RCP de cette fiche",
+            value=default_rcp_date,
+            format="DD/MM/YYYY",
+            key=f"dlg_link_date_rcp_{filename}",
+        )
+        has_clinical_data = bool(
+            isinstance(active_doc, dict)
+            and any(
+                m.__name__ in active_doc
+                for m in extraction_service.form_cls.get_clinical_models()
+            )
+        )
+        launch_ai_after_link = False
+        if not has_clinical_data:
+            launch_ai_after_link = st.checkbox(
+                "Relancer automatiquement l'extraction clinique IA après le rattachement",
+                value=True,
+                key=f"dlg_link_launch_ai_{filename}",
+            )
+
+        if st.button(
+            "🔗 Confirmer le rattachement au dossier",
+            type="primary",
+            width="stretch",
+            key=f"btn_confirm_link_patient_{filename}",
+        ):
+            try:
+                linked_patient, _ = record_service.link_mdt_form_to_patient(
+                    filename=filename,
+                    target_patient_id=selected_pid,
+                    override_date_rcp=(
+                        datetime(
+                            link_rcp_date.year, link_rcp_date.month, link_rcp_date.day
+                        )
+                        if isinstance(link_rcp_date, date)
+                        else None
+                    ),
+                    edited_by=st.session_state.get("username"),
+                )
+                if launch_ai_after_link:
+                    if (
+                        app_conf.queue.enabled
+                        and app_conf.rcp.display_type == "mongodb"
+                    ):
+                        extraction_service.enqueue_rerun(
+                            filename, model_name=None, preserve_manual_edits=True
+                        )
+                st.query_params["patient_id"] = linked_patient.patient_id
+                st.query_params["file"] = filename
+                if "action" in st.query_params:
+                    del st.query_params["action"]
+                st.toast(
+                    f"Fiche rattachée au dossier de {linked_patient.full_name}",
+                    icon="🔗",
+                )
+                st.rerun()
+            except Exception as err:
+                st.error(
+                    f"Erreur lors du rattachement : {err}", icon=":material/error:"
+                )
+        return
+
+    # Mode 1: Edit patient identity & RCP date
+    init_first = (
+        admin_dict.get("first_name")
+        or (patient.first_name if patient is not None else "")
+        or ""
+    )
+    init_last = (
+        admin_dict.get("last_name")
+        or (patient.last_name if patient is not None else "")
+        or ""
+    )
+    if init_first.lower() == "inconnu":
+        init_first = ""
+    if init_last.lower() == "inconnu":
+        init_last = ""
+    init_born = (
+        admin_dict.get("born_name")
+        or (patient.born_name if patient is not None else "")
+        or ""
+    )
+    init_dob = _coerce_to_date(
+        admin_dict.get("date_birth")
+        or (patient.date_birth if patient is not None else None)
+    )
+    init_rcp_dt = _coerce_to_date(admin_dict.get("date_rcp")) or (
+        _coerce_to_date(active_doc.get("ui_date")) if active_doc else None
+    )
+    raw_gender = admin_dict.get("gender") or (
+        patient.gender.value
+        if (patient is not None and hasattr(patient.gender, "value"))
+        else "Not_given"
+    )
+    gender_options = [g.value for g in Gender]
+    init_gender = raw_gender if raw_gender in gender_options else Gender.not_given.value
+
+    with st.form(f"form_dlg_identity_{filename}", border=False):
+        c1, c2, c3 = st.columns(3)
+        last_name_val = c1.text_input(
+            "Nom d'usage *",
+            value=str(init_last),
+            placeholder="Ex : DUPONT",
+        )
+        first_name_val = c2.text_input(
+            "Prénom *",
+            value=str(init_first),
+            placeholder="Ex : Jean",
+        )
+        born_name_val = c3.text_input(
+            "Nom de naissance",
+            value=str(init_born),
+            placeholder="Optionnel",
+        )
+
+        c4, c5, c6 = st.columns(3)
+        dob_val = c4.date_input(
+            "Date de naissance",
+            value=init_dob,
+            min_value=date(1900, 1, 1),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+        )
+        gender_val = c5.selectbox(
+            "Genre",
+            options=gender_options,
+            index=gender_options.index(init_gender),
+            format_func=translate,
+        )
+        rcp_date_val = c6.date_input(
+            "Date de la séance RCP",
+            value=init_rcp_dt,
+            min_value=date(1990, 1, 1),
+            format="DD/MM/YYYY",
+        )
+
+        apply_all = True
+        if len(patient_rcps) > 1:
+            single_scope_label = (
+                f"Modifier uniquement cette fiche RCP ({filename})"
+                if is_power
+                else "Modifier uniquement cette fiche RCP"
+            )
+            scope_choice = st.radio(
+                "Portée de la modification d'état civil",
+                options=[
+                    f"Mettre à jour tout le dossier patient ({len(patient_rcps)} fiches RCP)",
+                    single_scope_label,
+                ],
+                index=0,
+                horizontal=True,
+            )
+            apply_all = scope_choice.startswith("Mettre à jour tout")
+
+        has_clinical_data = bool(
+            isinstance(active_doc, dict)
+            and any(
+                m.__name__ in active_doc
+                for m in extraction_service.form_cls.get_clinical_models()
+            )
+        )
+        launch_ai_after_save = False
+        if not has_clinical_data:
+            launch_ai_after_save = st.checkbox(
+                "Lancer automatiquement l'extraction clinique IA après l'enregistrement",
+                value=True,
+            )
+
+        submitted = st.form_submit_button(
+            "💾 Enregistrer les informations administratives",
+            type="primary",
+            width="stretch",
+        )
+        if submitted:
+            if not first_name_val.strip() and not last_name_val.strip():
+                st.error(
+                    "Veuillez renseigner au moins le nom ou le prénom du patient.",
+                    icon=":material/error:",
+                )
+            else:
+                try:
+                    updated_patient, _ = record_service.update_patient_administrative(
+                        filename=filename,
+                        admin_data={
+                            "first_name": first_name_val.strip(),
+                            "last_name": last_name_val.strip(),
+                            "born_name": born_name_val.strip() or None,
+                            "date_birth": (
+                                datetime(dob_val.year, dob_val.month, dob_val.day)
+                                if isinstance(dob_val, date)
+                                else None
+                            ),
+                            "date_rcp": (
+                                datetime(
+                                    rcp_date_val.year,
+                                    rcp_date_val.month,
+                                    rcp_date_val.day,
+                                )
+                                if isinstance(rcp_date_val, date)
+                                else None
+                            ),
+                            "gender": gender_val,
+                        },
+                        apply_to_all_patient_forms=apply_all,
+                        edited_by=st.session_state.get("username"),
+                    )
+                    if launch_ai_after_save:
+                        if (
+                            app_conf.queue.enabled
+                            and app_conf.rcp.display_type == "mongodb"
+                        ):
+                            extraction_service.enqueue_rerun(
+                                filename, model_name=None, preserve_manual_edits=True
+                            )
+                    st.query_params["patient_id"] = updated_patient.patient_id
+                    st.query_params["file"] = filename
+                    if "action" in st.query_params:
+                        del st.query_params["action"]
+                    st.toast(
+                        "Informations administratives mises à jour avec succès",
+                        icon="✅",
+                    )
+                    st.rerun()
+                except Exception as err:
+                    st.error(
+                        f"Erreur de validation : {err}",
+                        icon=":material/error:",
+                    )
 
 
-def render_patient_identity_banner(
+def render_unified_patient_banner(
+    filename: str,
     patient: Patient | None,
     patient_rcps: list[dict],
     latest_file: str,
-):
-    """Affiche le bandeau d'identité administrative du patient dans l'onglet 'Données patient'."""
-    if patient is None:
-        return
-
-    with st.container(border=True):
-        cols = st.columns([2, 2, 2, 2])
-        cols[0].markdown(f"**Nom complet :** {patient.full_name}")
-        if patient.born_name:
-            cols[0].caption(f"Nom de naissance : {patient.born_name}")
-
-        dob_str = (
-            patient.date_birth.strftime("%d/%m/%Y")
-            if isinstance(patient.date_birth, datetime)
-            else "Non renseignée"
-        )
-        cols[1].markdown(f"**Date de naissance :** {dob_str}")
-
-        gender_val = (
-            patient.gender.value
-            if hasattr(patient.gender, "value")
-            else str(patient.gender)
-        )
-        cols[2].markdown(f"**Sexe :** {translate(gender_val)}")
-        cols[3].markdown(
-            f"**Nombre de RCP :** {len(patient_rcps)}  \n"
-            f"**Dernière RCP :** `{latest_file}`"
-        )
-
-
-def render_rcp_timeline_selector(
-    filename: str,
-    patient: Patient | None = None,
-    patient_rcps: list[dict] | None = None,
-) -> str:
+    section_key: str = "patient_dossier",
+) -> tuple[str, bool, str | None, dict[str, Any]]:
     """
-    Affiche le sélecteur chronologique permettant de remonter dans le temps parmi toutes les fiches RCP du patient.
-    Retourne le nom du fichier RCP sélectionné.
+    Render a single, unified hospital-grade Patient & RCP Header Banner combining:
+    - Back button + Patient full name & administrative badges (DOB, Gender, Birth name, RCP count)
+    - Document actions (Identity/Link modal, Download PDF, Rerun AI analysis, Power mode options)
+    - Chronological RCP timeline selector (when multiple RCP forms exist)
+    Returns `(selected_file, has_pdf, file_path, active_state)`.
     """
     patient_rcps = patient_rcps or []
     file_options = [doc["file"] for doc in patient_rcps if "file" in doc]
-    if not file_options:
-        return filename
+    default_file = (
+        filename if (not file_options or filename in file_options) else file_options[0]
+    )
 
-    latest_analyzed = select_latest_analyzed_rcp(patient_rcps)
-    latest_file = latest_analyzed.get("file") if latest_analyzed else None
+    extraction_service = _get_extraction_service()
+    active_state = (
+        extraction_service.get_active_jobs_state(default_file)
+        if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb"
+        else {
+            "has_any_job": False,
+            "has_full_job": False,
+            "active_models": [],
+            "current_step": None,
+        }
+    )
 
-    file_to_label: dict[str, str] = {}
-    for idx, doc in enumerate(patient_rcps):
-        f_name = doc["file"]
-        rcp_dt = extract_rcp_date(doc)
-        date_str = rcp_dt.strftime("%d/%m/%Y") if rcp_dt else "Date inconnue"
-        prefix = (
-            "⭐ Dernière RCP"
-            if f_name == latest_file
-            else f"RCP #{len(patient_rcps) - idx}"
-        )
-        file_to_label[f_name] = f"{prefix} — 📅 {date_str} ({f_name})"
+    try:
+        file_path = safe_path(app_conf.rcp.path, default_file)
+    except UnsafePathError:
+        file_path = None
+    has_pdf = file_path is not None and os.path.exists(file_path)
 
-    default_file = filename if filename in file_options else file_options[0]
+    active_doc = next((d for d in patient_rcps if d.get("file") == default_file), None)
+    if active_doc is None and db_client is not None:
+        active_doc = db_client.database["rcp_info"].find_one({"file": default_file})
 
-    st.markdown("##### 🕰️ Sélectionner une fiche RCP dans l'historique du patient")
-    if len(file_options) <= 4:
-        chosen_file = st.segmented_control(
-            "Sélectionner une fiche RCP dans l'historique",
-            options=file_options,
-            default=default_file,
-            format_func=lambda f: file_to_label.get(f, f),
-            label_visibility="collapsed",
-            key=f"rcp_timeline_{patient.patient_id if patient else filename}",
-        )
-    else:
-        chosen_file = st.selectbox(
-            "Sélectionner une fiche RCP dans l'historique",
-            options=file_options,
-            index=file_options.index(default_file),
-            format_func=lambda f: file_to_label.get(f, f),
-            label_visibility="collapsed",
-            key=f"rcp_timeline_select_{patient.patient_id if patient else filename}",
+    # Automatically open identity/link modal if requested via query param (?action=identify or ?action=link)
+    requested_action = st.query_params.get("action")
+    if requested_action in ("identify", "link"):
+        del st.query_params["action"]
+        open_patient_identity_and_link_dialog(
+            filename=default_file,
+            patient=patient,
+            patient_rcps=patient_rcps,
+            active_doc=active_doc,
+            initial_mode="link" if requested_action == "link" else "edit",
         )
 
-    chosen_file = chosen_file or default_file
+    is_power = bool(st.session_state.get("power"))
 
-    if chosen_file != filename:
-        st.query_params["file"] = chosen_file
-        if patient is not None:
-            st.query_params["patient_id"] = patient.patient_id
-        st.rerun()
+    # Top breadcrumb navigation outside the patient header card
+    if st.button(
+        "Retour aux dossiers",
+        icon=":material/arrow_back:",
+        type="tertiary",
+        key="btn_back_dossier",
+        help="Retourner au tableau de bord de préparation RCP",
+    ):
+        st.query_params.clear()
+        st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
 
-    return chosen_file
+    with st.container(border=True):
+        exec_times_dict = (
+            active_doc.get("execution_times")
+            if isinstance(active_doc, dict)
+            and isinstance(active_doc.get("execution_times"), dict)
+            else {}
+        )
+        total_exec_sec = sum(
+            float(v) for v in exec_times_dict.values() if isinstance(v, (int, float))
+        )
+        formatted_total_time = (
+            _format_duration(total_exec_sec) if total_exec_sec > 0 else None
+        )
+        manual_admin_badge = (
+            " :green-badge[✍️ Identité vérifiée]"
+            if PatientMDTForm.is_section_manually_edited(
+                active_doc, "PatientAdministrative"
+            )
+            else ""
+        )
+
+        # Row 1: Left (Patient identity + discreet metadata) | Right (Compact action toolbar)
+        left_col, right_col = st.columns([6.4, 3.6], vertical_alignment="center")
+
+        with left_col:
+            if patient is not None:
+                dob_str = (
+                    patient.date_birth.strftime("%d/%m/%Y")
+                    if isinstance(patient.date_birth, (datetime, date))
+                    else "Non renseignée"
+                )
+                gender_val = (
+                    patient.gender.value
+                    if hasattr(patient.gender, "value")
+                    else str(patient.gender)
+                )
+                st.markdown(
+                    f"### 👤 {patient.full_name}  "
+                    f":blue-badge[🎂 {dob_str}] "
+                    f":violet-badge[⚧️ {translate(gender_val)}] "
+                    f":gray-badge[🗂️ {len(patient_rcps)} RCP]{manual_admin_badge}"
+                )
+            else:
+                fallback_title = (
+                    f"📄 Dossier : `{default_file}`"
+                    if is_power
+                    else "👤 Dossier patient à identifier"
+                )
+                st.markdown(f"### {fallback_title}{manual_admin_badge}")
+
+            rcp_dt = PatientMDTForm.extract_mdt_date(active_doc) if active_doc else None
+            rcp_dt_str = (
+                rcp_dt.strftime("%d/%m/%Y") if rcp_dt else "Date non renseignée"
+            )
+            born_part = (
+                f" · *Né(e) {patient.born_name}*"
+                if (patient is not None and patient.born_name)
+                else ""
+            )
+            power_file_part = ""
+            if is_power:
+                power_file_part = f" · 📄 `{default_file}`"
+                if latest_file and latest_file != default_file:
+                    power_file_part += f" (Dernière RCP : `{latest_file}`)"
+
+            time_part = (
+                f" · ⏱️ Analyse IA : {formatted_total_time}"
+                if formatted_total_time
+                else ""
+            )
+            st.caption(
+                f"📅 **Séance RCP :** {rcp_dt_str}{born_part}{power_file_part}{time_part}"
+            )
+
+        with right_col:
+            action_bar = st.container(
+                horizontal=True,
+                horizontal_alignment="right",
+                vertical_alignment="center",
+            )
+            with action_bar:
+                if st.button(
+                    "Modifier",
+                    icon=":material/edit:",
+                    type="secondary",
+                    key=f"btn_open_identity_dlg_{section_key}_{default_file}",
+                    help="Modifier l'état civil du patient, la date de la RCP ou rattacher cette fiche à un autre dossier",
+                ):
+                    open_patient_identity_and_link_dialog(
+                        filename=default_file,
+                        patient=patient,
+                        patient_rcps=patient_rcps,
+                        active_doc=active_doc,
+                        initial_mode="edit",
+                    )
+
+                if has_pdf and file_path is not None:
+                    pdf_help = (
+                        f"Télécharger le document PDF original ({default_file})"
+                        if is_power
+                        else "Télécharger le document PDF original"
+                    )
+                    with open(file_path, "rb") as f:
+                        st.download_button(
+                            "PDF",
+                            f,
+                            file_name=default_file,
+                            mime="application/pdf",
+                            icon=":material/download:",
+                            type="secondary",
+                            key=f"dl_pdf_{section_key}_{default_file}",
+                            help=pdf_help,
+                        )
+
+                rerun_time_hint = (
+                    f" — Dernier temps total d'analyse : {formatted_total_time}"
+                    if formatted_total_time
+                    else ""
+                )
+                rerun_target_label = f" sur {default_file}" if is_power else ""
+                if st.button(
+                    "Relancer l'IA",
+                    icon=":material/refresh:",
+                    type="secondary",
+                    help=(
+                        "Cette fiche est déjà dans la file de traitement"
+                        if active_state["has_any_job"]
+                        else f"Relancer l'extraction IA complète{rerun_target_label} (les rubriques modifiées manuellement sont conservées){rerun_time_hint}"
+                    ),
+                    key=f"btn_rerun_rcp_{section_key}_{default_file}",
+                    disabled=active_state["has_any_job"],
+                ):
+                    if (
+                        app_conf.queue.enabled
+                        and app_conf.rcp.display_type == "mongodb"
+                    ):
+                        res = extraction_service.enqueue_rerun(
+                            default_file,
+                            model_name=None,
+                            preserve_manual_edits=True,
+                        )
+                        if not res.get("already_queued"):
+                            st.toast("Fiche ajoutée à la file de traitement", icon="⏳")
+                        else:
+                            st.toast(
+                                "Cette fiche est déjà dans la file de traitement",
+                                icon="ℹ️",
+                            )
+                        st.rerun()
+                    else:
+                        try:
+                            with st.status(
+                                f"Relance de l'analyse complète ({default_file}) ..."
+                            ) as status:
+                                st_callback = ThreadSafeStreamlitCallbackHandler(status)
+                                extraction_service.extract_all_sections(
+                                    filename=default_file,
+                                    callbacks=[st_callback],
+                                    preserve_manual_edits=True,
+                                )
+                        except Exception as e:
+                            logger.error(f"Erreur lors de la relance complète : {e}")
+                            st.error(f"Erreur lors de l'exécution de l'IA : {e}")
+                        finally:
+                            st.rerun()
+
+                if is_power:
+                    power_mode(
+                        action_bar,
+                        filename=default_file,
+                        key_prefix=f"{section_key}_{default_file}",
+                        patient_rcps=patient_rcps,
+                    )
+
+        # Proactive Alert Banner when AI administrative extraction failed or patient is unidentified
+        is_admin_incomplete = (
+            patient is None
+            or patient.full_name == "Inconnu"
+            or (
+                isinstance(active_doc, dict)
+                and (
+                    active_doc.get("processing_status") == "FAILED"
+                    or not active_doc.get("PatientAdministrative")
+                )
+            )
+        ) and not active_state["has_any_job"]
+        if is_admin_incomplete:
+            warn_col, act_col1, act_col2 = st.columns(
+                [5.5, 1.8, 2.2], vertical_alignment="center"
+            )
+            err_detail = (
+                f" ({active_doc.get('processing_error')})"
+                if isinstance(active_doc, dict) and active_doc.get("processing_error")
+                else ""
+            )
+            warn_col.warning(
+                f"**Identification administrative requise :** l'extraction automatique de l'identité patient "
+                f"a échoué ou est incomplète sur cette fiche{err_detail}. "
+                "Vous pouvez saisir l'état civil manuellement ou rattacher ce document à un dossier existant.",
+                icon=":material/person_alert:",
+            )
+            if act_col1.button(
+                "✏️ Saisir l'identité",
+                type="primary",
+                width="stretch",
+                key=f"btn_alert_identify_{section_key}_{default_file}",
+            ):
+                open_patient_identity_and_link_dialog(
+                    filename=default_file,
+                    patient=patient,
+                    patient_rcps=patient_rcps,
+                    active_doc=active_doc,
+                    initial_mode="edit",
+                )
+            if act_col2.button(
+                "🔗 Relier à un patient existant",
+                type="secondary",
+                width="stretch",
+                key=f"btn_alert_link_{section_key}_{default_file}",
+            ):
+                open_patient_identity_and_link_dialog(
+                    filename=default_file,
+                    patient=patient,
+                    patient_rcps=patient_rcps,
+                    active_doc=active_doc,
+                    initial_mode="link",
+                )
+
+        # Row 2 (only if multiple RCP forms exist): Integrated chronological timeline selector + Prev/Next navigation
+        if len(file_options) > 1:
+            current_idx = (
+                file_options.index(default_file) if default_file in file_options else 0
+            )
+            date_counts: dict[str, int] = {}
+            for doc in patient_rcps:
+                dt_obj = PatientMDTForm.extract_mdt_date(doc)
+                d_s = dt_obj.strftime("%d/%m/%Y") if dt_obj else "Date inconnue"
+                date_counts[d_s] = date_counts.get(d_s, 0) + 1
+
+            file_to_label: dict[str, str] = {}
+            for idx, doc in enumerate(patient_rcps):
+                f_name = doc["file"]
+                rcp_dt = PatientMDTForm.extract_mdt_date(doc)
+                date_str = rcp_dt.strftime("%d/%m/%Y") if rcp_dt else "Date inconnue"
+                proc_status = doc.get("processing_status")
+                if proc_status in (
+                    "PENDING_ADMIN",
+                    "PROCESSING_ADMIN",
+                    "PENDING_CLINICAL",
+                    "PROCESSING_CLINICAL",
+                ):
+                    urg_dot = "⏳"
+                    status_tag = " · En cours"
+                else:
+                    doc_metrics = PatientMDTForm.extract_card_metrics(doc)
+                    urg_val = doc_metrics.get("urgency", "Indéfini")
+                    urg_dot = (
+                        "🔴"
+                        if urg_val == "Urgent"
+                        else "🟠"
+                        if urg_val == "Semi-urgent"
+                        else "🟢"
+                        if urg_val == "Standard"
+                        else "⚪"
+                    )
+                    missing_cnt = len(doc_metrics.get("missing", []))
+                    int_req_val = doc_metrics.get(
+                        "care_adaptation_suggested",
+                        doc_metrics.get("intervention_required"),
+                    )
+                    tags = []
+                    if int_req_val is True:
+                        tags.append("🧭")
+                    if missing_cnt > 0:
+                        tags.append(f"⚠️{missing_cnt}")
+                    elif urg_val != "Indéfini":
+                        tags.append("✅")
+                    status_tag = f" {' '.join(tags)}" if tags else ""
+
+                prefix = (
+                    "⭐ Dernière RCP"
+                    if f_name == latest_file
+                    else f"RCP #{len(patient_rcps) - idx}"
+                )
+                disambig = (
+                    f" ({f_name})"
+                    if (is_power and date_counts.get(date_str, 0) > 1)
+                    else ""
+                )
+                file_to_label[f_name] = (
+                    f"{urg_dot} {prefix} · {date_str}{status_tag}{disambig}"
+                )
+
+            t_col_label, t_col_prev, t_col_sel, t_col_next = st.columns(
+                [1.3, 0.75, 4.9, 0.75], vertical_alignment="center"
+            )
+            t_col_label.caption(
+                f"🕒 **Historique ({len(file_options) - current_idx}/{len(file_options)}) :**"
+            )
+
+            has_older = current_idx + 1 < len(file_options)
+            has_newer = current_idx > 0
+
+            with t_col_prev:
+                if st.button(
+                    "◀ Préc.",
+                    disabled=not has_older,
+                    width="stretch",
+                    key=f"btn_rcp_older_{section_key}_{default_file}",
+                    help="Voir la séance RCP chronologiquement antérieure",
+                ):
+                    older_file = file_options[current_idx + 1]
+                    st.query_params["file"] = older_file
+                    if patient is not None:
+                        st.query_params["patient_id"] = patient.patient_id
+                    st.rerun()
+
+            with t_col_next:
+                if st.button(
+                    "Suiv. ▶",
+                    disabled=not has_newer,
+                    width="stretch",
+                    key=f"btn_rcp_newer_{section_key}_{default_file}",
+                    help="Voir la séance RCP chronologiquement plus récente",
+                ):
+                    newer_file = file_options[current_idx - 1]
+                    st.query_params["file"] = newer_file
+                    if patient is not None:
+                        st.query_params["patient_id"] = patient.patient_id
+                    st.rerun()
+
+            timeline_widget_key = f"rcp_timeline_{patient.patient_id if patient else section_key}_{default_file}"
+            with t_col_sel:
+                if len(file_options) <= 4:
+                    chosen_file = st.segmented_control(
+                        "Sélectionner une fiche RCP dans l'historique",
+                        options=file_options,
+                        default=default_file,
+                        format_func=lambda f: file_to_label.get(f, f),
+                        label_visibility="collapsed",
+                        width="stretch",
+                        key=timeline_widget_key,
+                    )
+                else:
+                    chosen_file = st.selectbox(
+                        "Sélectionner une fiche RCP dans l'historique",
+                        options=file_options,
+                        index=current_idx,
+                        format_func=lambda f: file_to_label.get(f, f),
+                        label_visibility="collapsed",
+                        key=timeline_widget_key,
+                    )
+
+            chosen_file = chosen_file or default_file
+            if chosen_file != filename:
+                st.query_params["file"] = chosen_file
+                if patient is not None:
+                    st.query_params["patient_id"] = patient.patient_id
+                st.rerun()
+            return chosen_file, has_pdf, file_path, active_state
+
+    return default_file, has_pdf, file_path, active_state
 
 
 def power_mode(
-    element,
+    element=None,
     filename: str | None = None,
     key_prefix: str = "default",
     patient_rcps: list[dict] | None = None,
 ):
     active_file = filename or st.query_params.get("file")
-    if "power" in st.session_state:
-        if st.session_state["power"]:
-            po = element.popover(":repeat: AI process")
-            mm = app_conf.llm.models
-            mp = app_conf.rcp.doc_type
+    if st.session_state.get("power"):
+        target = element if element is not None else st
+        po = target.popover(
+            "Options IA",
+            icon=":material/tune:",
+            help="Options IA avancées (modèle, extracteur PDF, écrasement des modifications manuelles)",
+        )
 
-            rcp_files = [
-                d["file"]
-                for d in (patient_rcps or [])
-                if isinstance(d, dict) and "file" in d
-            ]
-            if active_file and active_file not in rcp_files:
-                rcp_files.insert(0, active_file)
+        rcp_files = [
+            d["file"]
+            for d in (patient_rcps or [])
+            if isinstance(d, dict) and "file" in d
+        ]
+        if active_file and active_file not in rcp_files:
+            rcp_files.insert(0, active_file)
 
-            if len(rcp_files) > 1:
-                target_rcp_file = po.selectbox(
-                    "Fiche RCP à relancer",
-                    options=rcp_files,
-                    index=rcp_files.index(active_file)
-                    if active_file in rcp_files
-                    else 0,
-                    key=f"pow_target_file_{key_prefix}_{active_file}",
+        if len(rcp_files) > 1:
+            target_rcp_file = po.selectbox(
+                "Fiche RCP à relancer",
+                options=rcp_files,
+                index=rcp_files.index(active_file) if active_file in rcp_files else 0,
+                key=f"pow_target_file_{key_prefix}_{active_file}",
+            )
+        else:
+            target_rcp_file = active_file
+            po.caption(f":material/description: Fiche RCP cible : `{target_rcp_file}`")
+
+        nm = po.selectbox(
+            "Modèle LLM",
+            get_llm_client(app_conf).get_models(),
+            placeholder="Sélectionner un modèle",
+            key=f"pow_model_{key_prefix}_{active_file}",
+        )
+        parser = po.selectbox(
+            "Extracteur PDF (Parser)",
+            ["UnstructuredPDFLoader", "openparse", "docling", "ollamaOcr"],
+            placeholder="Sélectionner un parser",
+            key=f"pow_parser_{key_prefix}_{active_file}",
+        )
+        overwrite_manual = po.checkbox(
+            "Écraser les rubriques modifiées manuellement",
+            value=False,
+            key=f"pow_overwrite_manual_{key_prefix}_{active_file}",
+        )
+        extraction_service = _get_extraction_service()
+        target_active_state = (
+            extraction_service.get_active_jobs_state(target_rcp_file)
+            if app_conf.queue.enabled
+            and app_conf.rcp.display_type == "mongodb"
+            and target_rcp_file
+            else {"has_any_job": False}
+        )
+        if po.button(
+            "Relancer avec ces paramètres",
+            icon=":material/refresh:",
+            type="primary",
+            key=f"pow_rerun_{key_prefix}_{active_file}",
+            width="stretch",
+            disabled=target_active_state.get("has_any_job", False),
+        ):
+            if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
+                cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
+                cache_repo.delete_cache(file_name=target_rcp_file)
+                res = extraction_service.enqueue_rerun(
+                    target_rcp_file,
+                    model_name=None,
+                    preserve_manual_edits=(not overwrite_manual),
                 )
-            else:
-                target_rcp_file = active_file
-                po.caption(f"📄 Fiche RCP cible : `{target_rcp_file}`")
-
-            nm = po.selectbox(
-                "Modèle",
-                get_llm_client(app_conf).get_models(),
-                placeholder="Select modèle",
-                key=f"pow_model_{key_prefix}_{active_file}",
-            )
-            parser = po.selectbox(
-                "Doc parser",
-                ["UnstructuredPDFLoader", "openparse", "docling", "ollamaOcr"],
-                placeholder="Select parser",
-                key=f"pow_parser_{key_prefix}_{active_file}",
-            )
-            if po.button(
-                "🔄 Relancer cette RCP",
-                key=f"pow_rerun_{key_prefix}_{active_file}",
-                width="stretch",
-            ):
-                app_conf.llm.models = nm
-                app_conf.rcp.doc_type = parser
-                with st.status(f"Relance IA sur {target_rcp_file} ..."):
-                    from src.infrastructure.documents.mongodb import Mongodb
-
-                    client = Mongodb(app_conf)
-                    client.delete_document_cache(file_name=target_rcp_file)
-                    client.close()
-                    full_read_mtd_agents(
-                        app_conf=app_conf,
-                        filename=target_rcp_file,
-                        logger=logger,
+                if not res.get("already_queued"):
+                    st.toast(
+                        "Fiche ajoutée à la file de traitement",
+                        icon="⏳",
                     )
-                    app_conf.llm.models = mm
-                    app_conf.rcp.doc_type = mp
+                else:
+                    st.toast(
+                        "Cette fiche est déjà dans la file de traitement",
+                        icon="ℹ️",
+                    )
+            else:
+                run_conf = app_conf.model_copy(deep=True)
+                run_conf.llm.models = nm
+                run_conf.rcp.doc_type = parser
+                with st.status(f"Relance IA sur {target_rcp_file} ..."):
+                    run_cache = MongoDocumentCacheRepository(run_conf)
+                    run_cache.delete_cache(file_name=target_rcp_file)
+                    run_extraction = _get_extraction_service(run_conf)
+                    run_extraction.extract_all_sections(
+                        filename=target_rcp_file,
+                        preserve_manual_edits=(not overwrite_manual),
+                    )
                     st.write("Succès")
-                st.rerun()
-            po.divider()
-            po.caption("Gestion du cache (fiche RCP uniquement)")
-            if po.button(
-                "🗑️ Vider le cache de cette RCP",
-                help="Supprimer le cache Markdown de cette fiche RCP uniquement pour forcer une ré-extraction",
-                width="stretch",
-                key=f"pow_clear_{key_prefix}_{active_file}",
-            ):
-                from src.infrastructure.documents.mongodb import Mongodb
+            st.rerun()
 
-                client = Mongodb(app_conf)
-                client.delete_document_cache(file_name=target_rcp_file)
-                client.close()
-                st.toast(f"Cache vidé pour {target_rcp_file}", icon="🗑️")
-                st.rerun()
+        po.caption("Gestion du cache (fiche RCP uniquement)")
+        if po.button(
+            "Vider le cache de cette RCP",
+            icon=":material/delete:",
+            help="Supprimer le cache Markdown de cette fiche RCP uniquement pour forcer une ré-extraction",
+            width="stretch",
+            key=f"btn_del_pow_clear_{key_prefix}_{active_file}",
+        ):
+            cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
+            cache_repo.delete_cache(file_name=target_rcp_file)
+            st.toast(f"Cache vidé pour {target_rcp_file}", icon="🗑️")
+            st.rerun()
 
 
 def form_rcp_chat(filename: str, section_key: str = "rcp"):
     """
-    Onglet Assistant IA rattaché à une fiche RCP unique (opérant exclusivement sur `filename`).
+    AI Assistant attached to a single PatientMDTForm record (`filename`).
     """
-    st.header(f"Poser une question sur la fiche RCP ({filename})")
-    st.info(f"📄 **Périmètre : Fiche RCP unique** (`{filename}`)")
+    st.caption(
+        f":material/description: **Périmètre : Fiche RCP unique** (`{filename}`)"
+    )
 
     state_prefix = f"rcp_chat_{section_key}_{filename}"
     active_key = f"{state_prefix}_active"
@@ -498,47 +1750,65 @@ def form_rcp_chat(filename: str, section_key: str = "rcp"):
     if messages_key not in st.session_state:
         st.session_state[messages_key] = []
 
-    agents = Agents()
+    agents = get_domain_agents(app_conf.domain)
     available_agents = agents.list
-    agent_choice = st.selectbox(
-        "Choisir l'agent",
-        list(available_agents.keys()),
-        key=f"{state_prefix}_select",
-        disabled=st.session_state[active_key],
-    )
-    if not st.session_state[active_key]:
-        if st.button("Démarrer le chat sur cette fiche", key=f"{state_prefix}_start"):
-            with st.spinner(f"Démarrage du chat sur la fiche {filename} ..."):
-                reader = get_mtd_reader(filename)
-                agent_cls = available_agents[agent_choice]
-                st.session_state[agent_key] = agent_cls(
-                    config=app_conf,
-                    mtd=reader,
-                )
-                st.session_state[active_key] = True
-            st.rerun()
-    else:
-        if st.button("Arrêter le chat", key=f"{state_prefix}_stop"):
-            st.session_state[active_key] = False
-            if agent_key in st.session_state:
-                del st.session_state[agent_key]
-            st.session_state[messages_key] = []
-            try:
-                from src.application.app_functions import unload_active_models
+    c_sel, c_btn = st.columns([3, 2], vertical_alignment="bottom")
+    with c_sel:
+        agent_choice = st.selectbox(
+            "Choisir l'agent spécialiste",
+            list(available_agents.keys()),
+            format_func=lambda a: (
+                f"{get_agent_icon_and_label(a)[0]} {get_agent_icon_and_label(a)[1]}"
+            ),
+            key=f"{state_prefix}_select",
+            disabled=st.session_state[active_key],
+        )
+    with c_btn:
+        if not st.session_state[active_key]:
+            if st.button(
+                "Démarrer la discussion",
+                icon=":material/play_arrow:",
+                type="primary",
+                width="stretch",
+                key=f"{state_prefix}_start",
+            ):
+                with st.spinner(f"Initialisation de l'agent sur {filename}..."):
+                    reader = get_mtd_reader(filename)
+                    agent_cls = available_agents[agent_choice]
+                    st.session_state[agent_key] = agent_cls(
+                        config=app_conf,
+                        mtd=reader,
+                    )
+                    st.session_state[active_key] = True
+                st.rerun()
+        else:
+            if st.button(
+                "Terminer la session",
+                icon=":material/stop_circle:",
+                width="stretch",
+                key=f"{state_prefix}_stop",
+            ):
+                st.session_state[active_key] = False
+                if agent_key in st.session_state:
+                    del st.session_state[agent_key]
+                st.session_state[messages_key] = []
+                try:
+                    from src.application.app_functions import unload_active_models
 
-                unload_active_models(app_conf)
-            except Exception:
-                pass
-            st.rerun()
+                    unload_active_models(app_conf)
+                except Exception:
+                    pass
+                st.rerun()
 
-        messages = st.container(height=300)
+    if st.session_state[active_key]:
+        messages = st.container(height=520, border=True)
 
         for message in st.session_state.get(messages_key, []):
             with messages.chat_message(message["role"]):
                 st.markdown(message["content"])
 
         if prompt := st.chat_input(
-            f"Votre question sur la fiche {filename}",
+            f"Posez votre question sur la fiche {filename}...",
             key=f"{state_prefix}_input",
         ):
             st.session_state[messages_key].append({"role": "user", "content": prompt})
@@ -554,7 +1824,7 @@ def form_rcp_chat(filename: str, section_key: str = "rcp"):
                             {"role": "assistant", "content": resp.response}
                         )
                     except Exception as e:
-                        st.error(f"Erreur lors de la génération de la réponse: {e}")
+                        st.error(f"Erreur lors de la génération de la réponse : {e}")
 
 
 def form_dossier_chat(
@@ -563,15 +1833,12 @@ def form_dossier_chat(
     current_filename: str | None = None,
 ):
     """
-    Onglet Assistant IA opérant sur l'intégralité du dossier patient
-    (toutes les fiches RCP associées au patient ainsi que l'historique des extractions IA).
+    AI Assistant operating across the entire patient dossier
+    (all PatientMDTForm records associated with the patient as well as the AI extraction history).
     """
-    st.header("Poser une question sur l'ensemble du dossier patient")
-
     active_file = current_filename or st.query_params.get("file")
     patient_rcps = patient_rcps or []
 
-    # Liste chronologique (du plus ancien au plus récent) de tous les fichiers RCP du dossier patient
     chronological_files = [d["file"] for d in reversed(patient_rcps) if "file" in d]
     if not chronological_files and active_file:
         chronological_files = [active_file]
@@ -582,8 +1849,9 @@ def form_dossier_chat(
         else f"file_{active_file}"
     )
 
-    st.info(
-        f"🗂️ **Périmètre : Dossier patient complet + Historique IA** ({len(chronological_files)} fiche(s) RCP : "
+    st.caption(
+        f":material/folder_shared: **Périmètre : Dossier patient complet + Historique IA** "
+        f"({len(chronological_files)} fiche(s) RCP : "
         + ", ".join(f"`{f}`" for f in chronological_files)
         + ")"
     )
@@ -599,56 +1867,76 @@ def form_dossier_chat(
     if "chat_active" not in st.session_state:
         st.session_state["chat_active"] = False
 
-    agents = Agents()
+    agents = get_domain_agents(app_conf.domain)
     available_agents = agents.list
-    agent_choice = st.selectbox(
-        "Choisir l'agent",
-        list(available_agents.keys()),
-        key="agent_dossier_chat_select",
-        disabled=st.session_state["chat_active"],
-    )
-    if not st.session_state["chat_active"]:
-        if st.button("Démarrer le chat sur le dossier", key="btn_start_dossier_chat"):
-            with st.spinner("Démarrage du chat sur l'ensemble du dossier patient ..."):
-                patient_readers = [
-                    PatientMDTForm(app_conf, f) for f in chronological_files
-                ]
-                agent_cls = available_agents[agent_choice]
-                st.session_state["agent"] = agent_cls(
-                    config=app_conf,
-                    patient_readers=patient_readers,
-                )
-                st.session_state["chat_active"] = True
-            st.rerun()
-    else:
-        if st.button("Arrêter le chat", key="btn_stop_dossier_chat"):
-            st.session_state["chat_active"] = False
-            if "agent" in st.session_state:
-                del st.session_state["agent"]
-            st.session_state["messages"] = []
-            try:
-                from src.application.app_functions import unload_active_models
+    c_sel, c_btn = st.columns([3, 2], vertical_alignment="bottom")
+    with c_sel:
+        agent_choice = st.selectbox(
+            "Choisir l'agent spécialiste",
+            list(available_agents.keys()),
+            format_func=lambda a: (
+                f"{get_agent_icon_and_label(a)[0]} {get_agent_icon_and_label(a)[1]}"
+            ),
+            key="agent_dossier_chat_select",
+            disabled=st.session_state["chat_active"],
+        )
+    with c_btn:
+        if not st.session_state["chat_active"]:
+            if st.button(
+                "Démarrer la discussion",
+                icon=":material/play_arrow:",
+                type="primary",
+                width="stretch",
+                key="btn_start_dossier_chat",
+            ):
+                with st.spinner("Initialisation de l'agent sur le dossier patient..."):
+                    extraction_service = _get_extraction_service()
+                    patient_readers = extraction_service.build_patient_readers(
+                        chronological_files
+                    )
+                    agent_cls = available_agents[agent_choice]
+                    st.session_state["agent"] = agent_cls(
+                        config=app_conf,
+                        patient_readers=patient_readers,
+                    )
+                    st.session_state["chat_active"] = True
+                st.rerun()
+        else:
+            if st.button(
+                "Terminer la session",
+                icon=":material/stop_circle:",
+                width="stretch",
+                key="btn_stop_dossier_chat",
+            ):
+                st.session_state["chat_active"] = False
+                if "agent" in st.session_state:
+                    del st.session_state["agent"]
+                st.session_state["messages"] = []
+                try:
+                    from src.application.app_functions import unload_active_models
 
-                unload_active_models(app_conf)
-            except Exception:
-                pass
-            st.rerun()
+                    unload_active_models(app_conf)
+                except Exception:
+                    pass
+                st.rerun()
 
-        messages = st.container(height=400)
+    if st.session_state["chat_active"]:
+        messages = st.container(height=520, border=True)
 
         for message in st.session_state.get("messages", []):
             with messages.chat_message(message["role"]):
                 st.markdown(message["content"])
 
         if prompt := st.chat_input(
-            "Votre question sur le dossier patient", key="dossier_chat_input"
+            "Posez votre question sur l'ensemble du dossier patient...",
+            key="dossier_chat_input",
         ):
             st.session_state["messages"].append({"role": "user", "content": prompt})
             with messages.chat_message("user"):
                 st.markdown(prompt)
 
             with messages.chat_message("assistant"):
-                with st.spinner("Analyse du dossier patient en cours..."):
+                with st.spinner("Analyse longitudinale du dossier en cours..."):
                     try:
                         resp = st.session_state["agent"].ask(prompt)
                         st.markdown(resp.response)
@@ -656,51 +1944,1261 @@ def form_dossier_chat(
                             {"role": "assistant", "content": resp.response}
                         )
                     except Exception as e:
-                        st.error(f"Erreur lors de la génération de la réponse: {e}")
+                        st.error(f"Erreur lors de la génération de la réponse : {e}")
+
+
+def _compute_longitudinal_deltas(
+    current_doc: dict[str, Any], prev_doc: dict[str, Any]
+) -> list[str]:
+    """Compare the active RCP document against the immediately preceding RCP document and return badge strings."""
+    deltas: list[str] = []
+    curr_m = PatientMDTForm.extract_card_metrics(current_doc)
+    prev_m = PatientMDTForm.extract_card_metrics(prev_doc)
+
+    # 1. Urgency evolution
+    c_urg = curr_m.get("urgency", "Indéfini")
+    p_urg = prev_m.get("urgency", "Indéfini")
+    if c_urg != "Indéfini" and p_urg != "Indéfini" and c_urg != p_urg:
+        badge_c = (
+            "red"
+            if c_urg == "Urgent"
+            else "orange"
+            if c_urg == "Semi-urgent"
+            else "green"
+        )
+        deltas.append(f":{badge_c}-badge[⚡ Urgence : {p_urg} → {c_urg}]")
+
+    # 2. Care orientation proposal evolution
+    c_int = curr_m.get("care_adaptation_suggested", curr_m.get("intervention_required"))
+    p_int = prev_m.get("care_adaptation_suggested", prev_m.get("intervention_required"))
+    if c_int is not None and p_int is not None and c_int != p_int:
+        if c_int is True:
+            deltas.append(
+                ":red-badge[🧭 Orientation : Suivi habituel → Adaptation suggérée]"
+            )
+        else:
+            deltas.append(
+                ":green-badge[✅ Orientation : Adaptation suggérée → Suivi habituel]"
+            )
+
+    # 3. WHO / OMS Performance status evolution
+    c_ps = (
+        current_doc.get("PatientPerformanceStatus", {}).get("performance_status")
+        if isinstance(current_doc.get("PatientPerformanceStatus"), dict)
+        else None
+    )
+    p_ps = (
+        prev_doc.get("PatientPerformanceStatus", {}).get("performance_status")
+        if isinstance(prev_doc.get("PatientPerformanceStatus"), dict)
+        else None
+    )
+    if isinstance(c_ps, int) and isinstance(p_ps, int):
+        if c_ps > p_ps:
+            deltas.append(f":orange-badge[🏃 OMS {p_ps} → OMS {c_ps} (↗ dégradation)]")
+        elif c_ps < p_ps:
+            deltas.append(f":green-badge[🏃 OMS {p_ps} → OMS {c_ps} (↘ amélioration)]")
+        else:
+            deltas.append(f":gray-badge[🏃 OMS {c_ps} stable]")
+
+    # 4. New imaging exams or chemotherapy lines
+    c_rad = (
+        len(
+            current_doc.get("RadiologicExams", {}).get("exams_list")
+            or current_doc.get("RadiologicExams", {}).get("radiological_exams")
+            or []
+        )
+        if isinstance(current_doc.get("RadiologicExams"), dict)
+        else 0
+    )
+    p_rad = (
+        len(
+            prev_doc.get("RadiologicExams", {}).get("exams_list")
+            or prev_doc.get("RadiologicExams", {}).get("radiological_exams")
+            or []
+        )
+        if isinstance(prev_doc.get("RadiologicExams"), dict)
+        else 0
+    )
+    if c_rad > p_rad:
+        deltas.append(f":blue-badge[🔬 +{c_rad - p_rad} examen(s) d'imagerie]")
+
+    c_chemo = (
+        len(current_doc.get("ChemotherapyTreament", {}).get("chemotherapy_list") or [])
+        if isinstance(current_doc.get("ChemotherapyTreament"), dict)
+        else 0
+    )
+    p_chemo = (
+        len(prev_doc.get("ChemotherapyTreament", {}).get("chemotherapy_list") or [])
+        if isinstance(prev_doc.get("ChemotherapyTreament"), dict)
+        else 0
+    )
+    if c_chemo > p_chemo:
+        deltas.append(f":violet-badge[💊 +{c_chemo - p_chemo} ligne(s) de chimio.]")
+
+    # 5. SMA motor scores evolution (HFMSE / CHOP-INTEND / RULM)
+    if isinstance(current_doc.get("MotorFunctionStatus"), dict) and isinstance(
+        prev_doc.get("MotorFunctionStatus"), dict
+    ):
+        for field_key, label_short in (
+            ("hfmse_score", "HFMSE"),
+            ("chop_intend_score", "CHOP-INTEND"),
+            ("rulm_score", "RULM"),
+        ):
+            c_sc = current_doc["MotorFunctionStatus"].get(field_key)
+            p_sc = prev_doc["MotorFunctionStatus"].get(field_key)
+            if (
+                isinstance(c_sc, (int, float))
+                and isinstance(p_sc, (int, float))
+                and c_sc != p_sc
+            ):
+                diff = c_sc - p_sc
+                sign = "+" if diff > 0 else ""
+                b_col = "green" if diff > 0 else "orange"
+                deltas.append(
+                    f":{b_col}-badge[🦿 {label_short} : {p_sc} → {c_sc} ({sign}{diff})]"
+                )
+
+    # 6. Completeness resolution
+    c_miss = len(curr_m.get("missing", []))
+    p_miss = len(prev_m.get("missing", []))
+    if p_miss > 0 and c_miss == 0:
+        deltas.append(":green-badge[✅ Pièces manquantes complétées]")
+    elif c_miss != p_miss and (c_miss > 0 or p_miss > 0):
+        deltas.append(f":gray-badge[📋 Pièces à compléter : {p_miss} → {c_miss}]")
+
+    return deltas
+
+
+def render_clinical_summary_card(data: dict, patient_rcps: list[dict] | None = None):
+    """Render a structured synoptic clinical highlight banner at the top of the clinical data panel."""
+    metrics = PatientMDTForm.extract_card_metrics(data)
+    urgency = metrics.get("urgency", "Indéfini")
+    missing = metrics.get("missing", [])
+    int_req = metrics.get(
+        "care_adaptation_suggested", metrics.get("intervention_required")
+    )
+    int_type = metrics.get("proposed_care_type", metrics.get("intervention_type"))
+    experts = metrics.get("experts", [])
+
+    urg_badge = (
+        ":red-badge[🚨 Priorité haute]"
+        if urgency == "Urgent"
+        else ":orange-badge[🟠 Semi-urgent]"
+        if urgency == "Semi-urgent"
+        else ":green-badge[🟢 Standard]"
+        if urgency == "Standard"
+        else ":gray-badge[⚪ Non qualifié]"
+    )
+    comp_badge = (
+        f":orange-badge[⚠️ À compléter ({len(missing)})]"
+        if missing
+        else ":green-badge[✅ Dossier conforme]"
+    )
+    if int_req is True:
+        short_int = (
+            f" · {translate(int_type)}" if int_type and len(str(int_type)) <= 24 else ""
+        )
+        int_badge = f":red-badge[🧭 Adaptation suggérée{short_int}]"
+    elif int_req is False:
+        int_badge = ":gray-badge[Suivi habituel]"
+    else:
+        int_badge = ":gray-badge[Orientation non évaluée]"
+
+    experts_badges = " ".join(
+        [
+            f":violet-badge[{get_agent_icon_and_label(e)[0]} {get_agent_icon_and_label(e)[1]}]"
+            for e in experts
+        ]
+    )
+
+    def _clean_marker_val(val: Any) -> str:
+        s = str(translate(val)).strip()
+        low = s.lower()
+        if (
+            "not documented" in low
+            or "not mentioned" in low
+            or low in ("unknown", "none", "n/a")
+        ):
+            return "Non renseigné"
+        return s
+
+    # Extract synoptic clinical markers (Oncology & SMA) as (label, value) pairs
+    marker_pairs: list[tuple[str, str]] = []
+    if isinstance(data.get("TumorLocation"), dict):
+        loc = data["TumorLocation"].get("tumor_location")
+        if loc:
+            marker_pairs.append(("🎯 Organe primitif", _clean_marker_val(loc)))
+    if isinstance(data.get("PatientPerformanceStatus"), dict):
+        ps = data["PatientPerformanceStatus"].get("performance_status")
+        if ps is not None:
+            marker_pairs.append(("🏃 Score OMS", f"OMS {ps}"))
+    if isinstance(data.get("TumorBiology"), dict):
+        msi = data["TumorBiology"].get("msi_state")
+        if msi is True:
+            marker_pairs.append(("🧬 Biologie", "MSI (Instable)"))
+        elif msi is False:
+            marker_pairs.append(("🧬 Biologie", "MSS (Stable)"))
+    if isinstance(data.get("PreviousCurativeSurgery"), dict) or isinstance(
+        data.get("ChemotherapyTreament"), dict
+    ):
+        tx_parts = []
+        if isinstance(data.get("PreviousCurativeSurgery"), dict):
+            prev_s = data["PreviousCurativeSurgery"].get("previous_curative_surgery")
+            if prev_s is True:
+                tx_parts.append("Chir. réalisée")
+            elif prev_s is False:
+                tx_parts.append("Sans chir.")
+        if isinstance(data.get("ChemotherapyTreament"), dict):
+            chemo = data["ChemotherapyTreament"].get("chemotherapy")
+            if chemo is True:
+                tx_parts.append("Chimio. oui")
+            elif chemo is False:
+                tx_parts.append("Chimio. non")
+        if tx_parts:
+            marker_pairs.append(("💊 Antécédents", " · ".join(tx_parts)))
+
+    if isinstance(data.get("MotorFunctionStatus"), dict):
+        sma_t = data["MotorFunctionStatus"].get("sma_type")
+        if sma_t:
+            marker_pairs.append(("🦿 Type SMA", _clean_marker_val(sma_t)))
+    if isinstance(data.get("GeneticDiagnosis"), dict):
+        copies = data["GeneticDiagnosis"].get("smn2_copy_count")
+        if copies is not None:
+            marker_pairs.append(("🧬 Copies SMN2", f"{copies} copie(s)"))
+    if isinstance(data.get("RespiratoryFunction"), dict):
+        vent = data["RespiratoryFunction"].get("requires_ventilation_support")
+        if vent is not None:
+            marker_pairs.append(("🫁 Ventilation", "Requise" if vent else "Aucune"))
+    if isinstance(data.get("BulbarAndNutritionalStatus"), dict):
+        feed = data["BulbarAndNutritionalStatus"].get("feeding_mode")
+        if feed:
+            marker_pairs.append(("🍽️ Alimentation", _clean_marker_val(feed)))
+
+    # Find immediately preceding RCP if patient has multiple RCPs
+    prev_doc: dict[str, Any] | None = None
+    cur_file = data.get("file")
+    if patient_rcps and len(patient_rcps) > 1 and cur_file:
+        for idx, doc in enumerate(patient_rcps):
+            if doc.get("file") == cur_file and idx + 1 < len(patient_rcps):
+                prev_doc = patient_rcps[idx + 1]
+                break
+
+    with st.container(border=True):
+        help_parts: list[str] = []
+        if int_type and len(str(int_type)) > 24:
+            help_parts.append(f"**Orientation pré-RCP :** {int_type}")
+        if missing:
+            help_parts.append(
+                "**Pièces / données à compléter :**\n"
+                + "\n".join(f"- {m}" for m in missing)
+            )
+        summary_help = "\n\n".join(help_parts) if help_parts else None
+
+        # Row 1: Triage & Decision Status (always fits on 1 clean line)
+        st.markdown(
+            f"**🩺 Synthèse synoptique RCP** &nbsp; {urg_badge} {comp_badge} {int_badge}",
+            help=summary_help,
+        )
+        # Row 2: Required Specialties (for the RCP secretary & coordinator)
+        if experts_badges:
+            st.markdown(
+                f":small[**👥 Spécialités requises ({len(experts)}) :**] &nbsp; {experts_badges}"
+            )
+        # Row 3: Key Clinical Markers (for the physician)
+        if marker_pairs:
+            m_cols = st.columns(len(marker_pairs))
+            for col, (m_label, m_val) in zip(m_cols, marker_pairs):
+                col.caption(f"{m_label}  \n**{m_val}**")
+        if prev_doc is not None:
+            prev_dt = PatientMDTForm.extract_mdt_date(prev_doc)
+            prev_dt_str = (
+                prev_dt.strftime("%d/%m/%Y")
+                if prev_dt
+                else prev_doc.get("file", "séance antérieure")
+            )
+            deltas = _compute_longitudinal_deltas(data, prev_doc)
+            if deltas:
+                st.markdown(
+                    f":small[**📈 Évolution vs RCP du {prev_dt_str} :**] &nbsp; "
+                    + " ".join(deltas)
+                )
+
+
+def _render_inline_section_editor(
+    model_cls: type[BaseModel],
+    current_data: dict[str, Any] | None,
+    target_filename: str,
+    edit_state_key: str,
+) -> None:
+    """
+    Render an inline `st.form` editor for a clinical, administrative, completeness,
+    or care orientation section while keeping the PDF viewer visible on the left.
+    """
+    model_name = model_cls.__name__
+    raw = dict(current_data) if isinstance(current_data, dict) else {}
+    record_service = _get_record_service()
+
+    with st.form(key=f"form_inline_edit_{edit_state_key}", border=True):
+        st.caption(
+            "✍️ **Mode édition manuelle** — Les modifications enregistrées seront protégées "
+            "par défaut lors des relances globales de l'IA."
+        )
+
+        # 1. PatientAdministrative
+        if model_name == "PatientAdministrative":
+            c1, c2, c3 = st.columns(3)
+            last_val = c1.text_input(
+                "Nom d'usage *", value=str(raw.get("last_name") or "")
+            )
+            first_val = c2.text_input(
+                "Prénom *", value=str(raw.get("first_name") or "")
+            )
+            born_val = c3.text_input(
+                "Nom de naissance", value=str(raw.get("born_name") or "")
+            )
+            c4, c5, c6 = st.columns(3)
+            dob_val = c4.date_input(
+                "Date de naissance",
+                value=_coerce_to_date(raw.get("date_birth")),
+                min_value=date(1900, 1, 1),
+                max_value=date.today(),
+                format="DD/MM/YYYY",
+            )
+            gender_opts = [g.value for g in Gender]
+            cur_g = raw.get("gender")
+            g_idx = (
+                gender_opts.index(cur_g)
+                if cur_g in gender_opts
+                else gender_opts.index(Gender.not_given.value)
+            )
+            gender_val = c5.selectbox(
+                "Genre",
+                options=gender_opts,
+                index=g_idx,
+                format_func=translate,
+            )
+            rcp_val = c6.date_input(
+                "Date de la séance RCP",
+                value=_coerce_to_date(raw.get("date_rcp")),
+                min_value=date(1990, 1, 1),
+                format="DD/MM/YYYY",
+            )
+
+            b_save, b_cancel = st.columns(2)
+            save_clicked = b_save.form_submit_button(
+                "💾 Enregistrer", type="primary", width="stretch"
+            )
+            cancel_clicked = b_cancel.form_submit_button(
+                "Annuler", type="secondary", width="stretch"
+            )
+            if cancel_clicked:
+                st.session_state[edit_state_key] = False
+                st.rerun()
+            if save_clicked:
+                try:
+                    updated_patient, _ = record_service.update_patient_administrative(
+                        filename=target_filename,
+                        admin_data={
+                            "first_name": first_val.strip(),
+                            "last_name": last_val.strip(),
+                            "born_name": born_val.strip() or None,
+                            "date_birth": (
+                                datetime(dob_val.year, dob_val.month, dob_val.day)
+                                if isinstance(dob_val, date)
+                                else None
+                            ),
+                            "date_rcp": (
+                                datetime(rcp_val.year, rcp_val.month, rcp_val.day)
+                                if isinstance(rcp_val, date)
+                                else None
+                            ),
+                            "gender": gender_val,
+                        },
+                        apply_to_all_patient_forms=True,
+                        edited_by=st.session_state.get("username"),
+                    )
+                    st.session_state[edit_state_key] = False
+                    st.query_params["patient_id"] = updated_patient.patient_id
+                    st.toast("Informations administratives enregistrées", icon="✅")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erreur de validation : {err}", icon=":material/error:")
+            return
+
+        # 2. CareOrientationProposal
+        if model_name == "CareOrientationProposal":
+            adapt_val = st.toggle(
+                "Initiation ou adaptation de prise en charge à discuter en RCP",
+                value=bool(raw.get("care_adaptation_suggested", False)),
+            )
+            prio_options = [
+                None,
+                PatientPriority.urgent.value,
+                PatientPriority.medium.value,
+                PatientPriority.low.value,
+            ]
+            cur_prio = raw.get("suggested_priority")
+            prio_idx = prio_options.index(cur_prio) if cur_prio in prio_options else 0
+            prio_labels = {
+                None: "⚪ Suivi habituel / Non prioritaire",
+                PatientPriority.urgent.value: "🚨 Priorité haute (Urgent)",
+                PatientPriority.medium.value: "🟠 Semi-urgent (Priorité moyenne)",
+                PatientPriority.low.value: "🟢 Standard (Priorité basse)",
+            }
+            prio_val = st.selectbox(
+                "Niveau de priorité RCP",
+                options=prio_options,
+                index=prio_idx,
+                format_func=lambda x: prio_labels.get(x, str(x)),
+            )
+            care_type_val = st.text_input(
+                "Modalité ou type d'acte proposé",
+                value=str(raw.get("proposed_care_type") or ""),
+                placeholder="Ex : Chirurgie, Chimiothérapie néoadjuvante, VNI...",
+            )
+            rationale_val = st.text_area(
+                "Argumentaire clinique & synthèse RCP",
+                value=str(raw.get("clinical_rationale") or ""),
+                height=120,
+            )
+
+            b_save, b_cancel = st.columns(2)
+            save_clicked = b_save.form_submit_button(
+                "💾 Enregistrer", type="primary", width="stretch"
+            )
+            cancel_clicked = b_cancel.form_submit_button(
+                "Annuler", type="secondary", width="stretch"
+            )
+            if cancel_clicked:
+                st.session_state[edit_state_key] = False
+                st.rerun()
+            if save_clicked:
+                try:
+                    record_service.update_patient_mdt_form_section(
+                        filename=target_filename,
+                        section_name=model_name,
+                        section_data={
+                            "care_adaptation_suggested": adapt_val,
+                            "suggested_priority": prio_val,
+                            "proposed_care_type": care_type_val.strip() or None,
+                            "clinical_rationale": rationale_val.strip()
+                            or "Validation manuelle.",
+                        },
+                        edited_by=st.session_state.get("username"),
+                    )
+                    st.session_state[edit_state_key] = False
+                    st.toast("Orientation et priorité RCP mises à jour", icon="✅")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erreur de validation : {err}", icon=":material/error:")
+            return
+
+        # 3. MTDCompleted (Completeness check & missing elements)
+        if model_name == "MTDCompleted":
+            mc_raw = (
+                dict(raw.get("mtd_complete"))
+                if isinstance(raw.get("mtd_complete"), dict)
+                else {}
+            )
+            is_comp_val = st.toggle(
+                "Dossier complet et conforme aux prérequis RCP",
+                value=bool(mc_raw.get("is_mtd_complete", True)),
+            )
+            existing_missing = mc_raw.get("what_missing") or []
+            missing_df = DataFrame(
+                [{"element": str(item)} for item in existing_missing]
+                if existing_missing
+                else DataFrame(columns=["element"])
+            )
+            edited_missing_df = st.data_editor(
+                missing_df,
+                num_rows="dynamic",
+                width="stretch",
+                column_config={
+                    "element": st.column_config.TextColumn(
+                        "Éléments ou examens manquants",
+                        width="large",
+                    )
+                },
+                key=f"de_missing_{edit_state_key}",
+            )
+            refl_val = st.text_area(
+                "Synthèse de complétude / Commentaire",
+                value=str(mc_raw.get("reflection") or ""),
+                height=100,
+            )
+
+            b_save, b_cancel = st.columns(2)
+            save_clicked = b_save.form_submit_button(
+                "💾 Enregistrer", type="primary", width="stretch"
+            )
+            cancel_clicked = b_cancel.form_submit_button(
+                "Annuler", type="secondary", width="stretch"
+            )
+            if cancel_clicked:
+                st.session_state[edit_state_key] = False
+                st.rerun()
+            if save_clicked:
+                try:
+                    cleaned_missing = [
+                        str(r["element"]).strip()
+                        for _, r in edited_missing_df.iterrows()
+                        if r.get("element") and str(r["element"]).strip()
+                    ]
+                    record_service.update_patient_mdt_form_section(
+                        filename=target_filename,
+                        section_name=model_name,
+                        section_data={
+                            "mtd_complete": {
+                                "is_mtd_complete": (
+                                    False if cleaned_missing else is_comp_val
+                                ),
+                                "reflection": refl_val.strip() or None,
+                                "what_missing": cleaned_missing,
+                                "references": mc_raw.get("references") or [],
+                            }
+                        },
+                        edited_by=st.session_state.get("username"),
+                    )
+                    st.session_state[edit_state_key] = False
+                    st.toast("Contrôle de complétude mis à jour", icon="✅")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erreur de validation : {err}", icon=":material/error:")
+            return
+
+        # 4. RadiologicExams
+        if model_name == "RadiologicExams":
+            raw_exams = raw.get("exams_list") or []
+            rows = []
+            for ex in raw_exams:
+                if isinstance(ex, dict):
+                    rows.append(
+                        {
+                            "exam_type": str(ex.get("exam_type") or "CT"),
+                            "exam_name": str(ex.get("exam_name") or ""),
+                            "exam_date": _coerce_to_date(ex.get("exam_date")),
+                            "exam_result": str(ex.get("exam_result") or ""),
+                        }
+                    )
+            exams_df = (
+                DataFrame(rows)
+                if rows
+                else DataFrame(
+                    columns=["exam_type", "exam_name", "exam_date", "exam_result"]
+                )
+            )
+            edited_exams_df = st.data_editor(
+                exams_df,
+                num_rows="dynamic",
+                width="stretch",
+                column_config={
+                    "exam_type": st.column_config.SelectboxColumn(
+                        "Type",
+                        options=[t.value for t in RadiologicExamType],
+                        required=True,
+                        default="CT",
+                        width="small",
+                    ),
+                    "exam_name": st.column_config.TextColumn(
+                        "Nom de l'examen",
+                        required=True,
+                        default="Scanner",
+                    ),
+                    "exam_date": st.column_config.DateColumn(
+                        "Date",
+                        format="DD/MM/YYYY",
+                    ),
+                    "exam_result": st.column_config.TextColumn(
+                        "Résultats / Conclusion",
+                        width="large",
+                        default="",
+                    ),
+                },
+                key=f"de_rad_{edit_state_key}",
+            )
+            b_save, b_cancel = st.columns(2)
+            save_clicked = b_save.form_submit_button(
+                "💾 Enregistrer", type="primary", width="stretch"
+            )
+            cancel_clicked = b_cancel.form_submit_button(
+                "Annuler", type="secondary", width="stretch"
+            )
+            if cancel_clicked:
+                st.session_state[edit_state_key] = False
+                st.rerun()
+            if save_clicked:
+                try:
+                    exams_out = []
+                    for _, row in edited_exams_df.iterrows():
+                        e_name = str(row.get("exam_name") or "").strip()
+                        if not e_name:
+                            continue
+                        exams_out.append(
+                            {
+                                "exam_type": str(row.get("exam_type") or "CT"),
+                                "exam_name": e_name,
+                                "exam_date": _coerce_to_date(row.get("exam_date")),
+                                "exam_result": str(row.get("exam_result") or "N/A"),
+                            }
+                        )
+                    record_service.update_patient_mdt_form_section(
+                        filename=target_filename,
+                        section_name=model_name,
+                        section_data={"exams_list": exams_out},
+                        edited_by=st.session_state.get("username"),
+                    )
+                    st.session_state[edit_state_key] = False
+                    st.toast("Examens radiologiques mis à jour", icon="✅")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erreur de validation : {err}", icon=":material/error:")
+            return
+
+        # 5. ChemotherapyTreament
+        if model_name == "ChemotherapyTreament":
+            has_chemo = st.toggle(
+                "Le patient a reçu une chimiothérapie",
+                value=bool(raw.get("chemotherapy", False)),
+            )
+            raw_chemos = raw.get("chemotherapy_list") or []
+            c_rows = []
+            for ch in raw_chemos:
+                if isinstance(ch, dict):
+                    c_rows.append(
+                        {
+                            "chemotherapy_name": str(ch.get("chemotherapy_name") or ""),
+                            "chemotherapy_start_date": _coerce_to_date(
+                                ch.get("chemotherapy_start_date")
+                            ),
+                            "chemotherapy_end_date": _coerce_to_date(
+                                ch.get("chemotherapy_end_date")
+                            ),
+                            "chemotherapy_tolerance": str(
+                                ch.get("chemotherapy_tolerance") or "Good"
+                            ),
+                        }
+                    )
+            chemo_df = (
+                DataFrame(c_rows)
+                if c_rows
+                else DataFrame(
+                    columns=[
+                        "chemotherapy_name",
+                        "chemotherapy_start_date",
+                        "chemotherapy_end_date",
+                        "chemotherapy_tolerance",
+                    ]
+                )
+            )
+            edited_chemo_df = st.data_editor(
+                chemo_df,
+                num_rows="dynamic",
+                width="stretch",
+                column_config={
+                    "chemotherapy_name": st.column_config.TextColumn(
+                        "Protocole / Molécule",
+                        required=True,
+                        default="FOLFIRINOX",
+                    ),
+                    "chemotherapy_start_date": st.column_config.DateColumn(
+                        "Date de début",
+                        format="DD/MM/YYYY",
+                    ),
+                    "chemotherapy_end_date": st.column_config.DateColumn(
+                        "Date de fin",
+                        format="DD/MM/YYYY",
+                    ),
+                    "chemotherapy_tolerance": st.column_config.SelectboxColumn(
+                        "Tolérance",
+                        options=[t.value for t in TreatmentToleranceEnum],
+                        required=True,
+                        default="Good",
+                    ),
+                },
+                key=f"de_chemo_{edit_state_key}",
+            )
+            b_save, b_cancel = st.columns(2)
+            save_clicked = b_save.form_submit_button(
+                "💾 Enregistrer", type="primary", width="stretch"
+            )
+            cancel_clicked = b_cancel.form_submit_button(
+                "Annuler", type="secondary", width="stretch"
+            )
+            if cancel_clicked:
+                st.session_state[edit_state_key] = False
+                st.rerun()
+            if save_clicked:
+                try:
+                    chemo_out = []
+                    for _, row in edited_chemo_df.iterrows():
+                        c_name = str(row.get("chemotherapy_name") or "").strip()
+                        if not c_name:
+                            continue
+                        chemo_out.append(
+                            {
+                                "chemotherapy_name": c_name,
+                                "chemotherapy_start_date": _coerce_to_date(
+                                    row.get("chemotherapy_start_date")
+                                ),
+                                "chemotherapy_end_date": _coerce_to_date(
+                                    row.get("chemotherapy_end_date")
+                                ),
+                                "chemotherapy_tolerance": str(
+                                    row.get("chemotherapy_tolerance") or "Good"
+                                ),
+                            }
+                        )
+                    record_service.update_patient_mdt_form_section(
+                        filename=target_filename,
+                        section_name=model_name,
+                        section_data={
+                            "chemotherapy": bool(has_chemo or len(chemo_out) > 0),
+                            "chemotherapy_list": chemo_out,
+                        },
+                        edited_by=st.session_state.get("username"),
+                    )
+                    st.session_state[edit_state_key] = False
+                    st.toast("Traitements par chimiothérapie mis à jour", icon="✅")
+                    st.rerun()
+                except Exception as err:
+                    st.error(f"Erreur de validation : {err}", icon=":material/error:")
+            return
+
+        # 6. Generic schema-driven form for all other clinical sections (Oncology & SMA)
+        updated_values: dict[str, Any] = {}
+        for field_name, field_info in model_cls.model_fields.items():
+            label = translate(field_info.description or field_name)
+            cur_val = raw.get(field_name)
+
+            if field_name == "tumor_location":
+                opts = [o.value for o in PrimaryOrganEnum]
+                idx = opts.index(cur_val) if cur_val in opts else 0
+                updated_values[field_name] = st.selectbox(
+                    label, options=opts, index=idx, format_func=translate
+                )
+            elif field_name == "performance_status":
+                opts = [o.value for o in WHOPerformanceStatus]
+                idx = opts.index(cur_val) if cur_val in opts else 0
+                updated_values[field_name] = st.selectbox(
+                    label,
+                    options=opts,
+                    index=idx,
+                    format_func=lambda v: f"OMS {v}",
+                )
+            elif field_name == "msi_state":
+                msi_opts = [None, True, False]
+                msi_labels = {
+                    None: "Non mentionné",
+                    True: "MSI (Instabilité microsatellitaire)",
+                    False: "MSS (Microsatellite stable)",
+                }
+                idx = msi_opts.index(cur_val) if cur_val in msi_opts else 0
+                updated_values[field_name] = st.selectbox(
+                    label,
+                    options=msi_opts,
+                    index=idx,
+                    format_func=lambda v: msi_labels.get(v, str(v)),
+                )
+            elif "date" in field_name:
+                dt_v = st.date_input(
+                    label,
+                    value=_coerce_to_date(cur_val),
+                    format="DD/MM/YYYY",
+                )
+                updated_values[field_name] = (
+                    datetime(dt_v.year, dt_v.month, dt_v.day)
+                    if isinstance(dt_v, date)
+                    else None
+                )
+            elif field_info.annotation is bool or isinstance(cur_val, bool):
+                updated_values[field_name] = st.toggle(label, value=bool(cur_val))
+            elif field_info.annotation in (int, int | None):
+                updated_values[field_name] = int(
+                    st.number_input(
+                        label,
+                        value=int(cur_val) if isinstance(cur_val, (int, float)) else 0,
+                        step=1,
+                    )
+                )
+            elif field_info.annotation in (float, float | None):
+                updated_values[field_name] = float(
+                    st.number_input(
+                        label,
+                        value=(
+                            float(cur_val) if isinstance(cur_val, (int, float)) else 0.0
+                        ),
+                        step=0.5,
+                    )
+                )
+            elif isinstance(cur_val, list) or "list" in str(field_info.annotation):
+                joined = (
+                    ", ".join(str(x) for x in cur_val)
+                    if isinstance(cur_val, list)
+                    else ""
+                )
+                txt = st.text_input(
+                    f"{label} (séparés par des virgules)",
+                    value=joined,
+                )
+                updated_values[field_name] = [
+                    x.strip() for x in txt.split(",") if x.strip()
+                ]
+            else:
+                updated_values[field_name] = st.text_input(
+                    label,
+                    value=str(cur_val) if cur_val is not None else "",
+                )
+
+        b_save, b_cancel = st.columns(2)
+        save_clicked = b_save.form_submit_button(
+            "💾 Enregistrer", type="primary", width="stretch"
+        )
+        cancel_clicked = b_cancel.form_submit_button(
+            "Annuler", type="secondary", width="stretch"
+        )
+        if cancel_clicked:
+            st.session_state[edit_state_key] = False
+            st.rerun()
+        if save_clicked:
+            try:
+                record_service.update_patient_mdt_form_section(
+                    filename=target_filename,
+                    section_name=model_name,
+                    section_data=updated_values,
+                    edited_by=st.session_state.get("username"),
+                )
+                st.session_state[edit_state_key] = False
+                st.toast("Rubrique mise à jour avec succès", icon="✅")
+                st.rerun()
+            except Exception as err:
+                st.error(f"Erreur de validation : {err}", icon=":material/error:")
+
+
+def _render_form_sections_list(
+    models: list[type[BaseModel]],
+    data: dict[str, Any],
+    execution_times: dict[str, Any],
+    active_state: dict[str, Any],
+    extraction_service: PatientMDTFormExtractionService,
+    target_filename: str,
+    section_key: str,
+    tab_suffix: str,
+) -> None:
+    """Render a filtered list of clinical or decision form sections grouped by clinical pole."""
+    current_pole: str | None = None
+    for model_cls in models:
+        model_name = model_cls.__name__
+        meta = SECTION_META.get(model_name, {})
+        pole_label = meta.get(
+            "pole",
+            "📋 Rubriques complémentaires" if "pole" not in meta else None,
+        )
+        if pole_label and pole_label != current_pole:
+            current_pole = pole_label
+            st.markdown(f"##### {current_pole}")
+
+        raw_title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
+        display_title = meta.get("title") or translate(raw_title)
+        icon_str = meta.get("icon", "📌")
+        run_key = f"run_ai_{section_key}_{tab_suffix}_{target_filename}_{raw_title}"
+        is_section_queued = active_state["has_full_job"] or (
+            model_name in active_state["active_models"]
+        )
+        exec_time = execution_times.get(model_name)
+        formatted_exec_time = (
+            _format_duration(exec_time) if exec_time is not None else None
+        )
+        time_help = (
+            f" (Dernier temps d'analyse : {formatted_exec_time})"
+            if formatted_exec_time is not None
+            else ""
+        )
+
+        if st.session_state.get(run_key):
+            st.session_state[run_key] = False
+            if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb":
+                res = extraction_service.enqueue_rerun(
+                    target_filename, model_name=model_name
+                )
+                if not res.get("already_queued"):
+                    st.toast(
+                        "Rubrique ajoutée à la file de traitement",
+                        icon="⏳",
+                    )
+                else:
+                    st.toast(
+                        "Cette rubrique est déjà dans la file de traitement",
+                        icon="ℹ️",
+                    )
+                st.rerun()
+            else:
+                try:
+                    with st.status(
+                        f"Relance de l'IA pour {model_name} ({target_filename}) ..."
+                    ) as status:
+                        st_callback = ThreadSafeStreamlitCallbackHandler(status)
+                        reader = get_mtd_reader(target_filename)
+                        form_cls = get_domain_mdt_form_cls(app_conf.domain)
+                        form = form_cls(file=target_filename)
+                        extraction_service.extract_section(
+                            form=form,
+                            reader=reader,
+                            model_cls=model_cls,
+                            upsert=True,
+                            callbacks=[st_callback],
+                            clear_manual_flag=True,
+                        )
+                        data = (
+                            db_client.database["rcp_info"].find_one(
+                                {"file": target_filename}
+                            )
+                            if db_client is not None
+                            else form.sections
+                        ) or {}
+                except Exception as e:
+                    logger.error(f"Erreur lors de la relance de l'IA : {e}")
+                    st.error(f"Erreur lors de l'exécution de l'IA : {e}")
+                finally:
+                    st.rerun()
+
+        is_multi = (
+            hasattr(model_cls, "agents")
+            and len(model_cls.agents) > 1
+            and not getattr(model_cls, "collaborative", False)
+        )
+
+        # List each expert specialty one by one as its own collapsible accordion
+        if (
+            is_multi
+            and model_name in data
+            and isinstance(data[model_name], dict)
+            and data[model_name]
+        ):
+            model_data = data[model_name]
+            raw_agents = list(model_data.keys())
+
+            def _expert_sort_key(
+                ag_name: str,
+            ) -> tuple[int, int, str]:
+                ag_d = model_data.get(ag_name)
+                if not isinstance(ag_d, dict):
+                    return (2, 9, ag_name)
+                rel = bool(ag_d.get("expert_relevant"))
+                prio_val = str(ag_d.get("patient_priority") or "").lower()
+                prio_rank = (
+                    0
+                    if "urgent" in prio_val and "not" not in prio_val
+                    else 1
+                    if "soon" in prio_val or "medium" in prio_val
+                    else 2
+                )
+                return (0 if rel else 1, prio_rank, ag_name)
+
+            agent_names = sorted(raw_agents, key=_expert_sort_key)
+            for agent_name in agent_names:
+                ag_icon, ag_label = get_agent_icon_and_label(agent_name)
+                agent_dict = model_data.get(agent_name)
+                if isinstance(agent_dict, dict) and agent_dict.get("expert_relevant"):
+                    prio_val = str(agent_dict.get("patient_priority") or "").lower()
+                    if "urgent" in prio_val and "not" not in prio_val:
+                        ag_summary = " — 🚨 Priorité haute"
+                    elif "soon" in prio_val or "medium" in prio_val:
+                        ag_summary = " — 🟠 Priorité moyenne"
+                    else:
+                        ag_summary = " — ✅ Spécialité concernée"
+                    sugg_list = agent_dict.get("expert_suggestion") or []
+                    if isinstance(sugg_list, list) and len(sugg_list) > 0:
+                        ag_summary += f" · {len(sugg_list)} proposition(s)"
+                else:
+                    ag_summary = " — ⚪ Non concerné"
+
+                with st.expander(
+                    f"{ag_icon} **Avis — {ag_label}**{ag_summary}",
+                    expanded=False,
+                ):
+                    try:
+                        pydantic_model = model_cls.model_validate(agent_dict)
+                        render_fields(pydantic_model)
+                    except Exception:
+                        if isinstance(agent_dict, dict) and agent_dict.get("value"):
+                            st.markdown(str(agent_dict["value"]))
+                        else:
+                            st.caption(
+                                "⚪ Aucune donnée structurée renseignée dans le document pour cette spécialité."
+                            )
+
+                    ag_thinking = (
+                        agent_dict.get("reasoning_thinking")
+                        if isinstance(agent_dict, dict)
+                        else None
+                    )
+                    ag_exec_raw = (
+                        agent_dict.get("time_execution")
+                        if isinstance(agent_dict, dict)
+                        and isinstance(agent_dict.get("time_execution"), (int, float))
+                        else exec_time
+                    )
+                    ag_formatted_time = (
+                        _format_duration(ag_exec_raw)
+                        if ag_exec_raw is not None
+                        else None
+                    )
+
+                    with st.container(
+                        horizontal=True,
+                        horizontal_alignment="right",
+                        vertical_alignment="center",
+                    ):
+                        if ag_thinking:
+                            with st.popover(
+                                "💭 :small[Réflexion IA]",
+                                type="tertiary",
+                                help=f"Afficher le raisonnement détaillé de {ag_label}",
+                            ):
+                                with st.container(
+                                    height=280,
+                                    width=520,
+                                    border=False,
+                                    key=f"clinical_scroll_pop_{section_key}_{tab_suffix}_{target_filename}_{model_name}_{agent_name}",
+                                ):
+                                    st.write(ag_thinking)
+
+                        if st.button(
+                            ":blue[:material/refresh:] :small[Relancer les avis d'experts]",
+                            type="tertiary",
+                            key=f"btn_retry_{section_key}_{tab_suffix}_{target_filename}_{model_name}_{agent_name}",
+                            disabled=is_section_queued,
+                            help=f"Relancer l'extraction IA des avis d'experts{time_help}",
+                        ):
+                            st.session_state[run_key] = True
+                            st.rerun()
+
+                        if ag_formatted_time is not None:
+                            st.caption(f"⏱️ {ag_formatted_time}", width="content")
+            continue
+
+        edit_key = (
+            f"edit_mode_{section_key}_{tab_suffix}_{target_filename}_{model_name}"
+        )
+        is_editable = PatientMDTForm.is_section_manually_editable(model_cls)
+        is_manual = PatientMDTForm.is_section_manually_edited(data, model_name)
+        manual_entry = (
+            (data.get("manual_edits") or {}).get(model_name)
+            if isinstance(data, dict) and isinstance(data.get("manual_edits"), dict)
+            else None
+        )
+        modified_fields_dict = (
+            manual_entry.get("modified_fields")
+            if isinstance(manual_entry, dict)
+            and isinstance(manual_entry.get("modified_fields"), dict)
+            else {}
+        )
+
+        header_summary = (
+            _extract_section_header_summary(model_name, data.get(model_name))
+            if model_name in data
+            else " — ⚠️ Non extrait"
+        )
+        if is_manual:
+            header_summary += " · :green-badge[✍️ Modifié manuellement]"
+
+        default_exp = meta.get("default_expanded", False)
+        if model_name not in data or header_summary.startswith(" — ⚪ Non mentionné"):
+            default_exp = False
+        if is_editable and st.session_state.get(edit_key):
+            default_exp = True
+
+        with st.expander(
+            f"{icon_str} **{display_title}**{header_summary}",
+            expanded=default_exp,
+        ):
+            if is_editable and st.session_state.get(edit_key):
+                _render_inline_section_editor(
+                    model_cls=model_cls,
+                    current_data=data.get(model_name)
+                    if isinstance(data.get(model_name), dict)
+                    else None,
+                    target_filename=target_filename,
+                    edit_state_key=edit_key,
+                )
+            else:
+                single_thinking: str | None = None
+
+                if model_name in data:
+                    model_data = data[model_name]
+                    if isinstance(model_data, dict):
+                        single_thinking = model_data.get("reasoning_thinking")
+                    try:
+                        pydantic_model = model_cls.model_validate(model_data)
+                        render_model_data(pydantic_model)
+                    except Exception:
+                        if isinstance(model_data, dict):
+                            extra_fields = {
+                                k: v
+                                for k, v in model_data.items()
+                                if k
+                                not in (
+                                    "value",
+                                    "reasoning_thinking",
+                                    "time_execution",
+                                )
+                                and v is not None
+                            }
+                            if extra_fields:
+                                for k, v in extra_fields.items():
+                                    render_field(translate(k), v, field_name=k)
+                            elif model_data.get("value"):
+                                st.markdown(str(model_data["value"]))
+                            else:
+                                st.caption(
+                                    "⚪ Aucune information mentionnée dans le document pour cette rubrique."
+                                )
+                        else:
+                            st.caption(
+                                "⚪ Aucune information mentionnée dans le document pour cette rubrique."
+                            )
+                else:
+                    if is_section_queued or data.get("processing_status") in (
+                        "PENDING_CLINICAL",
+                        "PROCESSING_CLINICAL",
+                        "PENDING_EXPERTS",
+                        "PROCESSING_EXPERTS",
+                        "PENDING_ADMIN",
+                        "PROCESSING_ADMIN",
+                    ):
+                        st.info(
+                            "Rubrique en attente dans la file de traitement...",
+                            icon=":material/hourglass_top:",
+                        )
+                    else:
+                        st.warning(
+                            "Données non extraites pour cette rubrique.",
+                            icon=":material/warning:",
+                        )
+
+                with st.container(
+                    horizontal=True,
+                    horizontal_alignment="right",
+                    vertical_alignment="center",
+                ):
+                    if is_editable:
+                        if st.button(
+                            ":small[Modifier]",
+                            icon=":material/edit:",
+                            type="tertiary",
+                            key=f"btn_edit_{section_key}_{tab_suffix}_{target_filename}_{model_name}",
+                            disabled=is_section_queued,
+                            help="Modifier ou compléter manuellement cette rubrique tout en consultant le PDF",
+                        ):
+                            st.session_state[edit_key] = True
+                            st.rerun()
+
+                    if (
+                        is_manual
+                        and modified_fields_dict
+                        and st.session_state.get("power")
+                    ):
+                        with st.popover(
+                            f"🔍 :small[Trace ({len(modified_fields_dict)})]",
+                            type="tertiary",
+                            help="Trace des champs modifiés manuellement (comparaison IA vs correction humaine pour LLM-as-a-Judge)",
+                        ):
+                            st.caption(
+                                "**Trace d'évaluation (IA vs Correction humaine)**"
+                            )
+                            for f_key, diff_obj in modified_fields_dict.items():
+                                st.markdown(
+                                    f"- **{translate(f_key)}** (`{f_key}`) :  \n"
+                                    f"  🤖 IA : `{diff_obj.get('ai_value')}` → ✍️ Corrigé : `{diff_obj.get('human_value')}`"
+                                )
+
+                    if single_thinking:
+                        with st.popover(
+                            "💭 :small[Réflexion IA]",
+                            type="tertiary",
+                            help="Afficher le raisonnement détaillé de l'IA pour cette rubrique",
+                        ):
+                            with st.container(
+                                height=280,
+                                width=520,
+                                border=False,
+                                key=f"clinical_scroll_pop_{section_key}_{tab_suffix}_{target_filename}_{model_name}",
+                            ):
+                                st.write(single_thinking)
+
+                    if st.button(
+                        ":blue[:material/refresh:] :small[Relancer cette rubrique]",
+                        type="tertiary",
+                        key=f"btn_retry_{section_key}_{tab_suffix}_{target_filename}_{model_name}",
+                        disabled=is_section_queued,
+                        help=f"Relancer l'extraction IA de cette rubrique uniquement{time_help}",
+                    ):
+                        st.session_state[run_key] = True
+                        st.rerun()
+
+                    if formatted_exec_time is not None:
+                        st.caption(f"⏱️ {formatted_exec_time}", width="content")
 
 
 def render_rcp_detail_view(
     target_filename: str,
     section_key: str = "default",
     patient_rcps: list[dict] | None = None,
+    patient: Patient | None = None,
+    has_pdf: bool | None = None,
+    file_path: str | None = None,
+    active_state: dict[str, Any] | None = None,
 ):
     """
-    Affiche la vue complète d'une fiche RCP donnée (`target_filename`) :
-    - Barre d'actions de la fiche (Relancer cette RCP / Power mode)
-    - Colonne gauche : Téléchargement et lecteur PDF
-    - Colonne droite : Onglets (Données Cliniques, Assistant IA sur la fiche, Aperçu du document)
+    Render the complete side-by-side view of a given PatientMDTForm record (`target_filename`):
+    - Left column: PDF viewer
+    - Right column: Synoptic card pinned at top + 4 Tabs (Clinical Record, MDT Opinions & Decision, AI Assistant, Document Preview)
     """
-    bar_c1, bar_c2, bar_c3 = st.columns([5, 1, 1], vertical_alignment="center")
-    bar_c1.markdown(f"**📄 Fiche RCP active :** `{target_filename}`")
-    if bar_c2.button(
-        "🔄 Relancer cette RCP",
-        help=f"Relancer l'analyse IA complète uniquement sur la fiche {target_filename} (ne relance jamais tout le dossier)",
-        width="stretch",
-        key=f"btn_rerun_rcp_{section_key}_{target_filename}",
-    ):
-        rerun_all_models(target_filename, section_key=section_key)
-    power_mode(
-        bar_c3,
-        filename=target_filename,
-        key_prefix=f"{section_key}_{target_filename}",
-        patient_rcps=patient_rcps,
-    )
+    extraction_service = _get_extraction_service()
+    if active_state is None:
+        active_state = (
+            extraction_service.get_active_jobs_state(target_filename)
+            if app_conf.queue.enabled and app_conf.rcp.display_type == "mongodb"
+            else {
+                "has_any_job": False,
+                "has_full_job": False,
+                "active_models": [],
+                "current_step": None,
+            }
+        )
+
+    if active_state["has_any_job"]:
+        b_col1, b_col2 = st.columns([5, 1], vertical_alignment="center")
+        step_text = (
+            f" ({active_state['current_step']})"
+            if active_state.get("current_step")
+            else ""
+        )
+        b_col1.info(
+            f"**Cette fiche est dans la file de traitement{step_text}.** "
+            "Les rubriques s'affichent automatiquement au fur et à mesure de leur avancement.",
+            icon=":material/hourglass_top:",
+        )
+        if b_col2.button(
+            "Actualiser",
+            icon=":material/refresh:",
+            key=f"btn_refresh_detail_{section_key}_{target_filename}",
+            width="stretch",
+        ):
+            st.rerun()
+
+    if file_path is None and has_pdf is None:
+        try:
+            file_path = safe_path(app_conf.rcp.path, target_filename)
+        except UnsafePathError:
+            file_path = None
+        has_pdf = file_path is not None and os.path.exists(file_path)
 
     col_left, col_right = st.columns([1, 1], gap="medium")
 
     with col_left:
-        file_path = f"{app_conf.rcp.path}/{target_filename}"
-        if os.path.exists(file_path):
-            with open(file_path, "rb") as f:
-                st.download_button(
-                    f"⏬ Télécharger PDF ({target_filename})",
-                    f,
-                    file_name=target_filename,
-                    mime="application/pdf",
-                    width="stretch",
-                    key=f"dl_pdf_{section_key}_{target_filename}",
-                )
-
+        if has_pdf and file_path is not None:
             bbox_path = f"{file_path}.bbox"
             viewer_path = bbox_path if os.path.exists(bbox_path) else file_path
             pdf_viewer(
@@ -709,169 +3207,152 @@ def render_rcp_detail_view(
                 key=f"pdf_viewer_{section_key}_{target_filename}",
             )
         else:
-            st.error(f"Fichier introuvable: {file_path}")
+            st.error(
+                f"Fichier PDF introuvable : `{target_filename}`",
+                icon=":material/error:",
+            )
 
     with col_right:
-        tab_data, tab_chat, tab_preview = st.tabs(
-            [
-                "📋 Données Cliniques",
-                "💬 Assistant IA sur la fiche",
-                "📄 Aperçu du document",
-            ]
-        )
+        data = (
+            db_client.database["rcp_info"].find_one({"file": target_filename})
+            if db_client is not None
+            else None
+        ) or {}
+        execution_times = data.get("execution_times", {})
+        models = get_form_models()
+        clinical_models = [
+            m
+            for m in models
+            if SECTION_META.get(m.__name__, {}).get("tab", "clinical") == "clinical"
+        ]
+        decision_models = [
+            m
+            for m in models
+            if SECTION_META.get(m.__name__, {}).get("tab", "clinical") == "decision"
+        ]
 
-        with tab_data:
-            data = (
-                db_client.database["rcp_info"].find_one({"file": target_filename})
-                if db_client is not None
-                else None
-            ) or {}
-            execution_times = data.get("execution_times", {})
-            models = get_form_models()
-            # On met PatientAdministrative en premier si présent
-            models.sort(key=lambda x: 0 if x.__name__ == "PatientAdministrative" else 1)
+        if data:
+            render_clinical_summary_card(data, patient_rcps=patient_rcps)
 
-            for model_cls in models:
-                model_name = model_cls.__name__
-                title = model_cls.__doc__.strip() if model_cls.__doc__ else model_name
-                pill_key = f"pills_{section_key}_{target_filename}_{title}"
-                run_key = f"run_ai_{section_key}_{target_filename}_{title}"
-                with st.expander(f"📌 {translate(title)}", expanded=True):
-                    st.pills(
-                        "Retry ai",
-                        label_visibility="collapsed",
-                        options=[":material/robot: AI exec"],
-                        selection_mode="single",
-                        key=pill_key,
-                        on_change=trigger_ai,
-                        args=(pill_key, run_key),
-                    )
-                    if st.session_state.get(run_key):
-                        st.session_state[run_key] = False
-                        try:
-                            with st.status(
-                                f"Relance de l'IA pour {model_name} ({target_filename}) ..."
-                            ) as status:
-                                st_callback = ThreadSafeStreamlitCallbackHandler(status)
-                                reader = get_mtd_reader(target_filename)
-                                reader.read_model(
-                                    model_cls, upsert=True, callbacks=[st_callback]
-                                )
-                        except Exception as e:
-                            logger.error(f"Erreur lors de la relance de l'IA : {e}")
-                            st.error(f"Erreur lors de l'exécution de l'IA : {e}")
-                        finally:
-                            st.rerun()
+        is_power = bool(st.session_state.get("power"))
+        tab_titles = [
+            "🩺 Dossier clinique",
+            "⚖️ Avis & Décision RCP",
+            "💬 Assistant IA",
+        ]
+        if is_power:
+            tab_titles.append("📄 Texte & Chunks")
 
-                    if model_name in data:
-                        model_data = data[model_name]
+        rendered_tabs = st.tabs(tab_titles)
+        tab_clinical, tab_decision, tab_chat = rendered_tabs[:3]
+        tab_preview = rendered_tabs[3] if is_power else None
 
-                        # Gestion des agents multiples (dictionnaire de résultats)
-                        is_multi = (
-                            hasattr(model_cls, "agents")
-                            and len(model_cls.agents) > 1
-                            and not getattr(model_cls, "collaborative", False)
-                        )
+        with tab_clinical:
+            with st.container(
+                height=660,
+                border=False,
+                key=f"clinical_scroll_clin_{section_key}_{target_filename}",
+            ):
+                _render_form_sections_list(
+                    models=clinical_models,
+                    data=data,
+                    execution_times=execution_times,
+                    active_state=active_state,
+                    extraction_service=extraction_service,
+                    target_filename=target_filename,
+                    section_key=section_key,
+                    tab_suffix="clin",
+                )
 
-                        if is_multi and isinstance(model_data, dict):
-                            agent_names = list(model_data.keys())
-                            if agent_names:
-                                tabs = st.tabs(agent_names)
-                                for tab, agent_name in zip(tabs, agent_names):
-                                    agent_dict = data[model_name][agent_name]
-                                    pydantic_model = model_cls.model_validate(
-                                        agent_dict
-                                    )
-                                    with tab:
-                                        render_fields(pydantic_model)
-                                        thinking = (
-                                            agent_dict.get("reasoning_thinking")
-                                            if isinstance(agent_dict, dict)
-                                            else None
-                                        )
-                                        if thinking:
-                                            with st.expander(
-                                                "💭 Réflexion / Thinking",
-                                                expanded=False,
-                                            ):
-                                                with st.container(
-                                                    height=250, border=False
-                                                ):
-                                                    st.write(thinking)
-                        else:
-                            pydantic_model = model_cls.model_validate(data[model_name])
-                            render_model_data(pydantic_model)
-                            thinking = (
-                                model_data.get("reasoning_thinking")
-                                if isinstance(model_data, dict)
-                                else None
-                            )
-                            if thinking:
-                                with st.expander(
-                                    "💭 Réflexion / Thinking", expanded=False
-                                ):
-                                    with st.container(height=250, border=False):
-                                        st.write(thinking)
-
-                        exec_time = execution_times.get(model_name)
-                        if exec_time is not None:
-                            label = (
-                                "Execution time"
-                                if st.session_state.get("language", "Français")
-                                == "English"
-                                else "Temps d'exécution"
-                            )
-                            st.caption(f"⏱️ {label} : {exec_time:.2f} s")
-                    else:
-                        st.warning("Données non trouvées.")
+        with tab_decision:
+            with st.container(
+                height=660,
+                border=False,
+                key=f"clinical_scroll_dec_{section_key}_{target_filename}",
+            ):
+                _render_form_sections_list(
+                    models=decision_models,
+                    data=data,
+                    execution_times=execution_times,
+                    active_state=active_state,
+                    extraction_service=extraction_service,
+                    target_filename=target_filename,
+                    section_key=section_key,
+                    tab_suffix="dec",
+                )
 
         with tab_chat:
-            form_rcp_chat(target_filename, section_key=section_key)
-
-        with tab_preview:
-            tab_chunk, tab_markdown = st.tabs(
-                ["📄 Format Chunks", "📄 Format Markdown"]
+            chat_scope = st.segmented_control(
+                "Portée de l'Assistant IA",
+                options=[
+                    "Dossier patient complet",
+                    "Fiche RCP active uniquement",
+                ],
+                default="Dossier patient complet",
+                width="stretch",
+                key=f"chat_scope_{section_key}_{target_filename}",
             )
-            with tab_chunk:
-                st.header("Aperçu des documents découpés")
-                with st.spinner("Chargement de l'aperçu..."):
-                    reader = get_mtd_reader(target_filename)
-                    chunked_docs = (
-                        reader.chunked_documents
-                        if hasattr(reader, "chunked_documents")
-                        else None
-                    )
+            if chat_scope == "Fiche RCP active uniquement":
+                form_rcp_chat(target_filename, section_key=section_key)
+            else:
+                form_dossier_chat(
+                    patient=patient,
+                    patient_rcps=patient_rcps,
+                    current_filename=target_filename,
+                )
 
-                    if chunked_docs:
-                        st.success(f"{len(chunked_docs)} chunks de document trouvés.")
-                        for i, doc in enumerate(chunked_docs):
-                            st.subheader(f"Chunk #{i + 1}")
-                            st.write(doc.page_content)
-                            if doc.metadata:
-                                with st.expander(
-                                    "Afficher les métadonnées", expanded=False
-                                ):
-                                    st.json(doc.metadata)
-                            st.divider()
-                    else:
-                        st.warning(
-                            "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA (via le chat ou l'analyse de données)."
-                        )
-            with tab_markdown:
-                st.header("Aperçu des documents découpés")
-                with st.spinner("Chargement de l'aperçu..."):
-                    reader = get_mtd_reader(target_filename)
-                    markdown = (
-                        reader.markdown_exporter[0].page_content
-                        if hasattr(reader, "markdown_exporter")
-                        and reader.markdown_exporter
-                        else None
-                    )
+        if tab_preview is not None:
+            with tab_preview:
+                preview_mode = st.segmented_control(
+                    "Format d'aperçu",
+                    options=["Format Markdown", "Découpage vectoriel (Chunks)"],
+                    default="Format Markdown",
+                    width="stretch",
+                    key=f"preview_mode_{section_key}_{target_filename}",
+                )
+                with st.container(height=700, border=True):
+                    if preview_mode == "Découpage vectoriel (Chunks)":
+                        st.subheader("Aperçu des blocs vectoriels (Chunks)")
+                        with st.spinner("Chargement des chunks..."):
+                            reader = get_mtd_reader(target_filename)
+                            chunked_docs = (
+                                reader.chunked_documents
+                                if hasattr(reader, "chunked_documents")
+                                else None
+                            )
 
-                    if markdown:
-                        st.markdown(markdown)
+                            if chunked_docs:
+                                st.success(
+                                    f"{len(chunked_docs)} chunks de document trouvés.",
+                                    icon=":material/check_circle:",
+                                )
+                                for i, doc in enumerate(chunked_docs):
+                                    st.markdown(f"**Chunk #{i + 1}**")
+                                    st.write(doc.page_content)
+                                    if doc.metadata:
+                                        with st.expander(
+                                            "Afficher les métadonnées", expanded=False
+                                        ):
+                                            st.json(doc.metadata)
+                            else:
+                                st.warning(
+                                    "Aucun document découpé. Le découpage se fait lors de l'utilisation de l'IA."
+                                )
                     else:
-                        st.warning("Aucun document au format markdown.")
+                        st.subheader("Aperçu au format Markdown")
+                        with st.spinner("Chargement du Markdown..."):
+                            reader = get_mtd_reader(target_filename)
+                            markdown = (
+                                reader.markdown_exporter[0].page_content
+                                if hasattr(reader, "markdown_exporter")
+                                and reader.markdown_exporter
+                                else None
+                            )
+
+                            if markdown:
+                                st.markdown(markdown)
+                            else:
+                                st.warning("Aucun contenu au format Markdown.")
 
 
 def form():
@@ -880,105 +3361,83 @@ def form():
         st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
         return
 
-    # Maintenir `file` synchronisé dans `st.query_params` pour compatibilité avec les composants existants
     if st.query_params.get("file") != filename:
         st.query_params["file"] = filename
 
-    latest_doc = select_latest_analyzed_rcp(patient_rcps) if patient_rcps else None
+    latest_doc = (
+        PatientMDTForm.select_latest_analyzed(patient_rcps) if patient_rcps else None
+    )
     latest_file = (
         latest_doc["file"] if latest_doc and "file" in latest_doc else filename
     )
 
-    render_dossier_header(filename, patient=patient)
-
-    top_tab_patient, top_tab_history, top_tab_dossier_chat = st.tabs(
-        [
-            "👤 Données patient",
-            "🕰️ Historique des fiches RCP",
-            "💬 Assistant IA sur le dossier",
-        ]
+    selected_file, has_pdf, file_path, active_state = render_unified_patient_banner(
+        filename=filename,
+        patient=patient,
+        patient_rcps=patient_rcps,
+        latest_file=latest_file,
+        section_key="patient_dossier",
+    )
+    render_rcp_detail_view(
+        selected_file,
+        section_key="patient_dossier",
+        patient_rcps=patient_rcps,
+        patient=patient,
+        has_pdf=has_pdf,
+        file_path=file_path,
+        active_state=active_state,
     )
 
-    with top_tab_patient:
-        render_patient_identity_banner(
-            patient=patient,
-            patient_rcps=patient_rcps,
-            latest_file=latest_file,
-        )
-        render_rcp_detail_view(
-            latest_file,
-            section_key="patient_latest",
-            patient_rcps=patient_rcps,
-        )
 
-    with top_tab_history:
-        selected_history_file = render_rcp_timeline_selector(
-            filename,
-            patient=patient,
-            patient_rcps=patient_rcps,
-        )
-        render_rcp_detail_view(
-            selected_history_file,
-            section_key="history",
-            patient_rcps=patient_rcps,
-        )
+power = st.sidebar.toggle("Mode expert (Power mode)", key="power")
 
-    with top_tab_dossier_chat:
-        form_dossier_chat(
-            patient=patient,
-            patient_rcps=patient_rcps,
-            current_filename=filename,
-        )
-
-
-power = st.sidebar.toggle("Power mode", key="power")
-
-if st.session_state["power"]:
-    st.sidebar.markdown(
-        f"""
-                        - **Modele:**: {app_conf.llm.models}
-                        - **Embed**: {app_conf.llm.embeddings}
-                        - **Parser**: {app_conf.rcp.doc_type}
-                        """
+if st.session_state.get("power"):
+    st.sidebar.caption(
+        f"**Modèle :** `{app_conf.llm.models}`  \n"
+        f"**Embeddings :** `{app_conf.llm.embeddings}`  \n"
+        f"**Parser :** `{app_conf.rcp.doc_type}`"
     )
-    st.sidebar.divider()
-    st.sidebar.caption("⚡ Cache documents")
+    st.sidebar.caption(":material/bolt: Cache documents")
     c_btn1, c_btn2 = st.sidebar.columns(2)
     if c_btn1.button(
-        "🗑️ Ce doc",
+        "Ce doc",
+        icon=":material/delete:",
         help="Supprimer le cache du document courant",
         width="stretch",
+        key="btn_del_sidebar_doc_cache",
     ):
-        from src.infrastructure.documents.mongodb import Mongodb
-
-        client = Mongodb(app_conf)
+        cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
         filename = st.query_params.get("file")
         if filename:
-            client.delete_document_cache(file_name=filename)
+            cache_repo.delete_cache(file_name=filename)
             st.toast(f"Cache vidé pour {filename}", icon="🗑️")
-        client.close()
         st.rerun()
     if c_btn2.button(
-        "🧹 Tout vider",
-        help="Vider tout le cache des documents",
+        "Tout vider",
+        icon=":material/delete_forever:",
+        help="Vider tout le cache des documents (administrateurs)",
         width="stretch",
+        disabled=not st.session_state.get("is_admin", False),
+        key="btn_danger_sidebar_all_cache",
     ):
-        from src.infrastructure.documents.mongodb import Mongodb
-
-        client = Mongodb(app_conf)
-        client.delete_document_cache()
-        client.close()
+        cache_repo = MongoDocumentCacheRepository(app_conf, db_client=db_client)
+        cache_repo.delete_cache(clear_all=True)
         st.toast("Tout le cache document a été vidé", icon="🧹")
         st.rerun()
+
+# `?file=` is user-controlled: reject anything that is not a plain file name
+# (path traversal such as `../../etc/passwd`) before any filesystem access.
+_raw_file_param = st.query_params.get("file")
+if _raw_file_param is not None and not is_safe_filename(_raw_file_param):
+    logger.warning("Rejected unsafe 'file' query parameter")
+    del st.query_params["file"]
+    st.error("Nom de fichier invalide.")
+    st.stop()
 
 if "patient_id" in st.query_params or "file" in st.query_params:
     form()
 else:
     st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
-
-if "reader" in st.session_state:
-    del st.session_state["reader"]
-    st.session_state["reader"] = None
 
 if db_client is not None:
     db_client.close()

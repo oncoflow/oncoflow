@@ -86,20 +86,26 @@ class TestVectorialDatabases(unittest.TestCase):
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.mongodb.MongoDBAtlasVectorSearch")
-    @patch("src.infrastructure.vectorial.mongodb.MongoClient")
+    @patch("src.infrastructure.documents.mongodb.MongoClient")
     def test_mongodb_vector_db_initialization(
         self, mock_mongo_client_cls, mock_vector_search_cls, mock_get_llm_client
     ):
-        mock_get_llm_client.return_value = self.mock_llm_client
+        from src.infrastructure.documents.mongodb import close_all_mongo_clients
 
-        self.mock_config.dbvec.type = "mongodb"
-        db_wrapper = MongoDBVectorDB(self.mock_config)
+        close_all_mongo_clients()
+        try:
+            mock_get_llm_client.return_value = self.mock_llm_client
 
-        self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
-        mock_mongo_client_cls.assert_called_once_with(
-            "mongodb://root:password@127.0.0.1:27017"
-        )
-        mock_vector_search_cls.assert_called_once()
+            self.mock_config.dbvec.type = "mongodb"
+            db_wrapper = MongoDBVectorDB(self.mock_config)
+
+            self.assertEqual(db_wrapper.coll_name, "oncoflowDocs_all_MiniLM_L6_v2")
+            mock_mongo_client_cls.assert_called_once_with(
+                "mongodb://root:password@127.0.0.1:27017"
+            )
+            mock_vector_search_cls.assert_called_once()
+        finally:
+            close_all_mongo_clients()
 
     @patch("src.infrastructure.vectorial.database.get_llm_client")
     @patch("src.infrastructure.vectorial.client.MilvusDB")
