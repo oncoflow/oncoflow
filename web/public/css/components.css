@@ -1835,6 +1835,7 @@ div[data-href] {
 }
 .ds-toolbar { position: relative; z-index: 15; display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--ds-space-3); padding: var(--ds-space-4); background: var(--ds-color-surface); border: 1px solid var(--ds-color-border); border-radius: var(--ds-radius-lg); }
 .ds-toolbar:has(.ds-m3-select.is-open, .ds-menu[open], .ds-popover[open]) { z-index: var(--ds-z-popover, 60); }
+.ds-toolbar > .ds-field:has(.ds-select, .ds-m3-select) { min-width: 9rem; }
 .ds-toolbar__end { margin-left: auto; display: flex; gap: var(--ds-space-2); align-items: center; }
 
 /* M3 Segmented Button (https://m3.material.io/components/segmented-buttons) */
@@ -2178,7 +2179,7 @@ input[type="search"].ds-input::-webkit-search-decoration {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  min-width: 100%;
+  min-width: max(100%, 9rem);
   max-width: min(24rem, 90vw);
   max-height: 18rem;
   overflow-y: auto;
