@@ -347,7 +347,7 @@ requires-dist = [
     { name = "streamlit", specifier = ">=1.66.0" },
     { name = "streamlit-authenticator", specifier = ">=0.4.2" },
     { name = "streamlit-pdf-viewer", specifier = ">=0.0.29" },
-    { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.27" },
+    { name = "unstructured", extras = ["pdf"], specifier = ">=0.27.34" },
     { name = "uvicorn", specifier = ">=0.30.0" },
 ]
 
