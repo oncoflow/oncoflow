@@ -4912,6 +4912,26 @@ a.ds-timeline__link:hover {
   align-items: start;
   gap: var(--ds-space-2);
 }
+.ds-agenda-header > .ds-page-header__text {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+}
+.ds-agenda-header > .ds-page-header__actions {
+  display: contents;
+}
+.ds-agenda-header__mobile-menu {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  justify-self: end;
+}
+.ds-agenda-header__start-btn {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  width: 100%;
+  justify-content: center;
+}
 .ds-agenda-header__title-row {
   display: flex;
   flex-wrap: wrap;
@@ -5512,6 +5532,16 @@ a.ds-timeline__link:hover {
     align-items: center;
     justify-content: space-between;
     gap: var(--ds-space-3) var(--ds-space-4);
+  }
+  .ds-agenda-header > .ds-page-header__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ds-space-2);
+    margin-left: auto;
+  }
+  .ds-agenda-header__start-btn {
+    width: auto;
   }
   .ds-agenda-header__desktop-action {
     display: inline-flex !important;

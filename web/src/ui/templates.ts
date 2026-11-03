@@ -2971,7 +2971,7 @@ export function renderAgendaPage(
       <div class="ds-page-header__actions">
         ${
           firstItemHref
-            ? `<a class="ds-btn ds-btn--primary ds-btn--sm ds-agenda-header__desktop-action" href="${firstItemHref}" data-testid="btn_start_session">
+            ? `<a class="ds-btn ds-btn--primary ds-btn--sm ds-agenda-header__start-btn" href="${firstItemHref}" data-testid="btn_start_session">
                 ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
               </a>`
             : ""
@@ -2995,14 +2995,6 @@ export function renderAgendaPage(
           </summary>
           <div class="ds-menu__panel" role="menu">
             <div class="ds-menu__header">${esc(t("nav.agenda", lang))}</div>
-            ${
-              firstItemHref
-                ? `<a class="ds-menu__item" role="menuitem" href="${firstItemHref}">
-                    ${iconSvg("ic-play")}
-                    <span>Ouvrir le 1er dossier (#1)</span>
-                  </a>`
-                : ""
-            }
             <button type="button" class="ds-menu__item" role="menuitem" data-open="schedule-meeting-dialog">
               ${iconSvg("ic-calendar")}
               <span>Programmer une nouvelle réunion</span>
