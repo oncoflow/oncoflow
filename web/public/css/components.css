@@ -4896,11 +4896,23 @@ a.ds-timeline__link:hover {
 /* ==========================================================================
    Next RCP / MDT Session Agenda Builder (.ds-agenda-*) — 100% Mobile-First
    ========================================================================== */
+.ds-page-header.ds-agenda-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--ds-space-2);
+}
 .ds-agenda-header__title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--ds-space-2);
+}
+.ds-agenda-header__date {
+  font-family: var(--ds-font-mono);
+  font-size: 0.78em;
+  font-weight: var(--ds-weight-medium);
+  color: var(--ds-color-text-muted);
 }
 .ds-agenda-summary-strip {
   display: inline-flex;
@@ -5473,8 +5485,18 @@ a.ds-timeline__link:hover {
 
 /* Progressive enhancement: Tablet (>= 48rem / 768px) */
 @media (min-width: 48rem) {
+  .ds-page-header.ds-agenda-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ds-space-3) var(--ds-space-4);
+  }
   .ds-agenda-header__desktop-action {
     display: inline-flex !important;
+  }
+  .ds-agenda-header__mobile-menu {
+    display: none !important;
   }
   .ds-agenda-config-section__header {
     padding: 0.75rem 1rem;

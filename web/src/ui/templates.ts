@@ -2929,11 +2929,16 @@ export function renderAgendaPage(
       </details>`
     : "";
 
+  const firstItemHref =
+    hasMeeting && agenda.items[0]
+      ? `/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}&from=agenda${agenda.items[0].filename ? `&file=${encodeURIComponent(agenda.items[0].filename)}` : ""}`
+      : null;
+
   const bodyHtml = `
     <div class="ds-page-header ds-agenda-header">
       <div class="ds-page-header__text">
         <div class="ds-agenda-header__title-row">
-          <h1>${esc(t("nav.agenda", lang))}</h1>
+          <h1 id="heading-ordered-agenda">${esc(t("nav.agenda", lang))}${hasMeeting ? ` <span class="ds-agenda-header__date">· ${esc(agenda.sessionDate)}</span>` : ""}</h1>
           ${
             hasMeeting
               ? `<div class="ds-agenda-summary-strip" aria-label="Résumé de la séance RCP">
@@ -2959,10 +2964,17 @@ export function renderAgendaPage(
         </div>
       </div>
       <div class="ds-page-header__actions">
-        <button type="button" class="ds-btn ds-btn--primary" data-open="schedule-meeting-dialog" data-testid="btn_schedule_new_meeting">
+        ${
+          firstItemHref
+            ? `<a class="ds-btn ds-btn--primary ds-btn--sm ds-agenda-header__desktop-action" href="${firstItemHref}" data-testid="btn_start_session">
+                ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
+              </a>`
+            : ""
+        }
+        <button type="button" class="ds-btn ${hasMeeting ? "ds-btn--tonal ds-btn--sm" : "ds-btn--primary"} ds-agenda-header__desktop-action" data-open="schedule-meeting-dialog" data-testid="btn_schedule_new_meeting">
           ${iconSvg("ic-calendar")} Programmer une nouvelle réunion
         </button>
-        <a class="ds-btn ds-btn--secondary ds-agenda-header__desktop-action" href="/worklist?domain=${domainParam}" data-testid="btn_agenda_worklist">
+        <a class="ds-btn ds-btn--secondary ds-btn--sm ds-agenda-header__desktop-action" href="/worklist?domain=${domainParam}" data-testid="btn_agenda_worklist">
           ${iconSvg("ic-worklist")} Worklist
         </a>
         ${
@@ -2972,6 +2984,39 @@ export function renderAgendaPage(
               </button>`
             : ""
         }
+        <details class="ds-menu ds-agenda-header__mobile-menu" data-testid="menu-agenda-actions">
+          <summary class="ds-menu__trigger" aria-label="Actions de l'ordre du jour RCP" title="Actions de l'ordre du jour">
+            ${iconSvg("ic-more-vert")}
+          </summary>
+          <div class="ds-menu__panel" role="menu">
+            <div class="ds-menu__header">${esc(t("nav.agenda", lang))}</div>
+            ${
+              firstItemHref
+                ? `<a class="ds-menu__item" role="menuitem" href="${firstItemHref}">
+                    ${iconSvg("ic-play")}
+                    <span>Ouvrir le 1er dossier (#1)</span>
+                  </a>`
+                : ""
+            }
+            <button type="button" class="ds-menu__item" role="menuitem" data-open="schedule-meeting-dialog">
+              ${iconSvg("ic-calendar")}
+              <span>Programmer une nouvelle réunion</span>
+            </button>
+            <a class="ds-menu__item" role="menuitem" href="/worklist?domain=${domainParam}">
+              ${iconSvg("ic-worklist")}
+              <span>Worklist</span>
+            </a>
+            ${
+              hasMeeting
+                ? `<hr class="ds-menu__divider">
+                  <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="clear-agenda-dialog">
+                    ${iconSvg("ic-delete")}
+                    <span>Vider l'ordre du jour</span>
+                  </button>`
+                : ""
+            }
+          </div>
+        </details>
       </div>
     </div>
 
@@ -2979,23 +3024,7 @@ export function renderAgendaPage(
 
     <!-- Main Full-Width Focus: Ordered Agenda List -->
     <section class="ds-stack ds-agenda-focus" aria-labelledby="heading-ordered-agenda">
-      ${
-        hasMeeting
-          ? `<div class="ds-agenda-section-bar">
-              <h2 id="heading-ordered-agenda" class="ds-card__title">
-                ${iconSvg("ic-layers")} Ordre de passage de la séance du ${esc(agenda.sessionDate)} (${agenda.items.length} dossier${agenda.items.length > 1 ? "s" : ""})
-              </h2>
-              ${
-                agenda.items[0]
-                  ? `<a class="ds-btn ds-btn--primary ds-btn--sm" href="/patients/${encodeURIComponent(agenda.items[0].patientId)}?domain=${domainParam}&from=agenda${agenda.items[0].filename ? `&file=${encodeURIComponent(agenda.items[0].filename)}` : ""}" data-testid="btn_start_session">
-                      ${iconSvg("ic-play")} Ouvrir le 1er dossier (#1)
-                    </a>`
-                  : ""
-              }
-            </div>
-            ${specialtyFocusBarHtml}`
-          : ""
-      }
+      ${hasMeeting ? specialtyFocusBarHtml : ""}
       ${enrolledHtml}
     </section>
 

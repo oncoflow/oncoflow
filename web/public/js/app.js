@@ -885,6 +885,7 @@
   document.addEventListener("click", function (e) {
     var openBtn = e.target.closest("[data-open]");
     if (openBtn) {
+      closeAllMenus(null);
       var dlg = document.getElementById(openBtn.getAttribute("data-open"));
       if (dlg && typeof dlg.showModal === "function") {
         dlg.showModal();
