@@ -13,7 +13,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
     libsm6 \
     libxext6 \
     libxrender1 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /usr/local/lib/python*/site-packages/pip* /usr/local/bin/pip*
 
 # Création d'un utilisateur non-root pour l'exécution et du répertoire /app
 RUN groupadd -g 1002 appuser && \
