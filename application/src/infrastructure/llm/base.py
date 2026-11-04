@@ -1,3 +1,5 @@
+from collections import OrderedDict
+import threading
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Tuple, Type
@@ -148,3 +150,80 @@ class LLMConnect(ABC):
             LLMConnectionError: if the backend is unreachable after retries.
         """
         pass
+
+
+DEFAULT_EMBEDDING_CACHE_MAXSIZE: int = 512
+
+
+class CachedEmbeddingsProxy:
+    """
+    Low-footprint thread-safe LRU caching proxy around a LangChain `Embeddings` instance.
+
+    Deduplicates repeated `embed_query(text)` calls (such as multi-agent RAG searches on
+    scientific guidelines during Wave 3 expert debates) and returns defensive copies of cached
+    float vectors so callers cannot mutate cached entries. All other attributes and methods
+    (e.g., `embed_documents`, `model`, `client`) are transparently delegated to the underlying
+    embeddings object.
+    """
+
+    def __init__(
+        self,
+        underlying: Any,
+        model_key: str = "",
+        maxsize: int = DEFAULT_EMBEDDING_CACHE_MAXSIZE,
+    ) -> None:
+        self._underlying = underlying
+        self._model_key = str(
+            model_key or getattr(underlying, "model", "") or ""
+        ).strip()
+        self._maxsize = max(1, int(maxsize))
+        self._lock = threading.Lock()
+        self._cache: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
+        self._hits = 0
+        self._misses = 0
+
+    def embed_query(self, text: str, *args: Any, **kwargs: Any) -> list[float]:
+        """Compute or retrieve a cached embedding vector for a single query string."""
+        if args or kwargs or not isinstance(text, str):
+            return list(self._underlying.embed_query(text, *args, **kwargs))
+
+        normalized_query = " ".join(text.split())
+        key = (self._model_key, normalized_query)
+
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None:
+                self._cache.move_to_end(key)
+                self._hits += 1
+                return list(cached)
+
+        vector = list(self._underlying.embed_query(normalized_query))
+
+        with self._lock:
+            self._misses += 1
+            self._cache[key] = list(vector)
+            self._cache.move_to_end(key)
+            while len(self._cache) > self._maxsize:
+                self._cache.popitem(last=False)
+
+        return list(vector)
+
+    def cache_info(self) -> dict[str, int]:
+        """Return hit/miss/size statistics for the embedding query cache."""
+        with self._lock:
+            return {
+                "hits": self._hits,
+                "misses": self._misses,
+                "maxsize": self._maxsize,
+                "currsize": len(self._cache),
+            }
+
+    def cache_clear(self) -> None:
+        """Clear all cached query embeddings and reset statistics."""
+        with self._lock:
+            self._cache.clear()
+            self._hits = 0
+            self._misses = 0
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._underlying, name)
