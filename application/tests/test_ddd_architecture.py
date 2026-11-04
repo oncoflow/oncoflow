@@ -1,7 +1,7 @@
 import ast
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -649,3 +649,284 @@ class TestRepositoriesAndApplicationUseCases:
             },
         )
         assert len(captured_updates) == 1
+
+    def test_batch_and_form_status_and_patient_readers(self, tmp_path: Path):
+        """Cover get_batch_status, get_form_status, and build_patient_readers in PatientMDTFormExtractionService."""
+        patient_repo = InMemoryPatientRepository()
+        mdt_form_repo = InMemoryPatientMDTFormRepository()
+        cache_repo = InMemoryDocumentCacheRepository()
+
+        p1 = Patient(
+            patient_id="P-100",
+            first_name="Alice",
+            last_name="Martin",
+            files=["f_run.pdf"],
+        )
+        patient_repo.save(p1)
+
+        mdt_form_repo.upsert_fields(
+            "f_run.pdf",
+            fields={
+                "patient_id": "P-100",
+                "processing_status": None,
+                "processing_progress_pct": 10.0,
+            },
+        )
+        mdt_form_repo.upsert_fields(
+            "f_fail.pdf",
+            fields={
+                "PatientAdministrative": {"first_name": "Bob", "last_name": "Durand"},
+            },
+        )
+        mdt_form_repo.upsert_fields("f_done.pdf", fields={})
+
+        mock_conf = MagicMock()
+        mock_conf.domain = "oncology"
+        mock_conf.rcp.path = str(tmp_path)
+        mock_conf.queue.enabled = False
+
+        svc = PatientMDTFormExtractionService(
+            config=mock_conf,
+            filename="f_run.pdf",
+            patient_repo=patient_repo,
+            mdt_form_repo=mdt_form_repo,
+            cache_repo=cache_repo,
+        )
+
+        mock_broker = MagicMock()
+        mock_broker.get_queue_jobs.return_value = [
+            {
+                "filename": "f_run.pdf",
+                "status": "RUNNING",
+                "current_step": "Extraction TNM",
+                "progress_pct": 45.0,
+                "created_at": datetime(2026, 1, 1, 10, 0),
+            },
+            {
+                "filename": "f_fail.pdf",
+                "status": "FAILED",
+                "error": "Timeout LLM",
+                "created_at": "1700000000.0",
+            },
+            {
+                "filename": "f_done.pdf",
+                "status": "COMPLETED",
+                "created_at": "2026-01-02T12:00:00",
+            },
+            {
+                "filename": "f_other.pdf",
+                "status": "CANCELLED",
+                "created_at": "invalid-date",
+            },
+        ]
+
+        batch_res = svc.get_batch_status("batch_xyz", queue_broker=mock_broker)
+        assert batch_res["batch_id"] == "batch_xyz"
+        by_file = {f["filename"]: f for f in batch_res["files"]}
+        assert by_file["f_run.pdf"]["processing_status"] == "RUNNING"
+        assert by_file["f_run.pdf"]["pct"] == 45.0
+        assert by_file["f_fail.pdf"]["processing_status"] == "FAILED"
+        assert by_file["f_fail.pdf"]["error"] == "Timeout LLM"
+        assert by_file["f_done.pdf"]["processing_status"] == "COMPLETED"
+        assert by_file["f_done.pdf"]["pct"] == 100.0
+        assert by_file["f_other.pdf"]["processing_status"] == "CANCELLED"
+
+        # get_form_status from repo vs queue fallback vs missing
+        mdt_form_repo.upsert_fields(
+            "f_completed.pdf", fields={"processing_status": "COMPLETED"}
+        )
+        st_comp = svc.get_form_status("f_completed.pdf", queue_broker=mock_broker)
+        assert st_comp is not None and st_comp["processing_progress_pct"] == 100.0
+
+        st_run = svc.get_form_status("f_run.pdf", queue_broker=mock_broker)
+        assert st_run is not None and st_run["processing_progress_pct"] == 10.0
+
+        mock_broker.get_queue_jobs.return_value = [
+            {
+                "filename": "queued_only.pdf",
+                "status": "PENDING",
+                "step_label": "En attente",
+                "progress_pct": 5.0,
+                "target_patient_id": "P-100",
+            }
+        ]
+        st_queued = svc.get_form_status("queued_only.pdf", queue_broker=mock_broker)
+        assert st_queued is not None and st_queued["processing_status"] == "PENDING"
+
+        mock_broker.get_queue_jobs.side_effect = RuntimeError("db error")
+        assert svc.get_form_status("unknown.pdf", queue_broker=mock_broker) is None
+
+        with patch(
+            "src.application.use_cases.patient_mdt_form_extraction.DocumentReader"
+        ) as mock_dr_cls:
+            mock_dr_inst = MagicMock()
+            mock_dr_cls.return_value = mock_dr_inst
+            readers = svc.build_patient_readers(
+                ["f_run.pdf", "missing.pdf"], preload_documents=True
+            )
+            assert len(readers) == 2
+            assert mock_dr_inst.read_document.call_count == 2
+
+    def test_patient_record_resolve_and_delete_edge_cases(self, tmp_path: Path):
+        """Cover resolve_patient_or_form and delete_patient_mdt_form_document edge cases."""
+        patient_repo = InMemoryPatientRepository()
+        mdt_form_repo = InMemoryPatientMDTFormRepository()
+        cache_repo = InMemoryDocumentCacheRepository()
+        mock_broker = MagicMock()
+
+        p1 = Patient(
+            patient_id="P-200",
+            first_name="Claire",
+            last_name="Moreau",
+            files=["doc_a.pdf"],
+        )
+        patient_repo.save(p1)
+        mdt_form_repo.upsert_fields(
+            "doc_a.pdf",
+            fields={
+                "patient_id": "P-200",
+                "PatientAdministrative": {
+                    "first_name": "Claire",
+                    "last_name": "Moreau",
+                },
+            },
+        )
+        mdt_form_repo.upsert_fields(
+            "unlinked.pdf",
+            fields={
+                "PatientAdministrative": {
+                    "first_name": "Claire",
+                    "last_name": "Moreau",
+                },
+            },
+        )
+
+        pdf_path = tmp_path / "doc_a.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4")
+        bbox_path = tmp_path / "doc_a.pdf.bbox"
+        bbox_path.write_text("{}")
+
+        svc = PatientRecordService(
+            patient_repo=patient_repo,
+            mdt_form_repo=mdt_form_repo,
+            cache_repo=cache_repo,
+            mdt_form_storage_path=str(tmp_path),
+            queue_broker=mock_broker,
+        )
+
+        # Resolve by file linked to patient_id
+        pat, forms, sel = svc.resolve_patient_record(filename="doc_a.pdf")
+        assert pat is not None and pat.patient_id == "P-200"
+        assert sel == "doc_a.pdf"
+
+        # Resolve by unlinked file matching candidate
+        pat2, _, sel2 = svc.resolve_patient_record(filename="unlinked.pdf")
+        assert sel2 == "unlinked.pdf"
+
+        # Resolve unknown file and empty call
+        pat3, forms3, sel3 = svc.resolve_patient_record(filename="ghost.pdf")
+        assert pat3 is None and sel3 == "ghost.pdf"
+        assert svc.resolve_patient_record() == (None, [], None)
+        assert svc.delete_patient_record("NON-EXISTENT") is False
+
+        # Delete patient record including PDF and .bbox file
+        assert svc.delete_patient_record("P-200", delete_files=True) is True
+        assert not pdf_path.exists()
+        assert not bbox_path.exists()
+        mock_broker.delete_jobs_for_file.assert_called()
+
+    def test_queue_executor_single_model_and_clear_manual_edit(self):
+        """Cover PatientMDTFormQueueJobExecutor.execute_single_model and clear_manual_edit_before_rerun."""
+        mock_conf = MagicMock()
+        mock_conf.domain = "oncology"
+        executor = PatientMDTFormQueueJobExecutor(mock_conf)
+        executor._resolve_domain_config = MagicMock(return_value=mock_conf)
+
+        mock_qm = MagicMock()
+        with pytest.raises(ValueError, match="Missing model_name"):
+            executor.execute_single_model(
+                {"job_id": "j1", "domain": "oncology", "filename": "f.pdf"},
+                "lease1",
+                mock_qm,
+            )
+
+        with (
+            patch("src.application.use_cases.queue_executor.DocumentReader"),
+            patch(
+                "src.application.use_cases.queue_executor.PatientMDTFormExtractionService"
+            ) as mock_svc_cls,
+        ):
+            mock_svc = MagicMock()
+            mock_svc.form_cls = PatientMDTOncologicForm
+            mock_svc.form.sections = {}
+            mock_svc.form.manual_edits = {}
+            mock_svc_cls.return_value = mock_svc
+
+            # Unknown section raises ValueError
+            with pytest.raises(ValueError, match="not found"):
+                executor.execute_single_model(
+                    {
+                        "job_id": "j1",
+                        "domain": "oncology",
+                        "filename": "f.pdf",
+                        "model_name": "UnknownSectionXYZ",
+                    },
+                    "lease1",
+                    mock_qm,
+                )
+
+            # PatientAdministrative with preserve_manual_edits=True calls process_patient_association
+            executor.execute_single_model(
+                {
+                    "job_id": "j2",
+                    "domain": "oncology",
+                    "filename": "f.pdf",
+                    "model_name": "PatientAdministrative",
+                    "preserve_manual_edits": True,
+                },
+                "lease1",
+                mock_qm,
+            )
+            mock_svc.process_patient_association.assert_called_once()
+
+            # Non-admin section with preserve_manual_edits=False passes clear_manual_flag=True
+            executor.execute_single_model(
+                {
+                    "job_id": "j3",
+                    "domain": "oncology",
+                    "filename": "f.pdf",
+                    "model_name": "TumorLocation",
+                    "preserve_manual_edits": False,
+                },
+                "lease1",
+                mock_qm,
+            )
+            mock_svc.extract_section.assert_called_once()
+            assert (
+                mock_svc.extract_section.call_args.kwargs.get("clear_manual_flag")
+                is True
+            )
+
+        # clear_manual_edit_before_rerun restores previous_ai_value and archives manual edit
+        with patch(
+            "src.application.use_cases.queue_executor.MongoPatientMDTFormRepository"
+        ) as mock_repo_cls:
+            mock_repo = MagicMock()
+            mock_repo.get_by_file.return_value = {
+                "file": "f.pdf",
+                "manual_edits": {
+                    "TumorLocation": {
+                        "is_manual": True,
+                        "edited_by": "Dr X",
+                        "previous_ai_value": {"tumor_location": "Pancreas"},
+                    }
+                },
+            }
+            mock_repo_cls.return_value = mock_repo
+            executor.clear_manual_edit_before_rerun(
+                "oncology", "f.pdf", "TumorLocation"
+            )
+            mock_repo.upsert_fields.assert_called_once()
+            upserted = mock_repo.upsert_fields.call_args.kwargs["fields"]
+            assert upserted["TumorLocation"] == {"tumor_location": "Pancreas"}
+            assert upserted["manual_edits"]["TumorLocation"]["is_manual"] is False

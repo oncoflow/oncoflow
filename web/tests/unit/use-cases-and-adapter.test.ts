@@ -256,4 +256,543 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     const dossier = await dossierUseCase.getDossier("toto", "sma", "fr");
     expect(dossier).toBeNull();
   });
+
+  it("covers all HttpOncoflowApiAdapter endpoints (forms, patients, sections, resources, bugs, queue, agenda)", async () => {
+    const fetchMock = vi.fn(async (urlStr: string, init?: RequestInit) => {
+      const url = String(urlStr);
+      const method = (init?.method ?? "GET").toUpperCase();
+
+      if (url.includes("/api/v1/patientmdtform/schema")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            domain: "oncology",
+            sections: [{ name: "PatientAdministrative", schema: { properties: {} } }],
+            enums: { priority: ["low", "medium", "high"] },
+          }),
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform/resolve")) {
+        const isPdf = url.includes("file=doc.pdf") && !url.includes("patient_id=");
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            isPdf
+              ? { resolved_type: "rcp", selected_file: "doc.pdf" }
+              : { patient: { patient_id: "P-1" }, latest_file: "doc.pdf" },
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform/patients/P-1/chat")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ answer: "Synthèse patient", references: [{ name: "doc.pdf" }] }),
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform/patients/P-1") && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            patient: { patient_id: "P-1" },
+            enriched_rcps: [
+              {
+                file: "doc.pdf",
+                mdt_date: "2026-11-06",
+                processing_status: "COMPLETED",
+                PatientAdministrative: { first_name: "Jeanne", last_name: "Fictive" },
+                MTDCompleted: { mtd_complete: { is_mtd_complete: false, what_missing: ["IRM"] } },
+                CareOrientationProposal: {
+                  care_adaptation_suggested: true,
+                  proposed_care_type: "Chirurgie",
+                  suggested_priority: "medium",
+                },
+                ExpertAnswer: {
+                  "pancreas expert": { expert_relevant: true, patient_priority: "high" },
+                },
+                manual_edits: {
+                  PatientAdministrative: { is_manual: true, edited_by: "Dr Test" },
+                },
+                markdown_text: "# Compte rendu",
+                chunks: [{ id: "c1", text: "chunk" }],
+              },
+            ],
+          }),
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform/patients?") && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              patient_id: "P-1",
+              first_name: "Jeanne",
+              last_name: "Fictive",
+              born_name: "Martin",
+              date_birth: "1960-05-14",
+              gender: "F",
+              rcp_count: 2,
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform?") && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              file: "doc.pdf",
+              patient_id: "P-1",
+              patient: "Fictive Jeanne",
+              missing: ["IRM"],
+              experts: ["pancreas expert"],
+              processing_status: "COMPLETED",
+            },
+          ],
+        };
+      }
+      if (url.includes("/pdf?")) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer,
+        };
+      }
+      if (url.includes("/api/v1/patientmdtform/batches/")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            batch_id: "b1",
+            files: [{ filename: "doc.pdf", status: "COMPLETED", progress_pct: 100 }],
+          }),
+        };
+      }
+      if (
+        url.includes("/api/v1/patientmdtform/") &&
+        (method === "GET" || url.includes("/rollback") || url.includes("/missing-items"))
+      ) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            file: "doc.pdf",
+            patient_id: "P-1",
+            sections: {
+              PatientAdministrative: { first_name: "Jeanne", last_name: "Fictive" },
+              MTDCompleted: { is_mtd_complete: true, what_missing: [] },
+            },
+            hidden_missing_items: ["Bilan"],
+            hide_missing_items: false,
+            processing_status: "COMPLETED",
+          }),
+        };
+      }
+      if (url.includes("/api/v1/queue/rerun")) {
+        return { ok: true, status: 200, json: async () => ({ job_id: "job-rerun-1" }) };
+      }
+      if (url.includes("/process?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ jobs: [{ job_id: "job-full-1" }] }),
+        };
+      }
+      if (url.includes("/api/v1/resources?") && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              filename: "PNDS_SMA.pdf",
+              size_bytes: 1024,
+              is_indexed: true,
+              chunk_count: 12,
+              updated_at: "2026-11-01",
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v1/resources/") && url.includes("/file?")) {
+        if (url.includes("missing-citation")) {
+          return { ok: false, status: 404 };
+        }
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => new Uint8Array([37, 80, 68, 70]).buffer,
+        };
+      }
+      if (url.includes("/api/v1/resources/") && url.includes("/chat?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ answer: "Réponse référentiel" }),
+        };
+      }
+      if (url.includes("/api/v1/agents?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              name: "pancreas expert",
+              role: "Expert pancréas",
+              resources: ["TNCD.pdf"],
+              models: ["mistral"],
+              system_prompt: "Tu es expert",
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v1/bug-reports") && method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              bug_id: "BUG-1",
+              title: "Bug 1",
+              description: "Desc",
+              category: "ui",
+              severity: "low",
+              status: "resolved",
+              domain: "oncology",
+              patient_id: "P-1",
+              reporter: "Dr X",
+              created_at: "2026-11-04",
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v1/bug-reports") && method === "POST") {
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({ bug_id: "BUG-1", status: "open", created_at: "2026-11-04" }),
+        };
+      }
+      if (url.includes("/api/v1/queue/stats")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            pending: 1,
+            processing: 1,
+            completed: 5,
+            failed: 0,
+            cancelled: 0,
+            active_locks: 1,
+          }),
+        };
+      }
+      if (url.includes("/api/v1/queue/thinking")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            is_thinking: true,
+            filename: "doc.pdf",
+            step: "Extraction",
+            content: "Analyse en cours...",
+          }),
+        };
+      }
+      if (url.includes("/api/v1/queue/jobs?")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              job_id: "J-1",
+              job_type: "FULL_EXTRACTION",
+              status: "PENDING",
+              priority: 1,
+              domain: "oncology",
+              filename: "doc.pdf",
+              model_name: "TumorBiology",
+              progress_pct: 50,
+              current_step: "LLM",
+              preserve_manual_edits: true,
+            },
+          ],
+        };
+      }
+      if (url.includes("/api/v1/queue/clean")) {
+        return { ok: true, status: 200, json: async () => ({ affected_jobs: 3 }) };
+      }
+      if (url.includes("/api/v1/queue/locks")) {
+        return { ok: true, status: 200, json: async () => ({ released_locks: 1 }) };
+      }
+      if (url.includes("/api/v1/mdt-agenda")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            agenda_id: "next_mdt_oncology",
+            domain: "oncology",
+            session_date: "2026-11-12",
+            sort_strategy: "urgency_first",
+            defer_incomplete_files: true,
+            available_experts: ["pancreas expert"],
+            attending_experts: ["pancreas expert"],
+            items: [
+              {
+                position: 1,
+                patient_id: "P-1",
+                filename: "doc.pdf",
+                patient_name: "Fictive Jeanne",
+                urgency: "high",
+                urgency_score: 90,
+                is_complete: true,
+                required_experts: ["pancreas expert"],
+                present_required_experts: ["pancreas expert"],
+                absent_required_experts: [],
+              },
+            ],
+            expert_windows: [
+              {
+                expert_name: "pancreas expert",
+                is_attending: true,
+                case_count: 1,
+                urgent_case_count: 1,
+                first_position: 1,
+                last_position: 1,
+                is_contiguous: true,
+                patient_ids: ["P-1"],
+              },
+            ],
+            candidates: [
+              {
+                patient_id: "P-2",
+                filename: "doc2.pdf",
+                patient_name: "Autre Patient",
+                urgency: "low",
+              },
+            ],
+          }),
+        };
+      }
+
+      return { ok: true, status: 200, json: async () => ({}) };
+    });
+
+    const adapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000/",
+      apiToken: "tok",
+      proxySecret: "sec",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+
+    expect((await adapter.listRcpCards("oncology")).length).toBe(1);
+    expect((await adapter.listPatients("oncology", true)).length).toBe(1);
+    await adapter.deletePatient("P-1", "oncology");
+    await adapter.deleteForm("doc.pdf", "oncology");
+
+    const schema1 = await adapter.getDomainSchema("oncology");
+    const schema2 = await adapter.getDomainSchema("oncology");
+    expect(schema1).toBe(schema2);
+
+    expect((await adapter.resolveTarget("doc.pdf", "oncology")).kind).toBe("form");
+    expect((await adapter.resolveTarget("P-1", "oncology")).kind).toBe("patient");
+
+    const forms = await adapter.getPatientForms("P-1", "oncology");
+    expect(forms).toHaveLength(1);
+    expect(forms[0]?.metrics.priority_level).toBe("high");
+
+    const updated = await adapter.updateFormSection(
+      "doc.pdf",
+      "PatientAdministrative",
+      { first_name: "Jeanne" },
+      "Dr Test",
+      "oncology",
+    );
+    expect(updated.file).toBe("doc.pdf");
+
+    expect(
+      (await adapter.rollbackSection("doc.pdf", "PatientAdministrative", "oncology")).file,
+    ).toBe("doc.pdf");
+    expect(
+      (
+        await adapter.updateMissingItems(
+          "doc.pdf",
+          { hideMissingItems: true, editedBy: "Dr Test" },
+          "oncology",
+        )
+      ).file,
+    ).toBe("doc.pdf");
+
+    expect((await adapter.rerunSection("doc.pdf", "TumorBiology", true, "oncology")).jobId).toBe(
+      "job-rerun-1",
+    );
+    expect((await adapter.processFullForm("doc.pdf", true, "oncology")).jobId).toBe("job-full-1");
+    await adapter.linkFormToPatient("doc.pdf", "P-1", "oncology");
+
+    const pdfBuf = await adapter.getFormPdfBuffer("doc.pdf", "oncology", "bbox");
+    expect(pdfBuf).toBeInstanceOf(Buffer);
+
+    const chatReply = await adapter.askDossierQuestion(
+      { patientId: "P-1" },
+      "Question ?",
+      "oncology",
+      "en",
+    );
+    expect(chatReply.answer).toBe("Synthèse patient");
+
+    const uploadRes = await adapter.uploadForms(
+      [{ filename: "doc.pdf", content: Buffer.from("pdf"), patientId: "P-1" }],
+      "b1",
+      "oncology",
+    );
+    expect(uploadRes.filenames).toEqual(["doc.pdf"]);
+    expect((await adapter.getBatchStatus("b1", "oncology")).completed).toBe(1);
+
+    expect((await adapter.listResources("oncology")).length).toBe(1);
+    expect((await adapter.uploadResource("new.pdf", Buffer.from("pdf"), "oncology")).filename).toBe(
+      "new.pdf",
+    );
+    await adapter.reindexResource("new.pdf", "oncology");
+    await adapter.deleteResource("new.pdf", "oncology");
+    expect(
+      await adapter.getResourcePdfBuffer("PNDS_SMA.pdf", "oncology", "doc.pdf"),
+    ).toBeInstanceOf(Buffer);
+    // Fallback resolution when citation title doesn't match directly
+    expect(await adapter.getResourcePdfBuffer("missing-citation pnds", "oncology")).toBeInstanceOf(
+      Buffer,
+    );
+
+    expect((await adapter.listAgents("oncology", "fr")).length).toBe(1);
+    expect((await adapter.askGuidelineQuestion("Question ?", "oncology", "fr")).answer).toBe(
+      "Réponse référentiel",
+    );
+
+    const createdBug = await adapter.createBug({
+      title: "Bug 1",
+      description: "Desc",
+      category: "ui",
+      severity: "low",
+      domain: "oncology",
+      patientOrFile: "P-1",
+      author: "Dr X",
+    });
+    expect(createdBug.id).toBe("BUG-1");
+    expect((await adapter.updateBugStatus("BUG-1", "resolved", "oncology")).status).toBe(
+      "resolved",
+    );
+    await adapter.deleteBug("BUG-1", "oncology");
+
+    const qStats = await adapter.getQueueStats("oncology");
+    expect(qStats.activeFormFile).toBe("doc.pdf");
+    expect(qStats.thinkingPreview).toBe("Analyse en cours...");
+    expect((await adapter.listQueueJobs("oncology")).length).toBe(1);
+    await adapter.retryQueueJob("J-1", "oncology");
+    await adapter.cancelOrDeleteQueueJob("J-1", "oncology");
+    expect(await adapter.cleanQueue("completed", "oncology")).toBe(3);
+    expect((await adapter.releaseGpuLocks("oncology")).released).toBe(1);
+
+    const agenda = await adapter.getMdtAgenda("oncology");
+    expect(agenda.sortStrategy).toBe("urgency_first");
+    expect(agenda.items).toHaveLength(1);
+    await adapter.updateMdtAgenda(
+      {
+        sessionDate: "2026-11-15",
+        sortStrategy: "hybrid",
+        deferIncompleteFiles: false,
+        attendingExperts: ["pancreas expert"],
+        toggleExpert: "pancreas expert",
+        patientIds: ["P-1"],
+        resetEnrolledPatients: false,
+      },
+      "oncology",
+    );
+    await adapter.addPatientsToMdtAgenda({ patientIds: ["P-2"] }, "oncology");
+    await adapter.removePatientFromMdtAgenda("P-1", "oncology");
+    await adapter.clearMdtAgenda("oncology");
+    await adapter.movePatientInMdtAgenda("P-1", { direction: "up" }, "oncology");
+  });
+
+  it("delegates to fallbackPort when HTTP requests fail", async () => {
+    const failingFetch = vi.fn().mockRejectedValue(new Error("Network error"));
+    const fallback = new InMemoryOncoflowApiFake();
+    const adapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: failingFetch as unknown as typeof fetch,
+      fallbackPort: fallback,
+    });
+
+    expect((await adapter.listPatientCards("oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.listRcpCards("oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.listPatients("oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.getDomainSchema("oncology")).sections.length).toBeGreaterThan(0);
+    expect((await adapter.resolveTarget("A-1042", "oncology")).kind).toBe("patient");
+    expect((await adapter.getPatientForms("A-1042", "oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.listResources("oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.listAgents("oncology", "fr")).length).toBeGreaterThan(0);
+    expect((await adapter.listBugs("oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.getQueueStats("oncology")).total).toBeGreaterThan(0);
+    expect((await adapter.listQueueJobs("oncology")).length).toBeGreaterThan(0);
+    expect((await adapter.getMdtAgenda("oncology")).agendaId).toBeTruthy();
+
+    // Also exercise write/action methods through fallbackPort
+    const cards = await adapter.listPatientCards("oncology");
+    const sampleFile = cards[0]!.file;
+    const samplePid = cards[0]!.patientId!;
+    await adapter.updateFormSection(
+      sampleFile,
+      "PatientAdministrative",
+      { first_name: "Jeanne" },
+      "Dr Test",
+      "oncology",
+    );
+    await adapter.rollbackSection(sampleFile, "PatientAdministrative", "oncology");
+    await adapter.updateMissingItems(sampleFile, { hideMissingItems: false }, "oncology");
+    await adapter.rerunSection(sampleFile, "TumorBiology", true, "oncology");
+    await adapter.processFullForm(sampleFile, true, "oncology");
+    await adapter.linkFormToPatient(sampleFile, samplePid, "oncology");
+    expect(await adapter.getFormPdfBuffer(sampleFile, "oncology")).not.toBeNull();
+    expect(await adapter.getFormDetail(sampleFile, "oncology")).not.toBeNull();
+    expect(
+      (await adapter.askDossierQuestion({ filename: sampleFile }, "Q?", "oncology", "fr")).answer,
+    ).toBeTruthy();
+    const batch = await adapter.uploadForms(
+      [{ filename: "f.pdf", content: Buffer.from("%PDF") }],
+      "b-fb",
+      "oncology",
+    );
+    expect((await adapter.getBatchStatus(batch.batchId, "oncology")).total).toBe(1);
+    await adapter.uploadResource("r.pdf", Buffer.from("%PDF"), "oncology");
+    await adapter.reindexResource("r.pdf", "oncology");
+    expect(await adapter.getResourcePdfBuffer("r.pdf", "oncology")).not.toBeNull();
+    await adapter.deleteResource("r.pdf", "oncology");
+    expect((await adapter.askGuidelineQuestion("Q?", "oncology", "fr")).answer).toBeTruthy();
+    const bug = await adapter.createBug({
+      title: "T",
+      description: "D",
+      category: "ui",
+      severity: "low",
+      domain: "oncology",
+      patientOrFile: null,
+      author: "A",
+    });
+    await adapter.updateBugStatus(bug.id, "resolved", "oncology");
+    await adapter.deleteBug(bug.id, "oncology");
+    const jobs = await adapter.listQueueJobs("oncology");
+    if (jobs[0]) {
+      await adapter.retryQueueJob(jobs[0].jobId, "oncology");
+      await adapter.cancelOrDeleteQueueJob(jobs[0].jobId, "oncology");
+    }
+    await adapter.cleanQueue("completed", "oncology");
+    await adapter.releaseGpuLocks("oncology");
+    await adapter.updateMdtAgenda({ sortStrategy: "manual" }, "oncology");
+    await adapter.addPatientsToMdtAgenda({ patientIds: [samplePid] }, "oncology");
+    await adapter.movePatientInMdtAgenda(samplePid, { direction: "up" }, "oncology");
+    await adapter.removePatientFromMdtAgenda(samplePid, "oncology");
+    await adapter.clearMdtAgenda("oncology");
+    await adapter.deleteForm(sampleFile, "oncology");
+    await adapter.deletePatient(samplePid, "oncology");
+  });
 });

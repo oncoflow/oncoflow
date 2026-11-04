@@ -1,11 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   buildDefaultDomainFormSchema,
+  buildStrictBackendSectionPayload,
+  coerceBooleanValue,
+  coerceDateValue,
+  coerceNullableBooleanValue,
+  coerceNumberValue,
   coerceSectionUpdatePayload,
+  coerceSelectValue,
+  coerceStringListValue,
+  extractNormalizedChemoList,
+  extractNormalizedExamsList,
   formatFieldLabel,
+  formatRawEditValue,
   getAgentPresentation,
   getSectionFieldSchemas,
   getSectionPresentation,
+  isPlaceholderValue,
   parseJsonSchemaToFieldSchemas,
 } from "../../src/domain/catalog.js";
 import { t, translateValue } from "../../src/domain/i18n.js";
@@ -341,5 +352,383 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       oncoSchema,
     );
     expect(coercedBio.msi_state).toBe(false);
+  });
+
+  it("coerces primitive values, dates, selects, lists, exams, chemo, and strict payloads", () => {
+    expect(isPlaceholderValue(null)).toBe(true);
+    expect(isPlaceholderValue("Non renseigné")).toBe(true);
+    expect(isPlaceholderValue("FOLFIRINOX")).toBe(false);
+    expect(isPlaceholderValue(42)).toBe(false);
+
+    expect(coerceBooleanValue(true)).toBe(true);
+    expect(coerceBooleanValue(1)).toBe(true);
+    expect(coerceBooleanValue(0)).toBe(false);
+    expect(coerceBooleanValue("oui")).toBe(true);
+    expect(coerceBooleanValue("non")).toBe(false);
+    expect(coerceBooleanValue("unknown", true)).toBe(true);
+
+    expect(coerceNullableBooleanValue(null)).toBeNull();
+    expect(coerceNullableBooleanValue(true)).toBe(true);
+    expect(coerceNullableBooleanValue("MSI")).toBe(true);
+    expect(coerceNullableBooleanValue("MSS")).toBe(false);
+    expect(coerceNullableBooleanValue("non renseigné")).toBeNull();
+    expect(coerceNullableBooleanValue("maybe")).toBeNull();
+
+    expect(coerceNumberValue(null, true)).toBeNull();
+    expect(coerceNumberValue(Number.NaN, true)).toBeNull();
+    expect(coerceNumberValue(3.7, true, 0, 2)).toBe(2);
+    expect(coerceNumberValue(-5, false, 0, 10)).toBe(0);
+    expect(coerceNumberValue("72,5 %", false, 0, 100)).toBe(72.5);
+    expect(coerceNumberValue("OMS 2", true, 0, 4)).toBe(2);
+    expect(coerceNumberValue("abc", true)).toBeNull();
+
+    expect(coerceDateValue(null)).toBeNull();
+    expect(coerceDateValue(new Date("2026-05-14T10:00:00Z"))).toBe("2026-05-14");
+    expect(coerceDateValue("2026-11-06T08:00:00")).toBe("2026-11-06");
+    expect(coerceDateValue("14/05/2026")).toBe("2026-05-14");
+    expect(coerceDateValue("May 14, 2026")).toMatch(/^2026-05-1[34]$/);
+    expect(coerceDateValue("invalid-date")).toBeNull();
+
+    const options = [
+      { value: "NIV_BiPAP", labelFr: "VNI nocturne", labelEn: "Nocturnal NIV" },
+      { value: "Gastrostomy", labelFr: "Gastrostomie", labelEn: "G-tube" },
+      { value: "Underweight", labelFr: "Maigreur", labelEn: "Underweight" },
+    ];
+    expect(coerceSelectValue(null, options, "NIV_BiPAP")).toBe("NIV_BiPAP");
+    expect(coerceSelectValue("VNI nocturne", options, "None")).toBe("NIV_BiPAP");
+    expect(coerceSelectValue("bipap 8h", options, "None")).toBe("NIV_BiPAP");
+    expect(coerceSelectValue("pose de gpe", options, "None")).toBe("Gastrostomy");
+    expect(coerceSelectValue("cassure pondérale", options, "None")).toBe("Underweight");
+    expect(coerceSelectValue("other", options, "Fallback")).toBe("Fallback");
+
+    expect(coerceStringListValue(["A", "Non renseigné", " B "])).toEqual(["A", "B"]);
+    expect(coerceStringListValue("TEP-TDM, IRM hépatique; Non renseigné")).toEqual([
+      "TEP-TDM",
+      "IRM hépatique",
+    ]);
+    expect(coerceStringListValue(123)).toEqual([]);
+
+    expect(formatRawEditValue(null)).toBe("");
+    expect(formatRawEditValue(true, { key: "k", inputType: "boolean", nullable: false })).toBe(
+      "true",
+    );
+    expect(
+      formatRawEditValue(null, { key: "k", inputType: "nullable_boolean", nullable: true }),
+    ).toBe("");
+    expect(
+      formatRawEditValue(false, { key: "k", inputType: "nullable_boolean", nullable: true }),
+    ).toBe("false");
+    expect(
+      formatRawEditValue(["A", "B"], { key: "k", inputType: "string_list", nullable: false }),
+    ).toBe("A, B");
+    expect(
+      formatRawEditValue("A, B", { key: "k", inputType: "string_list", nullable: false }),
+    ).toBe("A, B");
+    expect(formatRawEditValue("14/05/2026", { key: "k", inputType: "date", nullable: true })).toBe(
+      "2026-05-14",
+    );
+    expect(
+      formatRawEditValue("invalid", {
+        key: "k",
+        inputType: "integer",
+        nullable: false,
+        defaultValue: 0,
+      }),
+    ).toBe("0");
+    expect(
+      formatRawEditValue("invalid", {
+        key: "k",
+        inputType: "float",
+        nullable: false,
+        defaultValue: 0,
+      }),
+    ).toBe("0");
+    expect(
+      formatRawEditValue("12,5", {
+        key: "k",
+        inputType: "float",
+        nullable: true,
+      }),
+    ).toBe("12.5");
+    expect(
+      formatRawEditValue("VNI nocturne", {
+        key: "k",
+        inputType: "select",
+        nullable: false,
+        options,
+        defaultValue: "NIV_BiPAP",
+      }),
+    ).toBe("NIV_BiPAP");
+    expect(formatRawEditValue(42)).toBe("42");
+
+    // Exams & Chemo normalization
+    const exams = extractNormalizedExamsList({
+      radiological_exams: [
+        {
+          exam_name: "IRM hépatique",
+          exam_type: "IRM",
+          exam_date: "14/05/2026",
+          exam_result: "RAS",
+        },
+        { exam_name: "TEP-FDG", exam_type: "TEP", exam_result: "Non renseigné" },
+        { exam_name: "Echo-endo", exam_type: "ECHO", exam_result: "T3N1" },
+      ],
+    });
+    expect(exams).toHaveLength(3);
+    expect(exams[0]?.exam_type).toBe("MRI");
+    expect(exams[1]?.exam_type).toBe("PET");
+    expect(exams[2]?.exam_type).toBe("EUS");
+
+    const chemo = extractNormalizedChemoList({
+      chemotherapy_name: "FOLFIRINOX",
+      chemotherapy_start_date: "2026-01-10",
+      chemotherapy_tolerance: "Grade 3 neuropathie",
+    });
+    expect(chemo).toHaveLength(1);
+    expect(chemo[0]?.chemotherapy_tolerance).toBe("Poor");
+
+    // MTDCompleted, RadiologicExams, ChemotherapyTreament, PatientAdministrative
+    const mtdCoerced = coerceSectionUpdatePayload(
+      "MTDCompleted",
+      { what_missing: "TEP-TDM, Bilan hépatique", reflection: "Attente TEP" },
+      { mtd_complete: { references: [{ name: "TNCD" }] } },
+    );
+    expect(mtdCoerced.is_mtd_complete).toBe(false);
+    expect(buildStrictBackendSectionPayload("MTDCompleted", mtdCoerced)).toHaveProperty(
+      "mtd_complete",
+    );
+
+    const radCoerced = coerceSectionUpdatePayload("RadiologicExams", {
+      exam_name_0: "TDM TAP",
+      exam_type_0: "CT",
+      exam_date_0: "2026-10-01",
+      exam_result_0: "Stable",
+    });
+    expect(buildStrictBackendSectionPayload("RadiologicExams", radCoerced)).toEqual({
+      exams_list: [
+        {
+          exam_name: "TDM TAP",
+          exam_date: "2026-10-01",
+          exam_type: "CT",
+          exam_result: "Stable",
+        },
+      ],
+    });
+
+    const chemoCoerced = coerceSectionUpdatePayload("ChemotherapyTreament", {
+      chemotherapy_name_0: "Gemcitabine",
+      chemotherapy_tolerance_0: "Bonne tolérance",
+      chemotherapy_start_date_0: "2026-02-01",
+    });
+    expect(buildStrictBackendSectionPayload("ChemotherapyTreament", chemoCoerced)).toMatchObject({
+      chemotherapy: true,
+      chemotherapy_list: [
+        expect.objectContaining({
+          chemotherapy_name: "Gemcitabine",
+          chemotherapy_tolerance: "Good",
+        }),
+      ],
+    });
+
+    const adminCoerced = coerceSectionUpdatePayload("PatientAdministrative", {
+      first_name: "Jeanne",
+      last_name: "Fictive",
+      date_birth: "2027-01-01",
+      date_rcp: "2026-11-06",
+      extra_field: "extra",
+    });
+    expect(adminCoerced.date_birth).toBe("2026-11-06");
+    expect(adminCoerced.extra_field).toBe("extra");
+    const strictAdmin = buildStrictBackendSectionPayload("PatientAdministrative", adminCoerced);
+    expect(strictAdmin).not.toHaveProperty("extra_field");
+  });
+
+  it("coerces primitive values, dates, selects, lists, exams, chemo, and strict payloads", () => {
+    expect(isPlaceholderValue(null)).toBe(true);
+    expect(isPlaceholderValue("Non renseigné")).toBe(true);
+    expect(isPlaceholderValue("FOLFIRINOX")).toBe(false);
+    expect(isPlaceholderValue(42)).toBe(false);
+
+    expect(coerceBooleanValue(true)).toBe(true);
+    expect(coerceBooleanValue(1)).toBe(true);
+    expect(coerceBooleanValue(0)).toBe(false);
+    expect(coerceBooleanValue("oui")).toBe(true);
+    expect(coerceBooleanValue("non")).toBe(false);
+    expect(coerceBooleanValue("unknown", true)).toBe(true);
+
+    expect(coerceNullableBooleanValue(null)).toBeNull();
+    expect(coerceNullableBooleanValue(true)).toBe(true);
+    expect(coerceNullableBooleanValue("MSI")).toBe(true);
+    expect(coerceNullableBooleanValue("MSS")).toBe(false);
+    expect(coerceNullableBooleanValue("non renseigné")).toBeNull();
+    expect(coerceNullableBooleanValue("maybe")).toBeNull();
+
+    expect(coerceNumberValue(null, true)).toBeNull();
+    expect(coerceNumberValue(Number.NaN, true)).toBeNull();
+    expect(coerceNumberValue(3.7, true, 0, 2)).toBe(2);
+    expect(coerceNumberValue(-5, false, 0, 10)).toBe(0);
+    expect(coerceNumberValue("72,5 %", false, 0, 100)).toBe(72.5);
+    expect(coerceNumberValue("OMS 2", true, 0, 4)).toBe(2);
+    expect(coerceNumberValue("abc", true)).toBeNull();
+
+    expect(coerceDateValue(null)).toBeNull();
+    expect(coerceDateValue(new Date("2026-05-14T10:00:00Z"))).toBe("2026-05-14");
+    expect(coerceDateValue("2026-11-06T08:00:00")).toBe("2026-11-06");
+    expect(coerceDateValue("14/05/2026")).toBe("2026-05-14");
+    expect(coerceDateValue("May 14, 2026")).toMatch(/^2026-05-1[34]$/);
+    expect(coerceDateValue("invalid-date")).toBeNull();
+
+    const options = [
+      { value: "NIV_BiPAP", labelFr: "VNI nocturne", labelEn: "Nocturnal NIV" },
+      { value: "Gastrostomy", labelFr: "Gastrostomie", labelEn: "G-tube" },
+      { value: "Underweight", labelFr: "Maigreur", labelEn: "Underweight" },
+    ];
+    expect(coerceSelectValue(null, options, "NIV_BiPAP")).toBe("NIV_BiPAP");
+    expect(coerceSelectValue("VNI nocturne", options, "None")).toBe("NIV_BiPAP");
+    expect(coerceSelectValue("bipap 8h", options, "None")).toBe("NIV_BiPAP");
+    expect(coerceSelectValue("pose de gpe", options, "None")).toBe("Gastrostomy");
+    expect(coerceSelectValue("cassure pondérale", options, "None")).toBe("Underweight");
+    expect(coerceSelectValue("other", options, "Fallback")).toBe("Fallback");
+
+    expect(coerceStringListValue(["A", "Non renseigné", " B "])).toEqual(["A", "B"]);
+    expect(coerceStringListValue("TEP-TDM, IRM hépatique; Non renseigné")).toEqual([
+      "TEP-TDM",
+      "IRM hépatique",
+    ]);
+    expect(coerceStringListValue(123)).toEqual([]);
+
+    expect(formatRawEditValue(null)).toBe("");
+    expect(formatRawEditValue(true, { key: "k", inputType: "boolean", nullable: false })).toBe(
+      "true",
+    );
+    expect(
+      formatRawEditValue(null, { key: "k", inputType: "nullable_boolean", nullable: true }),
+    ).toBe("");
+    expect(
+      formatRawEditValue(false, { key: "k", inputType: "nullable_boolean", nullable: true }),
+    ).toBe("false");
+    expect(
+      formatRawEditValue(["A", "B"], { key: "k", inputType: "string_list", nullable: false }),
+    ).toBe("A, B");
+    expect(
+      formatRawEditValue("A, B", { key: "k", inputType: "string_list", nullable: false }),
+    ).toBe("A, B");
+    expect(formatRawEditValue("14/05/2026", { key: "k", inputType: "date", nullable: true })).toBe(
+      "2026-05-14",
+    );
+    expect(
+      formatRawEditValue("invalid", {
+        key: "k",
+        inputType: "integer",
+        nullable: false,
+        defaultValue: 0,
+      }),
+    ).toBe("0");
+    expect(
+      formatRawEditValue("invalid", {
+        key: "k",
+        inputType: "float",
+        nullable: false,
+        defaultValue: 0,
+      }),
+    ).toBe("0");
+    expect(
+      formatRawEditValue("12,5", {
+        key: "k",
+        inputType: "float",
+        nullable: true,
+      }),
+    ).toBe("12.5");
+    expect(
+      formatRawEditValue("VNI nocturne", {
+        key: "k",
+        inputType: "select",
+        nullable: false,
+        options,
+        defaultValue: "NIV_BiPAP",
+      }),
+    ).toBe("NIV_BiPAP");
+    expect(formatRawEditValue(42)).toBe("42");
+
+    // Exams & Chemo normalization
+    const exams = extractNormalizedExamsList({
+      radiological_exams: [
+        {
+          exam_name: "IRM hépatique",
+          exam_type: "IRM",
+          exam_date: "14/05/2026",
+          exam_result: "RAS",
+        },
+        { exam_name: "TEP-FDG", exam_type: "TEP", exam_result: "Non renseigné" },
+        { exam_name: "Echo-endo", exam_type: "ECHO", exam_result: "T3N1" },
+      ],
+    });
+    expect(exams).toHaveLength(3);
+    expect(exams[0]?.exam_type).toBe("MRI");
+    expect(exams[1]?.exam_type).toBe("PET");
+    expect(exams[2]?.exam_type).toBe("EUS");
+
+    const chemo = extractNormalizedChemoList({
+      chemotherapy_name: "FOLFIRINOX",
+      chemotherapy_start_date: "2026-01-10",
+      chemotherapy_tolerance: "Grade 3 neuropathie",
+    });
+    expect(chemo).toHaveLength(1);
+    expect(chemo[0]?.chemotherapy_tolerance).toBe("Poor");
+
+    // MTDCompleted, RadiologicExams, ChemotherapyTreament, PatientAdministrative
+    const mtdCoerced = coerceSectionUpdatePayload(
+      "MTDCompleted",
+      { what_missing: "TEP-TDM, Bilan hépatique", reflection: "Attente TEP" },
+      { mtd_complete: { references: [{ name: "TNCD" }] } },
+    );
+    expect(mtdCoerced.is_mtd_complete).toBe(false);
+    expect(buildStrictBackendSectionPayload("MTDCompleted", mtdCoerced)).toHaveProperty(
+      "mtd_complete",
+    );
+
+    const radCoerced = coerceSectionUpdatePayload("RadiologicExams", {
+      exam_name_0: "TDM TAP",
+      exam_type_0: "CT",
+      exam_date_0: "2026-10-01",
+      exam_result_0: "Stable",
+    });
+    expect(buildStrictBackendSectionPayload("RadiologicExams", radCoerced)).toEqual({
+      exams_list: [
+        {
+          exam_name: "TDM TAP",
+          exam_date: "2026-10-01",
+          exam_type: "CT",
+          exam_result: "Stable",
+        },
+      ],
+    });
+
+    const chemoCoerced = coerceSectionUpdatePayload("ChemotherapyTreament", {
+      chemotherapy_name_0: "Gemcitabine",
+      chemotherapy_tolerance_0: "Bonne tolérance",
+      chemotherapy_start_date_0: "2026-02-01",
+    });
+    expect(buildStrictBackendSectionPayload("ChemotherapyTreament", chemoCoerced)).toMatchObject({
+      chemotherapy: true,
+      chemotherapy_list: [
+        expect.objectContaining({
+          chemotherapy_name: "Gemcitabine",
+          chemotherapy_tolerance: "Good",
+        }),
+      ],
+    });
+
+    const adminCoerced = coerceSectionUpdatePayload("PatientAdministrative", {
+      first_name: "Jeanne",
+      last_name: "Fictive",
+      date_birth: "2027-01-01",
+      date_rcp: "2026-11-06",
+      extra_field: "extra",
+    });
+    expect(adminCoerced.date_birth).toBe("2026-11-06");
+    expect(adminCoerced.extra_field).toBe("extra");
+    const strictAdmin = buildStrictBackendSectionPayload("PatientAdministrative", adminCoerced);
+    expect(strictAdmin).not.toHaveProperty("extra_field");
   });
 });
