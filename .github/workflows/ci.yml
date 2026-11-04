@@ -29,6 +29,14 @@ jobs:
           uv python install
           uv sync --frozen
 
+      - name: Git hooks validation (prek)
+        run: |
+          uv run --project application --frozen prek run --all-files \
+            --skip web-format \
+            --skip web-lint \
+            --skip web-build \
+            --skip web-test
+
       # Utilise la version de ruff verrouillée dans application/uv.lock (et non la dernière via uvx)
       - name: Lint with ruff
         run: |

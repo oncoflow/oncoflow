@@ -635,7 +635,9 @@ export class PatientDossierUseCase {
 
         const wasPresentInRaw = Object.prototype.hasOwnProperty.call(rawObj, k);
         const v =
-          k === "exams_list" && rawObj.exams_list === undefined && Array.isArray(rawObj.radiological_exams)
+          k === "exams_list" &&
+          rawObj.exams_list === undefined &&
+          Array.isArray(rawObj.radiological_exams)
             ? rawObj.radiological_exams
             : rawObj[k];
         const fieldSchema = schemaByKey.get(k);
@@ -645,7 +647,11 @@ export class PatientDossierUseCase {
             label: lang === "fr" ? o.labelFr : o.labelEn,
           }));
 
-        if (k === "exams_list" || k === "radiological_exams" || fieldSchema?.inputType === "exams_list") {
+        if (
+          k === "exams_list" ||
+          k === "radiological_exams" ||
+          fieldSchema?.inputType === "exams_list"
+        ) {
           const examArr = Array.isArray(v) ? v : [];
           for (const item of examArr) {
             if (item && typeof item === "object") {
@@ -774,11 +780,9 @@ export class PatientDossierUseCase {
           max: fieldSchema?.max,
           step: fieldSchema?.step,
           unit: fieldSchema?.unit,
-          placeholder:
-            lang === "fr" ? fieldSchema?.placeholderFr : fieldSchema?.placeholderEn,
+          placeholder: lang === "fr" ? fieldSchema?.placeholderFr : fieldSchema?.placeholderEn,
           options: mapOptions(fieldSchema?.options),
-          isLongText:
-            inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
+          isLongText: inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
           hiddenInReadView: !wasPresentInRaw,
         });
       }
@@ -915,12 +919,7 @@ export class PatientDossierUseCase {
       this.api.getDomainSchema(domain).catch(() => null),
     ]);
     const existingSectionObj = (existingForm?.sections[section] ?? {}) as Record<string, unknown>;
-    const coercedData = coerceSectionUpdatePayload(
-      section,
-      data,
-      existingSectionObj,
-      domainSchema,
-    );
+    const coercedData = coerceSectionUpdatePayload(section, data, existingSectionObj, domainSchema);
     return this.api.updateFormSection(filename, section, coercedData, editedBy, domain);
   }
 
