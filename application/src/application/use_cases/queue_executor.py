@@ -75,8 +75,9 @@ class QueueThinkingCallbackHandler(BaseCallbackHandler):
                 return k
         return 0
 
-    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+    def on_llm_new_token(self, token: Any, **kwargs: Any) -> Any:
         """Extract live reasoning tokens from `reasoning_content` or `<think>` tags."""
+        token_str = token if isinstance(token, str) else ""
         chunk = kwargs.get("chunk")
         reasoning_token = ""
         if chunk is not None and hasattr(chunk, "message"):
@@ -92,13 +93,13 @@ class QueueThinkingCallbackHandler(BaseCallbackHandler):
 
         if reasoning_token:
             self._emit_thinking(reasoning_token)
-            if not token:
+            if not token_str:
                 return
 
-        if not token:
+        if not token_str:
             return
 
-        self._raw_buffer += token
+        self._raw_buffer += token_str
         open_tag = "<think>"
         close_tag = "</think>"
 
@@ -157,9 +158,7 @@ class PatientMDTFormQueueJobExecutor:
         if domain_conf.rcp.display_type != "mongodb":
             return
 
-        status_val = (
-            status.value if isinstance(status, RCPProcessingStatus) else str(status)
-        )
+        status_val = status.value if isinstance(status, RCPProcessingStatus) else status
         now = datetime.now()
         fields: dict[str, Any] = {
             "processing_status": status_val,
@@ -596,7 +595,7 @@ class PatientMDTFormQueueJobExecutor:
             canonical_name = target_cls.__name__ if target_cls else section_name
             repo = MongoPatientMDTFormRepository(domain_conf)
             try:
-                doc = repo.find_by_file(filename)
+                doc = repo.get_by_file(filename)
                 if not isinstance(doc, dict):
                     return
                 manual_edits = doc.get("manual_edits")
@@ -624,9 +623,9 @@ class PatientMDTFormQueueJobExecutor:
                 updated_fields["manual_edits"] = updated_manual
                 repo.upsert_fields(filename, fields=updated_fields)
             finally:
-                repo.close()
+                repo.db_client.close()
         except Exception as exc:
-            self.base_config.log.logger.warning(
+            self.logger.warning(
                 f"Could not pre-clear manual edit for {domain}/{filename} ({section_name}): {exc}"
             )
 

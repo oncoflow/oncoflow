@@ -288,9 +288,9 @@ class PatientRecordService:
             str(x) for x in (existing_doc.get("hidden_missing_items") or []) if x
         ]
         if hidden_missing_items is not None:
-            current_hidden = [str(x) for x in hidden_missing_items if x]
+            current_hidden = [x for x in hidden_missing_items if x]
         if toggle_item:
-            item_str = str(toggle_item).strip()
+            item_str = toggle_item.strip()
             if item_str:
                 if item_str in current_hidden:
                     current_hidden = [x for x in current_hidden if x != item_str]
@@ -298,7 +298,7 @@ class PatientRecordService:
                     current_hidden.append(item_str)
 
         effective_hide_all = (
-            bool(hide_missing_items)
+            hide_missing_items
             if hide_missing_items is not None
             else bool(existing_doc.get("hide_missing_items", False))
         )
@@ -311,7 +311,7 @@ class PatientRecordService:
         }
 
         if what_missing is not None:
-            clean_missing = [str(x).strip() for x in what_missing if str(x).strip()]
+            clean_missing = [x.strip() for x in what_missing if x.strip()]
             mtd_sec = dict(existing_doc.get("MTDCompleted") or {})
             nested = mtd_sec.get("mtd_complete")
             nested_dict = dict(nested) if isinstance(nested, dict) else {}

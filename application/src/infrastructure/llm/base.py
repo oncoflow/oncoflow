@@ -39,7 +39,7 @@ def build_base_url(url: str, port: Optional[str], uri: Optional[str]) -> str:
     - Avoids double slashes between the host part and the uri.
     """
     url = url or ""
-    if port and str(port).strip() and f":{port}" not in url:
+    if port and port.strip() and f":{port}" not in url:
         base_url = f"{url}:{port}"
     else:
         base_url = url
@@ -176,7 +176,7 @@ class CachedEmbeddingsProxy(Embeddings):
         self._model_key = str(
             model_key or getattr(underlying, "model", "") or ""
         ).strip()
-        self._maxsize = max(1, int(maxsize))
+        self._maxsize = max(1, maxsize)
         self._lock = threading.Lock()
         self._cache: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
         self._hits = 0

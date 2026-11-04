@@ -729,9 +729,10 @@ class AppConfig(BaseSettings):
         def _runtime_source() -> dict[str, Any]:
             return dict(_RUNTIME_OVERRIDES.get() or {})
 
+        runtime_src: Any = _runtime_source
         return (
             init_settings,
-            _runtime_source,
+            runtime_src,
             env_settings,
             dotenv_settings,
             file_secret_settings,

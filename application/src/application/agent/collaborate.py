@@ -37,13 +37,13 @@ def _build_debate_checkpoint_key(
     if not isinstance(doc_name, str) or not doc_name.strip():
         return None
     raw_hash = getattr(mtd, "file_hash", None)
-    file_hash = str(raw_hash) if isinstance(raw_hash, str) and raw_hash else ""
+    file_hash = raw_hash if isinstance(raw_hash, str) and raw_hash else ""
     format_name = getattr(output_format, "__name__", str(output_format))
     agent_ids = tuple(
         str(getattr(cls, "agent_name", None) or getattr(cls, "__name__", str(cls)))
         for cls in agents_classes
     )
-    return (doc_name.strip(), file_hash, format_name, str(question or ""), agent_ids)
+    return (doc_name.strip(), file_hash, format_name, question or "", agent_ids)
 
 
 def _get_debate_checkpoint(

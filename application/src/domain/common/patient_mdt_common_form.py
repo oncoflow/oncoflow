@@ -113,7 +113,7 @@ class PatientMDTForm:
         self.processing_status = (
             processing_status.value
             if isinstance(processing_status, RCPProcessingStatus)
-            else str(processing_status or RCPProcessingStatus.COMPLETED.value)
+            else (processing_status or RCPProcessingStatus.COMPLETED.value)
         )
         self.processing_step = processing_step
         self.processing_progress_pct = float(processing_progress_pct or 0.0)
@@ -387,16 +387,10 @@ class PatientMDTForm:
         doc = existing_doc or {}
         now = edited_at or datetime.now()
         manual_edits = dict(doc.get("manual_edits") or {})
-        prev_entry = (
-            dict(manual_edits.get(section_name))
-            if isinstance(manual_edits.get(section_name), dict)
-            else {}
-        )
-        current_section_val = (
-            dict(doc.get(section_name))
-            if isinstance(doc.get(section_name), dict)
-            else None
-        )
+        raw_prev = manual_edits.get(section_name)
+        prev_entry = dict(raw_prev) if isinstance(raw_prev, dict) else {}
+        raw_curr = doc.get(section_name)
+        current_section_val = dict(raw_curr) if isinstance(raw_curr, dict) else None
 
         # Capture the original AI output once before the first manual edit of the current AI cycle
         if prev_entry.get("is_manual") and "ai_original" in prev_entry:
@@ -579,7 +573,7 @@ class PatientMDTForm:
             )
             if is_multi_agent and isinstance(value, dict):
                 validated_by_agent: dict[str, Any] = {}
-                for agent_cls in model_cls.agents:
+                for agent_cls in getattr(model_cls, "agents", []):
                     if agent_cls.agent_name in value:
                         raw_agent_val = value[agent_cls.agent_name]
                         try:

@@ -481,7 +481,7 @@ class OncowflowAgent:
         self.latest_thinking = ""
         self.logger.info('Ask "%s" to agent ...', question)
 
-        retry = max(1, int(retry))
+        retry = max(1, retry)
         validation_error = None
         result = None
         last_failed_output = None
@@ -575,7 +575,7 @@ class OncowflowAgent:
                             validated = json.loads(candidate)
                         self.logger.info("AI response : %s", validated)
                         return validated
-                    except (ValidationError, ValueError, json.JSONDecodeError) as e:
+                    except (ValidationError, ValueError) as e:
                         # Keep the error of the most recent AI message's primary candidate only
                         if round_error is None:
                             round_error = e
@@ -599,7 +599,7 @@ class OncowflowAgent:
                             validated = json.loads(repaired_cand)
                         self.logger.info("AI response : %s", validated)
                         return validated
-                    except (ValidationError, ValueError, json.JSONDecodeError):
+                    except (ValidationError, ValueError):
                         continue
             validation_error = round_error or validation_error
 

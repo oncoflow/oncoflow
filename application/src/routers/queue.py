@@ -103,7 +103,7 @@ def stream_active_thinking_endpoint(
     for ev in manager.stream_job_thinking(
         job_id=None, domain=target_domain, timeout=timeout
     ):
-        payload = QueueThinkingStreamEvent(**ev)
+        payload = QueueThinkingStreamEvent.model_validate(ev)
         yield ServerSentEvent(data=payload, event=payload.event)
 
 
@@ -135,7 +135,7 @@ def stream_job_thinking_endpoint(
             detail=f"Tâche '{job_id}' introuvable.",
         )
     for ev in manager.stream_job_thinking(job_id=job_id, timeout=timeout):
-        payload = QueueThinkingStreamEvent(**ev)
+        payload = QueueThinkingStreamEvent.model_validate(ev)
         yield ServerSentEvent(data=payload, event=payload.event)
 
 
