@@ -201,7 +201,9 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
         ok: false,
         status: 500,
         headers: new Headers({ "content-type": "application/json" }),
-        json: async () => ({ detail: "Erreur interne lors de la communication avec l'agent." }),
+        json: async () => ({
+          detail: "Erreur interne lors de la communication avec l'agent.",
+        }),
       });
 
     const adapter = new HttpOncoflowApiAdapter({

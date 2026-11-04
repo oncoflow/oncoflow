@@ -4,13 +4,21 @@ import type {
   OncoflowApiPort,
   UploadFileInput,
 } from "../../application/ports/oncoflow-api.port.js";
-import { getAgentPresentation, getDomainUserPromptsForAgent } from "../../domain/catalog.js";
+import {
+  buildDefaultDomainFormSchema,
+  buildStrictBackendSectionPayload,
+  coerceSectionUpdatePayload,
+  getAgentPresentation,
+  getDomainUserPromptsForAgent,
+  resolveCanonicalSectionName,
+} from "../../domain/catalog.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
   BatchStatus,
   BugReportItem,
   ClinicalDomain,
+  DomainFormSchema,
   Language,
   MdtAgendaEnrollInput,
   MdtAgendaMoveInput,
@@ -50,6 +58,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   private readonly fallback?: OncoflowApiPort;
   private readonly timeoutMs: number;
   private readonly chatTimeoutMs: number;
+  private readonly domainSchemaCache = new Map<ClinicalDomain, DomainFormSchema>();
 
   constructor(options: HttpOncoflowApiAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
@@ -415,10 +424,43 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     }
   }
 
+  async getDomainSchema(domain: ClinicalDomain): Promise<DomainFormSchema> {
+    const cached = this.domainSchemaCache.get(domain);
+    if (cached) return cached;
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/schema?domain=${encodeURIComponent(domain)}`,
+        domain,
+      );
+      if (res && Array.isArray(res.sections)) {
+        const schema: DomainFormSchema = {
+          domain: String(res.domain ?? domain),
+          sections: res.sections as DomainFormSchema["sections"],
+          enums:
+            res.enums && typeof res.enums === "object"
+              ? (res.enums as Record<string, Array<string | number>>)
+              : {},
+        };
+        this.domainSchemaCache.set(domain, schema);
+        return schema;
+      }
+      return buildDefaultDomainFormSchema(domain);
+    } catch {
+      if (this.fallback) {
+        return this.fallback.getDomainSchema(domain);
+      }
+      return buildDefaultDomainFormSchema(domain);
+    }
+  }
+
   async resolveTarget(
     target: string,
     domain: ClinicalDomain,
-  ): Promise<{ kind: "patient" | "form"; patientId?: string | null; filename?: string | null }> {
+  ): Promise<{
+    kind: "patient" | "form";
+    patientId?: string | null;
+    filename?: string | null;
+  }> {
     try {
       const isPdf = target.toLowerCase().endsWith(".pdf");
       const query = isPdf
@@ -522,14 +564,22 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
     try {
+      const canonicalSection = resolveCanonicalSectionName(section);
+      const domainSchema = await this.getDomainSchema(domain).catch(() => null);
+      const coerced = coerceSectionUpdatePayload(canonicalSection, data, {}, domainSchema);
+      const strictPayload = buildStrictBackendSectionPayload(
+        canonicalSection,
+        coerced,
+        domainSchema,
+      );
       await this.requestJson<Record<string, unknown>>(
-        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(section)}?domain=${encodeURIComponent(domain)}`,
+        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(canonicalSection)}?domain=${encodeURIComponent(domain)}`,
         domain,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            section_data: data,
+            section_data: strictPayload,
             edited_by: editedBy,
           }),
         },
@@ -744,7 +794,9 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       const filenames: string[] = [];
       for (const f of files) {
         const formData = new FormData();
-        const blob = new Blob([new Uint8Array(f.content)], { type: "application/pdf" });
+        const blob = new Blob([new Uint8Array(f.content)], {
+          type: "application/pdf",
+        });
         formData.append("file", blob, f.filename);
         formData.append("batch_id", batchId);
         if (f.patientId) {
@@ -893,11 +945,35 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       const resp = await this.fetchImpl(url, {
         headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
       });
-      if (!resp.ok) {
-        if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
-        return null;
+      if (resp.ok) {
+        return Buffer.from(await resp.arrayBuffer());
       }
-      return Buffer.from(await resp.arrayBuffer());
+      // If citation title did not match a resource filename directly, resolve against domain resources
+      const available = await this.listResources(domain).catch(() => []);
+      if (available.length > 0) {
+        const lowerQuery = filename.toLowerCase();
+        const best =
+          available.find(
+            (r) => lowerQuery.includes("pnds") && r.filename.toLowerCase().includes("pnds"),
+          ) ??
+          available.find(
+            (r) =>
+              lowerQuery.includes("argumentaire") &&
+              r.filename.toLowerCase().includes("argumentaire"),
+          ) ??
+          available[0];
+        if (best && best.filename !== filename) {
+          const fallbackUrl = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(best.filename)}/file?domain=${encodeURIComponent(domain)}${formParam}`;
+          const fallbackResp = await this.fetchImpl(fallbackUrl, {
+            headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
+          });
+          if (fallbackResp.ok) {
+            return Buffer.from(await fallbackResp.arrayBuffer());
+          }
+        }
+      }
+      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
+      return null;
     } catch (err) {
       if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
       throw err;

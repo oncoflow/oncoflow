@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildDefaultDomainFormSchema,
+  coerceSectionUpdatePayload,
   formatFieldLabel,
   getAgentPresentation,
+  getSectionFieldSchemas,
   getSectionPresentation,
+  parseJsonSchemaToFieldSchemas,
 } from "../../src/domain/catalog.js";
 import { t, translateValue } from "../../src/domain/i18n.js";
 import {
@@ -153,7 +157,9 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     const sorted = filterAndSortCards(cards, {});
     expect(sorted.map((c) => c.id)).toEqual(["A-1042", "S-0007"]);
 
-    const incompleteOnly = filterAndSortCards(cards, { completeness: "incomplete" });
+    const incompleteOnly = filterAndSortCards(cards, {
+      completeness: "incomplete",
+    });
     expect(incompleteOnly).toHaveLength(1);
     expect(incompleteOnly[0]?.id).toBe("A-1042");
 
@@ -242,5 +248,75 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(formatFieldLabel("smn2_copy_count", "fr")).toBe("Nombre de copies SMN2");
     expect(t("nav.worklist", "fr")).toBe("Worklist RCP");
     expect(t("nav.worklist", "en")).toBe("MDT Worklist");
+  });
+
+  it("dynamically parses Pydantic v2 JSON schemas distributed by the API and enforces strict field types", () => {
+    const smaSchema = buildDefaultDomainFormSchema("sma");
+    const motorFields = getSectionFieldSchemas("MotorFunctionStatus", smaSchema);
+    const hfmseField = motorFields.find((f) => f.key === "hfmse_score");
+    expect(hfmseField?.inputType).toBe("integer");
+    expect(hfmseField?.min).toBe(0);
+    expect(hfmseField?.max).toBe(66);
+    expect(hfmseField?.nullable).toBe(true);
+
+    const parsedFromRawPydantic = parseJsonSchemaToFieldSchemas("RespiratoryFunction", {
+      type: "object",
+      required: ["non_invasive_ventilation"],
+      properties: {
+        non_invasive_ventilation: { type: "boolean", default: false },
+        daily_ventilation_hours: {
+          anyOf: [{ type: "integer", minimum: 0, maximum: 24 }, { type: "null" }],
+          default: null,
+        },
+        forced_vital_capacity_percent: {
+          anyOf: [{ type: "number", minimum: 0, maximum: 150 }, { type: "null" }],
+          default: null,
+        },
+        cough_assist_used: { type: "boolean", default: false },
+      },
+    });
+    expect(parsedFromRawPydantic.map((f) => `${f.key}:${f.inputType}`)).toEqual([
+      "non_invasive_ventilation:boolean",
+      "daily_ventilation_hours:integer",
+      "forced_vital_capacity_percent:float",
+      "cough_assist_used:boolean",
+    ]);
+
+    // Coerce SMA MotorFunctionStatus with strings, numbers, and "Non renseigné"
+    const coercedMotor = coerceSectionUpdatePayload(
+      "MotorFunctionStatus",
+      {
+        best_motor_function: "Assis sans appui (Sitter)",
+        hfmse_score: "44",
+        chop_intend_score: "Non renseigné",
+        rulm_score: "999", // clamped to max=37
+        motor_milestones: "Station assise autonome\nPropulsion fauteuil",
+        physiotherapy_frequency: "3 séances / semaine",
+      },
+      {},
+      smaSchema,
+    );
+    expect(coercedMotor.hfmse_score).toBe(44);
+    expect(coercedMotor.chop_intend_score).toBeNull();
+    expect(coercedMotor.rulm_score).toBe(37);
+    expect(coercedMotor.motor_milestones).toEqual([
+      "Station assise autonome",
+      "Propulsion fauteuil",
+    ]);
+
+    // Coerce Oncology TumorBiology with nullable boolean msi_state
+    const oncoSchema = buildDefaultDomainFormSchema("oncology");
+    const coercedBio = coerceSectionUpdatePayload(
+      "TumorBiology",
+      {
+        histology_type: "Adénocarcinome",
+        grade: "G2",
+        biomarkers: "KRAS G12D",
+        msi_state: "false",
+      },
+      {},
+      oncoSchema,
+    );
+    expect(coercedBio.msi_state).toBe(false);
   });
 });

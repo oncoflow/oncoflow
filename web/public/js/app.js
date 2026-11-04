@@ -1166,6 +1166,93 @@
 
   // Inline section edit link (progressive enhancement)
   document.addEventListener("click", function (e) {
+    var addExamBtn = e.target.closest("[data-add-exam-row]");
+    if (addExamBtn) {
+      e.preventDefault();
+      var secName = addExamBtn.getAttribute("data-add-exam-row") || "RadiologicExams";
+      var container = addExamBtn.closest("[data-exams-list-container]");
+      var rowsHost = container ? container.querySelector("[data-exams-rows]") : null;
+      if (rowsHost) {
+        var idx = rowsHost.querySelectorAll("[data-exam-row]").length;
+        var inputId = "inp-" + secName + "-exams_list";
+        var rowEl = document.createElement("div");
+        rowEl.className = "ds-subcard";
+        rowEl.setAttribute("data-exam-row", String(idx));
+        rowEl.style.marginBottom = "var(--ds-space-2)";
+        rowEl.innerHTML =
+          '<div class="ds-kv-grid">' +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + inputId + "-name-" + idx + '">Nom de l\'examen #' + (idx + 1) + "</label>" +
+          '<input class="ds-input" type="text" id="' + inputId + "-name-" + idx + '" name="exam_name_' + idx + '" value="" data-field-type="text" placeholder="Ex : Scanner TAP injecté">' +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + inputId + "-type-" + idx + '">Modalité (Type)</label>' +
+          '<select class="ds-select" id="' + inputId + "-type-" + idx + '" name="exam_type_' + idx + '" data-field-type="select">' +
+          '<option value="CT" selected>CT — Scanner (TDM)</option>' +
+          '<option value="MRI">MRI — IRM</option>' +
+          '<option value="PET">PET — TEP-TDM</option>' +
+          '<option value="EUS">EUS — Écho-endoscopie</option>' +
+          "</select>" +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + inputId + "-date-" + idx + '">Date de l\'examen</label>' +
+          '<input class="ds-input" type="date" id="' + inputId + "-date-" + idx + '" name="exam_date_' + idx + '" value="" data-field-type="date">' +
+          "</div>" +
+          "</div>" +
+          '<div class="ds-field" style="margin-top:var(--ds-space-2)">' +
+          '<label class="ds-label" for="' + inputId + "-res-" + idx + '">Conclusion / Résultat</label>' +
+          '<textarea class="ds-textarea" rows="2" id="' + inputId + "-res-" + idx + '" name="exam_result_' + idx + '" data-field-type="textarea" placeholder="Résumé des conclusions radiologiques"></textarea>' +
+          "</div>";
+        rowsHost.appendChild(rowEl);
+        initM3TextFields(rowEl);
+        initM3Selects(rowEl);
+      }
+      return;
+    }
+
+    var addChemoBtn = e.target.closest("[data-add-chemo-row]");
+    if (addChemoBtn) {
+      e.preventDefault();
+      var chemoSec = addChemoBtn.getAttribute("data-add-chemo-row") || "ChemotherapyTreament";
+      var chemoContainer = addChemoBtn.closest("[data-chemo-list-container]");
+      var chemoRowsHost = chemoContainer ? chemoContainer.querySelector("[data-chemo-rows]") : null;
+      if (chemoRowsHost) {
+        var cIdx = chemoRowsHost.querySelectorAll("[data-chemo-row]").length;
+        var cInputId = "inp-" + chemoSec + "-chemotherapy_list";
+        var cRowEl = document.createElement("div");
+        cRowEl.className = "ds-subcard";
+        cRowEl.setAttribute("data-chemo-row", String(cIdx));
+        cRowEl.style.marginBottom = "var(--ds-space-2)";
+        cRowEl.innerHTML =
+          '<div class="ds-kv-grid">' +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-name-" + cIdx + '">Protocole / Molécule #' + (cIdx + 1) + "</label>" +
+          '<input class="ds-input" type="text" id="' + cInputId + "-name-" + cIdx + '" name="chemotherapy_name_' + cIdx + '" value="" data-field-type="text" placeholder="Ex : FOLFIRINOX">' +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-tol-" + cIdx + '">Tolérance</label>' +
+          '<select class="ds-select" id="' + cInputId + "-tol-" + cIdx + '" name="chemotherapy_tolerance_' + cIdx + '" data-field-type="select">' +
+          '<option value="Good" selected>Bonne (Good)</option>' +
+          '<option value="Medium">Moyenne / Modérée (Medium)</option>' +
+          '<option value="Poor">Mauvaise / Toxicité (Poor)</option>' +
+          "</select>" +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-start-" + cIdx + '">Date de début</label>' +
+          '<input class="ds-input" type="date" id="' + cInputId + "-start-" + cIdx + '" name="chemotherapy_start_date_' + cIdx + '" value="" data-field-type="date">' +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-end-" + cIdx + '">Date de fin</label>' +
+          '<input class="ds-input" type="date" id="' + cInputId + "-end-" + cIdx + '" name="chemotherapy_end_date_' + cIdx + '" value="" data-field-type="date">' +
+          "</div>" +
+          "</div>";
+        chemoRowsHost.appendChild(cRowEl);
+        initM3TextFields(cRowEl);
+        initM3Selects(cRowEl);
+      }
+      return;
+    }
+
     var editLink = e.target.closest("[data-edit-section]");
     if (!editLink) return;
     var targetId = editLink.getAttribute("data-edit-section");
@@ -1174,13 +1261,16 @@
     e.preventDefault();
     fetch(href, { headers: { "HX-Request": "true" } })
       .then(function (r) {
+        if (!r.ok) return null;
         return r.text();
       })
       .then(function (html) {
+        if (!html) return;
         var host = document.getElementById(targetId);
         if (host) {
           host.outerHTML = html;
           initM3TextFields(document);
+          initM3Selects(document);
         }
       });
   });
@@ -1248,11 +1338,17 @@
         body: body,
       })
         .then(function (r) {
+          if (!r.ok) return null;
           return r.text();
         })
         .then(function (html) {
+          if (!html) return;
           var host = document.getElementById(secId);
-          if (host) host.outerHTML = html;
+          if (host) {
+            host.outerHTML = html;
+            initM3TextFields(document);
+            initM3Selects(document);
+          }
         });
       return;
     }

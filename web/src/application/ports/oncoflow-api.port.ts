@@ -4,6 +4,7 @@ import type {
   BugReportItem,
   CitationRef,
   ClinicalDomain,
+  DomainFormSchema,
   Language,
   MdtAgendaEnrollInput,
   MdtAgendaMoveInput,
@@ -45,10 +46,15 @@ export interface OncoflowApiPort {
   deleteForm(filename: string, domain: ClinicalDomain): Promise<void>;
 
   // Dossier & Longitudinal Forms
+  getDomainSchema(domain: ClinicalDomain): Promise<DomainFormSchema>;
   resolveTarget(
     target: string,
     domain: ClinicalDomain,
-  ): Promise<{ kind: "patient" | "form"; patientId?: string | null; filename?: string | null }>;
+  ): Promise<{
+    kind: "patient" | "form";
+    patientId?: string | null;
+    filename?: string | null;
+  }>;
   getFormDetail(filename: string, domain: ClinicalDomain): Promise<MdtFormDetail | null>;
   getPatientForms(patientId: string, domain: ClinicalDomain): Promise<MdtFormDetail[]>;
   updateFormSection(

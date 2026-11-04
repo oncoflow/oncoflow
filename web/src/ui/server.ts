@@ -53,7 +53,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.resolve(__dirname, "../../public");
 const STYLEGUIDE_PATH = path.resolve(__dirname, "../../styleguide/index.html");
 
-const SAFE_IDENTIFIER_RE = /^[a-zA-Z0-9._\-\s()[\]+@]+$/;
+const SAFE_IDENTIFIER_RE = /^[\p{L}\p{N}._\-\s()[\]+@'’–—§,;:°%]+$/u;
 
 export function verifyProxySecret(provided: string | undefined, expected: string): boolean {
   if (!provided || !expected) return false;
@@ -92,7 +92,22 @@ export function isSafeFilename(name: string): boolean {
 }
 
 export function sanitizeContentDispositionFilename(name: string): string {
-  return path.basename(name).replace(/["\\\r\n\0]/g, "_");
+  const cleaned = path
+    .basename(String(name || "document.pdf"))
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u201F\u00AB\u00BB]/g, "_")
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/\u0153/g, "oe")
+    .replace(/\u0152/g, "OE")
+    .replace(/\u00E6/g, "ae")
+    .replace(/\u00C6/g, "AE")
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/["\\\r\n\0]/g, "_")
+    .replace(/[^\x20-\x7E]/g, "_")
+    .trim();
+  return cleaned || "document.pdf";
 }
 
 const PUBLIC_MIME_TYPES: Record<string, string> = {
@@ -650,7 +665,11 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/ingest/upload", async (req, reply) => {
     const session = resolveSession(req);
-    const files: Array<{ filename: string; content: Buffer; patientId?: string | null }> = [];
+    const files: Array<{
+      filename: string;
+      content: Buffer;
+      patientId?: string | null;
+    }> = [];
     let patientId: string | null = null;
 
     if (req.isMultipart()) {
@@ -832,7 +851,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.get("/forms/:filename/sections/:section/edit", async (req, reply) => {
     const session = resolveSession(req);
-    const { filename, section } = req.params as { filename: string; section: string };
+    const { filename, section } = req.params as {
+      filename: string;
+      section: string;
+    };
     const dossier = await dossierUseCase.getDossier(
       filename,
       session.domain,
@@ -857,12 +879,25 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return reply.type("text/html; charset=utf-8").send(html);
   });
 
+  app.get("/api/schema", async (req, reply) => {
+    const session = resolveSession(req);
+    const schema = await api.getDomainSchema(session.domain);
+    return reply.type("application/json; charset=utf-8").send(schema);
+  });
+
   app.post("/forms/:filename/sections/:section", async (req, reply) => {
     const session = resolveSession(req);
-    const { filename, section } = req.params as { filename: string; section: string };
+    const { filename, section } = req.params as {
+      filename: string;
+      section: string;
+    };
     const body = (req.body ?? {}) as Record<string, unknown>;
 
-    await dossierUseCase.updateSection(filename, section, body, session.userName, session.domain);
+    try {
+      await dossierUseCase.updateSection(filename, section, body, session.userName, session.domain);
+    } catch (err) {
+      req.log.warn({ err, filename, section }, "Section update validation warning");
+    }
 
     const dossier = await dossierUseCase.getDossier(
       filename,
@@ -909,7 +944,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
   app.post("/forms/:filename/sections/:section/rerun", async (req, reply) => {
     const session = resolveSession(req);
-    const { filename, section } = req.params as { filename: string; section: string };
+    const { filename, section } = req.params as {
+      filename: string;
+      section: string;
+    };
     const body = (req.body ?? {}) as Record<string, string | undefined>;
     const preserve = body.preserve_manual_edits !== "false";
 

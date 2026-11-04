@@ -304,17 +304,41 @@ export function computeLongitudinalDeltas(
     field: string;
     higherIsWorse: boolean;
   }> = [
-    { section: "PatientPerformanceStatus", field: "performance_status", higherIsWorse: true },
-    { section: "MotorFunctionStatus", field: "hfmse_score", higherIsWorse: false },
-    { section: "MotorFunctionStatus", field: "rulm_score", higherIsWorse: false },
-    { section: "MotorFunctionStatus", field: "chop_intend_score", higherIsWorse: false },
+    {
+      section: "PatientPerformanceStatus",
+      field: "performance_status",
+      higherIsWorse: true,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "hfmse_score",
+      higherIsWorse: false,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "rulm_score",
+      higherIsWorse: false,
+    },
+    {
+      section: "MotorFunctionStatus",
+      field: "chop_intend_score",
+      higherIsWorse: false,
+    },
     {
       section: "RespiratoryFunction",
       field: "forced_vital_capacity_percent",
       higherIsWorse: false,
     },
-    { section: "RespiratoryFunction", field: "daily_ventilation_hours", higherIsWorse: true },
-    { section: "OrthopedicAndSpineStatus", field: "scoliosis_cobb_angle", higherIsWorse: true },
+    {
+      section: "RespiratoryFunction",
+      field: "daily_ventilation_hours",
+      higherIsWorse: true,
+    },
+    {
+      section: "OrthopedicAndSpineStatus",
+      field: "scoliosis_cobb_angle",
+      higherIsWorse: true,
+    },
   ];
 
   for (const item of trackedKeys) {

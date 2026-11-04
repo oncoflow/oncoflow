@@ -722,8 +722,16 @@ export function renderWorklistPage(
                     { key: "priority", label: "Priorité", col: 0 },
                     { key: "patient", label: "Patient", col: 1 },
                     { key: "completeness", label: "Complétude", col: 2 },
-                    { key: "orientation", label: "Orientation pré-RCP", col: 3 },
-                    { key: "specialties", label: "Spécialités requises", col: 4 },
+                    {
+                      key: "orientation",
+                      label: "Orientation pré-RCP",
+                      col: 3,
+                    },
+                    {
+                      key: "specialties",
+                      label: "Spécialités requises",
+                      col: 4,
+                    },
                     { key: "mdtDate", label: "Dernière RCP", col: 5 },
                   ] as const
                 )
@@ -888,14 +896,178 @@ export function renderSectionDetailsPartial(
   const secParam = encodeURIComponent(sec.name);
 
   if (editing) {
-    const inputsHtml = sec.fields
-      .map(
-        (f) => `<div class="ds-field">
-          <label class="ds-label" for="inp-${esc(sec.name)}-${esc(f.key)}">${esc(f.label)}</label>
-          <input class="ds-input" id="inp-${esc(sec.name)}-${esc(f.key)}" name="${esc(f.key)}" value="${esc(typeof f.rawValue === "object" ? f.value : (f.rawValue ?? f.value))}">
-        </div>`,
-      )
-      .join("");
+    const renderEditControl = (f: DossierSectionView["fields"][number]): string => {
+      const inputId = `inp-${esc(sec.name)}-${esc(f.key)}`;
+      const unitSuffix = f.unit ? ` <span class="ds-text-muted">(${esc(f.unit)})</span>` : "";
+
+      if (f.inputType === "exams_list") {
+        const items =
+          f.examItems && f.examItems.length > 0
+            ? f.examItems
+            : [
+                {
+                  exam_name: "",
+                  exam_date: null,
+                  exam_type: "CT" as const,
+                  exam_result: null,
+                },
+              ];
+        const rowsHtml = items
+          .map(
+            (
+              ex,
+              idx,
+            ) => `<div class="ds-subcard" data-exam-row="${idx}" style="margin-bottom:var(--ds-space-2)">
+              <div class="ds-kv-grid">
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-name-${idx}">Nom de l'examen #${idx + 1}</label>
+                  <input class="ds-input" type="text" id="${inputId}-name-${idx}" name="exam_name_${idx}" value="${esc(ex.exam_name)}" data-field-type="text" placeholder="Ex : Scanner TAP injecté">
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-type-${idx}">Modalité (Type)</label>
+                  <select class="ds-select" id="${inputId}-type-${idx}" name="exam_type_${idx}" data-field-type="select">
+                    <option value="CT" ${ex.exam_type === "CT" ? "selected" : ""}>CT — Scanner (TDM)</option>
+                    <option value="MRI" ${ex.exam_type === "MRI" ? "selected" : ""}>MRI — IRM</option>
+                    <option value="PET" ${ex.exam_type === "PET" ? "selected" : ""}>PET — TEP-TDM</option>
+                    <option value="EUS" ${ex.exam_type === "EUS" ? "selected" : ""}>EUS — Écho-endoscopie</option>
+                  </select>
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-date-${idx}">Date de l'examen</label>
+                  <input class="ds-input" type="date" id="${inputId}-date-${idx}" name="exam_date_${idx}" value="${esc(ex.exam_date ?? "")}" data-field-type="date">
+                </div>
+              </div>
+              <div class="ds-field" style="margin-top:var(--ds-space-2)">
+                <label class="ds-label" for="${inputId}-res-${idx}">Conclusion / Résultat</label>
+                <textarea class="ds-textarea" rows="2" id="${inputId}-res-${idx}" name="exam_result_${idx}" data-field-type="textarea" placeholder="Résumé des conclusions radiologiques">${esc(ex.exam_result ?? "")}</textarea>
+              </div>
+            </div>`,
+          )
+          .join("");
+        return `<div class="ds-field" data-exams-list-container="${esc(sec.name)}">
+          <span class="ds-label">${esc(f.label)}</span>
+          <div data-exams-rows>${rowsHtml}</div>
+          <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-add-exam-row="${esc(sec.name)}" style="align-self:flex-start;margin-top:var(--ds-space-1)">
+            ${iconSvg("ic-plus")} Ajouter un examen
+          </button>
+        </div>`;
+      }
+
+      if (f.inputType === "chemotherapy_list") {
+        const items =
+          f.chemoItems && f.chemoItems.length > 0
+            ? f.chemoItems
+            : [
+                {
+                  chemotherapy_name: "",
+                  chemotherapy_start_date: null,
+                  chemotherapy_end_date: null,
+                  chemotherapy_tolerance: "Good" as const,
+                },
+              ];
+        const rowsHtml = items
+          .map(
+            (
+              ch,
+              idx,
+            ) => `<div class="ds-subcard" data-chemo-row="${idx}" style="margin-bottom:var(--ds-space-2)">
+              <div class="ds-kv-grid">
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-name-${idx}">Protocole / Molécule #${idx + 1}</label>
+                  <input class="ds-input" type="text" id="${inputId}-name-${idx}" name="chemotherapy_name_${idx}" value="${esc(ch.chemotherapy_name)}" data-field-type="text" placeholder="Ex : FOLFIRINOX">
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-tol-${idx}">Tolérance</label>
+                  <select class="ds-select" id="${inputId}-tol-${idx}" name="chemotherapy_tolerance_${idx}" data-field-type="select">
+                    <option value="Good" ${ch.chemotherapy_tolerance === "Good" ? "selected" : ""}>Bonne (Good)</option>
+                    <option value="Medium" ${ch.chemotherapy_tolerance === "Medium" ? "selected" : ""}>Moyenne / Modérée (Medium)</option>
+                    <option value="Poor" ${ch.chemotherapy_tolerance === "Poor" ? "selected" : ""}>Mauvaise / Toxicité (Poor)</option>
+                  </select>
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-start-${idx}">Date de début</label>
+                  <input class="ds-input" type="date" id="${inputId}-start-${idx}" name="chemotherapy_start_date_${idx}" value="${esc(ch.chemotherapy_start_date ?? "")}" data-field-type="date">
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-end-${idx}">Date de fin</label>
+                  <input class="ds-input" type="date" id="${inputId}-end-${idx}" name="chemotherapy_end_date_${idx}" value="${esc(ch.chemotherapy_end_date ?? "")}" data-field-type="date">
+                </div>
+              </div>
+            </div>`,
+          )
+          .join("");
+        return `<div class="ds-field" data-chemo-list-container="${esc(sec.name)}">
+          <span class="ds-label">${esc(f.label)}</span>
+          <div data-chemo-rows>${rowsHtml}</div>
+          <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-add-chemo-row="${esc(sec.name)}" style="align-self:flex-start;margin-top:var(--ds-space-1)">
+            ${iconSvg("ic-plus")} Ajouter une ligne de traitement
+          </button>
+        </div>`;
+      }
+
+      if (
+        (f.inputType === "boolean" ||
+          f.inputType === "nullable_boolean" ||
+          f.inputType === "select" ||
+          f.inputType === "integer_select") &&
+        f.options &&
+        f.options.length > 0
+      ) {
+        const optsHtml = f.options
+          .map(
+            (opt) =>
+              `<option value="${esc(opt.value)}" ${f.editValue === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`,
+          )
+          .join("");
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}${unitSuffix}</label>
+          <select class="ds-select" id="${inputId}" name="${esc(f.key)}" data-field-type="${esc(f.inputType)}">
+            ${optsHtml}
+          </select>
+        </div>`;
+      }
+
+      if (f.inputType === "integer" || f.inputType === "float") {
+        const minAttr = f.min !== undefined ? ` min="${f.min}"` : "";
+        const maxAttr = f.max !== undefined ? ` max="${f.max}"` : "";
+        const stepAttr = ` step="${f.step ?? (f.inputType === "integer" ? 1 : 0.5)}"`;
+        const modeAttr = f.inputType === "integer" ? "numeric" : "decimal";
+        const ph = f.placeholder || (f.nullable ? "Non renseigné (optionnel)" : "");
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}${unitSuffix}</label>
+          <input class="ds-input" type="number" id="${inputId}" name="${esc(f.key)}" value="${esc(f.editValue)}" data-field-type="${esc(f.inputType)}"${minAttr}${maxAttr}${stepAttr} inputmode="${modeAttr}" placeholder="${esc(ph)}">
+        </div>`;
+      }
+
+      if (f.inputType === "date") {
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}</label>
+          <input class="ds-input" type="date" id="${inputId}" name="${esc(f.key)}" value="${esc(f.editValue)}" data-field-type="date">
+        </div>`;
+      }
+
+      if (f.inputType === "textarea") {
+        const ph = f.placeholder || (f.nullable ? "Non renseigné (optionnel)" : "");
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}</label>
+          <textarea class="ds-textarea" rows="3" id="${inputId}" name="${esc(f.key)}" data-field-type="textarea" placeholder="${esc(ph)}">${esc(f.editValue)}</textarea>
+        </div>`;
+      }
+
+      const ph =
+        f.placeholder ||
+        (f.inputType === "string_list"
+          ? "Séparer les éléments par une virgule"
+          : f.nullable
+            ? "Non renseigné (optionnel)"
+            : "");
+      return `<div class="ds-field">
+        <label class="ds-label" for="${inputId}">${esc(f.label)}${unitSuffix}</label>
+        <input class="ds-input" type="text" id="${inputId}" name="${esc(f.key)}" value="${esc(f.editValue)}" data-field-type="${esc(f.inputType)}" placeholder="${esc(ph)}">
+      </div>`;
+    };
+
+    const inputsHtml = sec.fields.map(renderEditControl).join("");
 
     return `<details class="ds-section is-editing" open id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}">
       <summary>
@@ -1860,8 +2032,14 @@ export function renderDossierPage(
     activeNav: agendaNav ? "agenda" : "dossier",
     breadcrumbs: [
       agendaNav
-        ? { label: t("nav.agenda", lang), href: `/agenda?domain=${domainParam}` }
-        : { label: t("nav.worklist", lang), href: `/worklist?domain=${domainParam}` },
+        ? {
+            label: t("nav.agenda", lang),
+            href: `/agenda?domain=${domainParam}`,
+          }
+        : {
+            label: t("nav.worklist", lang),
+            href: `/worklist?domain=${domainParam}`,
+          },
       { label: dossier.patientName },
     ],
     session,

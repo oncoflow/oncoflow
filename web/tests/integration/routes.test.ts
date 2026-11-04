@@ -59,10 +59,16 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // Styleguide link hidden unless expertMode is enabled
     expect(res.body).not.toContain('data-testid="nav-styleguide"');
 
-    const expertRes = await app.inject({ method: "GET", url: "/worklist?expert=true" });
+    const expertRes = await app.inject({
+      method: "GET",
+      url: "/worklist?expert=true",
+    });
     expect(expertRes.body).toContain('data-testid="nav-styleguide"');
 
-    const cardsRes = await app.inject({ method: "GET", url: "/worklist?display=cards" });
+    const cardsRes = await app.inject({
+      method: "GET",
+      url: "/worklist?display=cards",
+    });
     expect(cardsRes.statusCode).toBe(200);
     expect(cardsRes.body).toContain("ds-patient-grid");
 
@@ -299,7 +305,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
   it("GET /ingest and POST /preferences persist theme, language, and expertMode cookies", async () => {
     const { app } = await createTestApp();
-    const ingestRes = await app.inject({ method: "GET", url: "/ingest?domain=oncology" });
+    const ingestRes = await app.inject({
+      method: "GET",
+      url: "/ingest?domain=oncology",
+    });
     expect(ingestRes.statusCode).toBe(200);
     expect(ingestRes.body).toContain('data-testid="input-ingest-files"');
     expect(ingestRes.body).toContain('data-testid="btn_ingest_submit"');
@@ -346,6 +355,15 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(citationPdf.statusCode).toBe(200);
     expect(citationPdf.headers["content-type"]).toContain("application/pdf");
+
+    // SMA PNDS link with em-dash (—), section sign (§), and accents must never throw 500 ERR_INVALID_CHAR
+    const smaPndsPdf = await app.inject({
+      method: "GET",
+      url: `/files/resources/${encodeURIComponent("PNDS — Amyotrophie Spinale 2025 §6.1")}?domain=sma`,
+    });
+    expect(smaPndsPdf.statusCode).toBe(200);
+    expect(smaPndsPdf.headers["content-type"]).toContain("application/pdf");
+    expect(smaPndsPdf.headers["content-disposition"]).toMatch(/^[\x20-\x7E]+$/);
 
     const pdfJsMod = await app.inject({
       method: "GET",
@@ -550,7 +568,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     const { app } = await createTestApp();
 
     // 1. Static asset ETag + 304 Not Modified
-    const assetRes = await app.inject({ method: "GET", url: "/public/css/tokens.css" });
+    const assetRes = await app.inject({
+      method: "GET",
+      url: "/public/css/tokens.css",
+    });
     expect(assetRes.statusCode).toBe(200);
     const assetEtag = assetRes.headers.etag;
     expect(assetEtag).toBeTruthy();
@@ -586,6 +607,75 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(sseRes.statusCode).toBe(200);
     expect(sseRes.headers["content-type"]).toContain("text/event-stream");
     expect(sseRes.body).toContain("retry: 3000\nevent: banner\ndata: ");
+
+    await app.close();
+  });
+
+  it("distributes domain JSON schemas via GET /api/schema and enforces strict field types on SMA & Oncology section updates without 500 errors", async () => {
+    const { app } = await createTestApp();
+
+    // 1. Verify GET /api/schema?domain=sma and GET /api/schema?domain=oncology
+    const smaSchemaRes = await app.inject({
+      method: "GET",
+      url: "/api/schema?domain=sma",
+    });
+    expect(smaSchemaRes.statusCode).toBe(200);
+    const smaSchema = smaSchemaRes.json();
+    expect(smaSchema.domain).toBe("sma");
+    expect(Array.isArray(smaSchema.sections)).toBe(true);
+    const motorSection = smaSchema.sections.find(
+      (s: { name: string }) => s.name === "MotorFunctionStatus",
+    );
+    expect(motorSection?.json_schema?.properties?.hfmse_score).toBeDefined();
+
+    // 2. Verify SMA section edit endpoints render dynamic typed inputs from schema
+    const smaMotorEditRes = await app.inject({
+      method: "GET",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/MotorFunctionStatus/edit?domain=sma",
+    });
+    expect(smaMotorEditRes.statusCode).toBe(200);
+    expect(smaMotorEditRes.body).toContain('data-field-type="integer"');
+    expect(smaMotorEditRes.body).toContain('data-field-type="select"');
+    expect(smaMotorEditRes.body).toContain('data-field-type="string_list"');
+
+    const smaRespEditRes = await app.inject({
+      method: "GET",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/RespiratoryFunction/edit?domain=sma",
+    });
+    expect(smaRespEditRes.statusCode).toBe(200);
+    expect(smaRespEditRes.body).toContain('data-field-type="boolean"');
+    expect(smaRespEditRes.body).toContain('data-field-type="float"');
+
+    // 3. Update SMA MotorFunctionStatus with mixed string/number/placeholder inputs — must coerce cleanly (200 OK)
+    const updateMotorRes = await app.inject({
+      method: "POST",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/MotorFunctionStatus?domain=sma",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload:
+        "best_motor_function=Assis+sans+appui+%28Sitter%29&hfmse_score=44&chop_intend_score=Non+renseign%C3%A9&rulm_score=31&motor_milestones=Station+assise+autonome%0APropulsion+fauteuil&physiotherapy_frequency=3+s%C3%A9ances+%2F+semaine",
+    });
+    expect(updateMotorRes.statusCode).toBe(200);
+    expect(updateMotorRes.body).toContain('<span class="ds-kv__value ">44</span>');
+    expect(updateMotorRes.body).toContain("Station assise autonome ; Propulsion fauteuil");
+    expect(updateMotorRes.body).toContain("Modifié manuellement");
+
+    // 4. Update SMA RespiratoryFunction with boolean and float fields
+    const updateRespRes = await app.inject({
+      method: "POST",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/RespiratoryFunction?domain=sma",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload:
+        "non_invasive_ventilation=false&daily_ventilation_hours=&forced_vital_capacity_percent=79.5&cough_assist_used=true&respiratory_infections_history=Aucune+infection",
+    });
+    expect(updateRespRes.statusCode).toBe(200);
+    expect(updateRespRes.body).toContain("79.5");
+    expect(updateRespRes.body).toContain("Modifié manuellement");
 
     await app.close();
   });

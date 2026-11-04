@@ -4,13 +4,19 @@ import type {
   OncoflowApiPort,
   UploadFileInput,
 } from "../../application/ports/oncoflow-api.port.js";
-import { getAgentPresentation, getDomainUserPromptsForAgent } from "../../domain/catalog.js";
+import {
+  buildDefaultDomainFormSchema,
+  coerceSectionUpdatePayload,
+  getAgentPresentation,
+  getDomainUserPromptsForAgent,
+} from "../../domain/catalog.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
   BatchStatus,
   BugReportItem,
   ClinicalDomain,
+  DomainFormSchema,
   Language,
   MdtAgendaCandidate,
   MdtAgendaEnrollInput,
@@ -533,7 +539,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         },
         MotorFunctionStatus: {
           sma_type: "Type 2",
-          motor_milestones: "Sitting unsupported",
+          motor_milestones: ["Sitting unsupported"],
           hfmse_score: 40,
           rulm_score: 26,
         },
@@ -586,7 +592,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         },
         MotorFunctionStatus: {
           sma_type: "Type 2",
-          motor_milestones: "Position assise autonome stable",
+          motor_milestones: ["Position assise autonome stable"],
           hfmse_score: 42,
           rulm_score: 28,
         },
@@ -653,7 +659,11 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         },
       },
       manualEdits: {},
-      executionTimes: { GeneticDiagnosis: 4.8, MotorFunctionStatus: 6.9, ExpertAnswer: 14.1 },
+      executionTimes: {
+        GeneticDiagnosis: 4.8,
+        MotorFunctionStatus: 6.9,
+        ExpertAnswer: 14.1,
+      },
       metrics: {
         priority_level: "low",
         is_complete: true,
@@ -912,10 +922,18 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     this.forms.delete(filename);
   }
 
+  async getDomainSchema(domain: ClinicalDomain): Promise<DomainFormSchema> {
+    return buildDefaultDomainFormSchema(domain);
+  }
+
   async resolveTarget(
     target: string,
     _domain: ClinicalDomain,
-  ): Promise<{ kind: "patient" | "form"; patientId?: string | null; filename?: string | null }> {
+  ): Promise<{
+    kind: "patient" | "form";
+    patientId?: string | null;
+    filename?: string | null;
+  }> {
     if (this.forms.has(target)) {
       const form = this.forms.get(target)!;
       return { kind: "form", filename: form.file, patientId: form.patientId };
@@ -947,17 +965,19 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     section: string,
     data: Record<string, unknown>,
     editedBy: string,
-    _domain: ClinicalDomain,
+    domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
     const form = this.forms.get(filename);
     if (!form) {
       throw new Error(`Form not found: ${filename}`);
     }
     const previousSectionObj = { ...(form.sections[section] ?? {}) };
+    const domainSchema = await this.getDomainSchema(domain);
+    const coerced = coerceSectionUpdatePayload(section, data, previousSectionObj, domainSchema);
     const modifiedFields: Record<string, { ai_value?: unknown; human_value?: unknown }> =
       form.manualEdits[section]?.modified_fields ?? {};
-    for (const [k, v] of Object.entries(data)) {
-      if (previousSectionObj[k] !== v) {
+    for (const [k, v] of Object.entries(coerced)) {
+      if (JSON.stringify(previousSectionObj[k]) !== JSON.stringify(v)) {
         modifiedFields[k] = {
           ai_value: modifiedFields[k]?.ai_value ?? previousSectionObj[k],
           human_value: v,
@@ -966,7 +986,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     }
     form.sections[section] = {
       ...previousSectionObj,
-      ...data,
+      ...coerced,
     };
     form.manualEdits[section] = {
       is_manual: true,
@@ -1701,8 +1721,14 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         if (st.sortStrategy === "expert_grouping") {
           if (a.quorumMet !== b.quorumMet) return a.quorumMet ? -1 : 1;
           if (a.clusterKey !== b.clusterKey) {
-            const ca = clusterStats.get(a.clusterKey) ?? { urgent: 0, total: 0 };
-            const cb = clusterStats.get(b.clusterKey) ?? { urgent: 0, total: 0 };
+            const ca = clusterStats.get(a.clusterKey) ?? {
+              urgent: 0,
+              total: 0,
+            };
+            const cb = clusterStats.get(b.clusterKey) ?? {
+              urgent: 0,
+              total: 0,
+            };
             if (cb.urgent !== ca.urgent) return cb.urgent - ca.urgent;
             if (cb.total !== ca.total) return cb.total - ca.total;
             return a.clusterKey.localeCompare(b.clusterKey);
