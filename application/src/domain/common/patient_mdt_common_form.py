@@ -800,7 +800,7 @@ class PatientMDTForm:
             if hide_missing_items
             else [m for m in raw_missing if m not in hidden_set]
         )
-        has_mtd_completed = bool(
+        has_mtd_completed = (
             "MTDCompleted" in d
             and isinstance(d["MTDCompleted"], dict)
             and len(d["MTDCompleted"]) > 0

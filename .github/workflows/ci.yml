@@ -33,7 +33,7 @@ jobs:
 
       - name: Git hooks validation (prek)
         run: |
-          uv run --project application --frozen --no-build prek run --all-files \
+          ./application/.venv/bin/prek run --all-files \
             --skip web-format \
             --skip web-lint \
             --skip web-build \
@@ -43,22 +43,22 @@ jobs:
       - name: Lint with ruff
         run: |
           cd application
-          uv run --frozen --no-build ruff format . --check
+          ./.venv/bin/ruff format . --check
 
       - name: Ruff check
         run: |
           cd application
-          uv run --frozen --no-build ruff check .
+          ./.venv/bin/ruff check .
 
       - name: Type check (pyrefly)
         run: |
           cd application
-          uv run --frozen --no-build pyrefly check --min-severity=warn src
+          ./.venv/bin/pyrefly check --min-severity=warn src
 
       - name: Run Tests with Coverage
         run: |
           cd application
-          PYTHONPATH=. uv run --frozen --no-build pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/
+          PYTHONPATH=. ./.venv/bin/pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/
 
       - name: Archive Python coverage report for SonarQube
         uses: actions/upload-artifact@v4
