@@ -30,9 +30,18 @@ def _extract_secret_str(val: Any) -> str:
     return str(val)
 
 
-def _build_llm_cache_key(config: AppConfig) -> tuple[Any, ...]:
+def _build_llm_cache_key(
+    config: AppConfig,
+    target_cls: type[LLMConnect],
+) -> tuple[Any, ...]:
     llm_cfg = getattr(config, "llm", None)
+    raw_temp = getattr(llm_cfg, "temp", 0.0)
+    try:
+        temp_val: float | str = float(raw_temp or 0.0)
+    except (TypeError, ValueError):
+        temp_val = str(raw_temp)
     return (
+        id(target_cls),
         str(getattr(llm_cfg, "type", "") or "").strip().lower(),
         str(getattr(llm_cfg, "url", "") or "").strip(),
         str(getattr(llm_cfg, "port", "") or "").strip(),
@@ -40,7 +49,7 @@ def _build_llm_cache_key(config: AppConfig) -> tuple[Any, ...]:
         str(getattr(llm_cfg, "embeddings_port", "") or "").strip(),
         str(getattr(llm_cfg, "embeddings", "") or "").strip(),
         str(getattr(llm_cfg, "models", "") or "").strip(),
-        float(getattr(llm_cfg, "temp", 0.0) or 0.0),
+        temp_val,
         _extract_secret_str(getattr(llm_cfg, "api_key", None)),
     )
 
@@ -68,13 +77,23 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
         ValueError: If config.llm.type is not supported.
     """
     llm_type = config.llm.type.lower()
-    if llm_type not in ("ollama", "openai", "vllm", "litellm", "llamacpp"):
+    if llm_type == "ollama":
+        target_cls: type[LLMConnect] = OllamaConnect
+    elif llm_type == "openai":
+        target_cls = OpenAIConnect
+    elif llm_type == "vllm":
+        target_cls = VllmConnect
+    elif llm_type == "litellm":
+        target_cls = LiteLLMConnect
+    elif llm_type == "llamacpp":
+        target_cls = LlamaCppConnect
+    else:
         raise ValueError(
             f"LLM type '{config.llm.type}' is not supported. "
             f"Supported types are 'Ollama', 'OpenAI', 'vLLM', 'LiteLLM', and 'LlamaCpp'."
         )
 
-    cache_key = _build_llm_cache_key(config)
+    cache_key = _build_llm_cache_key(config, target_cls)
     now = time.monotonic()
 
     with _LLM_CLIENT_CACHE_LOCK:
@@ -86,16 +105,7 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
                 return cached_client
             _LLM_CLIENT_CACHE.pop(cache_key, None)
 
-    if llm_type == "ollama":
-        client: LLMConnect = OllamaConnect(config)
-    elif llm_type == "openai":
-        client = OpenAIConnect(config)
-    elif llm_type == "vllm":
-        client = VllmConnect(config)
-    elif llm_type == "litellm":
-        client = LiteLLMConnect(config)
-    else:
-        client = LlamaCppConnect(config)
+    client: LLMConnect = target_cls(config)
 
     raw_embedding = getattr(client, "embedding", None)
     if raw_embedding is not None and not isinstance(

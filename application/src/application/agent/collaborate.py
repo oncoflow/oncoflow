@@ -30,7 +30,7 @@ def clear_debate_checkpoint_cache() -> None:
 def _build_debate_checkpoint_key(
     mtd: Any,
     output_format: Any,
-    question: str,
+    question: str | None,
     agents_classes: list[type[OncowflowAgent]],
 ) -> tuple[Any, ...] | None:
     doc_name = getattr(mtd, "document", None) if mtd is not None else None
@@ -86,7 +86,7 @@ def _evict_debate_checkpoint(key: tuple[Any, ...] | None) -> None:
 
 def collaborative_debate(
     agents_classes: list[type[OncowflowAgent]],
-    question: str,
+    question: str | None,
     output_format: type[BaseModel],
     config: AppConfig,
     mtd: DocumentReader,

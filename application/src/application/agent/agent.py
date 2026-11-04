@@ -282,6 +282,7 @@ class OncowflowAgent:
             patient_readers=self.patient_readers,
             is_chat_mode=is_chat_mode,
         )
+        self._has_prefetched_markdown = prefetched_markdown is not None
         prefetched_context_block = (
             f"\n        ## PATIENT RECORD CONTEXT (PRE-LOADED)\n{prefetched_markdown}\n"
             if prefetched_markdown is not None
@@ -698,6 +699,14 @@ class OncowflowAgent:
             failed_output or ""
         ) or "ContextWindowExceededError" in str(error or "")
         if is_context_exceeded:
+            if getattr(self, "_has_prefetched_markdown", False):
+                return (
+                    f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
+                    f"{original_question}\n\n"
+                    "IMPORTANT: The previous attempt exceeded the model context window because too many tool searches were performed. "
+                    "Do NOT call `get_mtd_markdown` (the patient record is already pre-loaded in the system prompt). "
+                    "Call `search_on_ressources` at most ONCE with `k=2` if needed, then immediately output the final JSON object."
+                )
             return (
                 f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
                 f"{original_question}\n\n"

@@ -193,6 +193,31 @@ class TestTokenCachePhase2PromptPrefix(unittest.TestCase):
             prompt.index("## STEP 3"),
         )
 
+    @patch("src.application.agent.agent.get_llm_client")
+    @patch("src.application.agent.agent.create_agent")
+    def test_context_exceeded_retry_with_prefetched_markdown_avoids_duplicate_tool_call(
+        self,
+        mock_create_agent: MagicMock,
+        mock_get_llm_client: MagicMock,
+    ) -> None:
+        """
+        When patient record Markdown is already pre-loaded in the system prompt, a
+        ContextWindowExceededError retry prompt must explicitly forbid calling
+        `get_mtd_markdown` again.
+        """
+        agent = OncologyAgents.Administratives_agent(
+            config=self.mock_config,
+            mtd=self.reader_with_markdown,
+            output_format=SectionSchemaAlpha,
+        )
+        correction = agent._build_correction_prompt(
+            original_question="Extract tumor site",
+            error=RuntimeError("litellm.ContextWindowExceededError: 72000 > 64000"),
+            failed_output=None,
+        )
+        self.assertIn("Do NOT call `get_mtd_markdown`", correction)
+        self.assertIn("already pre-loaded in the system prompt", correction)
+
 
 if __name__ == "__main__":
     unittest.main()

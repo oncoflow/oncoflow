@@ -111,7 +111,10 @@ class TestTokenCachePhase1(unittest.TestCase):
         proxy.embed_query("posologie risdiplam")
         self.assertEqual(raw_emb.embed_query.call_count, 4)
 
-        # Transparent attribute delegation
+        # Transparent attribute delegation and LangChain Embeddings ABC conformance
+        from langchain_core.embeddings import Embeddings
+
+        self.assertIsInstance(proxy, Embeddings)
         self.assertEqual(proxy.model, "bge-m3")
         self.assertEqual(proxy.embed_documents(["doc"]), [[0.1, 0.2]])
 

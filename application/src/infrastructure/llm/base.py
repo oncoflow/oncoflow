@@ -4,6 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, List, Optional, Tuple, Type
 
+from langchain_core.embeddings import Embeddings
 from tenacity import (
     RetryError,
     Retrying,
@@ -155,15 +156,14 @@ class LLMConnect(ABC):
 DEFAULT_EMBEDDING_CACHE_MAXSIZE: int = 512
 
 
-class CachedEmbeddingsProxy:
+class CachedEmbeddingsProxy(Embeddings):
     """
     Low-footprint thread-safe LRU caching proxy around a LangChain `Embeddings` instance.
 
-    Deduplicates repeated `embed_query(text)` calls (such as multi-agent RAG searches on
-    scientific guidelines during Wave 3 expert debates) and returns defensive copies of cached
-    float vectors so callers cannot mutate cached entries. All other attributes and methods
-    (e.g., `embed_documents`, `model`, `client`) are transparently delegated to the underlying
-    embeddings object.
+    Inherits from `langchain_core.embeddings.Embeddings` so vector stores performing
+    `isinstance(..., Embeddings)` checks (such as ChromaDB, Milvus, and MongoDB Atlas)
+    accept the proxy transparently. Deduplicates repeated `embed_query(text)` calls and
+    returns defensive copies of cached float vectors so callers cannot mutate cached entries.
     """
 
     def __init__(
@@ -181,6 +181,12 @@ class CachedEmbeddingsProxy:
         self._cache: OrderedDict[tuple[str, str], list[float]] = OrderedDict()
         self._hits = 0
         self._misses = 0
+
+    def embed_documents(
+        self, texts: list[str], *args: Any, **kwargs: Any
+    ) -> list[list[float]]:
+        """Delegate document batch embedding directly to the underlying embeddings model."""
+        return self._underlying.embed_documents(texts, *args, **kwargs)
 
     def embed_query(self, text: str, *args: Any, **kwargs: Any) -> list[float]:
         """Compute or retrieve a cached embedding vector for a single query string."""
