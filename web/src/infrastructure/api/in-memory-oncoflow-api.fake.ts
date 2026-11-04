@@ -1096,7 +1096,9 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         (existingMeta as Record<string, unknown> | undefined)?.ai_original;
       if (aiOriginal && typeof aiOriginal === "object" && !Array.isArray(aiOriginal)) {
         const targetKey = form.sections[section] !== undefined ? section : canonical;
-        form.sections[targetKey] = { ...(aiOriginal as Record<string, unknown>) };
+        form.sections[targetKey] = {
+          ...(aiOriginal as Record<string, unknown>),
+        };
       }
       delete form.manualEdits[section];
       delete form.manualEdits[canonical];

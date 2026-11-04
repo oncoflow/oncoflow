@@ -705,4 +705,61 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
     await app.close();
   });
+
+  it("renders visual processing indicators and auto-refresh attributes when a fiche is in progress, and adapts delete dialogs to patient names", async () => {
+    const { app, api } = await createTestApp();
+
+    // Trigger processing on jeanne_fictive_2026_11_06.pdf
+    await api.processFullForm("jeanne_fictive_2026_11_06.pdf", true, "oncology");
+
+    // 1. Worklist Table view shows processing badge & auto-refresh attribute and adapted delete dialog
+    const worklistRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology",
+    });
+    expect(worklistRes.statusCode).toBe(200);
+    expect(worklistRes.body).toContain('data-testid="badge-processing-A-1042"');
+    expect(worklistRes.body).toContain('data-processing-active="true"');
+    expect(worklistRes.body).toContain('data-patient-name="FICTIVE Jeanne"');
+    expect(worklistRes.body).toContain(
+      "Supprimer le dossier de <span data-del-patient-name>FICTIVE Jeanne</span> ?",
+    );
+    expect(worklistRes.body).toContain(
+      "<strong data-del-patient-name>FICTIVE Jeanne</strong> (#A-1042)",
+    );
+
+    // 2. Worklist Cards view also contains delete menu button and dialog
+    const cardsRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology&display=cards",
+    });
+    expect(cardsRes.statusCode).toBe(200);
+    expect(cardsRes.body).toContain('data-testid="badge-processing-A-1042"');
+    expect(cardsRes.body).toContain('data-open="del-dialog-A-1042"');
+    expect(cardsRes.body).toContain('id="del-dialog-A-1042"');
+
+    // 3. Dossier view shows processing badge in header and M3 processing banner with auto-refresh attribute
+    const dossierRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology",
+    });
+    expect(dossierRes.statusCode).toBe(200);
+    expect(dossierRes.body).toContain('data-testid="badge-processing-status"');
+    expect(dossierRes.body).toContain('data-testid="dossier-processing-banner"');
+    expect(dossierRes.body).toContain('data-processing-active="true"');
+    expect(dossierRes.body).toContain('id="delete-dossier-modal"');
+    expect(dossierRes.body).toContain(
+      "Supprimer le dossier de <span data-del-patient-name>FICTIVE Jeanne</span> ?",
+    );
+
+    // 4. Deleting a single form via POST /forms/:filename/delete redirects to /worklist
+    const delFormRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_09_18.pdf/delete?domain=oncology",
+    });
+    expect(delFormRes.statusCode).toBe(302);
+    expect(delFormRes.headers.location).toContain("/worklist");
+
+    await app.close();
+  });
 });

@@ -511,15 +511,37 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
   app.post("/patients/:patientId/delete", async (req, reply) => {
     const session = resolveSession(req);
     const { patientId } = req.params as { patientId: string };
-    await worklistUseCase.deletePatient(patientId, session.domain);
+    if (patientId.toLowerCase().endsWith(".pdf")) {
+      await worklistUseCase.deleteForm(patientId, session.domain);
+    } else {
+      await worklistUseCase.deletePatient(patientId, session.domain);
+    }
     return reply.redirect(`/worklist?domain=${encodeURIComponent(session.domain)}`);
   });
 
   app.delete("/patients/:patientId", async (req, reply) => {
     const session = resolveSession(req);
     const { patientId } = req.params as { patientId: string };
-    await worklistUseCase.deletePatient(patientId, session.domain);
+    if (patientId.toLowerCase().endsWith(".pdf")) {
+      await worklistUseCase.deleteForm(patientId, session.domain);
+    } else {
+      await worklistUseCase.deletePatient(patientId, session.domain);
+    }
     return reply.code(200).send({ deleted: patientId });
+  });
+
+  app.post("/forms/:filename/delete", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename } = req.params as { filename: string };
+    await worklistUseCase.deleteForm(filename, session.domain);
+    return reply.redirect(`/worklist?domain=${encodeURIComponent(session.domain)}`);
+  });
+
+  app.delete("/forms/:filename", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename } = req.params as { filename: string };
+    await worklistUseCase.deleteForm(filename, session.domain);
+    return reply.code(200).send({ deleted: filename });
   });
 
   // 3b. Next RCP / MDT Session Agenda Builder

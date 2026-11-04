@@ -87,10 +87,168 @@ export interface ShellLayoutOptions {
   toastMessage?: string | null;
 }
 
+export interface FormProcessingState {
+  isProcessing: boolean;
+  isFailed: boolean;
+  label: string;
+  stepLabel: string | null;
+  progressPct: number;
+}
+
+const ACTIVE_PROCESSING_STATUSES = new Set([
+  "PENDING",
+  "RUNNING",
+  "PROCESSING",
+  "IN_PROGRESS",
+  "QUEUED",
+  "PENDING_ADMIN",
+  "PROCESSING_ADMIN",
+  "PENDING_CLINICAL",
+  "PROCESSING_CLINICAL",
+  "PENDING_EXPERTS",
+  "PROCESSING_EXPERTS",
+]);
+
+export function deriveFormProcessingState(
+  processingStatus: string | null | undefined,
+  processingStep: string | null | undefined,
+  processingProgressPct: number | null | undefined,
+  filename: string,
+  queueJobs: QueueJobItem[],
+  queueStats: QueueStats,
+  lang: "fr" | "en" = "fr",
+  extraFiles: string[] = [],
+): FormProcessingState {
+  const candidateFiles = new Set([filename, ...extraFiles].filter(Boolean));
+  const statusUpper = String(processingStatus ?? "")
+    .trim()
+    .toUpperCase();
+
+  const matchingJobs = queueJobs.filter((j) => j.filename && candidateFiles.has(j.filename));
+  const runningJob = matchingJobs.find((j) => j.status === "RUNNING");
+  const pendingJob = matchingJobs.find((j) => j.status === "PENDING");
+  const isActiveInBanner =
+    Boolean(queueStats.activeFormFile && candidateFiles.has(queueStats.activeFormFile)) &&
+    queueStats.running + queueStats.pending > 0;
+  const isStatusProcessing = ACTIVE_PROCESSING_STATUSES.has(statusUpper);
+
+  const isProcessing = Boolean(runningJob || pendingJob || isActiveInBanner || isStatusProcessing);
+  const isFailed =
+    !isProcessing &&
+    (statusUpper === "FAILED" ||
+      statusUpper === "ERROR" ||
+      matchingJobs.some((j) => j.status === "FAILED" && statusUpper !== "COMPLETED"));
+
+  let label = lang === "fr" ? "Traitement terminée" : "Completed";
+  if (isProcessing) {
+    if (statusUpper.includes("ADMIN")) {
+      label = lang === "fr" ? "Extraction administrative en cours" : "Extracting admin data";
+    } else if (statusUpper.includes("CLINICAL")) {
+      label = lang === "fr" ? "Extraction clinique en cours" : "Extracting clinical data";
+    } else if (statusUpper.includes("EXPERTS")) {
+      label = lang === "fr" ? "Concertation IA en cours" : "Generating AI opinions";
+    } else if (runningJob) {
+      label = runningJob.section
+        ? lang === "fr"
+          ? `Analyse ${runningJob.section} en cours`
+          : `Analyzing ${runningJob.section}`
+        : lang === "fr"
+          ? "Traitement IA en cours"
+          : "Processing in progress";
+    } else if (pendingJob || statusUpper.startsWith("PENDING") || statusUpper === "QUEUED") {
+      label = lang === "fr" ? "En cours de traitement" : "Queued for processing";
+    } else {
+      label = lang === "fr" ? "Traitement en cours" : "Processing";
+    }
+  } else if (isFailed) {
+    label = lang === "fr" ? "Échec du traitement" : "Processing failed";
+  }
+
+  const stepLabel =
+    runningJob?.step ||
+    processingStep ||
+    (runningJob?.section ? `Rubrique : ${runningJob.section}` : null) ||
+    pendingJob?.step ||
+    null;
+
+  const rawProgress =
+    runningJob?.progressPct ||
+    processingProgressPct ||
+    (isActiveInBanner ? queueStats.activeProgressPct : 0) ||
+    (statusUpper.includes("EXPERTS")
+      ? 75
+      : statusUpper.includes("CLINICAL")
+        ? 45
+        : statusUpper.includes("ADMIN")
+          ? 25
+          : isProcessing
+            ? 35
+            : 0);
+  const progressPct = isProcessing ? Math.max(8, Math.min(98, Math.round(rawProgress))) : 100;
+
+  return {
+    isProcessing,
+    isFailed,
+    label,
+    stepLabel,
+    progressPct,
+  };
+}
+
+export function formatDeleteDialogPatientInfo(
+  patientName: string | null | undefined,
+  id: string,
+  file: string,
+  patientId: string | null | undefined,
+  domainParam: string,
+  viewMode: string | undefined,
+): {
+  displayName: string;
+  metaSuffix: string;
+  actionUrl: string;
+  isFormOnly: boolean;
+} {
+  const rawName = (patientName ?? "").trim();
+  const cleanName =
+    rawName && rawName.toLowerCase() !== "inconnu" && rawName !== file
+      ? rawName.replace(/_/g, " ")
+      : id && !id.toLowerCase().endsWith(".pdf")
+        ? id.replace(/[_-]+(\d{4})[_-](\d{2})[_-](\d{2})$/, "").replace(/_/g, " ")
+        : file.replace(/\.pdf$/i, "").replace(/_/g, " ");
+
+  const dob = extractDobFromPatientId(patientId ?? id);
+  const shortCode =
+    (patientId ?? id) &&
+    !(patientId ?? id).includes("_") &&
+    !(patientId ?? id).toLowerCase().endsWith(".pdf") &&
+    (patientId ?? id) !== cleanName
+      ? `#${patientId ?? id}`
+      : null;
+
+  const metaParts: string[] = [];
+  if (shortCode) metaParts.push(shortCode);
+  if (dob) metaParts.push(`né(e) le ${dob}`);
+  const metaSuffix = metaParts.length > 0 ? ` (${metaParts.join(" · ")})` : "";
+
+  const isFormOnly = viewMode === "rcp" || (!patientId && id.toLowerCase().endsWith(".pdf"));
+  const actionUrl = isFormOnly
+    ? `/forms/${encodeURIComponent(file)}/delete?domain=${domainParam}`
+    : `/patients/${encodeURIComponent(patientId ?? id)}/delete?domain=${domainParam}`;
+
+  return {
+    displayName: cleanName || file,
+    metaSuffix,
+    actionUrl,
+    isFormOnly,
+  };
+}
+
 export function renderQueueBannerPartial(stats: QueueStats, session: UserSession): string {
   const lang = session.language;
+  const isQueueActive = stats.running + stats.pending > 0;
+  const queueDataAttrs = `data-queue-active="${isQueueActive ? "true" : "false"}" data-queue-running="${stats.running}" data-queue-pending="${stats.pending}" data-queue-completed="${stats.completed}" data-active-file="${esc(stats.activeFormFile ?? "")}"`;
   if (stats.failed > 0 && stats.running === 0) {
-    return `<div class="ds-queue-banner ds-queue-banner--error" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner">
+    return `<div class="ds-queue-banner ds-queue-banner--error" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
       <span class="ds-queue-banner__text">
         ${iconSvg("ic-error")}
         <span class="ds-queue-banner__msg"><strong>${stats.failed} ${lang === "fr" ? "analyse(s) en échec" : "failed job(s)"}</strong>${stats.activeFormFile ? ` · ${esc(stats.activeFormFile)}` : ""}</span>
@@ -100,7 +258,7 @@ export function renderQueueBannerPartial(stats: QueueStats, session: UserSession
   }
 
   if (stats.running > 0 || stats.pending > 0) {
-    return `<div class="ds-queue-banner" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner">
+    return `<div class="ds-queue-banner" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
       <span class="ds-queue-banner__text">
         <span class="ds-spinner" aria-hidden="true"></span>
         <span class="ds-queue-banner__msg"><strong>${stats.running} ${esc(t("queue.banner.running", lang))}</strong> · ${stats.pending} ${lang === "fr" ? "en attente" : "pending"}${stats.activeFormFile ? ` · ${esc(stats.activeFormFile)}` : ""}</span>
@@ -110,7 +268,7 @@ export function renderQueueBannerPartial(stats: QueueStats, session: UserSession
     </div>`;
   }
 
-  return `<div class="ds-queue-banner ds-queue-banner--idle" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner">
+  return `<div class="ds-queue-banner ds-queue-banner--idle" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
     <span class="ds-queue-banner__text">
       ${iconSvg("ic-clock")}
       <span class="ds-queue-banner__msg">${esc(t("queue.banner.idle", lang))}</span>
@@ -195,8 +353,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=29">
-  <link rel="stylesheet" href="/public/css/components.css?v=29">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=30">
+  <link rel="stylesheet" href="/public/css/components.css?v=30">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -440,7 +598,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=29"></script>
+  <script src="/public/js/app.js?v=30"></script>
 </body>
 </html>`;
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
@@ -477,6 +635,28 @@ export function renderWorklistPage(
               },
               lang,
             );
+            const proc = deriveFormProcessingState(
+              c.processingStatus,
+              c.processingStep,
+              c.processingProgressPct,
+              c.file,
+              queueJobs,
+              queueStats,
+              lang,
+            );
+            const delInfo = formatDeleteDialogPatientInfo(
+              c.patientName,
+              c.id,
+              c.file,
+              c.patientId,
+              domainParam,
+              filter.viewMode,
+            );
+            const procBadgeHtml = proc.isProcessing
+              ? ` <span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}"><span class="ds-spinner" aria-hidden="true"></span> ${esc(proc.label)}</span>`
+              : proc.isFailed
+                ? ` <span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}">${iconSvg("ic-error")} ${esc(proc.label)}</span>`
+                : "";
             const dossierHref = c.patientId
               ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
               : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
@@ -526,15 +706,26 @@ export function renderWorklistPage(
               c.priorityLevel === "high" ? "1" : c.priorityLevel === "medium" ? "2" : "3";
             const complSortVal = c.isComplete ? "1" : String(2 + c.missingCount);
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
+            const rowCls = [
+              c.priorityLevel === "high" ? "is-urgent" : "",
+              proc.isProcessing ? "is-processing" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            const procDataAttrs = proc.isProcessing
+              ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
+              : "";
 
-            return `<tr class="${c.priorityLevel === "high" ? "is-urgent" : ""}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+            return `<tr class="${rowCls}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
               <td data-label="Priorité" data-sort-value="${prioSortVal}">
                 <span class="ds-badge ${prio.badgeClass} ds-badge--sm" data-testid="badge-priority-${esc(c.priorityLevel)}">
                   ${iconSvg(prio.icon)} ${esc(prio.label)}
                 </span>
               </td>
               <td data-label="Patient" class="ds-table__primary-cell" data-sort-value="${esc(c.patientName)}">
-                <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a><br>
+                <span class="ds-cluster" style="gap:var(--ds-space-2);align-items:center">
+                  <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a>${procBadgeHtml}
+                </span><br>
                 <span class="ds-small ds-muted">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
               </td>
               <td data-label="Complétude" data-sort-value="${complSortVal}">${completenessCell}</td>
@@ -580,34 +771,13 @@ export function renderWorklistPage(
                         ${iconSvg("ic-bug")}
                         <span>Signaler une anomalie</span>
                       </a>
-                      <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="del-dialog-${esc(c.id)}" data-testid="btn_del_patient_${esc(c.id)}">
+                      <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="del-dialog-${esc(c.id)}" data-patient-name="${esc(delInfo.displayName)}" data-testid="btn_del_patient_${esc(c.id)}">
                         ${iconSvg("ic-delete")}
                         <span>Supprimer ce dossier…</span>
                       </button>
                     </div>
                   </details>
                 </div>
-                <dialog class="ds-modal ds-modal--danger" id="del-dialog-${esc(c.id)}" aria-labelledby="del-title-${esc(c.id)}">
-                  <div class="ds-modal__header">
-                    <span>${iconSvg("ic-delete")}</span>
-                    <h2 id="del-title-${esc(c.id)}">Supprimer le dossier de ${esc(c.patientName)} ?</h2>
-                  </div>
-                  <div class="ds-modal__body">
-                    <div class="ds-alert ds-alert--danger" role="alert">
-                      <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
-                      <div class="ds-alert__content">
-                        <span class="ds-alert__title">Action irréversible</span>
-                        <span>Les fiches RCP et les modifications manuelles associées à ${esc(c.patientName)} (#${esc(c.id)}) seront définitivement supprimées.</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="ds-modal__footer">
-                    <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
-                    <form method="post" action="/patients/${encodeURIComponent(c.id)}/delete?domain=${domainParam}">
-                      <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_${esc(c.id)}">${iconSvg("ic-delete")} Supprimer définitivement</button>
-                    </form>
-                  </div>
-                </dialog>
               </td>
             </tr>`;
           })
@@ -635,17 +805,43 @@ export function renderWorklistPage(
                 },
                 lang,
               );
+              const proc = deriveFormProcessingState(
+                c.processingStatus,
+                c.processingStep,
+                c.processingProgressPct,
+                c.file,
+                queueJobs,
+                queueStats,
+                lang,
+              );
+              const delInfo = formatDeleteDialogPatientInfo(
+                c.patientName,
+                c.id,
+                c.file,
+                c.patientId,
+                domainParam,
+                filter.viewMode,
+              );
+              const procBadgeHtml = proc.isProcessing
+                ? `<span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}"><span class="ds-spinner" aria-hidden="true"></span> ${esc(proc.label)}</span>`
+                : proc.isFailed
+                  ? `<span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}">${iconSvg("ic-error")} ${esc(proc.label)}</span>`
+                  : "";
               const dossierHref = c.patientId
                 ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
                 : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
               const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
-              return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+              const procDataAttrs = proc.isProcessing
+                ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
+                : "";
+              return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}${proc.isProcessing ? " is-processing" : ""}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
                 <div class="ds-card__header">
                   <h2 class="ds-patient-card__name"><a href="${dossierHref}">${esc(c.patientName)}</a></h2>
                   <span class="ds-patient-card__id">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
                 </div>
                 <div class="ds-card__body">
                   <div class="ds-cluster">
+                    ${procBadgeHtml}
                     <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
                     ${
                       !c.isComplete && c.missingItems.length > 0
@@ -700,6 +896,10 @@ export function renderWorklistPage(
                           ${iconSvg("ic-bug")}
                           <span>Signaler une anomalie</span>
                         </a>
+                        <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="del-dialog-${esc(c.id)}" data-patient-name="${esc(delInfo.displayName)}" data-testid="btn_del_patient_${esc(c.id)}">
+                          ${iconSvg("ic-delete")}
+                          <span>Supprimer ce dossier…</span>
+                        </button>
                       </div>
                     </details>
                   </div>
@@ -708,6 +908,43 @@ export function renderWorklistPage(
             })
             .join("")}
         </div>`;
+
+  const deleteDialogsHtml =
+    cards.length === 0
+      ? ""
+      : cards
+          .map((c) => {
+            const delInfo = formatDeleteDialogPatientInfo(
+              c.patientName,
+              c.id,
+              c.file,
+              c.patientId,
+              domainParam,
+              filter.viewMode,
+            );
+            return `<dialog class="ds-modal ds-modal--danger" id="del-dialog-${esc(c.id)}" aria-labelledby="del-title-${esc(c.id)}">
+              <div class="ds-modal__header">
+                <span>${iconSvg("ic-delete")}</span>
+                <h2 id="del-title-${esc(c.id)}">${delInfo.isFormOnly ? "Supprimer la fiche RCP de" : "Supprimer le dossier de"} <span data-del-patient-name>${esc(delInfo.displayName)}</span> ?</h2>
+              </div>
+              <div class="ds-modal__body">
+                <div class="ds-alert ds-alert--danger" role="alert">
+                  <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+                  <div class="ds-alert__content">
+                    <span class="ds-alert__title">Action irréversible</span>
+                    <span>${delInfo.isFormOnly ? "La fiche RCP et les modifications manuelles associées à" : "Les fiches RCP et les modifications manuelles associées à"} <strong data-del-patient-name>${esc(delInfo.displayName)}</strong>${esc(delInfo.metaSuffix)} seront définitivement supprimées.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="ds-modal__footer">
+                <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+                <form method="post" action="${delInfo.actionUrl}">
+                  <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_${esc(c.id)}">${iconSvg("ic-delete")} Supprimer définitivement</button>
+                </form>
+              </div>
+            </dialog>`;
+          })
+          .join("");
 
   const tableWrapHtml =
     cards.length === 0
@@ -870,6 +1107,7 @@ export function renderWorklistPage(
           ? cardsGridHtml
           : tableWrapHtml
     }
+    ${deleteDialogsHtml}
   `;
 
   return renderLayout({
@@ -890,6 +1128,7 @@ export function renderSectionDetailsPartial(
   editing = false,
   expertMode = false,
   missingItemsState?: PatientDossierView["missingItemsState"],
+  isProcessingSection = false,
 ): string {
   const domainParam = encodeURIComponent(domain);
   const fileParam = encodeURIComponent(filename);
@@ -1279,9 +1518,14 @@ export function renderSectionDetailsPartial(
         ? "ds-section--orange"
         : "ds-section--green"
       : "";
-  return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}">
+  return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}${isProcessingSection ? " is-processing" : ""}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}"${isProcessingSection ? ' data-processing-active="true"' : ""}>
     <summary>
       <span class="ds-section__title">${iconSvg(sec.meta.icon)} ${esc(sec.meta.title)}</span>
+      ${
+        isProcessingSection
+          ? `<span class="ds-badge ds-badge--processing ds-badge--sm" data-testid="badge-processing-section-${esc(sec.name)}"><span class="ds-spinner" aria-hidden="true"></span> Analyse en cours…</span>`
+          : ""
+      }
       ${
         sec.isManual
           ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-testid="badge-manual-edit">${iconSvg("ic-edit-note")} Modifié manuellement</span>`
@@ -1428,6 +1672,35 @@ export function renderDossierPage(
     (s) => s.meta.tab === "opinions" && (s.name !== "PatientMDTFormCheck" || session.expertMode),
   );
 
+  const activeSectionNames = new Set(
+    queueJobs
+      .filter(
+        (j) =>
+          j.filename === dossier.currentForm.file &&
+          (j.status === "RUNNING" || j.status === "PENDING") &&
+          j.section,
+      )
+      .map((j) => j.section as string),
+  );
+  const proc = deriveFormProcessingState(
+    dossier.currentForm.processingStatus,
+    dossier.currentForm.processingStep,
+    dossier.currentForm.processingProgressPct,
+    dossier.currentForm.file,
+    queueJobs,
+    queueStats,
+    lang,
+    dossier.timeline.map((tStep) => tStep.file),
+  );
+  const dossierDelInfo = formatDeleteDialogPatientInfo(
+    dossier.patientName,
+    dossier.patientId ?? dossier.currentForm.file,
+    dossier.currentForm.file,
+    dossier.patientId,
+    domainParam,
+    dossier.patientId ? "patients" : "rcp",
+  );
+
   // Group clinical sections by Clinical Pole with clean pole headings
   const poleIcons: Record<string, string> = {
     clinical: "ic-stethoscope",
@@ -1452,6 +1725,7 @@ export function renderDossierPage(
         editingSection === s.name,
         session.expertMode,
         s.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
+        activeSectionNames.has(s.name),
       )}`;
     })
     .join("");
@@ -1465,6 +1739,7 @@ export function renderDossierPage(
         editingSection === s.name,
         session.expertMode,
         s.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
+        activeSectionNames.has(s.name),
       ),
     )
     .join("");
@@ -1748,16 +2023,38 @@ export function renderDossierPage(
       </nav>`
     : "";
 
+  const dossierProcBadgeHtml = proc.isProcessing
+    ? `<span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-status"><span class="ds-spinner" aria-hidden="true"></span> ${esc(proc.label)}</span>`
+    : proc.isFailed
+      ? `<span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-status">${iconSvg("ic-error")} ${esc(proc.label)}</span>`
+      : "";
+  const dossierProcBannerHtml = proc.isProcessing
+    ? `<div class="ds-processing-banner" role="status" aria-live="polite" data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}" data-testid="dossier-processing-banner">
+        <div class="ds-processing-banner__main">
+          <span class="ds-spinner" aria-hidden="true"></span>
+          <div class="ds-processing-banner__content">
+            <strong class="ds-processing-banner__title">Fiche en cours de traitement — ${esc(proc.label)}</strong>
+            <span class="ds-processing-banner__meta">${proc.stepLabel ? `${esc(proc.stepLabel)} · ` : ""}Rafraîchissement automatique activé — les rubriques se mettent à jour au fil de l'analyse.</span>
+          </div>
+        </div>
+        <div class="ds-processing-banner__end">
+          <progress class="ds-progress ds-processing-banner__progress" max="100" value="${proc.progressPct}" aria-label="Avancement du traitement (${proc.progressPct} %)"></progress>
+          <a class="ds-btn ds-btn--secondary ds-btn--sm" href="${baseTargetUrl}?file=${encodeURIComponent(dossier.currentForm.file)}&domain=${domainParam}" data-testid="btn_refresh_dossier">${iconSvg("ic-refresh")} Actualiser</a>
+        </div>
+      </div>`
+    : "";
+
   const bodyHtml = `
     ${agendaNavHtml}
     <!-- Unified RCP Hero Card: Compact 2-Line Header + Always-Visible Synoptic Markers + Collapsible RCP Timeline -->
-    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}" data-testid="synoptic-card">
+    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
       <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata) -->
       <div class="ds-synoptic__row ds-patient-header" data-testid="patient-rcp-header">
         <div class="ds-patient-header__top">
           <h1 class="ds-patient-header__name">${esc(dossier.patientName)}</h1>
 
           <div class="ds-patient-header__badges">
+            ${dossierProcBadgeHtml}
             <span class="ds-badge ${dossier.priorityBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.priorityBadge.icon)} ${esc(dossier.priorityBadge.label)}</span>
             <div class="ds-hovercard" tabindex="0">
               <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm">
@@ -1855,6 +2152,10 @@ export function renderDossierPage(
                   ${iconSvg("ic-bug")}
                   <span>Signaler une anomalie sur ce dossier</span>
                 </a>
+                <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="delete-dossier-modal" data-patient-name="${esc(dossierDelInfo.displayName)}" data-testid="btn_del_dossier">
+                  ${iconSvg("ic-delete")}
+                  <span>Supprimer ce dossier…</span>
+                </button>
               </div>
             </details>
           </div>
@@ -1868,6 +2169,8 @@ export function renderDossierPage(
           <li><span class="ds-section__duration" title="Temps cumulé d'analyse IA">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span></li>
         </ul>
       </div>
+
+      ${dossierProcBannerHtml}
 
       <!-- Row 1: Synoptic Clinical Markers (Always Visible) -->
       <div class="ds-synoptic__row">
@@ -2041,6 +2344,29 @@ export function renderDossierPage(
           <button type="submit" class="ds-btn ds-btn--primary">Enregistrer le rattachement</button>
         </div>
       </form>
+    </dialog>
+
+    <!-- Modal: Delete Dossier -->
+    <dialog class="ds-modal ds-modal--danger" id="delete-dossier-modal" aria-labelledby="del-dossier-title">
+      <div class="ds-modal__header">
+        <span>${iconSvg("ic-delete")}</span>
+        <h2 id="del-dossier-title">${dossierDelInfo.isFormOnly ? "Supprimer la fiche RCP de" : "Supprimer le dossier de"} <span data-del-patient-name>${esc(dossierDelInfo.displayName)}</span> ?</h2>
+      </div>
+      <div class="ds-modal__body">
+        <div class="ds-alert ds-alert--danger" role="alert">
+          <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Action irréversible</span>
+            <span>${dossierDelInfo.isFormOnly ? "La fiche RCP et les modifications manuelles associées à" : "Les fiches RCP et les modifications manuelles associées à"} <strong data-del-patient-name>${esc(dossierDelInfo.displayName)}</strong>${esc(dossierDelInfo.metaSuffix)} seront définitivement supprimées.</span>
+          </div>
+        </div>
+      </div>
+      <div class="ds-modal__footer">
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="post" action="${dossierDelInfo.actionUrl}">
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_dossier">${iconSvg("ic-delete")} Supprimer définitivement</button>
+        </form>
+      </div>
     </dialog>
   `;
 
