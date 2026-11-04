@@ -64,6 +64,11 @@ export interface OncoflowApiPort {
     editedBy: string,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail>;
+  rollbackSection(
+    filename: string,
+    section: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail>;
   updateMissingItems(
     filename: string,
     input: MissingItemsUpdateInput,

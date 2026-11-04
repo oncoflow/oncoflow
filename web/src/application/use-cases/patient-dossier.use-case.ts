@@ -12,6 +12,7 @@ import {
   getAgentPresentation,
   getSectionFieldSchemas,
   getSectionPresentation,
+  resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
 import { translateValue } from "../../domain/i18n.js";
 import {
@@ -74,6 +75,8 @@ export interface DossierFieldView {
   chemoItems?: NormalizedChemoItem[];
   isLongText: boolean;
   hiddenInReadView?: boolean;
+  isModified?: boolean;
+  originalAiValue?: string;
 }
 
 export interface DossierSectionView {
@@ -795,17 +798,35 @@ export class PatientDossierUseCase {
         lang,
       );
 
-      const manualMeta = form.manualEdits[sectionName] ?? null;
+      const canonicalSection = resolveCanonicalSectionName(sectionName);
+      const rawManualMeta =
+        form.manualEdits[sectionName] ?? form.manualEdits[canonicalSection] ?? null;
+      const isManual = Boolean(
+        rawManualMeta && (rawManualMeta as Record<string, unknown>).is_manual !== false,
+      );
+      const manualMeta = isManual ? rawManualMeta : null;
       const manualDiffs: DossierManualDiffView[] = [];
+      const diffMap = new Map<string, string>();
       if (manualMeta?.modified_fields && typeof manualMeta.modified_fields === "object") {
         for (const [fKey, diff] of Object.entries(manualMeta.modified_fields)) {
           if (diff && typeof diff === "object") {
+            const aiFormatted = translateValue(diff.ai_value, lang);
             manualDiffs.push({
               key: fKey,
               label: formatFieldLabel(fKey, lang),
-              aiValue: translateValue(diff.ai_value, lang),
+              aiValue: aiFormatted,
               humanValue: translateValue(diff.human_value, lang),
             });
+            diffMap.set(fKey, aiFormatted);
+          }
+        }
+      }
+
+      if (isManual && diffMap.size > 0) {
+        for (const f of fields) {
+          if (diffMap.has(f.key)) {
+            f.isModified = true;
+            f.originalAiValue = diffMap.get(f.key);
           }
         }
       }
@@ -828,7 +849,7 @@ export class PatientDossierUseCase {
         subCards,
         references,
         rawData: rawObj,
-        isManual: Boolean(manualMeta),
+        isManual,
         manualMeta,
         manualDiffs,
         reasoningThinking,
@@ -921,6 +942,14 @@ export class PatientDossierUseCase {
     const existingSectionObj = (existingForm?.sections[section] ?? {}) as Record<string, unknown>;
     const coercedData = coerceSectionUpdatePayload(section, data, existingSectionObj, domainSchema);
     return this.api.updateFormSection(filename, section, coercedData, editedBy, domain);
+  }
+
+  async rollbackSection(
+    filename: string,
+    section: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    return this.api.rollbackSection(filename, section, domain);
   }
 
   async updateMissingItems(

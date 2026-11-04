@@ -215,6 +215,56 @@ class PatientRecordService:
         )
         return self.mdt_form_repo.get_by_file(filename) or {}
 
+    def rollback_patient_mdt_form_section(
+        self,
+        filename: str,
+        section_name: str,
+    ) -> dict[str, Any]:
+        """
+        Rollback a manually edited section on a `PatientMDTForm` record back to its
+        original AI extraction (`ai_original`) and remove its entry from `manual_edits`.
+        """
+        existing_doc = self.mdt_form_repo.get_by_file(filename)
+        if existing_doc is None:
+            raise FileNotFoundError(
+                f"PatientMDTForm document '{filename}' was not found."
+            )
+
+        target_cls = self.form_cls.get_section_model(section_name)
+        canonical_name = target_cls.__name__ if target_cls else section_name
+
+        manual_edits = dict(existing_doc.get("manual_edits") or {})
+        entry = manual_edits.get(canonical_name) or manual_edits.get(section_name)
+        ai_original = None
+        if isinstance(entry, dict):
+            raw_orig = entry.get("ai_original") or entry.get("previous_ai_value")
+            if isinstance(raw_orig, dict):
+                ai_original = dict(raw_orig)
+
+        manual_edits.pop(canonical_name, None)
+        manual_edits.pop(section_name, None)
+
+        now = datetime.now()
+        fields_to_update: dict[str, Any] = {
+            "manual_edits": manual_edits,
+            "date_refresh": now,
+        }
+        if ai_original is not None:
+            if canonical_name == "PatientAdministrative":
+                patient, merged_admin = self.synchronize_patient_from_admin(
+                    filename=filename,
+                    admin_data=ai_original,
+                    target_patient_id=existing_doc.get("patient_id"),
+                )
+                fields_to_update["patient_id"] = patient.patient_id
+                fields_to_update["PatientAdministrative"] = merged_admin
+            else:
+                fields_to_update[canonical_name] = ai_original
+
+        self.mdt_form_repo.upsert_fields(filename, fields_to_update)
+        updated_doc = self.mdt_form_repo.get_by_file(filename) or existing_doc
+        return self.enrich_form_doc(updated_doc)
+
     def update_missing_items_visibility(
         self,
         filename: str,

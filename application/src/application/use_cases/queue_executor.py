@@ -555,14 +555,7 @@ class PatientMDTFormQueueJobExecutor:
                 and target_cls.__name__ in service.form.sections
             ):
                 pass
-            elif target_cls.__name__ == "PatientAdministrative":
-                if not preserve_manual:
-                    service.form.manual_edits = (
-                        service.form_cls.archive_manual_edit_before_ai_rerun(
-                            service.form.manual_edits,
-                            "PatientAdministrative",
-                        )
-                    )
+            elif target_cls.__name__ == "PatientAdministrative" and preserve_manual:
                 service.process_patient_association(
                     run_admin_ai=True,
                     callbacks=[thinking_cb],
@@ -571,12 +564,7 @@ class PatientMDTFormQueueJobExecutor:
                 )
             else:
                 extra_kwargs = (
-                    {"clear_manual_flag": True}
-                    if (
-                        not preserve_manual
-                        and target_cls.__name__ in service.form.manual_edits
-                    )
-                    else {}
+                    {"clear_manual_flag": True} if not preserve_manual else {}
                 )
                 service.extract_section(
                     model_cls=target_cls,
@@ -588,6 +576,59 @@ class PatientMDTFormQueueJobExecutor:
                 )
         finally:
             service.close()
+
+    def clear_manual_edit_before_rerun(
+        self,
+        domain: str,
+        filename: str,
+        section_name: str,
+    ) -> None:
+        """
+        Immediately clear the manual edit badge (`is_manual: False`) and restore
+        any cached AI baseline in MongoDB when a single-section AI rerun with
+        `preserve_manual_edits=False` is enqueued, so the UI reflects the reset
+        immediately even while the background LLM job is pending.
+        """
+        try:
+            domain_conf = self._resolve_domain_config(domain)
+            form_cls = get_domain_mdt_form_cls(domain_conf.domain)
+            target_cls = form_cls.get_section_model(section_name)
+            canonical_name = target_cls.__name__ if target_cls else section_name
+            repo = MongoPatientMDTFormRepository(domain_conf)
+            try:
+                doc = repo.find_by_file(filename)
+                if not isinstance(doc, dict):
+                    return
+                manual_edits = doc.get("manual_edits")
+                if not isinstance(manual_edits, dict):
+                    return
+                updated_fields: dict[str, Any] = {}
+                existing_meta = manual_edits.get(canonical_name) or manual_edits.get(
+                    section_name
+                )
+                if isinstance(existing_meta, dict):
+                    ai_orig = existing_meta.get(
+                        "previous_ai_value"
+                    ) or existing_meta.get("ai_original")
+                    if isinstance(ai_orig, dict) and ai_orig:
+                        updated_fields[canonical_name] = dict(ai_orig)
+                updated_manual = form_cls.archive_manual_edit_before_ai_rerun(
+                    manual_edits,
+                    canonical_name,
+                )
+                if section_name != canonical_name and section_name in updated_manual:
+                    updated_manual = form_cls.archive_manual_edit_before_ai_rerun(
+                        updated_manual,
+                        section_name,
+                    )
+                updated_fields["manual_edits"] = updated_manual
+                repo.upsert_fields(filename, fields=updated_fields)
+            finally:
+                repo.close()
+        except Exception as exc:
+            self.base_config.log.logger.warning(
+                f"Could not pre-clear manual edit for {domain}/{filename} ({section_name}): {exc}"
+            )
 
     def recover_unfinished_jobs(self, queue_manager: Any) -> int:
         """

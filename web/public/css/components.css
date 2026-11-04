@@ -3976,6 +3976,36 @@ a.ds-timeline__link:hover {
   font-style: italic;
   color: var(--ds-color-text-subtle);
 }
+.ds-kv--manual,
+.ds-rationale--manual {
+  position: relative;
+  background: var(--ds-manual-bg);
+  color: var(--ds-manual-fg);
+  box-shadow: inset 3px 0 0 var(--ds-manual);
+  cursor: help;
+}
+.ds-kv--manual .ds-kv__label,
+.ds-rationale--manual .ds-rationale__label {
+  color: var(--ds-manual-fg);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.ds-kv--manual .ds-kv__value,
+.ds-rationale--manual .ds-rationale__text {
+  color: var(--ds-manual-fg);
+}
+.ds-kv--manual[data-tooltip]::after,
+.ds-rationale--manual[data-tooltip]::after {
+  white-space: normal;
+  width: max-content;
+  max-width: min(20rem, 85vw);
+  text-align: left;
+}
+.ds-btn--rollback {
+  --_fg: var(--ds-manual-fg);
+  --_bg: var(--ds-manual-bg);
+}
 
 .ds-rationale {
   display: flex;

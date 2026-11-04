@@ -1078,7 +1078,7 @@ export function renderSectionDetailsPartial(
         ${inputsHtml}
         <div class="ds-section__actions">
           <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm" data-testid="btn_save_section_${esc(sec.name)}">${iconSvg("ic-check")} Enregistrer</button>
-          <a class="ds-btn ds-btn--ghost ds-btn--sm" href="/forms/${fileParam}?domain=${domainParam}#section-${esc(sec.name)}">Annuler</a>
+          <a class="ds-btn ds-btn--ghost ds-btn--sm" href="/forms/${fileParam}/sections/${secParam}/edit?view=1&domain=${domainParam}" data-edit-section="section-${esc(sec.name)}" data-testid="btn_cancel_section_${esc(sec.name)}">Annuler</a>
         </div>
       </form>
     </details>`;
@@ -1114,8 +1114,12 @@ export function renderSectionDetailsPartial(
       : `<div class="ds-kv-grid">
           ${shortFields
             .map(
-              (f) => `<div class="ds-kv">
-                <span class="ds-kv__label">${esc(f.label)}</span>
+              (f) => `<div class="ds-kv${f.isModified ? " ds-kv--manual" : ""}"${
+                f.isModified
+                  ? ` data-tooltip="Valeur IA initiale : ${esc(f.originalAiValue ?? "Non renseigné")}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
+                  : ""
+              }>
+                <span class="ds-kv__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
                 <span class="ds-kv__value ${f.value === "Non renseigné" || f.value === "Not documented" ? "is-missing" : ""}">${esc(f.value)}</span>
               </div>`,
             )
@@ -1127,8 +1131,12 @@ export function renderSectionDetailsPartial(
       ? ""
       : longFields
           .map(
-            (f) => `<div class="ds-rationale">
-              <span class="ds-rationale__label">${esc(f.label)}</span>
+            (f) => `<div class="ds-rationale${f.isModified ? " ds-rationale--manual" : ""}"${
+              f.isModified
+                ? ` data-tooltip="Valeur IA initiale : ${esc(f.originalAiValue ?? "Non renseigné")}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
+                : ""
+            }>
+              <span class="ds-rationale__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
               <p class="ds-rationale__text">${esc(f.value)}</p>
             </div>`,
           )
@@ -1299,9 +1307,18 @@ export function renderSectionDetailsPartial(
             ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="/forms/${fileParam}/sections/${secParam}/edit?domain=${domainParam}" data-edit-section="section-${esc(sec.name)}" data-testid="btn_edit_section_${esc(sec.name)}">${iconSvg("ic-edit")} Modifier</a>`
             : ""
         }
+        ${
+          sec.isManual
+            ? `<form method="post" action="/forms/${fileParam}/sections/${secParam}/rollback?domain=${domainParam}" data-ajax-section="section-${esc(sec.name)}" style="display:inline-flex">
+                <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--rollback" data-tooltip="Annuler la modification manuelle et restaurer la valeur IA initiale" data-testid="btn_rollback_section_${esc(sec.name)}">
+                  ${iconSvg("ic-undo")} Rétablir
+                </button>
+              </form>`
+            : ""
+        }
         <form method="post" action="/forms/${fileParam}/sections/${secParam}/rerun?domain=${domainParam}" style="display:inline-flex">
           <input type="hidden" name="preserve_manual_edits" value="true">
-          <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-tooltip="Relance l'extraction IA en préservant les modifications manuelles" data-testid="btn_rerun_section_${esc(sec.name)}">
+          <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-tooltip="Relance l'extraction IA de cette rubrique (les modifications manuelles sont préservées)" data-testid="btn_rerun_section_${esc(sec.name)}">
             ${iconSvg("ic-refresh")} Relancer
           </button>
         </form>

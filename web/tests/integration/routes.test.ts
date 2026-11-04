@@ -168,11 +168,25 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(editRes.statusCode).toBe(200);
     expect(editRes.body).toContain("Modifié manuellement");
     expect(editRes.body).toContain("FOLFIRINOX modifié 7 cures");
+    expect(editRes.body).toContain("ds-kv--manual");
+    expect(editRes.body).toContain('data-testid="field-manual-chemotherapy_name"');
+    expect(editRes.body).toContain("Valeur IA initiale : FOLFIRINOX modifié, 6 cures");
+    expect(editRes.body).toContain('data-testid="btn_rollback_section_Chemotherapy"');
 
-    // Rerun TumorBiology while preserving manual edits on Chemotherapy
+    // Cancel edit returns read-only partial without is-editing
+    const cancelEditRes = await app.inject({
+      method: "GET",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?view=1",
+      headers: { "hx-request": "true" },
+    });
+    expect(cancelEditRes.statusCode).toBe(200);
+    expect(cancelEditRes.body).not.toContain("is-editing");
+    expect(cancelEditRes.body).toContain("FOLFIRINOX modifié 7 cures");
+
+    // Rerun Chemotherapy while preserving manual edits by default
     const rerunRes = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/TumorBiology/rerun",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rerun",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: "preserve_manual_edits=true",
     });
@@ -188,6 +202,18 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(checkRes.body).toContain('data-testid="prompt-TumorLocation"');
     expect(checkRes.body).toContain('data-testid="trace-Chemotherapy"');
     expect(checkRes.body).toContain("Chunk #1");
+
+    // Rollback Chemotherapy restores the original AI value and removes manual badge + field highlight
+    const rollbackRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rollback",
+      headers: { "hx-request": "true" },
+    });
+    expect(rollbackRes.statusCode).toBe(200);
+    expect(rollbackRes.body).not.toContain("Modifié manuellement");
+    expect(rollbackRes.body).not.toContain("ds-kv--manual");
+    expect(rollbackRes.body).not.toContain("FOLFIRINOX modifié 7 cures");
+    expect(rollbackRes.body).toContain("FOLFIRINOX modifié, 6 cures");
     await app.close();
   });
 

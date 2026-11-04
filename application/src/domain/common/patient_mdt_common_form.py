@@ -431,35 +431,16 @@ class PatientMDTForm:
                     "human_value": human_val,
                 }
 
-        prev_clean = (
-            {k: v for k, v in current_section_val.items() if k not in meta_keys}
-            if isinstance(current_section_val, dict)
-            else {}
-        )
-        step_keys = list(
-            dict.fromkeys(list(prev_clean.keys()) + list(human_clean.keys()))
-        )
-        step_changed_fields = [
-            k for k in step_keys if prev_clean.get(k) != human_clean.get(k)
-        ]
-
-        history = list(prev_entry.get("edit_history") or [])
-        history.append(
-            {
-                "edited_at": now,
-                "edited_by": edited_by,
-                "previous_value": prev_clean if prev_clean else None,
-                "new_value": human_clean,
-                "changed_fields": step_changed_fields,
-            }
-        )
-
         ai_thinking = (
             ai_original.get("reasoning_thinking")
             if isinstance(ai_original, dict)
             else None
         )
-        archived_traces = list(prev_entry.get("archived_judge_traces") or [])
+
+        # Single user modification snapshot per section; if the user edits back to the exact AI baseline, clear the manual edit
+        if isinstance(ai_original, dict) and ai_clean and not modified_fields:
+            manual_edits.pop(section_name, None)
+            return manual_edits
 
         manual_edits[section_name] = {
             "is_manual": True,
@@ -469,8 +450,6 @@ class PatientMDTForm:
             "ai_reasoning_thinking": ai_thinking,
             "human_value": human_clean,
             "modified_fields": modified_fields,
-            "edit_history": history,
-            "archived_judge_traces": archived_traces,
         }
         return manual_edits
 

@@ -855,6 +855,8 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       filename: string;
       section: string;
     };
+    const query = (req.query ?? {}) as Record<string, string | undefined>;
+    const isCancelToView = query.view === "1";
     const dossier = await dossierUseCase.getDossier(
       filename,
       session.domain,
@@ -870,8 +872,21 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       return reply
         .type("text/html; charset=utf-8")
         .send(
-          renderSectionDetailsPartial(secView, filename, session.domain, true, session.expertMode),
+          renderSectionDetailsPartial(
+            secView,
+            filename,
+            session.domain,
+            !isCancelToView,
+            session.expertMode,
+          ),
         );
+    }
+
+    if (isCancelToView) {
+      const targetUrl = dossier.patientId
+        ? `/patients/${encodeURIComponent(dossier.patientId)}?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`
+        : `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`;
+      return reply.redirect(targetUrl);
     }
 
     const { queueStats, queueJobs } = await loadShellQueue(session.domain);
@@ -897,6 +912,41 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       await dossierUseCase.updateSection(filename, section, body, session.userName, session.domain);
     } catch (err) {
       req.log.warn({ err, filename, section }, "Section update validation warning");
+    }
+
+    const dossier = await dossierUseCase.getDossier(
+      filename,
+      session.domain,
+      session.language,
+      filename,
+    );
+    const secView = dossier?.sections.find((s) => s.name === section);
+
+    if (req.headers["hx-request"] === "true" && secView) {
+      return reply
+        .type("text/html; charset=utf-8")
+        .send(
+          renderSectionDetailsPartial(secView, filename, session.domain, false, session.expertMode),
+        );
+    }
+
+    const targetUrl = dossier?.patientId
+      ? `/patients/${encodeURIComponent(dossier.patientId)}?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`
+      : `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`;
+    return reply.redirect(targetUrl);
+  });
+
+  app.post("/forms/:filename/sections/:section/rollback", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename, section } = req.params as {
+      filename: string;
+      section: string;
+    };
+
+    try {
+      await dossierUseCase.rollbackSection(filename, section, session.domain);
+    } catch (err) {
+      req.log.warn({ err, filename, section }, "Section rollback warning");
     }
 
     const dossier = await dossierUseCase.getDossier(

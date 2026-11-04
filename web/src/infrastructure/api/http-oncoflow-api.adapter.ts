@@ -323,8 +323,17 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       specialties,
     };
 
-    const manualEdits =
-      ((raw.manual_edits ?? raw.manually_edited_sections) as MdtFormDetail["manualEdits"]) ?? {};
+    const rawManualEdits =
+      ((raw.manual_edits ?? raw.manually_edited_sections) as Record<
+        string,
+        Record<string, unknown>
+      >) ?? {};
+    const manualEdits: MdtFormDetail["manualEdits"] = {};
+    for (const [secKey, metaVal] of Object.entries(rawManualEdits)) {
+      if (metaVal && typeof metaVal === "object" && metaVal.is_manual !== false) {
+        manualEdits[secKey] = metaVal as MdtFormDetail["manualEdits"][string];
+      }
+    }
 
     return {
       file: String(raw.file ?? ""),
@@ -597,6 +606,29 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     }
   }
 
+  async rollbackSection(
+    filename: string,
+    section: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    try {
+      const canonicalSection = resolveCanonicalSectionName(section);
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(canonicalSection)}/rollback?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "POST",
+        },
+      );
+      return this.mapRawDetail(res, domain);
+    } catch (err) {
+      if (this.fallback) {
+        return this.fallback.rollbackSection(filename, section, domain);
+      }
+      throw err;
+    }
+  }
+
   async updateMissingItems(
     filename: string,
     input: MissingItemsUpdateInput,
@@ -633,6 +665,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     preserveManualEdits: boolean,
     domain: ClinicalDomain,
   ): Promise<{ jobId: string; preserveManualEdits: boolean }> {
+    const canonicalSection = resolveCanonicalSectionName(section);
     try {
       const res = await this.requestJson<Record<string, unknown>>(
         `/api/v1/queue/rerun?domain=${encodeURIComponent(domain)}`,
@@ -642,7 +675,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             filename,
-            model_name: section,
+            model_name: canonicalSection,
             preserve_manual_edits: preserveManualEdits,
           }),
         },

@@ -9,6 +9,7 @@ import {
   coerceSectionUpdatePayload,
   getAgentPresentation,
   getDomainUserPromptsForAgent,
+  resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
@@ -972,6 +973,9 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
       throw new Error(`Form not found: ${filename}`);
     }
     const previousSectionObj = { ...(form.sections[section] ?? {}) };
+    const originalAiObj =
+      (form.manualEdits[section]?.previous_ai_value as Record<string, unknown> | undefined) ??
+      previousSectionObj;
     const domainSchema = await this.getDomainSchema(domain);
     const coerced = coerceSectionUpdatePayload(section, data, previousSectionObj, domainSchema);
     const modifiedFields: Record<string, { ai_value?: unknown; human_value?: unknown }> =
@@ -979,7 +983,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     for (const [k, v] of Object.entries(coerced)) {
       if (JSON.stringify(previousSectionObj[k]) !== JSON.stringify(v)) {
         modifiedFields[k] = {
-          ai_value: modifiedFields[k]?.ai_value ?? previousSectionObj[k],
+          ai_value: modifiedFields[k]?.ai_value ?? originalAiObj[k],
           human_value: v,
         };
       }
@@ -992,7 +996,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
       is_manual: true,
       edited_at: new Date().toISOString(),
       edited_by: editedBy,
-      previous_ai_value: previousSectionObj,
+      previous_ai_value: originalAiObj,
       modified_fields: modifiedFields,
     };
     return form;
@@ -1054,6 +1058,29 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     return form;
   }
 
+  async rollbackSection(
+    filename: string,
+    section: string,
+    _domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    const form = this.forms.get(filename);
+    if (!form) {
+      throw new Error(`Form ${filename} not found`);
+    }
+    const canonical = resolveCanonicalSectionName(section);
+    const existingMeta = form.manualEdits[section] ?? form.manualEdits[canonical];
+    const aiOriginal =
+      existingMeta?.previous_ai_value ??
+      (existingMeta as Record<string, unknown> | undefined)?.ai_original;
+    if (aiOriginal && typeof aiOriginal === "object" && !Array.isArray(aiOriginal)) {
+      const targetKey = form.sections[section] !== undefined ? section : canonical;
+      form.sections[targetKey] = { ...(aiOriginal as Record<string, unknown>) };
+    }
+    delete form.manualEdits[section];
+    delete form.manualEdits[canonical];
+    return form;
+  }
+
   async rerunSection(
     filename: string,
     section: string,
@@ -1062,7 +1089,17 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
   ): Promise<{ jobId: string; preserveManualEdits: boolean }> {
     const form = this.forms.get(filename);
     if (form && !preserveManualEdits) {
+      const canonical = resolveCanonicalSectionName(section);
+      const existingMeta = form.manualEdits[section] ?? form.manualEdits[canonical];
+      const aiOriginal =
+        existingMeta?.previous_ai_value ??
+        (existingMeta as Record<string, unknown> | undefined)?.ai_original;
+      if (aiOriginal && typeof aiOriginal === "object" && !Array.isArray(aiOriginal)) {
+        const targetKey = form.sections[section] !== undefined ? section : canonical;
+        form.sections[targetKey] = { ...(aiOriginal as Record<string, unknown>) };
+      }
       delete form.manualEdits[section];
+      delete form.manualEdits[canonical];
     }
     const jobId = `job-rerun-${Date.now()}`;
     this.jobs.set(jobId, {
