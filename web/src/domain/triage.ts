@@ -363,7 +363,7 @@ export function computeLongitudinalDeltas(
           currentValue: translateValue(curRaw, lang),
           previousValue: translateValue(prevRaw, lang),
           previousDate: prevDate,
-          deltaText: lang === "fr" ? "= stable" : "= stable",
+          deltaText: "= stable",
           direction: "stable",
           icon: "ic-check",
         });

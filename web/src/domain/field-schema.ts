@@ -764,9 +764,9 @@ export function buildDefaultDomainFormSchema(domain: ClinicalDomain): DomainForm
           anyOf: [{ type: "boolean" }, { type: "null" }],
           default: null,
         };
-      } else if (fs.inputType === "integer") {
+      } else if (fs.inputType === "integer" || fs.inputType === "float") {
         const base = {
-          type: "integer",
+          type: fs.inputType === "integer" ? "integer" : "number",
           ...(fs.min !== undefined ? { minimum: fs.min } : {}),
           ...(fs.max !== undefined ? { maximum: fs.max } : {}),
         };
@@ -778,15 +778,6 @@ export function buildDefaultDomainFormSchema(domain: ClinicalDomain): DomainForm
           type: "integer",
           enum: (fs.options ?? []).map((o) => Number(o.value)),
         };
-      } else if (fs.inputType === "float") {
-        const base = {
-          type: "number",
-          ...(fs.min !== undefined ? { minimum: fs.min } : {}),
-          ...(fs.max !== undefined ? { maximum: fs.max } : {}),
-        };
-        properties[fs.key] = fs.nullable
-          ? { anyOf: [base, { type: "null" }], default: null }
-          : base;
       } else if (fs.inputType === "date") {
         properties[fs.key] = {
           anyOf: [{ type: "string", format: "date-time" }, { type: "null" }],

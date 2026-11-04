@@ -922,20 +922,13 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
     return reply.type("application/json; charset=utf-8").send(schema);
   });
 
-  app.post("/forms/:filename/sections/:section", async (req, reply) => {
-    const session = resolveSession(req);
-    const { filename, section } = req.params as {
-      filename: string;
-      section: string;
-    };
-    const body = (req.body ?? {}) as Record<string, unknown>;
-
-    try {
-      await dossierUseCase.updateSection(filename, section, body, session.userName, session.domain);
-    } catch (err) {
-      req.log.warn({ err, filename, section }, "Section update validation warning");
-    }
-
+  async function sendSectionMutationResponse(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    session: ReturnType<typeof resolveSession>,
+    filename: string,
+    section: string,
+  ) {
     const dossier = await dossierUseCase.getDossier(
       filename,
       session.domain,
@@ -956,6 +949,23 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       ? `/patients/${encodeURIComponent(dossier.patientId)}?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`
       : `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`;
     return reply.redirect(targetUrl);
+  }
+
+  app.post("/forms/:filename/sections/:section", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename, section } = req.params as {
+      filename: string;
+      section: string;
+    };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    try {
+      await dossierUseCase.updateSection(filename, section, body, session.userName, session.domain);
+    } catch (err) {
+      req.log.warn({ err, filename, section }, "Section update validation warning");
+    }
+
+    return sendSectionMutationResponse(req, reply, session, filename, section);
   });
 
   app.post("/forms/:filename/sections/:section/rollback", async (req, reply) => {
@@ -971,26 +981,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       req.log.warn({ err, filename, section }, "Section rollback warning");
     }
 
-    const dossier = await dossierUseCase.getDossier(
-      filename,
-      session.domain,
-      session.language,
-      filename,
-    );
-    const secView = dossier?.sections.find((s) => s.name === section);
-
-    if (req.headers["hx-request"] === "true" && secView) {
-      return reply
-        .type("text/html; charset=utf-8")
-        .send(
-          renderSectionDetailsPartial(secView, filename, session.domain, false, session.expertMode),
-        );
-    }
-
-    const targetUrl = dossier?.patientId
-      ? `/patients/${encodeURIComponent(dossier.patientId)}?file=${encodeURIComponent(filename)}&domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`
-      : `/forms/${encodeURIComponent(filename)}?domain=${encodeURIComponent(session.domain)}#section-${encodeURIComponent(section)}`;
-    return reply.redirect(targetUrl);
+    return sendSectionMutationResponse(req, reply, session, filename, section);
   });
 
   app.post("/forms/:filename/missing-items", async (req, reply) => {

@@ -41,7 +41,7 @@
           "HX-Request": "true",
         },
         body: "theme=" + encodeURIComponent(normalized),
-      });
+      }).catch(function () {});
     } catch (_e) {}
   }
 
@@ -863,11 +863,11 @@
     var promptChip = e.target.closest("[data-quick-prompt]");
     if (promptChip) {
       closeAllMenus(null);
-      var promptText = promptChip.getAttribute("data-quick-prompt") || "";
+      var chipPromptText = promptChip.getAttribute("data-quick-prompt") || "";
       var targetInputId = promptChip.getAttribute("data-target-input") || "chat-input";
       var inputEl = document.getElementById(targetInputId);
       if (inputEl) {
-        inputEl.value = promptText;
+        inputEl.value = chipPromptText;
         autoResizeChatInput(inputEl);
         inputEl.focus();
       }
@@ -1286,7 +1286,8 @@
           initM3TextFields(document);
           initM3Selects(document);
         }
-      });
+      })
+      .catch(function () {});
   });
 
   // Auto-grow AI Chat textarea on newline / multi-line input
@@ -1363,7 +1364,8 @@
             initM3TextFields(document);
             initM3Selects(document);
           }
-        });
+        })
+        .catch(function () {});
       return;
     }
 

@@ -466,6 +466,26 @@ class PatientRecordService:
                 )
                 saved_patient = self.patient_repo.save(new_patient, filename=filename)
 
+        return self._persist_administrative_section_update(
+            filename=filename,
+            form_doc=form_doc,
+            saved_patient=saved_patient,
+            validated_admin=validated_admin,
+            edited_by=edited_by,
+            now=now,
+        )
+
+    def _persist_administrative_section_update(
+        self,
+        *,
+        filename: str,
+        form_doc: dict[str, Any],
+        saved_patient: Patient,
+        validated_admin: dict[str, Any],
+        edited_by: str | None,
+        now: datetime,
+    ) -> tuple[Patient, dict[str, Any]]:
+        """Persist `PatientAdministrative` and manual edit trace onto the `PatientMDTForm` document."""
         manual_edits = self.form_cls.build_manual_edit_trace(
             form_doc,
             "PatientAdministrative",
@@ -533,30 +553,14 @@ class PatientRecordService:
         target_patient.attach_file(filename)
         saved_patient = self.patient_repo.save(target_patient, filename=filename)
 
-        now = datetime.now()
-        manual_edits = self.form_cls.build_manual_edit_trace(
-            form_doc,
-            "PatientAdministrative",
-            validated_admin,
+        return self._persist_administrative_section_update(
+            filename=filename,
+            form_doc=form_doc,
+            saved_patient=saved_patient,
+            validated_admin=validated_admin,
             edited_by=edited_by,
-            edited_at=now,
+            now=datetime.now(),
         )
-        fields_to_update: dict[str, Any] = {
-            "patient_id": saved_patient.patient_id,
-            "PatientAdministrative": validated_admin,
-            "manual_edits": manual_edits,
-            "date_refresh": now,
-        }
-        if form_doc.get("processing_status") == RCPProcessingStatus.FAILED.value:
-            fields_to_update["processing_status"] = RCPProcessingStatus.COMPLETED.value
-            fields_to_update["processing_error"] = None
-
-        self.mdt_form_repo.upsert_fields(
-            filename,
-            fields_to_update,
-            set_on_insert={"file": filename, "ui_date": now},
-        )
-        return saved_patient, self.mdt_form_repo.get_by_file(filename) or {}
 
     def _collect_patients_including_unlinked(
         self, all_forms: list[dict[str, Any]]

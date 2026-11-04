@@ -49,4 +49,4 @@ WORKDIR /app/application
 EXPOSE 8501
 
 # Lancement de l'application Streamlit
-CMD ["uv", "run", "--no-sync", "streamlit", "run", "app-ui.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]
+CMD ["uv", "run", "--no-sync", "--no-build", "streamlit", "run", "app-ui.py", "--server.port=8501", "--server.address=0.0.0.0", "--server.headless=true"]

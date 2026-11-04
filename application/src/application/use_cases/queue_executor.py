@@ -352,40 +352,18 @@ class PatientMDTFormQueueJobExecutor:
                     )
                     continue
 
-                thinking_cb = QueueThinkingCallbackHandler(
+                self._run_model_extraction_step(
+                    service=service,
+                    reader=reader,
+                    model_cls=model_cls,
+                    model_name=model_name,
+                    step_label=f"Extraction clinique ({idx}/{total}) — {model_name}",
+                    idx=idx,
+                    total=total,
+                    completed_models=completed_models,
+                    preserve_manual=preserve_manual,
                     queue_manager=queue_manager,
                     job_id=job_id,
-                    run_id=run_id,
-                    lease_id=lease_id,
-                    section_name=model_name,
-                )
-                queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Extraction clinique ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round(((idx - 1) / total) * 100.0, 1),
-                    run_id=run_id,
-                    lease_id=lease_id,
-                )
-                extra_kwargs = (
-                    {"clear_manual_flag": True} if not preserve_manual else {}
-                )
-                service.extract_section(
-                    model_cls=model_cls,
-                    upsert=True,
-                    callbacks=[thinking_cb],
-                    form=service.form,
-                    reader=reader,
-                    **extra_kwargs,
-                )
-                if model_name not in completed_models:
-                    completed_models.append(model_name)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Extraction clinique ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round((idx / total) * 100.0, 1),
                     run_id=run_id,
                     lease_id=lease_id,
                 )
@@ -404,6 +382,60 @@ class PatientMDTFormQueueJobExecutor:
             self.on_job_enqueued(domain, filename, next_status)
         finally:
             service.close()
+
+    @staticmethod
+    def _run_model_extraction_step(
+        *,
+        service: PatientMDTFormExtractionService,
+        reader: DocumentReader,
+        model_cls: Any,
+        model_name: str,
+        step_label: str,
+        idx: int,
+        total: int,
+        completed_models: list[str],
+        preserve_manual: bool,
+        queue_manager: Any,
+        job_id: str,
+        run_id: str | None,
+        lease_id: str,
+    ) -> None:
+        """Execute a single section extraction step and report progress before and after."""
+        thinking_cb = QueueThinkingCallbackHandler(
+            queue_manager=queue_manager,
+            job_id=job_id,
+            run_id=run_id,
+            lease_id=lease_id,
+            section_name=model_name,
+        )
+        queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=step_label,
+            completed_models=completed_models,
+            progress_pct=round(((idx - 1) / total) * 100.0, 1),
+            run_id=run_id,
+            lease_id=lease_id,
+        )
+        extra_kwargs = {"clear_manual_flag": True} if not preserve_manual else {}
+        service.extract_section(
+            model_cls=model_cls,
+            upsert=True,
+            callbacks=[thinking_cb],
+            form=service.form,
+            reader=reader,
+            **extra_kwargs,
+        )
+        if model_name not in completed_models:
+            completed_models.append(model_name)
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=step_label,
+            completed_models=completed_models,
+            progress_pct=round((idx / total) * 100.0, 1),
+            run_id=run_id,
+            lease_id=lease_id,
+        )
 
     def execute_wave3_experts(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
@@ -463,40 +495,18 @@ class PatientMDTFormQueueJobExecutor:
                     )
                     continue
 
-                thinking_cb = QueueThinkingCallbackHandler(
+                self._run_model_extraction_step(
+                    service=service,
+                    reader=reader,
+                    model_cls=model_cls,
+                    model_name=model_name,
+                    step_label=f"Concertation d'experts ({idx}/{total}) — {model_name}",
+                    idx=idx,
+                    total=total,
+                    completed_models=completed_models,
+                    preserve_manual=preserve_manual,
                     queue_manager=queue_manager,
                     job_id=job_id,
-                    run_id=run_id,
-                    lease_id=lease_id,
-                    section_name=model_name,
-                )
-                queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Concertation d'experts ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round(((idx - 1) / total) * 100.0, 1),
-                    run_id=run_id,
-                    lease_id=lease_id,
-                )
-                extra_kwargs = (
-                    {"clear_manual_flag": True} if not preserve_manual else {}
-                )
-                service.extract_section(
-                    model_cls=model_cls,
-                    upsert=True,
-                    callbacks=[thinking_cb],
-                    form=service.form,
-                    reader=reader,
-                    **extra_kwargs,
-                )
-                if model_name not in completed_models:
-                    completed_models.append(model_name)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Concertation d'experts ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round((idx / total) * 100.0, 1),
                     run_id=run_id,
                     lease_id=lease_id,
                 )

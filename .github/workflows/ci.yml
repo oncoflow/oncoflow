@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
         with:
           enable-cache: true
           cache-dependency-glob: "**/application/uv.lock"
@@ -33,7 +33,7 @@ jobs:
 
       - name: Git hooks validation (prek)
         run: |
-          uv run --project application --frozen prek run --all-files \
+          uv run --project application --frozen --no-build prek run --all-files \
             --skip web-format \
             --skip web-lint \
             --skip web-build \
@@ -43,22 +43,22 @@ jobs:
       - name: Lint with ruff
         run: |
           cd application
-          uv run --frozen ruff format . --check
+          uv run --frozen --no-build ruff format . --check
 
       - name: Ruff check
         run: |
           cd application
-          uv run --frozen ruff check .
+          uv run --frozen --no-build ruff check .
 
       - name: Type check (pyrefly)
         run: |
           cd application
-          uv run --frozen pyrefly check --min-severity=warn src
+          uv run --frozen --no-build pyrefly check --min-severity=warn src
 
       - name: Run Tests with Coverage
         run: |
           cd application
-          PYTHONPATH=. uv run --frozen pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/
+          PYTHONPATH=. uv run --frozen --no-build pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/
 
       - name: Archive Python coverage report for SonarQube
         uses: actions/upload-artifact@v4
@@ -68,7 +68,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload coverage reports to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         with:
           files: ./application/coverage.xml
           flags: application
@@ -77,7 +77,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Detect CVEs (Trivy FS)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "."
@@ -91,7 +91,7 @@ jobs:
 
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push'
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -99,23 +99,26 @@ jobs:
 
       - name: Build API and Streamlit Docker images in parallel
         id: build_image
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
         run: |
-          BASE_ID=$(echo "ghcr.io/${{ github.repository }}" | tr '[A-Z]' '[a-z]')
+          BASE_ID=$(echo "ghcr.io/${GH_REPO}" | tr '[A-Z]' '[a-z]')
           API_IMAGE_ID="${BASE_ID}-api"
           UI_IMAGE_ID="${BASE_ID}"
-          VERSION=${{ github.sha }}
-          echo "api_image_id=$API_IMAGE_ID" >> $GITHUB_OUTPUT
-          echo "image_id=$UI_IMAGE_ID" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          docker build -f dist/docker/Dockerfile.api -t $API_IMAGE_ID:$VERSION -t $API_IMAGE_ID:latest . &
+          VERSION="${GH_SHA}"
+          echo "api_image_id=$API_IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "image_id=$UI_IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          docker build -f dist/docker/Dockerfile.api -t "$API_IMAGE_ID:$VERSION" -t "$API_IMAGE_ID:latest" . &
           PID_API=$!
-          docker build -f dist/docker/Dockerfile -t $UI_IMAGE_ID:$VERSION -t $UI_IMAGE_ID:latest . &
+          docker build -f dist/docker/Dockerfile -t "$UI_IMAGE_ID:$VERSION" -t "$UI_IMAGE_ID:latest" . &
           PID_UI=$!
           wait $PID_API
           wait $PID_UI
 
       - name: Detect CVEs in API Docker image (Trivy Image)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "image"
           image-ref: "${{ steps.build_image.outputs.api_image_id }}:${{ steps.build_image.outputs.version }}"
@@ -127,7 +130,7 @@ jobs:
           trivyignores: ".trivyignore"
 
       - name: Detect CVEs in Streamlit Docker image (Trivy Image)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "image"
           image-ref: "${{ steps.build_image.outputs.image_id }}:${{ steps.build_image.outputs.version }}"
@@ -141,13 +144,14 @@ jobs:
       - name: Push API and Streamlit Docker images
         if: github.event_name == 'push'
         continue-on-error: true
+        env:
+          API_IMAGE_ID: ${{ steps.build_image.outputs.api_image_id }}
+          IMAGE_ID: ${{ steps.build_image.outputs.image_id }}
+          VERSION: ${{ steps.build_image.outputs.version }}
         run: |
-          API_IMAGE_ID=${{ steps.build_image.outputs.api_image_id }}
-          IMAGE_ID=${{ steps.build_image.outputs.image_id }}
-          VERSION=${{ steps.build_image.outputs.version }}
-          (docker push $API_IMAGE_ID:$VERSION && docker push $API_IMAGE_ID:latest) &
+          (docker push "$API_IMAGE_ID:$VERSION" && docker push "$API_IMAGE_ID:latest") &
           PID_API=$!
-          (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest) &
+          (docker push "$IMAGE_ID:$VERSION" && docker push "$IMAGE_ID:latest") &
           PID_UI=$!
           if ! (wait $PID_API && wait $PID_UI); then
             echo "::warning title=GHCR Push Failed::Failed to push Docker images to ghcr.io ($API_IMAGE_ID / $IMAGE_ID). Check GitHub Packages permissions in organization/repository settings."
@@ -194,7 +198,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload Web coverage reports to Codecov
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7
         with:
           files: ./web/coverage/lcov.info
           flags: web
@@ -203,7 +207,7 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Detect CVEs in Web (Trivy FS)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
           scan-ref: "./web"
@@ -223,7 +227,7 @@ jobs:
 
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push'
-        uses: docker/login-action@v4
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -231,16 +235,18 @@ jobs:
 
       - name: Build Web Docker image
         id: build_web_image
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
         run: |
-          IMAGE_ID=ghcr.io/${{ github.repository }}-web
-          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
-          VERSION=${{ github.sha }}
-          echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          docker build -f dist/docker/Dockerfile.web -t $IMAGE_ID:$VERSION -t $IMAGE_ID:latest .
+          IMAGE_ID=$(echo "ghcr.io/${GH_REPO}-web" | tr '[A-Z]' '[a-z]')
+          VERSION="${GH_SHA}"
+          echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          docker build -f dist/docker/Dockerfile.web -t "$IMAGE_ID:$VERSION" -t "$IMAGE_ID:latest" .
 
       - name: Detect CVEs in Web Docker image (Trivy Image)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "image"
           image-ref: "${{ steps.build_web_image.outputs.image_id }}:${{ steps.build_web_image.outputs.version }}"
@@ -254,10 +260,11 @@ jobs:
       - name: Push Web Docker image
         if: github.event_name == 'push'
         continue-on-error: true
+        env:
+          IMAGE_ID: ${{ steps.build_web_image.outputs.image_id }}
+          VERSION: ${{ steps.build_web_image.outputs.version }}
         run: |
-          IMAGE_ID=${{ steps.build_web_image.outputs.image_id }}
-          VERSION=${{ steps.build_web_image.outputs.version }}
-          if ! (docker push $IMAGE_ID:$VERSION && docker push $IMAGE_ID:latest); then
+          if ! (docker push "$IMAGE_ID:$VERSION" && docker push "$IMAGE_ID:latest"); then
             echo "::warning title=GHCR Push Failed::Failed to push Web Docker image to ghcr.io ($IMAGE_ID:$VERSION / latest). Check GitHub Packages permissions in organization/repository settings."
           fi
 
@@ -291,14 +298,17 @@ jobs:
           path: web/coverage
 
       - name: Fix coverage report paths for SonarCloud
-        if: hashFiles('application/coverage.xml') != ''
         run: |
-          # Ensure source paths inside application/coverage.xml resolve relative to repository root
-          sed -i 's|<source>.*application/src</source>|<source>application/src</source>|g' application/coverage.xml || true
+          if [ -f application/coverage.xml ]; then
+            sed -i 's|<source>.*application/src</source>|<source>application/src</source>|g' application/coverage.xml || true
+          fi
+          if [ -f web/coverage/lcov.info ]; then
+            sed -i 's|^SF:src/|SF:web/src/|g' web/coverage/lcov.info || true
+          fi
 
       - name: Run SonarCloud Scan
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@v5
+        uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
