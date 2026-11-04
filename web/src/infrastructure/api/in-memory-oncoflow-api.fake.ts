@@ -824,6 +824,11 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     );
 
     const mtdCompleted = (form.sections.MTDCompleted ?? {}) as Record<string, unknown>;
+    const hasMtdCompleted = Object.keys(mtdCompleted).length > 0;
+    const isAiCompleted =
+      String(form.processingStatus ?? "COMPLETED")
+        .trim()
+        .toUpperCase() === "COMPLETED";
     const missingItems = Array.isArray(form.metrics.missing_items)
       ? (form.metrics.missing_items as string[])
       : Array.isArray(mtdCompleted.what_missing)
@@ -833,8 +838,15 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
       typeof form.metrics.missing_count === "number"
         ? form.metrics.missing_count
         : missingItems.length;
-    const isComplete =
-      typeof form.metrics.is_complete === "boolean" ? form.metrics.is_complete : missingCount === 0;
+    const hideMissingItems = Boolean(form.metrics.hide_missing_items ?? false);
+    const isComplete = hideMissingItems
+      ? true
+      : isAiCompleted &&
+        hasMtdCompleted &&
+        (typeof form.metrics.is_complete === "boolean"
+          ? form.metrics.is_complete
+          : missingCount === 0) &&
+        missingCount === 0;
 
     return {
       id: form.patientId ?? form.file,
@@ -1129,8 +1141,14 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     domain: ClinicalDomain,
   ): Promise<{ jobId: string }> {
     const form = this.forms.get(filename);
-    if (form && !preserveManualEdits) {
-      form.manualEdits = {};
+    if (form) {
+      form.processingStatus = "PROCESSING_ADMIN";
+      form.processingStep = "WAVE_1_ADMIN";
+      form.processingProgressPct = 25;
+      form.metrics.is_complete = false;
+      if (!preserveManualEdits) {
+        form.manualEdits = {};
+      }
     }
     const jobId = `job-full-${Date.now()}`;
     this.jobs.set(jobId, {

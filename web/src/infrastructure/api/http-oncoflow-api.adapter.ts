@@ -146,7 +146,12 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         : [];
     const missingCount =
       typeof raw.missing_count === "number" ? raw.missing_count : missingItems.length;
-    const isComplete = typeof raw.is_complete === "boolean" ? raw.is_complete : missingCount === 0;
+    const processingStatus = String(raw.processing_status ?? "COMPLETED");
+    const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
+    const isComplete =
+      isAiCompleted &&
+      (typeof raw.is_complete === "boolean" ? raw.is_complete : missingCount === 0) &&
+      missingCount === 0;
     const specialties = Array.isArray(raw.specialties)
       ? (raw.specialties as string[])
       : Array.isArray(raw.experts)
@@ -173,7 +178,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         typeof raw.care_adaptation_suggested === "boolean" ? raw.care_adaptation_suggested : null,
       proposedCareType: raw.proposed_care_type ? String(raw.proposed_care_type) : null,
       specialties,
-      processingStatus: String(raw.processing_status ?? "COMPLETED"),
+      processingStatus,
       processingStep: raw.processing_step ? String(raw.processing_step) : null,
       processingProgressPct: Number(raw.processing_progress_pct ?? 100),
       rcpCount: Number(raw.rcp_count ?? 1),
@@ -288,12 +293,21 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
           ? (rawMetrics.missing as string[]).filter((x) => !hiddenSet.has(x))
           : allMissingItems.filter((x) => !hiddenSet.has(x));
     const missingCount = missingItems.length;
+    const processingStatus = String(raw.processing_status ?? "COMPLETED");
+    const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
+    const hasMtdCompleted = Boolean(
+      sections.MTDCompleted && Object.keys(sections.MTDCompleted).length > 0,
+    );
     const isComplete =
-      hideMissingItems || missingCount === 0
+      hideMissingItems || (allMissingItems.length > 0 && missingCount === 0)
         ? true
-        : typeof rawMetrics.is_complete === "boolean"
-          ? rawMetrics.is_complete
-          : derivedIsComplete;
+        : !isAiCompleted || !hasMtdCompleted
+          ? false
+          : missingCount === 0
+            ? typeof rawMetrics.is_complete === "boolean"
+              ? rawMetrics.is_complete
+              : derivedIsComplete
+            : false;
     const specialties = Array.isArray(rawMetrics.specialties)
       ? (rawMetrics.specialties as string[])
       : Array.isArray(rawMetrics.experts)

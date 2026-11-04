@@ -153,6 +153,7 @@ export function deriveCompletenessInfo(
     is_complete?: boolean;
     missing_count?: number;
     missing_items?: string[];
+    processing_status?: string | null;
   },
   lang: Language = "fr",
 ): {
@@ -166,7 +167,11 @@ export function deriveCompletenessInfo(
   const missingItems = input.missing_items ?? [];
   const missingCount =
     typeof input.missing_count === "number" ? input.missing_count : missingItems.length;
-  const isComplete = input.is_complete === true && missingCount === 0;
+  const statusUpper = String(input.processing_status ?? "COMPLETED")
+    .trim()
+    .toUpperCase();
+  const isAiCompleted = statusUpper === "COMPLETED";
+  const isComplete = isAiCompleted && input.is_complete === true && missingCount === 0;
   if (isComplete) {
     return {
       status: "complete",
@@ -177,14 +182,23 @@ export function deriveCompletenessInfo(
       missingItems: [],
     };
   }
-  const count = Math.max(1, missingCount);
+  if (missingCount === 0) {
+    return {
+      status: "incomplete",
+      icon: "ic-clock",
+      badgeClass: "ds-badge--neutral",
+      label: t("completeness.pending", lang),
+      missingCount: 0,
+      missingItems: [],
+    };
+  }
   const suffix = t("completeness.incomplete.short", lang);
   return {
     status: "incomplete",
     icon: "ic-warning",
     badgeClass: "ds-badge--incomplete",
-    label: `${count} ${suffix}`,
-    missingCount: count,
+    label: `${missingCount} ${suffix}`,
+    missingCount,
     missingItems,
   };
 }
@@ -196,13 +210,17 @@ export function computeWorklistKpis(cards: MdtFormCard[]): WorklistKpis {
   let adaptationSuggestedCount = 0;
 
   for (const card of cards) {
-    if (card.processingStatus === "COMPLETED") {
+    const isAiCompleted =
+      String(card.processingStatus ?? "COMPLETED")
+        .trim()
+        .toUpperCase() === "COMPLETED";
+    if (isAiCompleted) {
       structuredCount += 1;
     }
     if (card.priorityLevel === "high") {
       highPriorityCount += 1;
     }
-    if (!card.isComplete || card.missingCount > 0) {
+    if (!isAiCompleted || !card.isComplete || card.missingCount > 0) {
       incompleteCount += 1;
     }
     if (card.careAdaptationSuggested === true) {
@@ -231,9 +249,15 @@ export function filterAndSortCards(
   const sortDir = filter.sortDir ?? "asc";
 
   const filtered = cards.filter((card) => {
+    const isCardComplete =
+      String(card.processingStatus ?? "COMPLETED")
+        .trim()
+        .toUpperCase() === "COMPLETED" &&
+      card.isComplete &&
+      card.missingCount === 0;
     if (domain !== "all" && card.domain !== domain) return false;
-    if (completeness === "complete" && !card.isComplete) return false;
-    if (completeness === "incomplete" && card.isComplete) return false;
+    if (completeness === "complete" && !isCardComplete) return false;
+    if (completeness === "incomplete" && isCardComplete) return false;
     if (priority !== "all" && card.priorityLevel !== priority) return false;
     if (orientation === "adapt" && card.careAdaptationSuggested !== true) return false;
     if (orientation === "standard" && card.careAdaptationSuggested !== false) return false;

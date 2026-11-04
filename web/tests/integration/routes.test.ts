@@ -760,6 +760,26 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(delFormRes.statusCode).toBe(302);
     expect(delFormRes.headers.location).toContain("/worklist");
 
+    // Trigger processing on paul_modele_2026_11_06.pdf (#A-1037, which had 0 missing items)
+    // While AI processing is active, it must NOT be marked as "Dossier complet" in the worklist
+    await api.processFullForm("paul_modele_2026_11_06.pdf", true, "oncology");
+    const worklistWhilePaulProcessing = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology",
+    });
+    expect(worklistWhilePaulProcessing.statusCode).toBe(200);
+    expect(worklistWhilePaulProcessing.body).toContain('data-testid="badge-processing-A-1037"');
+    expect(worklistWhilePaulProcessing.body).toContain("En attente IA");
+    expect(worklistWhilePaulProcessing.body).not.toContain("Dossier complet");
+
+    // Complete filter must exclude records whose AI analysis is not completed
+    const completeOnlyRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology&completeness=complete",
+    });
+    expect(completeOnlyRes.statusCode).toBe(200);
+    expect(completeOnlyRes.body).not.toContain("MODÈLE Paul");
+
     await app.close();
   });
 });

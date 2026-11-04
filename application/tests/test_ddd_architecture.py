@@ -222,6 +222,20 @@ class TestPureDomainEntitiesAndValueObjects:
         assert metrics["urgency_score"] == 2
         assert metrics["experts"] == ["pancreas expert"]
         assert metrics["patient"] == "Jean Dupont"
+        # Without MTDCompleted section evaluated by AI, is_complete must be False
+        assert metrics["is_complete"] is False
+
+        # Once MTDCompleted is present and processing_status is COMPLETED with no missing items, is_complete is True
+        raw_doc["MTDCompleted"] = {
+            "mtd_complete": {"is_mtd_complete": True, "what_missing": []}
+        }
+        metrics_complete = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
+        assert metrics_complete["is_complete"] is True
+
+        # If processing_status is not COMPLETED (e.g. PENDING_EXPERTS), is_complete must remain False
+        raw_doc["processing_status"] = RCPProcessingStatus.PENDING_EXPERTS.value
+        metrics_pending = PatientMDTOncologicForm.extract_card_metrics(raw_doc)
+        assert metrics_pending["is_complete"] is False
 
     def test_cross_domain_care_orientation_proposal_collaborative_schema_and_metrics(
         self,

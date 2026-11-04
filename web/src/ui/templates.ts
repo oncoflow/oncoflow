@@ -620,11 +620,22 @@ export function renderWorklistPage(
       : cards
           .map((c) => {
             const prio = derivePriorityBadgeInfo(c.priorityLevel, lang, true);
+            const proc = deriveFormProcessingState(
+              c.processingStatus,
+              c.processingStep,
+              c.processingProgressPct,
+              c.file,
+              queueJobs,
+              queueStats,
+              lang,
+            );
+            const effectiveComplete = !proc.isProcessing && c.isComplete;
             const compl = deriveCompletenessInfo(
               {
-                is_complete: c.isComplete,
+                is_complete: effectiveComplete,
                 missing_count: c.missingCount,
                 missing_items: c.missingItems,
+                processing_status: proc.isProcessing ? "RUNNING" : c.processingStatus,
               },
               lang,
             );
@@ -633,15 +644,6 @@ export function renderWorklistPage(
                 care_adaptation_suggested: c.careAdaptationSuggested,
                 proposed_care_type: c.proposedCareType,
               },
-              lang,
-            );
-            const proc = deriveFormProcessingState(
-              c.processingStatus,
-              c.processingStep,
-              c.processingProgressPct,
-              c.file,
-              queueJobs,
-              queueStats,
               lang,
             );
             const delInfo = formatDeleteDialogPatientInfo(
@@ -676,7 +678,7 @@ export function renderWorklistPage(
               : "";
 
             const completenessCell =
-              !c.isComplete && c.missingItems.length > 0
+              !effectiveComplete && c.missingItems.length > 0
                 ? `<div class="ds-hovercard" tabindex="0">
                     <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
@@ -704,7 +706,7 @@ export function renderWorklistPage(
 
             const prioSortVal =
               c.priorityLevel === "high" ? "1" : c.priorityLevel === "medium" ? "2" : "3";
-            const complSortVal = c.isComplete ? "1" : String(2 + c.missingCount);
+            const complSortVal = effectiveComplete ? "1" : String(2 + Math.max(1, c.missingCount));
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
             const rowCls = [
               c.priorityLevel === "high" ? "is-urgent" : "",
@@ -790,11 +792,22 @@ export function renderWorklistPage(
           ${cards
             .map((c) => {
               const prio = derivePriorityBadgeInfo(c.priorityLevel, lang, true);
+              const proc = deriveFormProcessingState(
+                c.processingStatus,
+                c.processingStep,
+                c.processingProgressPct,
+                c.file,
+                queueJobs,
+                queueStats,
+                lang,
+              );
+              const effectiveComplete = !proc.isProcessing && c.isComplete;
               const compl = deriveCompletenessInfo(
                 {
-                  is_complete: c.isComplete,
+                  is_complete: effectiveComplete,
                   missing_count: c.missingCount,
                   missing_items: c.missingItems,
+                  processing_status: proc.isProcessing ? "RUNNING" : c.processingStatus,
                 },
                 lang,
               );
@@ -803,15 +816,6 @@ export function renderWorklistPage(
                   care_adaptation_suggested: c.careAdaptationSuggested,
                   proposed_care_type: c.proposedCareType,
                 },
-                lang,
-              );
-              const proc = deriveFormProcessingState(
-                c.processingStatus,
-                c.processingStep,
-                c.processingProgressPct,
-                c.file,
-                queueJobs,
-                queueStats,
                 lang,
               );
               const delInfo = formatDeleteDialogPatientInfo(
@@ -830,7 +834,7 @@ export function renderWorklistPage(
               const dossierHref = c.patientId
                 ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
                 : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
-              const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
+              const cardTone = deriveRcpTone(c.priorityLevel, effectiveComplete);
               const procDataAttrs = proc.isProcessing
                 ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
                 : "";
@@ -844,7 +848,7 @@ export function renderWorklistPage(
                     ${procBadgeHtml}
                     <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
                     ${
-                      !c.isComplete && c.missingItems.length > 0
+                      !effectiveComplete && c.missingItems.length > 0
                         ? `<div class="ds-hovercard" tabindex="0">
                             <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                             <div class="ds-hovercard__panel" role="tooltip">

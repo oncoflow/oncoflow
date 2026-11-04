@@ -251,16 +251,27 @@ export class PatientDossierUseCase {
             (x) => Boolean(x) && x !== "no data" && !hiddenSet.has(x),
           )
         : allMissingItems.filter((x) => !hiddenSet.has(x));
+    const hasMtdCompleted = Object.keys(mtdCompletedRaw).length > 0;
+    const isAiCompleted =
+      String(currentForm.processingStatus ?? "COMPLETED")
+        .trim()
+        .toUpperCase() === "COMPLETED";
+    const isFormComplete =
+      hideAllMissing || (allMissingItems.length > 0 && missingItems.length === 0)
+        ? true
+        : !isAiCompleted || !hasMtdCompleted
+          ? false
+          : missingItems.length === 0
+            ? typeof currentForm.metrics.is_complete === "boolean"
+              ? currentForm.metrics.is_complete
+              : mtdNested.is_mtd_complete !== false
+            : false;
     const completenessBadge = deriveCompletenessInfo(
       {
-        is_complete:
-          hideAllMissing || missingItems.length === 0
-            ? true
-            : typeof currentForm.metrics.is_complete === "boolean"
-              ? currentForm.metrics.is_complete
-              : mtdNested.is_mtd_complete !== false && missingItems.length === 0,
+        is_complete: isFormComplete,
         missing_count: missingItems.length,
         missing_items: missingItems,
+        processing_status: currentForm.processingStatus,
       },
       lang,
     );

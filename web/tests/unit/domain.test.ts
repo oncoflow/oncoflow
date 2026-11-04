@@ -96,6 +96,29 @@ describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
     expect(complete.status).toBe("complete");
     expect(complete.icon).toBe("ic-check-circle");
     expect(complete.label).toBe("Dossier complet");
+
+    const pendingAi = deriveCompletenessInfo(
+      {
+        is_complete: true,
+        missing_count: 0,
+        processing_status: "PENDING_CLINICAL",
+      },
+      "fr",
+    );
+    expect(pendingAi.status).toBe("incomplete");
+    expect(pendingAi.icon).toBe("ic-clock");
+    expect(pendingAi.label).toBe("En attente IA");
+
+    const notEvaluated = deriveCompletenessInfo(
+      {
+        is_complete: false,
+        missing_count: 0,
+      },
+      "fr",
+    );
+    expect(notEvaluated.status).toBe("incomplete");
+    expect(notEvaluated.icon).toBe("ic-clock");
+    expect(notEvaluated.label).toBe("En attente IA");
   });
 
   it("computes the 4 M3 KPIs and filters/sorts worklist cards by priority then date", () => {

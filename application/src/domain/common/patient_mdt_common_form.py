@@ -800,10 +800,30 @@ class PatientMDTForm:
             if hide_missing_items
             else [m for m in raw_missing if m not in hidden_set]
         )
+        has_mtd_completed = bool(
+            "MTDCompleted" in d
+            and isinstance(d["MTDCompleted"], dict)
+            and len(d["MTDCompleted"]) > 0
+        )
+        status_upper = (
+            (
+                processing_status.value
+                if isinstance(processing_status, Enum)
+                else str(processing_status or "COMPLETED")
+            )
+            .strip()
+            .upper()
+        )
+        is_ai_completed = (
+            status_upper == "COMPLETED" and has_mtd_completed
+        ) or cls.is_section_manually_edited(d, "MTDCompleted")
+
         if hide_missing_items or (
             raw_missing and all(m in hidden_set for m in raw_missing)
         ):
             is_complete = True
+        elif not is_ai_completed:
+            is_complete = False
         elif raw_is_mtd_complete is not None and not missing:
             is_complete = raw_is_mtd_complete
         else:
