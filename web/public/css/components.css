@@ -3981,7 +3981,7 @@ a.ds-timeline__link:hover {
   position: relative;
   background: var(--ds-manual-bg);
   color: var(--ds-manual-fg);
-  box-shadow: inset 3px 0 0 var(--ds-manual);
+  border: 0;
   cursor: help;
 }
 .ds-kv--manual .ds-kv__label,
