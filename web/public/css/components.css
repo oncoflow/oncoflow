@@ -1847,6 +1847,9 @@ div[data-href] {
   border-bottom-right-radius: var(--ds-radius-lg);
 }
 .ds-table--dense th, .ds-table--dense td { padding: var(--ds-space-2) var(--ds-space-3); }
+@media (max-width: 85rem) {
+  .ds-table--dense th, .ds-table--dense td { padding: var(--ds-space-2) var(--ds-space-2); }
+}
 .ds-table--comfortable th, .ds-table--comfortable td { padding: var(--ds-space-3) var(--ds-space-4); font-size: var(--ds-text-md); }
 .ds-table__num { text-align: right !important; }
 .ds-table__actions { text-align: right !important; white-space: nowrap; }

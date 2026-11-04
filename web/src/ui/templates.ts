@@ -130,9 +130,17 @@ export function deriveFormProcessingState(
   const isActiveInBanner =
     Boolean(queueStats.activeFormFile && candidateFiles.has(queueStats.activeFormFile)) &&
     queueStats.running + queueStats.pending > 0;
+  const isStatusCompleted = statusUpper === "COMPLETED";
   const isStatusProcessing = ACTIVE_PROCESSING_STATUSES.has(statusUpper);
+  const activeJobForForm = !isStatusCompleted
+    ? runningJob || pendingJob
+    : matchingJobs.find(
+        (j) => (j.status === "RUNNING" || j.status === "PENDING") && j.jobType === "SECTION_RERUN",
+      );
 
-  const isProcessing = Boolean(runningJob || pendingJob || isActiveInBanner || isStatusProcessing);
+  const isProcessing = Boolean(
+    isStatusProcessing || activeJobForForm || (!isStatusCompleted && isActiveInBanner),
+  );
   const isFailed =
     !isProcessing &&
     (statusUpper === "FAILED" ||
@@ -654,10 +662,11 @@ export function renderWorklistPage(
               domainParam,
               filter.viewMode,
             );
+            const shortProcLabel = lang === "fr" ? "IA en cours" : "Processing";
             const procBadgeHtml = proc.isProcessing
-              ? ` <span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}"><span class="ds-spinner" aria-hidden="true"></span> ${esc(proc.label)}</span>`
+              ? ` <span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ? `${proc.label} (${proc.stepLabel})` : proc.label)}" data-testid="badge-processing-${esc(c.id)}"><span class="ds-spinner" aria-hidden="true"></span> ${esc(shortProcLabel)}</span>`
               : proc.isFailed
-                ? ` <span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}">${iconSvg("ic-error")} ${esc(proc.label)}</span>`
+                ? ` <span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}">${iconSvg("ic-error")} ${esc(lang === "fr" ? "Échec IA" : "Failed")}</span>`
                 : "";
             const dossierHref = c.patientId
               ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
@@ -725,10 +734,8 @@ export function renderWorklistPage(
                 </span>
               </td>
               <td data-label="Patient" class="ds-table__primary-cell" data-sort-value="${esc(c.patientName)}">
-                <span class="ds-cluster" style="gap:var(--ds-space-2);align-items:center">
-                  <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a>${procBadgeHtml}
-                </span><br>
-                <span class="ds-small ds-muted">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
+                <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a><br>
+                <span class="ds-small ds-muted">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>${procBadgeHtml ? `<div style="margin-top:2px">${procBadgeHtml.trim()}</div>` : ""}
               </td>
               <td data-label="Complétude" data-sort-value="${complSortVal}">${completenessCell}</td>
               <td data-label="Orientation pré-RCP" data-sort-value="${orientSortVal}">
