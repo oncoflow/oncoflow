@@ -1208,3 +1208,105 @@ def test_per_section_rerun_honours_preserve_manual_edits(
     )
     assert stored_after_overwrite["PatientPerformanceStatus"]["performance_status"] == 3
     assert extract_called["count"] == 1
+
+
+def test_patient_practitioner_notes_crud_and_patient_detail_inclusion(
+    api_app, client, tmp_path
+):
+    """Verify GET/PUT/DELETE /patientmdtform/patients/{id}/notes enforces 1 note max per practitioner."""
+    patient_repo = InMemoryPatientRepository()
+    mdt_repo = InMemoryPatientMDTFormRepository()
+    cache_repo = InMemoryDocumentCacheRepository()
+    conf = api_deps.get_base_config().model_copy()
+    conf.rcp.path = str(tmp_path)
+
+    doc_data: dict[str, Any] = {
+        "file": "notes_case.pdf",
+        "processing_status": "COMPLETED",
+        "PatientAdministrative": {
+            "first_name": "Claire",
+            "last_name": "Martin",
+            "date_birth": "1972-04-10",
+            "date_rcp": "2026-05-12",
+            "gender": "Female",
+        },
+    }
+    mdt_repo.upsert_fields("notes_case.pdf", doc_data)
+
+    service = PatientRecordService(
+        patient_repo=patient_repo,
+        mdt_form_repo=mdt_repo,
+        cache_repo=cache_repo,
+        config=conf,
+    )
+    saved_patient, _ = service.synchronize_patient_from_admin(
+        filename="notes_case.pdf",
+        admin_data=doc_data["PatientAdministrative"],
+    )
+    pid = saved_patient.patient_id
+
+    api_app.dependency_overrides[get_record_service] = lambda: service
+    api_app.dependency_overrides[get_mdt_form_repo] = lambda: mdt_repo
+    api_app.dependency_overrides[get_domain_config] = lambda: conf
+
+    # 1. Initially empty
+    get_resp = client.get(f"/api/v1/patientmdtform/patients/{pid}/notes")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["notes"] == []
+
+    # 2. First practitioner creates a note
+    put1 = client.put(
+        f"/api/v1/patientmdtform/patients/{pid}/notes",
+        json={
+            "practitioner_id": "dr.martin",
+            "practitioner_name": "Dr S. Martin",
+            "content": "Patient vu mardi, OMS 1.",
+        },
+    )
+    assert put1.status_code == 200
+    notes1 = put1.json()["notes"]
+    assert len(notes1) == 1
+    assert notes1[0]["practitioner_id"] == "dr.martin"
+    assert notes1[0]["practitioner_name"] == "Dr S. Martin"
+    assert notes1[0]["content"] == "Patient vu mardi, OMS 1."
+
+    # 3. Same practitioner updates their note -> still 1 note
+    put1_update = client.put(
+        f"/api/v1/patientmdtform/patients/{pid}/notes",
+        json={
+            "practitioner_id": "dr.martin",
+            "practitioner_name": "Dr S. Martin",
+            "content": "Patient vu mardi, OMS 1, bilan rénal normal.",
+        },
+    )
+    assert put1_update.status_code == 200
+    notes1_upd = put1_update.json()["notes"]
+    assert len(notes1_upd) == 1
+    assert notes1_upd[0]["content"] == "Patient vu mardi, OMS 1, bilan rénal normal."
+
+    # 4. Second practitioner adds a note -> 2 notes visible to all
+    put2 = client.put(
+        f"/api/v1/patientmdtform/patients/{pid}/notes",
+        json={
+            "practitioner_id": "dr.dupont",
+            "practitioner_name": "Dr P. Dupont",
+            "content": "Favorable à une chirurgie première.",
+        },
+    )
+    assert put2.status_code == 200
+    assert len(put2.json()["notes"]) == 2
+
+    # 5. GET /patients/{pid} includes practitioner_notes on patient object
+    detail_resp = client.get(f"/api/v1/patientmdtform/patients/{pid}")
+    assert detail_resp.status_code == 200
+    patient_json = detail_resp.json()["patient"]
+    assert len(patient_json["practitioner_notes"]) == 2
+
+    # 6. First practitioner deletes their note -> only theirs is removed
+    del_resp = client.delete(
+        f"/api/v1/patientmdtform/patients/{pid}/notes?practitioner_id=dr.martin"
+    )
+    assert del_resp.status_code == 200
+    remaining = del_resp.json()["notes"]
+    assert len(remaining) == 1
+    assert remaining[0]["practitioner_id"] == "dr.dupont"

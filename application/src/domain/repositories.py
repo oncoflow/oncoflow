@@ -23,7 +23,13 @@ class PatientRepository(Protocol):
 
     def list_all(self) -> list[Patient]: ...
 
-    def save(self, patient: Patient, filename: str | None = None) -> Patient: ...
+    def save(
+        self,
+        patient: Patient,
+        filename: str | None = None,
+        *,
+        replace_notes: bool = False,
+    ) -> Patient: ...
 
     def remove_file(self, filename: str) -> None: ...
 

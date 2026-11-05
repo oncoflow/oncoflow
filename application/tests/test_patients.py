@@ -9,7 +9,7 @@ from src.application.use_cases import (
     PatientRecordService,
 )
 from src.domain.common.common_ressources import Gender
-from src.domain.patient import Patient
+from src.domain.patient import Patient, PractitionerNote
 from src.domain.patient_mdt_form import NonPatientMDTFormError, PatientMDTForm
 from src.infrastructure.documents.repositories import (
     InMemoryDocumentCacheRepository,
@@ -397,3 +397,146 @@ class TestPatientDomainAndLogic(unittest.TestCase):
             mock_reader.vecdb.delete_collection.assert_called_once()
             self.assertFalse(os.path.exists(pdf_path))
             self.assertIsNone(mdt_form_repo.get_by_filename(pdf_file))
+
+    def test_practitioner_note_domain_one_note_per_practitioner_invariant(self):
+        patient = Patient(
+            patient_id="dupont_jean_1960_01_01",
+            first_name="Jean",
+            last_name="Dupont",
+            date_birth=datetime(1960, 1, 1),
+            files=["rcp1.pdf"],
+        )
+        t1 = datetime(2026, 5, 1, 9, 0, 0)
+        note1 = patient.upsert_practitioner_note(
+            practitioner_id="dr.martin@chu.fr",
+            practitioner_name="Dr S. Martin",
+            content="Vérifier clairance créatinine avant cisplatine.",
+            now=t1,
+        )
+        self.assertIsInstance(note1, PractitionerNote)
+        self.assertEqual(len(patient.practitioner_notes), 1)
+        self.assertEqual(note1.practitioner_id, "dr.martin@chu.fr")
+        self.assertEqual(note1.practitioner_name, "Dr S. Martin")
+        self.assertEqual(note1.created_at, t1)
+        self.assertEqual(note1.updated_at, t1)
+
+        # Same practitioner updates their note -> still 1 note, created_at preserved, updated_at bumped
+        t2 = datetime(2026, 5, 1, 9, 15, 0)
+        note1_updated = patient.upsert_practitioner_note(
+            practitioner_id="  DR.MARTIN@chu.fr ",
+            practitioner_name="Dr Sophie Martin",
+            content="Clairance OK (78 mL/min), feu vert cisplatine.",
+            now=t2,
+        )
+        self.assertEqual(len(patient.practitioner_notes), 1)
+        self.assertEqual(note1_updated.created_at, t1)
+        self.assertEqual(note1_updated.updated_at, t2)
+        self.assertEqual(note1_updated.practitioner_name, "Dr Sophie Martin")
+        self.assertEqual(
+            note1_updated.content, "Clairance OK (78 mL/min), feu vert cisplatine."
+        )
+
+        # Second practitioner adds a note -> 2 notes sorted by updated_at desc
+        t3 = datetime(2026, 5, 1, 9, 30, 0)
+        patient.upsert_practitioner_note(
+            practitioner_id="dr.bernard",
+            practitioner_name="Dr L. Bernard",
+            content="Discussion chirurgie après 4 cures.",
+            now=t3,
+        )
+        self.assertEqual(len(patient.practitioner_notes), 2)
+        self.assertEqual(patient.practitioner_notes[0].practitioner_id, "dr.bernard")
+        self.assertEqual(
+            patient.practitioner_notes[1].practitioner_id, "dr.martin@chu.fr"
+        )
+
+        # Reject empty note content
+        with self.assertRaises(ValueError):
+            patient.upsert_practitioner_note(
+                practitioner_id="dr.bernard",
+                practitioner_name="Dr L. Bernard",
+                content="   ",
+            )
+
+        # Persistence round-trip preserves notes
+        persisted = patient.to_persistence()
+        rehydrated = Patient.from_persistence(persisted)
+        self.assertEqual(len(rehydrated.practitioner_notes), 2)
+        self.assertEqual(
+            rehydrated.practitioner_notes[0].content,
+            "Discussion chirurgie après 4 cures.",
+        )
+
+        # Delete first practitioner's note -> only theirs is removed
+        removed = rehydrated.delete_practitioner_note("DR.MARTIN@CHU.FR")
+        self.assertTrue(removed)
+        self.assertEqual(len(rehydrated.practitioner_notes), 1)
+        self.assertEqual(rehydrated.practitioner_notes[0].practitioner_id, "dr.bernard")
+        self.assertFalse(rehydrated.delete_practitioner_note("unknown.dr"))
+
+    def test_patient_record_service_practitioner_notes_and_ai_isolation(self):
+        patient_repo = InMemoryPatientRepository()
+        mdt_form_repo = InMemoryPatientMDTFormRepository(
+            [
+                {
+                    "file": "rcp_session1.pdf",
+                    "patient_id": "moreau_alice_1975_08_20",
+                    "PatientAdministrative": {
+                        "first_name": "Alice",
+                        "last_name": "Moreau",
+                        "date_birth": datetime(1975, 8, 20),
+                        "date_rcp": datetime(2026, 5, 10),
+                    },
+                    "practitioner_notes": [
+                        {
+                            "practitioner_id": "dr.leak",
+                            "practitioner_name": "Dr Leak",
+                            "content": "Note secrète humaine",
+                        }
+                    ],
+                }
+            ]
+        )
+        record_service = PatientRecordService(
+            patient_repo=patient_repo,
+            mdt_form_repo=mdt_form_repo,
+        )
+
+        # Upsert note on an unlinked/synthesized patient materializes the patient and saves the note
+        notes_after_first = record_service.upsert_practitioner_note(
+            patient_id_or_file="moreau_alice_1975_08_20",
+            practitioner_id="dr.onco",
+            practitioner_name="Dr Onco",
+            content="OMS 1, patiente favorable au protocole FOLFIRINOX.",
+        )
+        self.assertEqual(len(notes_after_first), 1)
+        self.assertEqual(notes_after_first[0].practitioner_id, "dr.onco")
+
+        # Subsequent administrative sync (e.g. Wave 1 AI extraction on a new file) must preserve practitioner_notes
+        synced_patient, _ = record_service.synchronize_patient_from_admin(
+            filename="rcp_session2.pdf",
+            admin_data={
+                "first_name": "Alice",
+                "last_name": "Moreau",
+                "date_birth": datetime(1975, 8, 20),
+            },
+        )
+        self.assertEqual(len(synced_patient.practitioner_notes), 1)
+        self.assertEqual(
+            synced_patient.practitioner_notes[0].content,
+            "OMS 1, patiente favorable au protocole FOLFIRINOX.",
+        )
+
+        # AI history formatter must never include practitioner_notes
+        history_text = PatientMDTForm.format_ai_history_entries(
+            [("rcp_session1.pdf", mdt_form_repo.get_by_file("rcp_session1.pdf"))]
+        )
+        self.assertNotIn("Note secrète humaine", history_text)
+        self.assertNotIn("practitioner_notes", history_text)
+
+        # Delete note via service
+        notes_after_delete = record_service.delete_practitioner_note(
+            patient_id_or_file="moreau_alice_1975_08_20",
+            practitioner_id="dr.onco",
+        )
+        self.assertEqual(len(notes_after_delete), 0)

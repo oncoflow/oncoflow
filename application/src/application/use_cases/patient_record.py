@@ -8,7 +8,7 @@ from slugify import slugify
 from src.application.app_functions import to_naive
 from src.application.config import AppConfig
 from src.application.paths import UnsafePathError, safe_path
-from src.domain.patient import Patient
+from src.domain.patient import Patient, PractitionerNote
 from src.domain.patient_mdt_form import PatientMDTForm, get_domain_mdt_form_cls
 from src.domain.repositories import (
     DocumentCacheRepository,
@@ -386,6 +386,7 @@ class PatientRecordService:
                 date_birth=validated_admin.get("date_birth"),
                 gender=validated_admin.get("gender") or "Not_given",
                 files=all_patient_files,
+                practitioner_notes=list(old_patient.practitioner_notes),
                 updated_at=now,
             )
             saved_patient = self.patient_repo.save(updated_patient, filename=filename)
@@ -763,6 +764,61 @@ class PatientRecordService:
             "latest_file": latest_file,
             "rcps": [self.enrich_form_doc(d) for d in forms_list],
         }
+
+    def list_practitioner_notes(
+        self, patient_id_or_file: str
+    ) -> list[PractitionerNote]:
+        """
+        Return the list of human-only practitioner notes attached to a `PatientRecord`
+        (resolved by `patient_id` or `PatientMDTForm` filename).
+        """
+        patient, _, _ = self._get_patient_and_forms(patient_id_or_file)
+        if patient is None:
+            raise FileNotFoundError(
+                f"Patient record '{patient_id_or_file}' was not found."
+            )
+        return list(patient.practitioner_notes)
+
+    def upsert_practitioner_note(
+        self,
+        patient_id_or_file: str,
+        practitioner_id: str,
+        content: str,
+        practitioner_name: str | None = None,
+    ) -> list[PractitionerNote]:
+        """
+        Create or update the single human-only note authored by `practitioner_id`
+        on the resolved `PatientRecord` (`patient_id` or `filename`).
+        """
+        patient, _, _ = self._get_patient_and_forms(patient_id_or_file)
+        if patient is None:
+            raise FileNotFoundError(
+                f"Patient record '{patient_id_or_file}' was not found."
+            )
+        patient.upsert_practitioner_note(
+            practitioner_id=practitioner_id,
+            content=content,
+            practitioner_name=practitioner_name,
+        )
+        saved_patient = self.patient_repo.save(patient, replace_notes=True)
+        return list(saved_patient.practitioner_notes)
+
+    def delete_practitioner_note(
+        self,
+        patient_id_or_file: str,
+        practitioner_id: str,
+    ) -> list[PractitionerNote]:
+        """
+        Delete the human-only note authored by `practitioner_id` on the resolved `PatientRecord`.
+        """
+        patient, _, _ = self._get_patient_and_forms(patient_id_or_file)
+        if patient is None:
+            raise FileNotFoundError(
+                f"Patient record '{patient_id_or_file}' was not found."
+            )
+        patient.delete_practitioner_note(practitioner_id=practitioner_id)
+        saved_patient = self.patient_repo.save(patient, replace_notes=True)
+        return list(saved_patient.practitioner_notes)
 
     def resolve_patient_record(
         self,

@@ -13,6 +13,7 @@ import type {
   MdtFormCard,
   MdtFormDetail,
   PatientListItem,
+  PractitionerNoteItem,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -102,6 +103,21 @@ export interface OncoflowApiPort {
     language: Language,
     agentName?: string,
   ): Promise<ChatReply>;
+  getPatientNotes(patientIdOrFile: string, domain: ClinicalDomain): Promise<PractitionerNoteItem[]>;
+  upsertPatientNote(
+    patientIdOrFile: string,
+    input: {
+      practitionerId: string;
+      practitionerName: string;
+      content: string;
+    },
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]>;
+  deletePatientNote(
+    patientIdOrFile: string,
+    practitionerId: string,
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]>;
 
   // Ingest & Batch Tracking
   uploadForms(

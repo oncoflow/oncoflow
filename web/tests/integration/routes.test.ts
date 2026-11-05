@@ -144,6 +144,57 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(res.body).not.toContain('data-testid="section-PatientMDTFormCheck"');
     // Zero raw JSON blocks for MTDCompleted or RadiologicalExams
     expect(res.body).not.toContain('{"is_mtd_complete"');
+    // Practitioner notes drawer + header button + mobile FAB rendered on patient dossier
+    expect(res.body).toContain('data-testid="btn_open_practitioner_notes"');
+    expect(res.body).toContain('data-testid="btn_fab_practitioner_notes"');
+    expect(res.body).toContain('data-testid="practitioner-notes-drawer"');
+    expect(res.body).toContain("Dr M. Laurent (Chirurgie)");
+
+    // Upsert current practitioner's note via AJAX partial
+    const upsertNoteRes = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/notes?domain=oncology",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload: "content=Note+test+praticien+%3Cscript%3Ealert%281%29%3C%2Fscript%3E",
+    });
+    expect(upsertNoteRes.statusCode).toBe(200);
+    expect(upsertNoteRes.body).toContain('data-testid="my-practitioner-note-card"');
+    expect(upsertNoteRes.body).toContain(
+      "Note test praticien &lt;script&gt;alert(1)&lt;/script&gt;",
+    );
+    expect(upsertNoteRes.body).not.toContain("<script>alert(1)</script>");
+    expect(upsertNoteRes.body).toContain('data-notes-count="2"');
+
+    // Updating again overwrites the practitioner's own note (strictly 1 per practitioner)
+    const updateNoteRes = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/notes?domain=oncology",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload: "content=Note+mise+%C3%A0+jour+secondaire",
+    });
+    expect(updateNoteRes.statusCode).toBe(200);
+    expect(updateNoteRes.body).toContain("Note mise à jour secondaire");
+    expect(updateNoteRes.body).toContain('data-notes-count="2"');
+
+    // Delete current practitioner's note via AJAX partial
+    const deleteNoteRes = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/notes/delete?domain=oncology",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+    });
+    expect(deleteNoteRes.statusCode).toBe(200);
+    expect(deleteNoteRes.body).not.toContain("Note mise à jour secondaire");
+    expect(deleteNoteRes.body).toContain("Dr M. Laurent (Chirurgie)");
+    expect(deleteNoteRes.body).toContain('data-notes-count="1"');
 
     // Toggle individual missing item visibility
     const toggleMissingRes = await app.inject({

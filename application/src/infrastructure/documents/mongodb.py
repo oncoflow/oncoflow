@@ -294,7 +294,13 @@ class Mongodb:
             "patients", {"name_key": name_key, "date_birth": None}
         ) or self.get_patient(name_key)
 
-    def upsert_patient(self, patient_data: dict, filename: str | None = None) -> dict:
+    def upsert_patient(
+        self,
+        patient_data: dict,
+        filename: str | None = None,
+        *,
+        replace_notes: bool = False,
+    ) -> dict:
         """
         Creates or updates a patient document in the patients collection.
         Ensures a unique index on 'patient_id' and maintains the list of associated RCP files.
@@ -332,6 +338,19 @@ class Mongodb:
             last_name=patient_data.get("last_name"),
         )
 
+        existing_notes = (
+            existing.get("practitioner_notes")
+            if existing and isinstance(existing.get("practitioner_notes"), list)
+            else []
+        )
+        incoming_notes = patient_data.get("practitioner_notes")
+        if isinstance(incoming_notes, list) and (
+            replace_notes or incoming_notes or not existing_notes
+        ):
+            notes_to_persist = incoming_notes
+        else:
+            notes_to_persist = existing_notes
+
         upsertable = {
             "patient_id": patient_id,
             "name_key": name_key,
@@ -345,6 +364,7 @@ class Mongodb:
                 else patient_data.get("gender", "Not_given")
             ),
             "files": files,
+            "practitioner_notes": notes_to_persist,
             "updated_at": patient_data.get("updated_at") or datetime.now(),
         }
 

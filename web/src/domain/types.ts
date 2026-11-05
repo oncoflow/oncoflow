@@ -101,6 +101,14 @@ export interface PatientListItem {
   rcpCount: number;
 }
 
+export interface PractitionerNoteItem {
+  practitionerId: string;
+  practitionerName: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface LongitudinalDelta {
   key: string;
   label: string;

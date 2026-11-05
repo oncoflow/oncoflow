@@ -28,6 +28,7 @@ import type {
   MdtFormCard,
   MdtFormDetail,
   PatientListItem,
+  PractitionerNoteItem,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -827,6 +828,105 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     } catch (err) {
       if (this.fallback) {
         return this.fallback.askDossierQuestion(target, question, domain, language, agentName);
+      }
+      throw err;
+    }
+  }
+
+  private mapRawPractitionerNotes(rawList: unknown): PractitionerNoteItem[] {
+    if (!Array.isArray(rawList)) return [];
+    return rawList
+      .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"))
+      .map((item) => ({
+        practitionerId: String(item.practitioner_id ?? item.practitionerId ?? "").trim(),
+        practitionerName: String(
+          item.practitioner_name ?? item.practitionerName ?? item.practitioner_id ?? "",
+        ).trim(),
+        content: String(item.content ?? "").trim(),
+        createdAt: String(item.created_at ?? item.createdAt ?? new Date().toISOString()),
+        updatedAt: String(item.updated_at ?? item.updatedAt ?? new Date().toISOString()),
+      }))
+      .filter((n) => n.practitionerId.length > 0 && n.content.length > 0);
+  }
+
+  async getPatientNotes(
+    patientIdOrFile: string,
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientIdOrFile)}/notes?domain=${encodeURIComponent(domain)}`,
+        domain,
+      );
+      return this.mapRawPractitionerNotes(res.notes);
+    } catch (err) {
+      if (this.fallback) return this.fallback.getPatientNotes(patientIdOrFile, domain);
+      if (
+        err instanceof Error &&
+        (err.message.includes("HTTP 404") || err.message.includes("HTTP 400"))
+      ) {
+        return [];
+      }
+      throw err;
+    }
+  }
+
+  async upsertPatientNote(
+    patientIdOrFile: string,
+    input: {
+      practitionerId: string;
+      practitionerName: string;
+      content: string;
+    },
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientIdOrFile)}/notes?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Oncoflow-User": input.practitionerId,
+            "X-Oncoflow-User-Name": input.practitionerName,
+          },
+          body: JSON.stringify({
+            content: input.content,
+            practitioner_id: input.practitionerId,
+            practitioner_name: input.practitionerName,
+          }),
+        },
+      );
+      return this.mapRawPractitionerNotes(res.notes);
+    } catch (err) {
+      if (this.fallback) {
+        return this.fallback.upsertPatientNote(patientIdOrFile, input, domain);
+      }
+      throw err;
+    }
+  }
+
+  async deletePatientNote(
+    patientIdOrFile: string,
+    practitionerId: string,
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientIdOrFile)}/notes?practitioner_id=${encodeURIComponent(practitionerId)}&domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "DELETE",
+          headers: {
+            "X-Oncoflow-User": practitionerId,
+          },
+        },
+      );
+      return this.mapRawPractitionerNotes(res.notes);
+    } catch (err) {
+      if (this.fallback) {
+        return this.fallback.deletePatientNote(patientIdOrFile, practitionerId, domain);
       }
       throw err;
     }

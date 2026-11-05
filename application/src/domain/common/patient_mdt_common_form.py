@@ -970,6 +970,7 @@ class PatientMDTForm:
             "ui_date",
             "execution_times",
             "manual_edits",
+            "practitioner_notes",
             "processing_status",
             "processing_step",
             "processing_progress_pct",

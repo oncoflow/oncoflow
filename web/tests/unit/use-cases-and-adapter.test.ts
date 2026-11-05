@@ -284,6 +284,24 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
               : { patient: { patient_id: "P-1" }, latest_file: "doc.pdf" },
         };
       }
+      if (url.includes("/api/v1/patientmdtform/patients/P-1/notes")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            patient_id: "P-1",
+            notes: [
+              {
+                practitioner_id: "dr.test",
+                practitioner_name: "Dr Test",
+                content: "Note HTTP",
+                created_at: "2026-11-05T10:00:00",
+                updated_at: "2026-11-05T10:00:00",
+              },
+            ],
+          }),
+        };
+      }
       if (url.includes("/api/v1/patientmdtform/patients/P-1/chat")) {
         return {
           ok: true,
@@ -713,6 +731,24 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     await adapter.removePatientFromMdtAgenda("P-1", "oncology");
     await adapter.clearMdtAgenda("oncology");
     await adapter.movePatientInMdtAgenda("P-1", { direction: "up" }, "oncology");
+
+    const notes = await adapter.getPatientNotes("P-1", "oncology");
+    expect(notes).toHaveLength(1);
+    expect(notes[0]?.content).toBe("Note HTTP");
+    expect(
+      (
+        await adapter.upsertPatientNote(
+          "P-1",
+          {
+            practitionerId: "dr.test",
+            practitionerName: "Dr Test",
+            content: "Note HTTP",
+          },
+          "oncology",
+        )
+      ).length,
+    ).toBe(1);
+    expect((await adapter.deletePatientNote("P-1", "dr.test", "oncology")).length).toBe(1);
   });
 
   it("delegates to fallbackPort when HTTP requests fail", async () => {
@@ -792,6 +828,13 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     await adapter.movePatientInMdtAgenda(samplePid, { direction: "up" }, "oncology");
     await adapter.removePatientFromMdtAgenda(samplePid, "oncology");
     await adapter.clearMdtAgenda("oncology");
+    await adapter.getPatientNotes(samplePid, "oncology");
+    await adapter.upsertPatientNote(
+      samplePid,
+      { practitionerId: "dr.test", practitionerName: "Dr Test", content: "Fallback note" },
+      "oncology",
+    );
+    await adapter.deletePatientNote(samplePid, "dr.test", "oncology");
     await adapter.deleteForm(sampleFile, "oncology");
     await adapter.deletePatient(samplePid, "oncology");
   });

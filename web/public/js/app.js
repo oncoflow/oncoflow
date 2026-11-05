@@ -485,6 +485,35 @@
     }
   }
 
+  function setNotesDrawerOpen(isOpen) {
+    var notesDrawer = document.getElementById("practitioner-notes-drawer");
+    if (!notesDrawer) return;
+    if (isOpen) {
+      setChatDrawerOpen(false);
+    }
+    notesDrawer.classList.toggle("is-open", isOpen);
+    notesDrawer.setAttribute("aria-hidden", isOpen ? "false" : "true");
+    document
+      .querySelectorAll(
+        "[data-action='toggle-notes-drawer'], [data-action='open-notes-drawer']",
+      )
+      .forEach(function (btn) {
+        btn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      });
+    var notesFab = document.getElementById("practitioner-notes-fab");
+    if (notesFab) {
+      notesFab.classList.toggle("is-hidden", isOpen);
+    }
+    if (isOpen && window.innerWidth > 768) {
+      var noteInput = notesDrawer.querySelector("textarea");
+      if (noteInput) {
+        window.setTimeout(function () {
+          noteInput.focus();
+        }, 140);
+      }
+    }
+  }
+
   try {
     var params = new URLSearchParams(window.location.search);
     if (
@@ -493,6 +522,11 @@
       window.location.hash === "#ai-chat-drawer"
     ) {
       setChatDrawerOpen(true);
+    } else if (
+      params.get("notes") === "open" ||
+      window.location.hash === "#practitioner-notes-drawer"
+    ) {
+      setNotesDrawerOpen(true);
     }
   } catch (_e) {}
 
@@ -502,6 +536,10 @@
       var drawer = document.getElementById("ai-chat-drawer");
       if (drawer && drawer.classList.contains("is-open")) {
         setChatDrawerOpen(false);
+      }
+      var notesDrawer = document.getElementById("practitioner-notes-drawer");
+      if (notesDrawer && notesDrawer.classList.contains("is-open")) {
+        setNotesDrawerOpen(false);
       }
     }
   });
@@ -755,6 +793,34 @@
     if (closeChatDrawerBtn) {
       closeAllMenus(null);
       setChatDrawerOpen(false);
+      return;
+    }
+
+    var openNotesDrawerBtn = e.target.closest("[data-action='open-notes-drawer']");
+    if (openNotesDrawerBtn) {
+      e.preventDefault();
+      closeAllMenus(null);
+      setNotesDrawerOpen(true);
+      return;
+    }
+
+    var toggleNotesDrawerBtn = e.target.closest("[data-action='toggle-notes-drawer']");
+    if (toggleNotesDrawerBtn) {
+      e.preventDefault();
+      closeAllMenus(null);
+      var notesDrawerEl = document.getElementById("practitioner-notes-drawer");
+      if (notesDrawerEl) {
+        var nextNotesOpen = !notesDrawerEl.classList.contains("is-open");
+        setNotesDrawerOpen(nextNotesOpen);
+      }
+      return;
+    }
+
+    var closeNotesDrawerBtn = e.target.closest("[data-action='close-notes-drawer']");
+    if (closeNotesDrawerBtn) {
+      e.preventDefault();
+      closeAllMenus(null);
+      setNotesDrawerOpen(false);
       return;
     }
 
@@ -1363,6 +1429,49 @@
             host.outerHTML = html;
             initM3TextFields(document);
             initM3Selects(document);
+          }
+        })
+        .catch(function () {});
+      return;
+    }
+
+    var notesPanelId = form.getAttribute("data-ajax-notes");
+    if (notesPanelId) {
+      e.preventDefault();
+      var notesBody = new URLSearchParams(new FormData(form)).toString();
+      fetch(form.action, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "HX-Request": "true",
+        },
+        body: notesBody,
+      })
+        .then(function (r) {
+          if (!r.ok) return null;
+          return r.text();
+        })
+        .then(function (html) {
+          if (!html) return;
+          var host = document.getElementById(notesPanelId);
+          if (host) {
+            host.outerHTML = html;
+            initM3TextFields(document);
+            var updatedHost = document.getElementById(notesPanelId);
+            if (updatedHost) {
+              var nextCount = updatedHost.getAttribute("data-notes-count") || "0";
+              var hasMine = updatedHost.getAttribute("data-has-my-note") === "true";
+              document.querySelectorAll("[data-notes-count-badge]").forEach(function (badge) {
+                badge.textContent = nextCount;
+              });
+              document
+                .querySelectorAll(
+                  ".ds-patient-header__notes-btn, .ds-fab-notes__trigger",
+                )
+                .forEach(function (btn) {
+                  btn.classList.toggle("has-my-note", hasMine);
+                });
+            }
           }
         })
         .catch(function () {});

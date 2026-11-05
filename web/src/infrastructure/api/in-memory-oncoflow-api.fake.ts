@@ -30,6 +30,7 @@ import type {
   MdtFormCard,
   MdtFormDetail,
   PatientListItem,
+  PractitionerNoteItem,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -139,6 +140,7 @@ const MINIMAL_PDF_BUFFER = buildClinicalPdfBuffer(
 
 export class InMemoryOncoflowApiFake implements OncoflowApiPort {
   private forms = new Map<string, MdtFormDetail>();
+  private patientNotes = new Map<string, PractitionerNoteItem[]>();
   private batches = new Map<string, BatchStatus>();
   private resources = new Map<string, ResourceDocument>();
   private bugs = new Map<string, BugReportItem>();
@@ -681,6 +683,17 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     for (const f of [jeanne1, jeanne2, jeanne3, paul, leo1, leo2]) {
       this.forms.set(f.file, f);
     }
+
+    this.patientNotes.set("A-1042", [
+      {
+        practitionerId: "dr.chirurgie",
+        practitionerName: "Dr M. Laurent (Chirurgie)",
+        content:
+          "Vérifier l'extension vasculaire VMS sur le scanner du 28/10 avant de statuer sur la résécabilité.",
+        createdAt: "2026-11-05T08:15:00Z",
+        updatedAt: "2026-11-05T08:15:00Z",
+      },
+    ]);
 
     // Seed Resources
     this.resources.set("TNCD_Pancreas_2026.pdf", {
@@ -1246,6 +1259,64 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
         },
       ],
     };
+  }
+
+  private resolvePatientKey(patientIdOrFile: string): string {
+    const form = this.forms.get(patientIdOrFile);
+    if (form?.patientId) return form.patientId;
+    return patientIdOrFile;
+  }
+
+  async getPatientNotes(
+    patientIdOrFile: string,
+    _domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    const key = this.resolvePatientKey(patientIdOrFile);
+    return [...(this.patientNotes.get(key) ?? [])];
+  }
+
+  async upsertPatientNote(
+    patientIdOrFile: string,
+    input: {
+      practitionerId: string;
+      practitionerName: string;
+      content: string;
+    },
+    _domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    const key = this.resolvePatientKey(patientIdOrFile);
+    const normId = input.practitionerId.trim().toLowerCase();
+    const trimmedContent = input.content.trim();
+    if (!normId || !trimmedContent) {
+      throw new Error("Invalid practitioner note input");
+    }
+    const now = new Date().toISOString();
+    const existingList = this.patientNotes.get(key) ?? [];
+    const existingNote = existingList.find((n) => n.practitionerId.toLowerCase() === normId);
+    const others = existingList.filter((n) => n.practitionerId.toLowerCase() !== normId);
+    const updated: PractitionerNoteItem = {
+      practitionerId: normId,
+      practitionerName: input.practitionerName.trim() || normId,
+      content: trimmedContent.slice(0, 2000),
+      createdAt: existingNote?.createdAt ?? now,
+      updatedAt: now,
+    };
+    const nextList = [updated, ...others];
+    this.patientNotes.set(key, nextList);
+    return [...nextList];
+  }
+
+  async deletePatientNote(
+    patientIdOrFile: string,
+    practitionerId: string,
+    _domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    const key = this.resolvePatientKey(patientIdOrFile);
+    const normId = practitionerId.trim().toLowerCase();
+    const existingList = this.patientNotes.get(key) ?? [];
+    const nextList = existingList.filter((n) => n.practitionerId.toLowerCase() !== normId);
+    this.patientNotes.set(key, nextList);
+    return [...nextList];
   }
 
   async uploadForms(

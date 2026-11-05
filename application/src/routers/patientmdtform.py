@@ -45,6 +45,8 @@ from src.models.rcp import (
     PatientMDTFormDetailResponse,
     PatientMDTFormStatusResponse,
     PatientResolveResponse,
+    PractitionerNotesListResponse,
+    PractitionerNoteUpsertRequest,
     ProcessRequest,
     ProcessResponse,
     RCPCardResponse,
@@ -53,6 +55,7 @@ from src.models.rcp import (
 )
 from src.routers.dependencies import (
     DomainConfigDep,
+    get_current_user_info,
     get_db,
     require_admin,
     require_db,
@@ -183,6 +186,127 @@ def get_patient_detail(patient_id: str, record_service: RecordServiceDep):
         "latest_file": detail["latest_file"],
         "rcps": [serialize_mongo_doc(d) for d in detail["rcps"]],
     }
+
+
+def _resolve_practitioner_identity(
+    user_info: dict[str, str | bool | None],
+    fallback_id: str | None = None,
+    fallback_name: str | None = None,
+) -> tuple[str, str]:
+    """
+    Resolve `(practitioner_id, practitioner_name)` from trusted reverse-proxy headers
+    (`get_current_user_info`), falling back to session identity passed by the BFF/UI.
+    """
+    header_user = str(user_info.get("username") or "").strip()
+    header_name = str(user_info.get("display_name") or "").strip()
+    practitioner_id = header_user or (fallback_id or "").strip()
+    if not practitioner_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Identifiant du praticien manquant.",
+        )
+    practitioner_name = header_name or (fallback_name or "").strip() or practitioner_id
+    return practitioner_id, practitioner_name
+
+
+@router.get(
+    "/patients/{patient_id}/notes",
+    response_model=PractitionerNotesListResponse,
+)
+def get_patient_practitioner_notes(
+    patient_id: str,
+    record_service: RecordServiceDep,
+):
+    """Retrieve all human-only practitioner notes attached to a PatientRecord."""
+    try:
+        notes = record_service.list_practitioner_notes(patient_id)
+        return {
+            "patient_id": patient_id,
+            "notes": [n.model_dump(mode="json") for n in notes],
+        }
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        ) from err
+
+
+@router.put(
+    "/patients/{patient_id}/notes",
+    response_model=PractitionerNotesListResponse,
+)
+def upsert_patient_practitioner_note(
+    patient_id: str,
+    request: PractitionerNoteUpsertRequest,
+    record_service: RecordServiceDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
+):
+    """Create or update the authenticated practitioner's single note on a PatientRecord."""
+    practitioner_id, practitioner_name = _resolve_practitioner_identity(
+        user_info,
+        fallback_id=request.practitioner_id,
+        fallback_name=request.practitioner_name,
+    )
+    try:
+        notes = record_service.upsert_practitioner_note(
+            patient_id_or_file=patient_id,
+            practitioner_id=practitioner_id,
+            content=request.content,
+            practitioner_name=practitioner_name,
+        )
+        return {
+            "patient_id": patient_id,
+            "notes": [n.model_dump(mode="json") for n in notes],
+        }
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+
+@router.delete(
+    "/patients/{patient_id}/notes",
+    response_model=PractitionerNotesListResponse,
+)
+def delete_patient_practitioner_note(
+    patient_id: str,
+    record_service: RecordServiceDep,
+    user_info: Annotated[dict[str, str | bool | None], Depends(get_current_user_info)],
+    practitioner_id: Annotated[
+        str | None,
+        Query(description="Practitioner identifier resolved by the BFF/UI session"),
+    ] = None,
+):
+    """Delete the authenticated practitioner's note on a PatientRecord."""
+    resolved_id, _ = _resolve_practitioner_identity(
+        user_info,
+        fallback_id=practitioner_id,
+    )
+    try:
+        notes = record_service.delete_practitioner_note(
+            patient_id_or_file=patient_id,
+            practitioner_id=resolved_id,
+        )
+        return {
+            "patient_id": patient_id,
+            "notes": [n.model_dump(mode="json") for n in notes],
+        }
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
 
 
 @router.get("/schema", response_model=DomainFormSchemaResponse)

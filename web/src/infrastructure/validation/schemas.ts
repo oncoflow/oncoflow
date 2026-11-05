@@ -179,6 +179,11 @@ export const ChatBodySchema = z.object({
   agentName: optionalTrimmedString,
 });
 
+export const PractitionerNoteBodySchema = z.object({
+  content: trimmedString.catch(""),
+  filename: optionalTrimmedString,
+});
+
 export const FeedbackCreateBodySchema = z.object({
   title: trimmedString.transform((s) => s || "Signalement"),
   description: trimmedString.catch(""),

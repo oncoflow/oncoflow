@@ -850,6 +850,127 @@ def _coerce_to_date(val: Any) -> date | None:
     return None
 
 
+@st.dialog("📝 Notes des praticiens", width="large")
+def open_practitioner_notes_dialog(
+    patient_id_or_file: str,
+    patient_name: str,
+) -> None:
+    """
+    Modal dialog allowing practitioners to view colleagues' clinical notes on a patient record
+    and create, edit, or delete their own single note (strictly 1 note per practitioner per patient,
+    never exposed to AI prompts).
+    """
+    record_service = _get_record_service()
+    practitioner_id = str(st.session_state.get("username") or "dr.local").strip()
+    practitioner_name = str(
+        st.session_state.get("name") or st.session_state.get("username") or "Praticien"
+    ).strip()
+
+    try:
+        notes = record_service.list_practitioner_notes(patient_id_or_file)
+    except Exception:
+        notes = []
+
+    my_note = next((n for n in notes if n.practitioner_id == practitioner_id), None)
+    other_notes = [n for n in notes if n.practitioner_id != practitioner_id]
+
+    st.caption(
+        f"👤 **Dossier :** {patient_name} · 🛡️ *Note humaine uniquement (1 note max par praticien, jamais transmise à l'IA)*"
+    )
+
+    with st.container(border=True):
+        st.markdown(f"##### ✍️ Ma note ({practitioner_name})")
+        if my_note is not None:
+            upd_str = my_note.updated_at.strftime("%d/%m/%Y %H:%M")
+            st.caption(f"Dernière mise à jour : {upd_str}")
+
+        note_content = st.text_area(
+            "Contenu de votre note clinique",
+            value=my_note.content if my_note is not None else "",
+            max_chars=2000,
+            height=130,
+            label_visibility="collapsed",
+            placeholder="Saisissez votre note personnelle pour l'équipe RCP (max 2000 caractères)...",
+            key=f"txt_practitioner_note_{patient_id_or_file}",
+        )
+
+        col_save, col_del = st.columns([3, 1])
+        with col_save:
+            save_label = (
+                "💾 Mettre à jour ma note"
+                if my_note is not None
+                else "💾 Enregistrer ma note"
+            )
+            if st.button(
+                save_label,
+                type="primary",
+                width="stretch",
+                key=f"btn_save_note_{patient_id_or_file}",
+            ):
+                if not note_content or not note_content.strip():
+                    st.error(
+                        "Veuillez saisir un contenu avant d'enregistrer votre note.",
+                        icon=":material/error:",
+                    )
+                else:
+                    try:
+                        record_service.upsert_practitioner_note(
+                            patient_id_or_file,
+                            practitioner_id=practitioner_id,
+                            practitioner_name=practitioner_name,
+                            content=note_content.strip(),
+                        )
+                        st.toast("Votre note a été enregistrée", icon="📝")
+                        st.rerun()
+                    except Exception as err:
+                        st.error(
+                            f"Impossible d'enregistrer la note : {err}",
+                            icon=":material/error:",
+                        )
+
+        with col_del:
+            if my_note is not None:
+                if st.button(
+                    "Supprimer",
+                    icon=":material/delete:",
+                    type="secondary",
+                    width="stretch",
+                    key=f"btn_del_note_{patient_id_or_file}",
+                ):
+                    try:
+                        record_service.delete_practitioner_note(
+                            patient_id_or_file,
+                            practitioner_id=practitioner_id,
+                        )
+                        st.toast("Votre note a été supprimée", icon="🗑️")
+                        st.rerun()
+                    except Exception as err:
+                        st.error(
+                            f"Impossible de supprimer la note : {err}",
+                            icon=":material/error:",
+                        )
+
+    st.markdown(f"##### 👥 Notes des confrères ({len(other_notes)})")
+    if not other_notes:
+        st.info(
+            "Aucune note d'un autre praticien n'est enregistrée sur ce dossier.",
+            icon=":material/info:",
+        )
+    else:
+        with st.container(
+            height=280,
+            border=False,
+            key=f"clinical_scroll_notes_{patient_id_or_file}",
+        ):
+            for other in other_notes:
+                with st.container(border=True):
+                    upd_str = other.updated_at.strftime("%d/%m/%Y %H:%M")
+                    st.markdown(
+                        f"**👨‍⚕️ {other.practitioner_name}** · :gray-badge[🕒 {upd_str}]"
+                    )
+                    st.markdown(other.content)
+
+
 @st.dialog("👤 Identité du patient & Rattachement du dossier", width="large")
 def open_patient_identity_and_link_dialog(
     filename: str,
@@ -1331,6 +1452,28 @@ def render_unified_patient_banner(
                 vertical_alignment="center",
             )
             with action_bar:
+                target_patient_ref = (
+                    patient.patient_id if patient is not None else default_file
+                )
+                notes_count = (
+                    len(patient.practitioner_notes)
+                    if (patient is not None and patient.practitioner_notes)
+                    else 0
+                )
+                if st.button(
+                    f"Notes ({notes_count})",
+                    icon=":material/sticky_note_2:",
+                    type="primary" if notes_count > 0 else "secondary",
+                    key=f"btn_open_notes_dlg_{section_key}_{default_file}",
+                    help="Consulter les notes des praticiens ou ajouter votre note personnelle sur ce dossier",
+                ):
+                    open_practitioner_notes_dialog(
+                        patient_id_or_file=target_patient_ref,
+                        patient_name=(
+                            patient.full_name if patient is not None else default_file
+                        ),
+                    )
+
                 if st.button(
                     "Modifier",
                     icon=":material/edit:",

@@ -157,6 +157,73 @@ class PatientIdentity(BaseModel):
         )
 
 
+class PractitionerNote(BaseModel):
+    """
+    Immutable Value Object representing a human-only clinical note authored by a practitioner
+    on a PatientRecord (maximum 1 note per practitioner per patient record).
+    Never passed to AI agents or LLM prompts.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    practitioner_id: str = Field(
+        min_length=1,
+        max_length=128,
+        description="Unique normalized identifier of the authoring practitioner",
+    )
+    practitioner_name: str = Field(
+        min_length=1,
+        max_length=128,
+        description="Display name of the authoring practitioner shown to colleagues",
+    )
+    content: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="Free-text human note content (visible to all practitioners, excluded from AI)",
+    )
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        description="Timestamp when the note was initially created",
+    )
+    updated_at: datetime = Field(
+        default_factory=datetime.now,
+        description="Timestamp when the note was last modified",
+    )
+
+    @staticmethod
+    def normalize_practitioner_id(practitioner_id: str | None) -> str:
+        """Normalize a practitioner identifier into a trimmed lowercase string."""
+        cleaned = (practitioner_id or "").strip().lower()
+        if not cleaned:
+            raise ValueError("Practitioner identifier must not be empty.")
+        return cleaned[:128]
+
+    @field_validator("practitioner_id", mode="before")
+    @classmethod
+    def validate_practitioner_id(cls, v: Any) -> str:
+        return cls.normalize_practitioner_id(str(v) if v is not None else "")
+
+    @field_validator("practitioner_name", mode="before")
+    @classmethod
+    def validate_practitioner_name(cls, v: Any) -> str:
+        cleaned = (str(v) if v is not None else "").strip()
+        if not cleaned:
+            raise ValueError("Practitioner display name must not be empty.")
+        return cleaned[:128]
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def validate_content(cls, v: Any) -> str:
+        cleaned = (str(v) if v is not None else "").strip()
+        if not cleaned:
+            raise ValueError("Practitioner note content must not be empty.")
+        if len(cleaned) > 2000:
+            raise ValueError(
+                "Practitioner note content must not exceed 2000 characters."
+            )
+        return cleaned
+
+
 class Patient(BaseModel):
     """
     Pure Domain Aggregate Root representing a patient and the list of their associated PatientMDTForm filenames.
@@ -179,6 +246,10 @@ class Patient(BaseModel):
     files: list[str] = Field(
         default_factory=list,
         description="List of associated PatientMDTForm PDF filenames",
+    )
+    practitioner_notes: list[PractitionerNote] = Field(
+        default_factory=list,
+        description="Human-only clinical notes authored by practitioners (1 max per practitioner)",
     )
     updated_at: Optional[datetime] = Field(
         default=None, description="Last update timestamp"
@@ -250,6 +321,62 @@ class Patient(BaseModel):
         self.files = [f for f in self.files if f != filename]
         self.updated_at = datetime.now()
         return True
+
+    def upsert_practitioner_note(
+        self,
+        practitioner_id: str,
+        content: str,
+        practitioner_name: str | None = None,
+        now: datetime | None = None,
+    ) -> PractitionerNote:
+        """
+        Create or update the single human-only note authored by `practitioner_id` on this patient record.
+        Enforces the '1 note max per practitioner' domain invariant and sorts notes by `updated_at` descending.
+        """
+        norm_id = PractitionerNote.normalize_practitioner_id(practitioner_id)
+        effective_now = now or datetime.now()
+        display_name = (practitioner_name or "").strip() or norm_id
+
+        existing_note: PractitionerNote | None = None
+        remaining_notes: list[PractitionerNote] = []
+        for note in self.practitioner_notes:
+            if note.practitioner_id == norm_id and existing_note is None:
+                existing_note = note
+            elif note.practitioner_id != norm_id:
+                remaining_notes.append(note)
+
+        created_at = existing_note.created_at if existing_note else effective_now
+        updated_note = PractitionerNote(
+            practitioner_id=norm_id,
+            practitioner_name=display_name,
+            content=content,
+            created_at=created_at,
+            updated_at=effective_now,
+        )
+        remaining_notes.append(updated_note)
+        remaining_notes.sort(key=lambda n: n.updated_at, reverse=True)
+        self.practitioner_notes = remaining_notes
+        self.updated_at = effective_now
+        return updated_note
+
+    def delete_practitioner_note(
+        self,
+        practitioner_id: str,
+        now: datetime | None = None,
+    ) -> bool:
+        """
+        Remove the practitioner note authored by `practitioner_id` if present.
+        Returns True when a note was removed, False otherwise.
+        """
+        norm_id = PractitionerNote.normalize_practitioner_id(practitioner_id)
+        before_count = len(self.practitioner_notes)
+        self.practitioner_notes = [
+            n for n in self.practitioner_notes if n.practitioner_id != norm_id
+        ]
+        if len(self.practitioner_notes) != before_count:
+            self.updated_at = now or datetime.now()
+            return True
+        return False
 
     def apply_to_administrative(
         self,
@@ -337,6 +464,8 @@ class Patient(BaseModel):
         if filename and filename not in files:
             files.append(filename)
 
+        raw_notes = existing_dict.get("practitioner_notes") or []
+
         return cls(
             patient_id=resolved_id,
             first_name=first_name,
@@ -345,6 +474,7 @@ class Patient(BaseModel):
             date_birth=date_birth,
             gender=gender,
             files=files,
+            practitioner_notes=raw_notes,
             updated_at=datetime.now(),
         )
 
@@ -352,6 +482,9 @@ class Patient(BaseModel):
     def from_persistence(cls, raw: dict[str, Any]) -> Self:
         """Hydrate a `Patient` aggregate from a persistence dictionary."""
         clean = {k: v for k, v in raw.items() if k not in ("_id", "name_key")}
+        raw_notes = clean.get("practitioner_notes")
+        if isinstance(raw_notes, dict):
+            clean["practitioner_notes"] = list(raw_notes.values())
         return cls.model_validate(clean)
 
     def to_persistence(self) -> dict[str, Any]:
@@ -369,5 +502,8 @@ class Patient(BaseModel):
                 else str(self.gender)
             ),
             "files": list(self.files),
+            "practitioner_notes": [
+                n.model_dump(mode="python") for n in self.practitioner_notes
+            ],
             "updated_at": self.updated_at or datetime.now(),
         }

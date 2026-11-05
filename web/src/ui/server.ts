@@ -29,6 +29,7 @@ import {
   FeedbackStatusBodySchema,
   MissingItemsBodySchema,
   normalizeFormStringList,
+  PractitionerNoteBodySchema,
   PreferencesBodySchema,
   parseWorklistFilter,
   QueueCleanBodySchema,
@@ -41,6 +42,7 @@ import {
   renderFeedbackPage,
   renderGuidelinesPage,
   renderIngestPage,
+  renderPractitionerNotesPanelPartial,
   renderQueueAdminPage,
   renderQueueBannerPartial,
   renderSectionDetailsPartial,
@@ -1115,6 +1117,79 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
           { question: body.question, reply: chatReply },
         ]),
       );
+  });
+
+  async function handlePractitionerNoteMutation(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    session: UserSession,
+    patientIdOrFile: string,
+    mode: "upsert" | "delete",
+  ) {
+    const body = PractitionerNoteBodySchema.parse(req.body ?? {});
+    let notes = await dossierUseCase.getNotes(patientIdOrFile, session.domain).catch(() => []);
+
+    if (mode === "upsert") {
+      if (body.content.length > 0) {
+        notes = await dossierUseCase.upsertNote(
+          patientIdOrFile,
+          {
+            practitionerId: session.userId,
+            practitionerName: session.userName,
+            content: body.content,
+          },
+          session.domain,
+        );
+      }
+    } else {
+      notes = await dossierUseCase.deleteNote(patientIdOrFile, session.userId, session.domain);
+    }
+
+    if (req.headers["hx-request"] === "true") {
+      const dossier = await dossierUseCase
+        .getDossier(patientIdOrFile, session.domain, session.language, body.filename)
+        .catch(() => null);
+      return reply.type("text/html; charset=utf-8").send(
+        renderPractitionerNotesPanelPartial({
+          patientIdOrFile: dossier?.patientId ?? patientIdOrFile,
+          patientName: dossier?.patientName ?? patientIdOrFile,
+          currentFormFile: dossier?.currentForm.file ?? body.filename ?? patientIdOrFile,
+          domain: session.domain,
+          session,
+          notes,
+        }),
+      );
+    }
+
+    const isPdf = patientIdOrFile.toLowerCase().endsWith(".pdf");
+    const fallbackUrl = isPdf
+      ? `/forms/${encodeURIComponent(patientIdOrFile)}?domain=${encodeURIComponent(session.domain)}&notes=open`
+      : `/patients/${encodeURIComponent(patientIdOrFile)}?domain=${encodeURIComponent(session.domain)}${body.filename ? `&file=${encodeURIComponent(body.filename)}` : ""}&notes=open`;
+    return reply.redirect(sanitizeLocalRedirect(req.headers.referer, fallbackUrl));
+  }
+
+  app.post("/patients/:patientId/notes", async (req, reply) => {
+    const session = resolveSession(req);
+    const { patientId } = req.params as { patientId: string };
+    return handlePractitionerNoteMutation(req, reply, session, patientId, "upsert");
+  });
+
+  app.post("/patients/:patientId/notes/delete", async (req, reply) => {
+    const session = resolveSession(req);
+    const { patientId } = req.params as { patientId: string };
+    return handlePractitionerNoteMutation(req, reply, session, patientId, "delete");
+  });
+
+  app.post("/forms/:filename/notes", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename } = req.params as { filename: string };
+    return handlePractitionerNoteMutation(req, reply, session, filename, "upsert");
+  });
+
+  app.post("/forms/:filename/notes/delete", async (req, reply) => {
+    const session = resolveSession(req);
+    const { filename } = req.params as { filename: string };
+    return handlePractitionerNoteMutation(req, reply, session, filename, "delete");
   });
 
   // 6. Same-Origin PDF Streaming (Forms & Guidelines with HTTP Byte-Range & ETag support)

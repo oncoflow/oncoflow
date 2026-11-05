@@ -56,7 +56,13 @@ class InMemoryPatientRepository:
     def list_all(self) -> list[Patient]:
         return [p.model_copy(deep=True) for p in self._patients.values()]
 
-    def save(self, patient: Patient, filename: str | None = None) -> Patient:
+    def save(
+        self,
+        patient: Patient,
+        filename: str | None = None,
+        *,
+        replace_notes: bool = False,
+    ) -> Patient:
         existing = self._patients.get(patient.patient_id)
         files: list[str] = []
         if existing:
@@ -69,9 +75,16 @@ class InMemoryPatientRepository:
         if filename and filename not in files:
             files.append(filename)
 
+        notes = (
+            list(patient.practitioner_notes)
+            if (replace_notes or patient.practitioner_notes or existing is None)
+            else list(existing.practitioner_notes)
+        )
+
         updated = patient.model_copy(
             update={
                 "files": files,
+                "practitioner_notes": notes,
                 "name_key": Patient.build_name_key(
                     patient.first_name, patient.last_name
                 ),
@@ -421,8 +434,18 @@ class MongoPatientRepository:
         docs = self.db_client.get_all_patients()
         return [Patient.from_persistence(d) for d in docs]
 
-    def save(self, patient: Patient, filename: str | None = None) -> Patient:
-        raw = self.db_client.upsert_patient(patient.to_persistence(), filename=filename)
+    def save(
+        self,
+        patient: Patient,
+        filename: str | None = None,
+        *,
+        replace_notes: bool = False,
+    ) -> Patient:
+        raw = self.db_client.upsert_patient(
+            patient.to_persistence(),
+            filename=filename,
+            replace_notes=replace_notes,
+        )
         return Patient.from_persistence(raw)
 
     def upsert(self, patient: Patient, filename: str | None = None) -> Patient:

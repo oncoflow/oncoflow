@@ -148,6 +148,43 @@ class PatientCardResponse(BaseModel):
     processing_progress_pct: Optional[float] = None
 
 
+class PractitionerNoteResponse(BaseModel):
+    """Human-only clinical note authored by a practitioner on a PatientRecord."""
+
+    practitioner_id: str
+    practitioner_name: str
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class PractitionerNoteUpsertRequest(BaseModel):
+    """Request payload to create or update the authenticated practitioner's note on a PatientRecord."""
+
+    content: str = Field(
+        min_length=1,
+        max_length=2000,
+        description="Note content (1 note max per practitioner, visible to all practitioners, never sent to AI)",
+    )
+    practitioner_id: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description="Practitioner identifier resolved by the BFF/UI session",
+    )
+    practitioner_name: Optional[str] = Field(
+        default=None,
+        max_length=128,
+        description="Practitioner display name resolved by the BFF/UI session",
+    )
+
+
+class PractitionerNotesListResponse(BaseModel):
+    """List of practitioner notes attached to a PatientRecord."""
+
+    patient_id: str
+    notes: List[PractitionerNoteResponse] = Field(default_factory=list)
+
+
 class PatientResponse(BaseModel):
     """Patient identity exposed by the API (whitelisted fields without internal MongoDB metadata)."""
 
@@ -158,6 +195,7 @@ class PatientResponse(BaseModel):
     date_birth: Optional[datetime] = None
     gender: Optional[str] = None
     files: List[str] = Field(default_factory=list)
+    practitioner_notes: List[PractitionerNoteResponse] = Field(default_factory=list)
     updated_at: Optional[datetime] = None
 
 

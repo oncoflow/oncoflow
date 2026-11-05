@@ -33,6 +33,10 @@ import {
   resolveCitationPdfHref,
 } from "./components/ai-chat.component.js";
 import {
+  renderPractitionerNotesDrawer,
+  renderPractitionerNotesPanelPartial,
+} from "./components/practitioner-notes.component.js";
+import {
   deriveRcpTone,
   esc,
   escapeHtml,
@@ -62,6 +66,8 @@ export {
   renderAiChatDrawer,
   renderAiThinkingModule,
   renderChatLogMessagePartial,
+  renderPractitionerNotesDrawer,
+  renderPractitionerNotesPanelPartial,
   renderStatusPage,
   SafeHtml,
   type StatusPageOptions,
@@ -2002,6 +2008,20 @@ export function renderDossierPage(
     domain: session.domain,
   });
 
+  const notesTargetId = dossier.patientId ?? dossier.currentForm.file;
+  const practitionerNotes = dossier.practitionerNotes ?? [];
+  const hasMyPractitionerNote = practitionerNotes.some(
+    (n) => n.practitionerId.trim().toLowerCase() === session.userId.trim().toLowerCase(),
+  );
+  const dossierNotesDrawerHtml = renderPractitionerNotesDrawer({
+    patientIdOrFile: notesTargetId,
+    patientName: dossier.patientName,
+    currentFormFile: dossier.currentForm.file,
+    domain: session.domain,
+    session,
+    notes: practitionerNotes,
+  });
+
   const agendaNavHtml = agendaNav
     ? `<nav class="ds-card ds-agenda-dossier-nav" aria-label="Navigation de l'ordre du jour RCP" data-testid="agenda-dossier-nav">
         <div class="ds-agenda-dossier-nav__prev">
@@ -2122,6 +2142,10 @@ export function renderDossierPage(
           </div>
 
           <div class="ds-patient-header__actions">
+            <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm ds-patient-header__notes-btn${hasMyPractitionerNote ? " has-my-note" : ""}" data-action="toggle-notes-drawer" aria-controls="practitioner-notes-drawer" aria-expanded="false" title="Notes des praticiens (lecture humaine uniquement)" data-testid="btn_open_practitioner_notes">
+              ${iconSvg("ic-edit")} <span>Notes</span>
+              <span class="ds-badge ds-badge--neutral ds-badge--sm" id="header-notes-count-badge" data-notes-count-badge>${practitionerNotes.length}</span>
+            </button>
             <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm ds-patient-header__quick-action" data-open="link-patient-modal" data-testid="btn_link_patient">
               ${iconSvg("ic-link")} Rattacher
             </button>
@@ -2137,6 +2161,10 @@ export function renderDossierPage(
               </summary>
               <div class="ds-menu__panel" role="menu">
                 <div class="ds-menu__header">Dossier ${esc(dossier.patientName)}</div>
+                <button type="button" class="ds-menu__item" role="menuitem" data-action="open-notes-drawer">
+                  ${iconSvg("ic-edit")}
+                  <span>Notes des praticiens (${practitionerNotes.length})</span>
+                </button>
                 <button type="button" class="ds-menu__item" role="menuitem" data-open="link-patient-modal">
                   ${iconSvg("ic-link")}
                   <span>Rattacher à un autre patient…</span>
@@ -2336,6 +2364,7 @@ export function renderDossierPage(
     </div>
 
     ${dossierChatDrawerHtml}
+    ${dossierNotesDrawerHtml}
 
     <!-- Modal: Link Form to Patient -->
     <dialog class="ds-modal" id="link-patient-modal" aria-labelledby="link-modal-title">

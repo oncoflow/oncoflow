@@ -34,6 +34,7 @@ import type {
   ManualEditMetadata,
   MdtFormDetail,
   PatientListItem,
+  PractitionerNoteItem,
   PriorityLevel,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
@@ -149,6 +150,7 @@ export interface PatientDossierView {
   };
   allPatients: PatientListItem[];
   agents: AgentModuleInfo[];
+  practitionerNotes: PractitionerNoteItem[];
 }
 
 const LONG_TEXT_KEYS = new Set([
@@ -306,10 +308,15 @@ export class PatientDossierUseCase {
       : [];
     const specialties = rawSpecs.map((s) => getAgentPresentation(s, lang));
 
-    const [allPatients, agents, domainSchema] = await Promise.all([
+    const resolvedPatientId =
+      currentForm.patientId ?? (!target.toLowerCase().endsWith(".pdf") ? target : null);
+    const notesKey = resolvedPatientId ?? currentForm.file;
+
+    const [allPatients, agents, domainSchema, practitionerNotes] = await Promise.all([
       this.api.listPatients(domain, false),
       this.api.listAgents(domain, lang),
       this.api.getDomainSchema(domain).catch(() => null),
+      this.api.getPatientNotes(notesKey, domain).catch(() => []),
     ]);
 
     const deltas = computeLongitudinalDeltas(currentForm, previousForm, lang);
@@ -360,7 +367,7 @@ export class PatientDossierUseCase {
         : null);
 
     return {
-      patientId: currentForm.patientId ?? (!target.toLowerCase().endsWith(".pdf") ? target : null),
+      patientId: resolvedPatientId,
       patientName,
       firstName,
       lastName,
@@ -396,6 +403,7 @@ export class PatientDossierUseCase {
       },
       allPatients,
       agents,
+      practitionerNotes,
     };
   }
 
@@ -1004,5 +1012,29 @@ export class PatientDossierUseCase {
     agentName?: string,
   ): Promise<ChatReply> {
     return this.api.askDossierQuestion(target, question, domain, lang, agentName);
+  }
+
+  async getNotes(patientIdOrFile: string, domain: ClinicalDomain): Promise<PractitionerNoteItem[]> {
+    return this.api.getPatientNotes(patientIdOrFile, domain);
+  }
+
+  async upsertNote(
+    patientIdOrFile: string,
+    input: {
+      practitionerId: string;
+      practitionerName: string;
+      content: string;
+    },
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    return this.api.upsertPatientNote(patientIdOrFile, input, domain);
+  }
+
+  async deleteNote(
+    patientIdOrFile: string,
+    practitionerId: string,
+    domain: ClinicalDomain,
+  ): Promise<PractitionerNoteItem[]> {
+    return this.api.deletePatientNote(patientIdOrFile, practitionerId, domain);
   }
 }
