@@ -818,7 +818,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       query.file,
     );
     const activeTab =
-      query.tab === "patient-dashboard" || query.tab === "dashboard"
+      query.view === "dashboard" ||
+      query.view === "patient-dashboard" ||
+      query.tab === "patient-dashboard" ||
+      query.tab === "dashboard"
         ? "patient-dashboard"
         : query.tab === "opinions"
           ? "opinions"
@@ -844,7 +847,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
 
     await dossierUseCase.triggerPatientSummary(patientId, session.domain, force);
     return reply.redirect(
-      `/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(session.domain)}&tab=patient-dashboard#patient-summary-card`,
+      `/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(session.domain)}&view=dashboard#patient-summary-card`,
     );
   });
 
@@ -879,7 +882,10 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       filename,
     );
     const activeTab =
-      query.tab === "patient-dashboard" || query.tab === "dashboard"
+      query.view === "dashboard" ||
+      query.view === "patient-dashboard" ||
+      query.tab === "patient-dashboard" ||
+      query.tab === "dashboard"
         ? "patient-dashboard"
         : query.tab === "opinions"
           ? "opinions"

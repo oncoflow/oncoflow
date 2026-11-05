@@ -945,6 +945,16 @@
       });
       var nextTab = tabs[idx];
       if (nextTab) {
+        if (nextTab.id === "tab-patient-dashboard" || nextTab.id === "tab-patient-rcp") {
+          var synopticCard = document.querySelector("[data-testid='synoptic-card']");
+          if (synopticCard) {
+            synopticCard.setAttribute(
+              "data-patient-view",
+              nextTab.id === "tab-patient-dashboard" ? "dashboard" : "rcp",
+            );
+          }
+          window.dispatchEvent(new Event("resize"));
+        }
         syncTabIndicator(nextTab);
         if (focus) nextTab.focus();
       }
@@ -956,7 +966,13 @@
 
     try {
       var params = new URLSearchParams(window.location.search);
-      var requestedTab = params.get("tab");
+      var requestedView = params.get("view");
+      var requestedTab =
+        params.get("tab") ||
+        (requestedView === "dashboard" || requestedView === "patient-dashboard"
+          ? "patient-dashboard"
+          : null);
+      if (requestedTab === "dashboard") requestedTab = "patient-dashboard";
       if (requestedTab) {
         tabs.forEach(function (t, i) {
           if (t.id === "tab-" + requestedTab) selectTab(i, false);

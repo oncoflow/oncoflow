@@ -760,6 +760,10 @@ export function renderWorklistPage(
                         ${iconSvg("ic-folder")}
                         <span>Ouvrir le dossier longitudinal</span>
                       </a>
+                      <a class="ds-menu__item" role="menuitem" href="${dossierHref}&view=dashboard#panel-patient-dashboard">
+                        ${iconSvg("ic-trend-up")}
+                        <span>Tableau de bord patient</span>
+                      </a>
                       <a class="ds-menu__item" role="menuitem" href="${dossierHref}&tab=opinions#panel-opinions">
                         ${iconSvg("ic-compass")}
                         <span>Avis &amp; orientation pré-RCP</span>
@@ -2060,11 +2064,14 @@ export function renderDossierPage(
       </div>`
     : "";
 
+  const isDashboardView = activeTab === "patient-dashboard";
+  const rcpTab = activeTab === "opinions" ? "opinions" : "clinical";
+
   const bodyHtml = `
     ${agendaNavHtml}
-    <!-- Unified RCP Hero Card: Compact 2-Line Header + Always-Visible Synoptic Markers + Collapsible RCP Timeline -->
-    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
-      <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata) -->
+    <!-- Unified Patient Hero Card: Compact 2-Line Header + Patient-Level View Switcher + Session Markers & Timeline -->
+    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card" data-patient-view="${isDashboardView ? "dashboard" : "rcp"}"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
+      <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata + Patient-Level View Tabs) -->
       <div class="ds-synoptic__row ds-patient-header" data-testid="patient-rcp-header">
         <div class="ds-patient-header__top">
           <h1 class="ds-patient-header__name">${esc(dossier.patientName)}</h1>
@@ -2177,26 +2184,38 @@ export function renderDossierPage(
           </div>
         </div>
 
-        <ul class="ds-patient-header__meta">
-          ${displayDob ? `<li>Né(e) le ${esc(displayDob)}</li>` : ""}
-          ${dossier.gender ? `<li>${esc(dossier.gender)}</li>` : ""}
-          ${showShortPatientCode ? `<li class="ds-mono">Dossier ${esc(dossier.patientId)}</li>` : ""}
-          <li>${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances RCP" : "séance RCP"}</li>
-          <li><span class="ds-section__duration" title="Temps cumulé d'analyse IA">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span></li>
-        </ul>
+        <div class="ds-patient-header__bottom">
+          <ul class="ds-patient-header__meta">
+            ${displayDob ? `<li>Né(e) le ${esc(displayDob)}</li>` : ""}
+            ${dossier.gender ? `<li>${esc(dossier.gender)}</li>` : ""}
+            ${showShortPatientCode ? `<li class="ds-mono">Dossier ${esc(dossier.patientId)}</li>` : ""}
+            <li>${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances RCP" : "séance RCP"}</li>
+            <li><span class="ds-section__duration" title="Temps cumulé d'analyse IA">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span></li>
+          </ul>
+
+          <!-- Patient-Level View Switcher (Séances RCP vs Tableau de bord longitudinal du patient) -->
+          <div class="ds-tabs ds-tabs--patient-level" role="tablist" aria-label="${lang === "fr" ? "Échelle de consultation du patient" : "Patient view level"}" data-testid="patient-view-tabs">
+            <button type="button" class="ds-tab" role="tab" id="tab-patient-rcp" aria-selected="${!isDashboardView ? "true" : "false"}" aria-controls="patient-workspace-rcp"${!isDashboardView ? "" : ' tabindex="-1"'} data-testid="tab-patient-rcp">
+              ${iconSvg("ic-calendar")} ${lang === "fr" ? `Séances RCP (${dossier.rcpCount})` : `MDT Sessions (${dossier.rcpCount})`}
+            </button>
+            <button type="button" class="ds-tab" role="tab" id="tab-patient-dashboard" aria-selected="${isDashboardView ? "true" : "false"}" aria-controls="panel-patient-dashboard"${isDashboardView ? "" : ' tabindex="-1"'} data-testid="tab-patient-dashboard">
+              ${iconSvg("ic-trend-up")} ${lang === "fr" ? "Tableau de bord patient" : "Patient Dashboard"}
+            </button>
+          </div>
+        </div>
       </div>
 
       ${dossierProcBannerHtml}
 
-      <!-- Row 1: Synoptic Clinical Markers (Always Visible) -->
-      <div class="ds-synoptic__row">
+      <!-- Row 1: Synoptic Clinical Markers for Selected RCP Session -->
+      <div class="ds-synoptic__row ds-synoptic__row--rcp-only">
         <dl class="ds-markers">
           ${markersHtml}
         </dl>
       </div>
 
-      <!-- Row 2: Compact Collapsible Longitudinal RCP Timeline Strip -->
-      <div class="ds-synoptic__row ds-synoptic__row--timeline">
+      <!-- Row 2: Compact Collapsible Longitudinal RCP Session Selector Strip -->
+      <div class="ds-synoptic__row ds-synoptic__row--timeline ds-synoptic__row--rcp-only">
         <details class="ds-timeline-drawer" open data-testid="timeline-drawer">
           <summary class="ds-timeline-drawer__summary">
             <span class="ds-timeline-drawer__label">
@@ -2218,131 +2237,130 @@ export function renderDossierPage(
       </div>
     </div>
 
-    <!-- Split View: Source PDF (Left) + Clinical Tabs (Right) -->
-    <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
-      <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf" data-pdf-pane>
-        <div class="ds-pdf-mobile-bar">
-          <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le fichier source" data-label-hide="Masquer le fichier source" data-testid="btn_mobile_pdf_toggle">
-            ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le fichier source</span>
-          </button>
-        </div>
-        <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
-          <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
-          <div class="ds-cluster" style="gap:var(--ds-space-1)">
-            <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-action="toggle-pdf-expand" data-testid="btn_pdf_expand">
-              ${iconSvg("ic-eye")} Élargir PDF
+    <!-- Patient View 1 (Default): RCP Session Workspace (Source PDF + RCP Session Clinical & Opinions Tabs) -->
+    <div id="patient-workspace-rcp" data-testid="patient-workspace-rcp" role="tabpanel" aria-labelledby="tab-patient-rcp"${isDashboardView ? " hidden" : ""}>
+      <div class="ds-split ds-split--40-60" id="dossier-split-view" data-testid="split-view">
+        <div class="ds-split__pane ds-split__pane--sticky ds-split__pane--pdf" data-pdf-pane>
+          <div class="ds-pdf-mobile-bar">
+            <button type="button" class="ds-btn ds-btn--secondary ds-pdf-mobile-toggle" data-action="toggle-mobile-pdf" aria-expanded="false" data-label-show="Voir le fichier source" data-label-hide="Masquer le fichier source" data-testid="btn_mobile_pdf_toggle">
+              ${iconSvg("ic-file-pdf")} <span data-pdf-toggle-text>Voir le fichier source</span>
             </button>
-            <details class="ds-menu" data-testid="menu-pdf-actions">
-              <summary class="ds-menu__trigger" aria-label="Options du lecteur PDF" title="Options du lecteur PDF">
-                ${iconSvg("ic-more-vert")}
-              </summary>
-              <div class="ds-menu__panel" role="menu">
-                <div class="ds-menu__header">Lecteur PDF</div>
-                <button type="button" class="ds-menu__item" role="menuitem" data-action="toggle-pdf-expand">
-                  ${iconSvg("ic-expand")}
-                  <span>Élargir / Réduire le volet PDF</span>
-                </button>
-                <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH" target="_blank" rel="noopener">
-                  ${iconSvg("ic-file-pdf")}
-                  <span>Ouvrir dans un nouvel onglet</span>
-                </a>
-                <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" download="${esc(dossier.currentForm.file)}">
-                  ${iconSvg("ic-download")}
-                  <span>Télécharger le PDF source</span>
-                </a>
-                <hr class="ds-menu__divider">
-                <a class="ds-menu__item" role="menuitem" href="${upcomingHref}">
-                  ${iconSvg("ic-upload")}
-                  <span>Importer une nouvelle pièce PDF</span>
-                </a>
-              </div>
-            </details>
+          </div>
+          <div class="ds-cluster ds-pdf-desktop-bar" style="justify-content:space-between">
+            <span class="ds-label">${iconSvg("ic-file-pdf")} Document source : <code class="ds-mono">${esc(dossier.currentForm.file)}</code></span>
+            <div class="ds-cluster" style="gap:var(--ds-space-1)">
+              <button type="button" class="ds-btn ds-btn--secondary ds-btn--sm" data-action="toggle-pdf-expand" data-testid="btn_pdf_expand">
+                ${iconSvg("ic-eye")} Élargir PDF
+              </button>
+              <details class="ds-menu" data-testid="menu-pdf-actions">
+                <summary class="ds-menu__trigger" aria-label="Options du lecteur PDF" title="Options du lecteur PDF">
+                  ${iconSvg("ic-more-vert")}
+                </summary>
+                <div class="ds-menu__panel" role="menu">
+                  <div class="ds-menu__header">Lecteur PDF</div>
+                  <button type="button" class="ds-menu__item" role="menuitem" data-action="toggle-pdf-expand">
+                    ${iconSvg("ic-expand")}
+                    <span>Élargir / Réduire le volet PDF</span>
+                  </button>
+                  <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH" target="_blank" rel="noopener">
+                    ${iconSvg("ic-file-pdf")}
+                    <span>Ouvrir dans un nouvel onglet</span>
+                  </a>
+                  <a class="ds-menu__item" role="menuitem" href="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" download="${esc(dossier.currentForm.file)}">
+                    ${iconSvg("ic-download")}
+                    <span>Télécharger le PDF source</span>
+                  </a>
+                  <hr class="ds-menu__divider">
+                  <a class="ds-menu__item" role="menuitem" href="${upcomingHref}">
+                    ${iconSvg("ic-upload")}
+                    <span>Importer une nouvelle pièce PDF</span>
+                  </a>
+                </div>
+              </details>
+            </div>
+          </div>
+          <div class="ds-pdf-viewer-wrap">
+            <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
+            <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" data-pdf-filename="${esc(dossier.currentForm.file)}"></div>
           </div>
         </div>
-        <div class="ds-pdf-viewer-wrap">
-          <iframe class="ds-pdf-frame" src="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}#navpanes=0&amp;pagemode=none&amp;view=FitH&amp;toolbar=1" title="Document source PDF ${esc(dossier.currentForm.file)}"></iframe>
-          <div class="ds-pdf-canvas-viewer" data-pdf-canvas-viewer data-pdf-url="/files/forms/${encodeURIComponent(dossier.currentForm.file)}/pdf?domain=${domainParam}" data-pdf-filename="${esc(dossier.currentForm.file)}"></div>
-        </div>
-      </div>
 
-      <div class="ds-split__pane ds-split__pane--clinical">
-        <div class="ds-tabs" role="tablist" aria-label="Vues du dossier patient">
-          <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="${activeTab === "clinical" ? "true" : "false"}" aria-controls="panel-clinical"${activeTab === "clinical" ? "" : ' tabindex="-1"'} data-testid="tab-clinical">
-            ${iconSvg("ic-stethoscope")} Dossier clinique (${clinicalSections.length})
-          </button>
-          <button type="button" class="ds-tab" role="tab" id="tab-opinions" aria-selected="${activeTab === "opinions" ? "true" : "false"}" aria-controls="panel-opinions"${activeTab === "opinions" ? "" : ' tabindex="-1"'} data-testid="tab-opinions">
-            ${iconSvg("ic-scale")} Avis &amp; orientation pré-RCP (${dossier.opinions.length})
-          </button>
-          <button type="button" class="ds-tab" role="tab" id="tab-patient-dashboard" aria-selected="${activeTab === "patient-dashboard" ? "true" : "false"}" aria-controls="panel-patient-dashboard"${activeTab === "patient-dashboard" ? "" : ' tabindex="-1"'} data-testid="tab-patient-dashboard">
-            ${iconSvg("ic-trend-up")} ${lang === "fr" ? "Tableau de bord patient" : "Patient Dashboard"}
-          </button>
+        <div class="ds-split__pane ds-split__pane--clinical">
+          <div class="ds-tabs" role="tablist" aria-label="Vues de la séance RCP">
+            <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="${rcpTab === "clinical" ? "true" : "false"}" aria-controls="panel-clinical"${rcpTab === "clinical" ? "" : ' tabindex="-1"'} data-testid="tab-clinical">
+              ${iconSvg("ic-stethoscope")} Dossier clinique (${clinicalSections.length})
+            </button>
+            <button type="button" class="ds-tab" role="tab" id="tab-opinions" aria-selected="${rcpTab === "opinions" ? "true" : "false"}" aria-controls="panel-opinions"${rcpTab === "opinions" ? "" : ' tabindex="-1"'} data-testid="tab-opinions">
+              ${iconSvg("ic-scale")} Avis &amp; orientation pré-RCP (${dossier.opinions.length})
+            </button>
+            ${
+              session.expertMode
+                ? `<button type="button" class="ds-tab" role="tab" id="tab-expert" aria-selected="false" aria-controls="panel-expert" tabindex="-1" data-testid="tab-expert">${iconSvg("ic-file-pdf")} Texte Markdown &amp; Chunks</button>`
+                : ""
+            }
+          </div>
+
+          <!-- RCP Tab 1: Editable Clinical Sections (Collapsed by default, grouped by Clinical Pole) -->
+          <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0"${rcpTab === "clinical" ? "" : " hidden"}>
+            <div class="ds-cluster" style="justify-content:space-between">
+              <span class="ds-small ds-muted">${clinicalSections.length} rubriques structurées · Cliquez sur une catégorie pour la déplier</span>
+              <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
+                ${iconSvg("ic-layers")} Tout déplier / Tout replier
+              </button>
+            </div>
+            ${sectionsHtml}
+          </div>
+
+          <!-- RCP Tab 2: Pre-MDT Orientation, Completeness Check & Specialty Opinions (Collapsed by default) -->
+          <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0"${rcpTab === "opinions" ? "" : " hidden"}>
+            <div class="ds-cluster" style="justify-content:space-between">
+              <span class="ds-small ds-muted">Synthèse pré-RCP &amp; ${dossier.opinions.length} avis spécialisé(s)</span>
+              <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
+                ${iconSvg("ic-layers")} Tout déplier / Tout replier
+              </button>
+            </div>
+            ${careOrientationHtml}
+            ${opinionSectionsHtml}
+            ${opinionsHtml}
+          </div>
+
           ${
             session.expertMode
-              ? `<button type="button" class="ds-tab" role="tab" id="tab-expert" aria-selected="false" aria-controls="panel-expert" tabindex="-1" data-testid="tab-expert">${iconSvg("ic-file-pdf")} Texte Markdown &amp; Chunks</button>`
+              ? `<div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-expert" aria-labelledby="tab-expert" tabindex="0" hidden>
+                  <div class="ds-card">
+                    <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-file-pdf")} Texte Markdown extrait</h3></div>
+                    <div class="ds-card__body"><pre style="white-space:pre-wrap;margin:0">${esc(dossier.currentForm.markdownText ?? "Aucun texte markdown disponible.")}</pre></div>
+                  </div>
+                  ${
+                    dossier.currentForm.chunks && dossier.currentForm.chunks.length > 0
+                      ? `<div class="ds-card">
+                          <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-layers")} Segments vectoriels indexés (${dossier.currentForm.chunks.length} chunks)</h3></div>
+                          <div class="ds-card__body ds-stack--sm">
+                            ${dossier.currentForm.chunks
+                              .map(
+                                (ch) => `<div class="ds-subcard">
+                                  <div class="ds-subcard__header">
+                                    <span class="ds-subcard__title">Chunk #${ch.index}</span>
+                                    ${ch.metadata?.page ? `<span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-file-pdf")} p. ${esc(ch.metadata.page)}</span>` : ""}
+                                  </div>
+                                  <p class="ds-subcard__body">${esc(ch.content)}</p>
+                                </div>`,
+                              )
+                              .join("")}
+                          </div>
+                        </div>`
+                      : ""
+                  }
+                </div>`
               : ""
           }
         </div>
-
-        <!-- Tab 1: Editable Clinical Sections (Collapsed by default, grouped by Clinical Pole) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0"${activeTab === "clinical" ? "" : " hidden"}>
-          <div class="ds-cluster" style="justify-content:space-between">
-            <span class="ds-small ds-muted">${clinicalSections.length} rubriques structurées · Cliquez sur une catégorie pour la déplier</span>
-            <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
-              ${iconSvg("ic-layers")} Tout déplier / Tout replier
-            </button>
-          </div>
-          ${sectionsHtml}
-        </div>
-
-        <!-- Tab 2: Pre-MDT Orientation, Completeness Check & Specialty Opinions (Collapsed by default) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0"${activeTab === "opinions" ? "" : " hidden"}>
-          <div class="ds-cluster" style="justify-content:space-between">
-            <span class="ds-small ds-muted">Synthèse pré-RCP &amp; ${dossier.opinions.length} avis spécialisé(s)</span>
-            <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
-              ${iconSvg("ic-layers")} Tout déplier / Tout replier
-            </button>
-          </div>
-          ${careOrientationHtml}
-          ${opinionSectionsHtml}
-          ${opinionsHtml}
-        </div>
-
-        <!-- Tab 3: Patient Longitudinal Dashboard (Raw Multi-Year Metrics & On-Demand Global Summary) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-patient-dashboard" aria-labelledby="tab-patient-dashboard" tabindex="0"${activeTab === "patient-dashboard" ? "" : " hidden"}>
-          ${renderPatientDashboardPanel(dossier.dashboard, lang)}
-        </div>
-
-        ${
-          session.expertMode
-            ? `<div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-expert" aria-labelledby="tab-expert" tabindex="0" hidden>
-                <div class="ds-card">
-                  <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-file-pdf")} Texte Markdown extrait</h3></div>
-                  <div class="ds-card__body"><pre style="white-space:pre-wrap;margin:0">${esc(dossier.currentForm.markdownText ?? "Aucun texte markdown disponible.")}</pre></div>
-                </div>
-                ${
-                  dossier.currentForm.chunks && dossier.currentForm.chunks.length > 0
-                    ? `<div class="ds-card">
-                        <div class="ds-card__header"><h3 class="ds-card__title">${iconSvg("ic-layers")} Segments vectoriels indexés (${dossier.currentForm.chunks.length} chunks)</h3></div>
-                        <div class="ds-card__body ds-stack--sm">
-                          ${dossier.currentForm.chunks
-                            .map(
-                              (ch) => `<div class="ds-subcard">
-                                <div class="ds-subcard__header">
-                                  <span class="ds-subcard__title">Chunk #${ch.index}</span>
-                                  ${ch.metadata?.page ? `<span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-file-pdf")} p. ${esc(ch.metadata.page)}</span>` : ""}
-                                </div>
-                                <p class="ds-subcard__body">${esc(ch.content)}</p>
-                              </div>`,
-                            )
-                            .join("")}
-                        </div>
-                      </div>`
-                    : ""
-                }
-              </div>`
-            : ""
-        }
       </div>
+    </div>
+
+    <!-- Patient View 2 (Patient-Level Full Width): Longitudinal Patient Dashboard (Raw Multi-Year Metrics & On-Demand Global Summary) -->
+    <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-patient-dashboard" aria-labelledby="tab-patient-dashboard" tabindex="0"${isDashboardView ? "" : " hidden"}>
+      ${renderPatientDashboardPanel(dossier.dashboard, lang)}
     </div>
 
     ${dossierChatDrawerHtml}

@@ -176,6 +176,23 @@ export const CLINICAL_TRANSLATIONS_FR: Record<string, string> = {
   Underweight: "Insuffisance pondérale",
   "Failure to thrive / Underweight": "Cassure staturo-pondérale / Maigreur",
   Overweight: "Surpoids",
+  True: "Oui",
+  False: "Non",
+  true: "Oui",
+  false: "Non",
+  Resectable: "Résécable",
+  Borderline: "Borderline (limite)",
+  Unresectable: "Non résécable",
+  "Locally advanced": "Localement avancé",
+  Metastatic: "Métastatique",
+  Sitter: "Station assise autonome (Sitter)",
+  "Sitting unsupported": "Station assise sans appui",
+  "Non-sitter": "Non assis",
+  Walker: "Marche autonome",
+  NIV_BiPAP: "VNI (BiPAP)",
+  Gastrostomy: "Gastrostomie (GPE)",
+  Nasogastric: "Sonde nasogastrique",
+  Oral_Thickened: "Voie orale épaissie",
 };
 
 export const UI_CATALOG: Record<Language, Record<string, string>> = {

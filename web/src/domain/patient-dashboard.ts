@@ -1,3 +1,4 @@
+import { translateValue } from "./i18n.js";
 import type {
   ClinicalDomain,
   MdtFormDetail,
@@ -234,7 +235,9 @@ export function parseRawMetricObservation(
     };
   }
   if (Array.isArray(rawValue)) {
-    const items = rawValue.map((x) => String(x ?? "").trim()).filter(Boolean);
+    const items = rawValue
+      .map((x) => translateValue(String(x ?? "").trim(), "fr"))
+      .filter((x) => Boolean(x) && x !== "—");
     return {
       rawValue,
       displayValue: items.length > 0 ? items.join(", ") : "—",
@@ -258,7 +261,7 @@ export function parseRawMetricObservation(
   if (valueType !== "numeric_or_mixed") {
     return {
       rawValue,
-      displayValue: text,
+      displayValue: translateValue(text, "fr"),
       numericValue: null,
       subValues: null,
       isAnnotativeOnly: false,

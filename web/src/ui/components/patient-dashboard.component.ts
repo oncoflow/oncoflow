@@ -1,20 +1,15 @@
 import * as echarts from "echarts";
+import { formatFieldLabel, getSectionPresentation } from "../../domain/catalog.js";
+import { t, translateValue } from "../../domain/i18n.js";
 import type {
+  ClinicalDomain,
   Language,
   PatientDashboardView,
   PatientMetricPointView,
   PatientMetricSeriesView,
   PatientRecordSummaryView,
 } from "../../domain/types.js";
-
-function escapeHtml(str: unknown): string {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import { esc, iconSvg } from "../views/html.js";
 
 function formatDateTimeDisplay(iso: string | null, lang: Language): string {
   if (!iso) return lang === "fr" ? "Non généré" : "Not generated";
@@ -29,6 +24,33 @@ function formatDateTimeDisplay(iso: string | null, lang: Language): string {
   return lang === "fr"
     ? `${day}/${month}/${year} à ${hours}h${mins}`
     : `${year}-${month}-${day} ${hours}:${mins}`;
+}
+
+function resolveClinicalMetricLabel(series: PatientMetricSeriesView, lang: Language): string {
+  if (series.label && !series.label.includes(".")) {
+    return series.label;
+  }
+  return formatFieldLabel(series.field, lang) || series.label;
+}
+
+function resolveTranslatedPointDisplay(
+  pt: PatientMetricPointView,
+  valueType: string,
+  lang: Language,
+): string {
+  if (valueType === "numeric_or_mixed") {
+    return pt.displayValue;
+  }
+  if (Array.isArray(pt.rawValue)) {
+    const items = pt.rawValue
+      .map((x) => translateValue(String(x ?? "").trim(), lang))
+      .filter((x) => Boolean(x) && x !== "—");
+    return items.length > 0 ? items.join(", ") : pt.displayValue;
+  }
+  if (pt.rawValue !== null && pt.rawValue !== undefined && String(pt.rawValue).trim() !== "") {
+    return translateValue(pt.rawValue, lang);
+  }
+  return translateValue(pt.displayValue, lang);
 }
 
 /**
@@ -49,7 +71,8 @@ export function renderMetricSeriesEChartsSvg(
 
   try {
     const xLabels = series.points.map((pt, idx) => {
-      const base = pt.formDateLabel || pt.formId;
+      const base =
+        pt.formDateLabel || (lang === "fr" ? `Séance #${idx + 1}` : `Session #${idx + 1}`);
       return series.points.length > 1 && pt.daysSinceFirstRcp > 0
         ? `${base}\n(J+${pt.daysSinceFirstRcp})`
         : idx === 0 && series.points.length > 1
@@ -59,7 +82,7 @@ export function renderMetricSeriesEChartsSvg(
 
     const primaryData = series.points.map((pt) => ({
       value: pt.numericValue,
-      rawDisplay: `${pt.displayValue}${pt.isManual ? " ✍️" : ""}`,
+      rawDisplay: pt.displayValue,
       formId: pt.formId,
       isManual: pt.isManual,
       isAnnotativeOnly: pt.isAnnotativeOnly,
@@ -79,7 +102,7 @@ export function renderMetricSeriesEChartsSvg(
 
     const echartsSeries: Record<string, unknown>[] = [
       {
-        name: series.label,
+        name: resolveClinicalMetricLabel(series, lang),
         type: "line",
         smooth: false,
         connectNulls: false,
@@ -171,160 +194,220 @@ function renderSummaryCard(
   lang: Language,
 ): string {
   const activeJob = summary.activeJob;
-  const isQueuedOrRunning =
+  const isQueuedOrRunning = Boolean(
     activeJob &&
-    (activeJob.status === "PENDING" ||
-      activeJob.status === "PROCESSING" ||
-      activeJob.status === "RUNNING");
+      (activeJob.status === "PENDING" ||
+        activeJob.status === "PROCESSING" ||
+        activeJob.status === "RUNNING"),
+  );
 
   const actionUrl = `/patients/${encodeURIComponent(dashboard.patientId)}/summary?domain=${encodeURIComponent(dashboard.domain)}`;
 
   let statusBadgeHtml = "";
   if (isQueuedOrRunning) {
-    statusBadgeHtml = `<span class="ds-badge ds-badge--info" data-testid="badge_summary_queued">⏳ ${
+    statusBadgeHtml = `<span class="ds-badge ds-badge--processing ds-badge--sm" data-testid="badge_summary_queued"><span class="ds-spinner" aria-hidden="true"></span> ${
       lang === "fr" ? "En file d'attente IA" : "Queued in AI Worker"
     }</span>`;
   } else if (!summary.hasSummary) {
-    statusBadgeHtml = `<span class="ds-badge ds-badge--neutral" data-testid="badge_summary_empty">${
+    statusBadgeHtml = `<span class="ds-badge ds-badge--neutral ds-badge--sm" data-testid="badge_summary_empty">${iconSvg("ic-clock")} ${
       lang === "fr" ? "Non généré (à la demande)" : "Not generated (on-demand)"
     }</span>`;
   } else if (summary.isObsolete) {
-    statusBadgeHtml = `<span class="ds-badge ds-badge--warning" data-testid="badge_summary_obsolete">⚠️ ${
+    statusBadgeHtml = `<span class="ds-badge ds-badge--incomplete ds-badge--sm" data-testid="badge_summary_obsolete">${iconSvg("ic-warning")} ${
       lang === "fr" ? "Obsolète" : "Obsolete"
     }</span>`;
   } else {
-    statusBadgeHtml = `<span class="ds-badge ds-badge--success" data-testid="badge_summary_up_to_date">✅ ${
+    statusBadgeHtml = `<span class="ds-badge ds-badge--complete ds-badge--sm" data-testid="badge_summary_up_to_date">${iconSvg("ic-check-circle")} ${
       lang === "fr" ? "À jour" : "Up to date"
     }</span>`;
   }
 
-  const buttonLabel = isQueuedOrRunning
+  const buttonIcon = isQueuedOrRunning
+    ? '<span class="ds-spinner" aria-hidden="true"></span>'
+    : summary.hasSummary
+      ? iconSvg("ic-refresh")
+      : iconSvg("ic-sparkle");
+
+  const buttonText = isQueuedOrRunning
     ? lang === "fr"
-      ? "⏳ Génération en cours dans la file IA…"
-      : "⏳ Generating in AI queue…"
+      ? "Génération en cours dans la file IA…"
+      : "Generating in AI queue…"
     : summary.hasSummary
       ? lang === "fr"
-        ? "🔄 Régénérer le résumé global"
-        : "🔄 Regenerate global summary"
+        ? "Régénérer le résumé global"
+        : "Regenerate global summary"
       : lang === "fr"
-        ? "✨ Générer le résumé global du dossier"
-        : "✨ Generate global record summary";
+        ? "Générer le résumé global du dossier"
+        : "Generate global record summary";
 
   const obsoleteAlertHtml =
     summary.hasSummary && summary.isObsolete
-      ? `<div class="ds-summary-obsolete-banner" role="status" data-testid="alert_summary_obsolete">
-          <div class="ds-summary-obsolete-banner__title">
-            ⚠️ ${
+      ? `<div class="ds-alert ds-alert--warning" role="status" data-testid="alert_summary_obsolete">
+          <span class="ds-alert__icon" aria-hidden="true">${iconSvg("ic-warning")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">${
               lang === "fr"
                 ? "Résumé global obsolète — Nouvelles données détectées dans le dossier"
                 : "Global summary is obsolete — Newer record data detected"
-            }
-          </div>
-          <div class="ds-summary-obsolete-banner__body">
-            ${
+            }</span>
+            <span>${
               summary.newFormsSinceSummary.length > 0
                 ? lang === "fr"
-                  ? `Nouvelle(s) fiche(s) RCP présente(s) depuis la génération du ${escapeHtml(formatDateTimeDisplay(summary.generatedAt, lang))} : <strong>${summary.newFormsSinceSummary.map(escapeHtml).join(", ")}</strong>.`
-                  : `New MDT form(s) added since ${escapeHtml(formatDateTimeDisplay(summary.generatedAt, lang))}: <strong>${summary.newFormsSinceSummary.map(escapeHtml).join(", ")}</strong>.`
+                  ? `${summary.newFormsSinceSummary.length} nouvelle(s) séance(s) RCP présente(s) depuis la génération du ${esc(formatDateTimeDisplay(summary.generatedAt, lang))} (${summary.newFormsSinceSummary.map(esc).join(", ")}).`
+                  : `${summary.newFormsSinceSummary.length} new MDT session(s) added since ${esc(formatDateTimeDisplay(summary.generatedAt, lang))} (${summary.newFormsSinceSummary.map(esc).join(", ")}).`
                 : lang === "fr"
-                  ? `Une ou plusieurs fiches RCP ont été modifiées depuis la génération du ${escapeHtml(formatDateTimeDisplay(summary.generatedAt, lang))}.`
-                  : `One or more MDT forms were updated since ${escapeHtml(formatDateTimeDisplay(summary.generatedAt, lang))}.`
-            }
+                  ? `Une ou plusieurs séances RCP ont été modifiées depuis la génération du ${esc(formatDateTimeDisplay(summary.generatedAt, lang))}.`
+                  : `One or more MDT sessions were updated since ${esc(formatDateTimeDisplay(summary.generatedAt, lang))}.`
+            }</span>
           </div>
         </div>`
       : "";
 
   const queuedBannerHtml = isQueuedOrRunning
-    ? `<div class="ds-summary-queued-banner" role="status" data-testid="alert_summary_queued">
-        <strong>⏳ ${
-          lang === "fr"
-            ? "Tâche enregistrée dans la file prioritaire IA (PriorityQueue)"
-            : "Task queued in AI PriorityQueue"
-        }</strong> — ${escapeHtml(activeJob?.current_step ?? (lang === "fr" ? "En attente d'un worker GPU" : "Waiting for GPU worker"))}
+    ? `<div class="ds-processing-banner" role="status" aria-live="polite" data-testid="alert_summary_queued">
+        <div class="ds-processing-banner__main">
+          <span class="ds-spinner" aria-hidden="true"></span>
+          <div class="ds-processing-banner__content">
+            <strong class="ds-processing-banner__title">${
+              lang === "fr"
+                ? "Tâche enregistrée dans la file prioritaire IA (PriorityQueue)"
+                : "Task queued in AI PriorityQueue"
+            }</strong>
+            <span class="ds-processing-banner__meta">${esc(
+              activeJob?.current_step ??
+                (lang === "fr"
+                  ? "Consolidation longitudinale en attente d'un worker IA"
+                  : "Longitudinal synthesis waiting for AI worker"),
+            )}</span>
+          </div>
+        </div>
       </div>`
     : "";
 
   const generatedMetaHtml = summary.hasSummary
-    ? `<div class="ds-summary-card__meta" data-testid="summary_generated_meta">
-        <span>🕒 ${lang === "fr" ? "Généré le" : "Generated on"} : <strong>${escapeHtml(formatDateTimeDisplay(summary.generatedAt, lang))}</strong></span>
-        <span>📄 ${lang === "fr" ? "Fiches consolidées" : "Covered forms"} : <strong>${summary.coveredFormIds.length} / ${dashboard.rcpCount}</strong> (${summary.coveredFormIds.map(escapeHtml).join(", ")})</span>
+    ? `<div class="ds-cluster" data-testid="summary_generated_meta">
+        <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-clock")} ${
+          lang === "fr" ? "Généré le" : "Generated on"
+        } ${esc(formatDateTimeDisplay(summary.generatedAt, lang))}</span>
+        <span class="ds-badge ds-badge--neutral ds-badge--sm">${iconSvg("ic-layers")} ${
+          lang === "fr" ? "Séances consolidées" : "Consolidated sessions"
+        } : ${summary.coveredFormIds.length} / ${dashboard.rcpCount}</span>
       </div>`
-    : `<div class="ds-summary-card__meta">
-        <span>${
-          lang === "fr"
-            ? `Consolidation longitudinale à la demande sur l'ensemble des ${dashboard.rcpCount} fiche(s) RCP du patient via la file IA.`
-            : `On-demand longitudinal synthesis across all ${dashboard.rcpCount} MDT form(s) via the AI queue.`
-        }</span>
+    : `<div class="ds-alert ds-alert--guidance" role="note">
+        <span class="ds-alert__icon" aria-hidden="true">${iconSvg("ic-sparkle")}</span>
+        <div class="ds-alert__content">
+          <span class="ds-alert__title">${
+            lang === "fr"
+              ? "Synthèse longitudinale à la demande"
+              : "On-demand longitudinal synthesis"
+          }</span>
+          <span>${
+            lang === "fr"
+              ? `Consolide l'ensemble des ${dashboard.rcpCount} séance(s) RCP du patient via la file IA (PriorityQueue).`
+              : `Consolidates all ${dashboard.rcpCount} MDT session(s) for this patient via the AI PriorityQueue.`
+          }</span>
+        </div>
       </div>`;
 
   const content = summary.content;
   const contentHtml = content
-    ? `<div class="ds-summary-card__content ${summary.isObsolete ? "is-obsolete" : ""}" data-testid="summary_content_body">
-        <div class="ds-summary-block">
-          <h4 class="ds-summary-block__title">${lang === "fr" ? "Trajectoire clinique globale" : "Global clinical trajectory"}</h4>
-          <p class="ds-summary-block__text">${escapeHtml(content.clinicalTrajectoryOverview)}</p>
+    ? `<div class="ds-stack" data-testid="summary_content_body">
+        <div class="ds-rationale ds-rationale--orientation">
+          <span class="ds-rationale__label">${iconSvg("ic-compass", "ds-icon--xs")} ${
+            lang === "fr" ? "Trajectoire clinique globale" : "Global clinical trajectory"
+          }</span>
+          <p class="ds-rationale__text">${esc(content.clinicalTrajectoryOverview)}</p>
         </div>
-        <div class="ds-summary-block">
-          <h4 class="ds-summary-block__title">${lang === "fr" ? "Évolution de la maladie & des traitements" : "Disease & treatment evolution"}</h4>
-          <p class="ds-summary-block__text">${escapeHtml(content.diseaseAndTreatmentEvolution)}</p>
+        <div class="ds-rationale">
+          <span class="ds-rationale__label">${iconSvg("ic-stethoscope", "ds-icon--xs")} ${
+            lang === "fr"
+              ? "Évolution de la maladie & des traitements"
+              : "Disease & treatment evolution"
+          }</span>
+          <p class="ds-rationale__text">${esc(content.diseaseAndTreatmentEvolution)}</p>
         </div>
-        ${
-          content.notableMetricChanges.length > 0
-            ? `<div class="ds-summary-block">
-                <h4 class="ds-summary-block__title">${lang === "fr" ? "Variations notables des métriques brutes" : "Notable raw metric variations"}</h4>
-                <ul class="ds-summary-list">
-                  ${content.notableMetricChanges.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-                </ul>
-              </div>`
-            : ""
-        }
-        ${
-          content.mdtDecisionsRecap.length > 0
-            ? `<div class="ds-summary-block">
-                <h4 class="ds-summary-block__title">${lang === "fr" ? "Historique des propositions RCP" : "MDT orientation history"}</h4>
-                <ul class="ds-summary-list">
-                  ${content.mdtDecisionsRecap.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-                </ul>
-              </div>`
-            : ""
-        }
-        ${
-          content.unresolvedVigilancePoints.length > 0
-            ? `<div class="ds-summary-block">
-                <h4 class="ds-summary-block__title">${lang === "fr" ? "Points de vigilance & éléments manquants" : "Vigilance points & missing items"}</h4>
-                <ul class="ds-summary-list">
-                  ${content.unresolvedVigilancePoints.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
-                </ul>
-              </div>`
-            : ""
-        }
+        <div class="ds-grid">
+          ${
+            content.notableMetricChanges.length > 0
+              ? `<div class="ds-subcard">
+                  <div class="ds-subcard__header">
+                    <span class="ds-subcard__title">${iconSvg("ic-trend-up", "ds-icon--xs")} ${
+                      lang === "fr"
+                        ? "Variations notables des métriques brutes"
+                        : "Notable raw metric variations"
+                    }</span>
+                  </div>
+                  <ul class="ds-hovercard__list">
+                    ${content.notableMetricChanges.map((item) => `<li>${esc(item)}</li>`).join("")}
+                  </ul>
+                </div>`
+              : ""
+          }
+          ${
+            content.mdtDecisionsRecap.length > 0
+              ? `<div class="ds-subcard">
+                  <div class="ds-subcard__header">
+                    <span class="ds-subcard__title">${iconSvg("ic-calendar", "ds-icon--xs")} ${
+                      lang === "fr" ? "Historique des propositions RCP" : "MDT orientation history"
+                    }</span>
+                  </div>
+                  <ul class="ds-hovercard__list">
+                    ${content.mdtDecisionsRecap.map((item) => `<li>${esc(item)}</li>`).join("")}
+                  </ul>
+                </div>`
+              : ""
+          }
+          ${
+            content.unresolvedVigilancePoints.length > 0
+              ? `<div class="ds-subcard">
+                  <div class="ds-subcard__header">
+                    <span class="ds-subcard__title">${iconSvg("ic-warning", "ds-icon--xs")} ${
+                      lang === "fr"
+                        ? "Points de vigilance & éléments manquants"
+                        : "Vigilance points & missing items"
+                    }</span>
+                  </div>
+                  <ul class="ds-hovercard__list">
+                    ${content.unresolvedVigilancePoints.map((item) => `<li>${esc(item)}</li>`).join("")}
+                  </ul>
+                </div>`
+              : ""
+          }
+        </div>
+        <p class="ds-disclaimer">${esc(t("disclaimer.ml", lang))}</p>
       </div>`
     : "";
 
-  return `<section class="ds-card ds-summary-card ${summary.isObsolete ? "ds-summary-card--obsolete" : ""}" id="patient-summary-card" data-testid="patient_summary_card">
-    <div class="ds-summary-card__header">
-      <div class="ds-summary-card__title-group">
-        <h3 class="ds-summary-card__title">📋 ${
-          lang === "fr" ? "Résumé global du dossier patient" : "Global Patient Record Summary"
-        }</h3>
+  return `<section class="ds-card" id="patient-summary-card" data-testid="patient_summary_card">
+    <div class="ds-card__header">
+      <div class="ds-cluster">
+        <h3 class="ds-card__title">
+          <span class="ds-icon-box">${iconSvg("ic-sparkle")}</span>
+          ${lang === "fr" ? "Résumé global du dossier patient" : "Global Patient Record Summary"}
+        </h3>
         ${statusBadgeHtml}
       </div>
-      <form method="POST" action="${actionUrl}" class="ds-summary-card__form">
-        <input type="hidden" name="force" value="true" />
-        <button
-          type="submit"
-          class="ds-btn ${summary.isObsolete || !summary.hasSummary ? "ds-btn--primary" : "ds-btn--secondary"} ds-btn--sm"
-          data-testid="btn_generate_patient_summary"
-          ${isQueuedOrRunning ? "disabled" : ""}
-        >
-          ${buttonLabel}
-        </button>
-      </form>
+      <div class="ds-card__header-actions">
+        <form method="POST" action="${actionUrl}" style="display:inline-flex;margin:0">
+          <input type="hidden" name="force" value="true" />
+          <button
+            type="submit"
+            class="ds-btn ${summary.isObsolete || !summary.hasSummary ? "ds-btn--primary" : "ds-btn--tonal"} ds-btn--sm"
+            data-testid="btn_generate_patient_summary"
+            ${isQueuedOrRunning ? "disabled" : ""}
+          >
+            ${buttonIcon}
+            <span>${buttonText}</span>
+          </button>
+        </form>
+      </div>
     </div>
-    ${generatedMetaHtml}
-    ${obsoleteAlertHtml}
-    ${queuedBannerHtml}
-    ${contentHtml}
+    <div class="ds-card__body ds-stack">
+      ${generatedMetaHtml}
+      ${obsoleteAlertHtml}
+      ${queuedBannerHtml}
+      ${contentHtml}
+    </div>
   </section>`;
 }
 
@@ -337,21 +420,21 @@ function renderPointPills(points: PatientMetricPointView[], unit: string, lang: 
         const unitStr =
           unit && !pt.displayValue.includes(unit.replace(/\s+/g, "")) ? ` ${unit}` : "";
         const manualBadge = pt.isManual
-          ? `<span class="ds-raw-pill__manual" title="${
+          ? `<span class="ds-badge ds-badge--manual ds-badge--sm" title="${
               lang === "fr" ? "Valeur corrigée manuellement" : "Manually edited value"
-            }">✍️</span>`
+            }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
           : "";
         const deltaBadge = pt.deltaDisplay
-          ? `<span class="ds-raw-pill__delta">Δ ${escapeHtml(pt.deltaDisplay)}</span>`
+          ? `<span class="ds-raw-pill__delta">Δ ${esc(pt.deltaDisplay)}</span>`
           : "";
         const annotBadge = pt.isAnnotativeOnly
-          ? `<span class="ds-raw-pill__annot" title="${
+          ? `<span class="ds-badge ds-badge--incomplete ds-badge--sm" title="${
               lang === "fr" ? "Observation qualitative brute" : "Raw qualitative note"
-            }">📝</span>`
+            }">${iconSvg("ic-info", "ds-icon--xs")}</span>`
           : "";
-        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${escapeHtml(pt.formId)}">
-          <span class="ds-raw-pill__date">${escapeHtml(pt.formDateLabel)}</span>
-          <strong class="ds-raw-pill__val">${escapeHtml(pt.displayValue)}${escapeHtml(unitStr)}</strong>
+        return `<div class="ds-raw-pill ${pt.isAnnotativeOnly ? "ds-raw-pill--annotative" : ""}" role="listitem" data-form-id="${esc(pt.formId)}">
+          <span class="ds-raw-pill__date">${esc(pt.formDateLabel)}</span>
+          <strong class="ds-raw-pill__val">${esc(pt.displayValue)}${esc(unitStr)}</strong>
           ${manualBadge}${annotBadge}${deltaBadge}
         </div>`;
       })
@@ -359,8 +442,14 @@ function renderPointPills(points: PatientMetricPointView[], unit: string, lang: 
   </div>`;
 }
 
-function renderNumericChartCard(series: PatientMetricSeriesView, lang: Language): string {
+function renderNumericChartCard(
+  series: PatientMetricSeriesView,
+  domain: ClinicalDomain,
+  lang: Language,
+): string {
   const svgMarkup = renderMetricSeriesEChartsSvg(series, lang);
+  const secMeta = getSectionPresentation(series.section, domain, lang);
+  const clinicalLabel = resolveClinicalMetricLabel(series, lang);
   const lastPt = series.points[series.points.length - 1];
   const firstPt = series.points[0];
   const spanYears =
@@ -372,70 +461,115 @@ function renderNumericChartCard(series: PatientMetricSeriesView, lang: Language)
           ? "1 séance"
           : "1 session";
 
-  return `<article class="ds-card ds-metric-chart-card" data-testid="metric_chart_${escapeHtml(series.metricKey)}" data-metric-key="${escapeHtml(series.metricKey)}">
-    <div class="ds-metric-chart-card__header">
+  return `<article class="ds-card ds-metric-chart-card" data-testid="metric_chart_${esc(series.metricKey)}" data-metric-key="${esc(series.metricKey)}">
+    <div class="ds-card__header">
       <div>
-        <h4 class="ds-metric-chart-card__title">${escapeHtml(series.label)}</h4>
-        <span class="ds-metric-chart-card__subtitle">
-          ${lang === "fr" ? "Données brutes" : "Raw data"} ${series.unit ? `(${escapeHtml(series.unit)})` : ""} · ${series.points.length} RCP (${escapeHtml(spanYears)})
+        <h4 class="ds-card__title">
+          <span class="ds-icon-box">${iconSvg(secMeta.icon)}</span>
+          ${esc(clinicalLabel)}
+        </h4>
+        <span class="ds-card__subtitle">
+          ${esc(secMeta.title)} · ${lang === "fr" ? "Données brutes" : "Raw data"}${series.unit ? ` (${esc(series.unit)})` : ""} · ${series.points.length} ${lang === "fr" ? "séance(s)" : "session(s)"} (${esc(spanYears)})
         </span>
       </div>
       ${
         lastPt
-          ? `<div class="ds-metric-chart-card__latest">
-              <span class="ds-metric-chart-card__latest-label">${lang === "fr" ? "Dernier relevé" : "Latest"} (${escapeHtml(lastPt.formDateLabel)})</span>
-              <strong class="ds-metric-chart-card__latest-val">${escapeHtml(lastPt.displayValue)} ${escapeHtml(series.unit)}</strong>
+          ? `<div class="ds-card__header-actions">
+              <span class="ds-badge ds-badge--specialty ds-badge--sm" title="${lang === "fr" ? "Dernier relevé" : "Latest"} (${esc(lastPt.formDateLabel)})">
+                ${iconSvg("ic-trend-up")} ${esc(lastPt.displayValue)}${series.unit ? ` ${esc(series.unit)}` : ""} · ${esc(lastPt.formDateLabel)}
+              </span>
             </div>`
           : ""
       }
     </div>
-    <div class="ds-metric-chart-card__canvas" role="img" aria-label="${escapeHtml(series.label)}">
-      ${svgMarkup}
+    <div class="ds-card__body ds-stack">
+      <div class="ds-metric-chart-card__canvas" role="img" aria-label="${esc(clinicalLabel)}">
+        ${svgMarkup}
+      </div>
+      ${renderPointPills(series.points, series.unit, lang)}
     </div>
-    ${renderPointPills(series.points, series.unit, lang)}
   </article>`;
 }
 
 function renderQualitativeSwimlanes(
   qualitativeSeries: PatientMetricSeriesView[],
+  domain: ClinicalDomain,
   lang: Language,
 ): string {
   if (qualitativeSeries.length === 0) return "";
-  return `<section class="ds-card ds-qualitative-swimlanes" data-testid="qualitative_metrics_swimlanes">
-    <div class="ds-qualitative-swimlanes__header">
-      <h3 class="ds-qualitative-swimlanes__title">🧭 ${
-        lang === "fr"
-          ? "Paliers qualitatifs, stades & jalons cliniques bruts"
-          : "Raw qualitative stages, milestones & clinical modalities"
-      }</h3>
+  return `<section class="ds-card" data-testid="qualitative_metrics_swimlanes">
+    <div class="ds-card__header">
+      <div>
+        <h3 class="ds-card__title">
+          <span class="ds-icon-box">${iconSvg("ic-compass")}</span>
+          ${
+            lang === "fr"
+              ? "Évolution des statuts cliniques, stades & jalons fonctionnels"
+              : "Clinical Statuses, Staging & Functional Milestones Evolution"
+          }
+        </h3>
+        <p class="ds-card__subtitle">
+          ${
+            lang === "fr"
+              ? "Suivi chronologique des paramètres non numériques (stades TNM, jalons moteurs, mode ventilatoire ou nutritionnel, lignes thérapeutiques) relevés à chaque séance RCP."
+              : "Chronological tracking of non-numeric parameters (TNM staging, motor milestones, ventilation or feeding support, treatment lines) across MDT sessions."
+          }
+        </p>
+      </div>
     </div>
-    <div class="ds-qualitative-swimlanes__rows">
+    <div class="ds-card__body ds-stack--sm">
       ${qualitativeSeries
-        .map(
-          (s) => `<div class="ds-Swimlane-row" data-testid="swimlane_${escapeHtml(s.metricKey)}">
-            <div class="ds-Swimlane-row__label">
-              <strong>${escapeHtml(s.label)}</strong>
-              <span>${escapeHtml(s.section)}.${escapeHtml(s.field)}</span>
+        .map((s) => {
+          const secMeta = getSectionPresentation(s.section, domain, lang);
+          const clinicalLabel = resolveClinicalMetricLabel(s, lang);
+          return `<div class="ds-subcard ds-swimlane-row" data-testid="swimlane_${esc(s.metricKey)}">
+            <div class="ds-swimlane-row__label">
+              <span class="ds-subcard__title">${iconSvg(secMeta.icon, "ds-icon--xs")} ${esc(clinicalLabel)}</span>
+              <span class="ds-small ds-muted">${esc(secMeta.title)}</span>
             </div>
-            <div class="ds-Swimlane-row__steps">
+            <div class="ds-swimlane-row__steps" role="list" aria-label="${esc(clinicalLabel)}">
               ${s.points
-                .map(
-                  (pt, idx) => `<div class="ds-step-node">
-                    <span class="ds-step-node__date">${escapeHtml(pt.formDateLabel)}</span>
-                    <span class="ds-step-node__value">${escapeHtml(pt.displayValue)}${pt.isManual ? " ✍️" : ""}</span>
-                    ${idx < s.points.length - 1 ? '<span class="ds-step-node__arrow" aria-hidden="true">→</span>' : ""}
-                  </div>`,
-                )
+                .map((pt, idx) => {
+                  const currentDisplay = resolveTranslatedPointDisplay(pt, s.valueType, lang);
+                  const prevPt = idx > 0 ? s.points[idx - 1] : undefined;
+                  const prevDisplay = prevPt
+                    ? resolveTranslatedPointDisplay(prevPt, s.valueType, lang)
+                    : null;
+                  const hasChanged = prevDisplay !== null && prevDisplay !== currentDisplay;
+                  const badgeClass = hasChanged
+                    ? "ds-badge--orientation-adapt"
+                    : "ds-badge--neutral";
+                  return `<div class="ds-step-node" role="listitem">
+                    <span class="ds-step-node__date">${esc(pt.formDateLabel)}</span>
+                    <span class="ds-badge ${badgeClass} ds-badge--sm">${esc(currentDisplay)}</span>
+                    ${
+                      pt.isManual
+                        ? `<span class="ds-badge ds-badge--manual ds-badge--sm" title="${
+                            lang === "fr" ? "Modifié manuellement" : "Manually edited"
+                          }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
+                        : ""
+                    }
+                    ${
+                      idx < s.points.length - 1
+                        ? `<span class="ds-step-node__arrow" aria-hidden="true">${iconSvg("ic-arrow-right", "ds-icon--xs")}</span>`
+                        : ""
+                    }
+                  </div>`;
+                })
                 .join("")}
             </div>
-          </div>`,
-        )
+          </div>`;
+        })
         .join("")}
     </div>
   </section>`;
 }
 
-function renderRawMatrixTable(seriesList: PatientMetricSeriesView[], lang: Language): string {
+function renderRawMatrixTable(
+  dashboard: PatientDashboardView,
+  seriesList: PatientMetricSeriesView[],
+  lang: Language,
+): string {
   if (seriesList.length === 0) return "";
   const formColumns = new Map<string, string>();
   for (const s of seriesList) {
@@ -446,53 +580,97 @@ function renderRawMatrixTable(seriesList: PatientMetricSeriesView[], lang: Langu
     }
   }
   const colEntries = Array.from(formColumns.entries());
+  const domainParam = encodeURIComponent(dashboard.domain);
+  const patientBaseUrl = `/patients/${encodeURIComponent(dashboard.patientId)}`;
 
-  return `<section class="ds-card ds-raw-matrix-card" id="dashboard-raw-table-panel" data-testid="patient_dashboard_raw_table">
-    <div class="ds-raw-matrix-card__header">
-      <h3 class="ds-raw-matrix-card__title">📋 ${
-        lang === "fr"
-          ? "Tableau comparatif brut multi-RCP (Valeurs exactes extraites / corrigées)"
-          : "Multi-MDT Raw Comparative Matrix (Exact extracted / edited values)"
-      }</h3>
+  return `<section class="ds-card" id="dashboard-raw-table-panel" data-testid="patient_dashboard_raw_table">
+    <div class="ds-card__header">
+      <div>
+        <h3 class="ds-card__title">
+          <span class="ds-icon-box">${iconSvg("ic-layers")}</span>
+          ${
+            lang === "fr" ? "Tableau comparatif brut multi-RCP" : "Multi-MDT Raw Comparative Matrix"
+          }
+        </h3>
+        <p class="ds-card__subtitle">
+          ${
+            lang === "fr"
+              ? "Valeurs exactes extraites ou corrigées manuellement par séance RCP."
+              : "Exact extracted or manually edited values across MDT sessions."
+          }
+        </p>
+      </div>
     </div>
-    <div class="ds-table-scroll">
-      <table class="ds-table ds-raw-matrix-table">
-        <thead>
-          <tr>
-            <th scope="col">${lang === "fr" ? "Métrique clinique (champ brut)" : "Clinical metric (raw field)"}</th>
-            ${colEntries
-              .map(
-                ([formId, dateLabel]) =>
-                  `<th scope="col">${escapeHtml(dateLabel)}<br/><small>${escapeHtml(formId)}</small></th>`,
-              )
+    <div class="ds-card__body">
+      <div class="ds-table-wrap">
+        <table class="ds-table">
+          <thead>
+            <tr>
+              <th scope="col">${lang === "fr" ? "Paramètre clinique" : "Clinical parameter"}</th>
+              ${colEntries
+                .map(([formId, dateLabel], idx) => {
+                  const sessionTitle =
+                    dateLabel && dateLabel !== "Date non renseignée"
+                      ? lang === "fr"
+                        ? `Séance du ${dateLabel}`
+                        : `Session ${dateLabel}`
+                      : lang === "fr"
+                        ? `Séance #${idx + 1}`
+                        : `Session #${idx + 1}`;
+                  return `<th scope="col">
+                    <a class="ds-table__primary-link" href="${patientBaseUrl}?file=${encodeURIComponent(formId)}&domain=${domainParam}">
+                      ${esc(sessionTitle)}
+                    </a>
+                  </th>`;
+                })
+                .join("")}
+            </tr>
+          </thead>
+          <tbody>
+            ${seriesList
+              .map((s) => {
+                const secMeta = getSectionPresentation(s.section, dashboard.domain, lang);
+                const clinicalLabel = resolveClinicalMetricLabel(s, lang);
+                const byForm = new Map(s.points.map((p) => [p.formId, p]));
+                return `<tr>
+                  <td data-label="${lang === "fr" ? "Paramètre clinique" : "Clinical parameter"}" class="ds-table__primary-cell">
+                    <strong>${esc(clinicalLabel)}</strong>
+                    ${s.unit ? ` <span class="ds-small ds-muted">(${esc(s.unit)})</span>` : ""}
+                    <br/>
+                    <span class="ds-small ds-muted">${esc(secMeta.title)}</span>
+                  </td>
+                  ${colEntries
+                    .map(([formId, dateLabel]) => {
+                      const pt = byForm.get(formId);
+                      if (!pt) {
+                        return `<td data-label="${esc(dateLabel)}" class="ds-muted">—</td>`;
+                      }
+                      const displayVal = resolveTranslatedPointDisplay(pt, s.valueType, lang);
+                      return `<td data-label="${esc(dateLabel)}">
+                        <div class="ds-cluster">
+                          <strong>${esc(displayVal)}</strong>
+                          ${
+                            pt.isManual
+                              ? `<span class="ds-badge ds-badge--manual ds-badge--sm" title="${
+                                  lang === "fr" ? "Corrigé manuellement" : "Manually edited"
+                                }">${iconSvg("ic-edit-note", "ds-icon--xs")}</span>`
+                              : ""
+                          }
+                          ${
+                            pt.deltaDisplay
+                              ? `<span class="ds-raw-pill__delta">(${esc(pt.deltaDisplay)})</span>`
+                              : ""
+                          }
+                        </div>
+                      </td>`;
+                    })
+                    .join("")}
+                </tr>`;
+              })
               .join("")}
-          </tr>
-        </thead>
-        <tbody>
-          ${seriesList
-            .map((s) => {
-              const byForm = new Map(s.points.map((p) => [p.formId, p]));
-              return `<tr>
-                <th scope="row">
-                  <strong>${escapeHtml(s.label)}</strong>
-                  ${s.unit ? `<span class="ds-text-muted">(${escapeHtml(s.unit)})</span>` : ""}
-                </th>
-                ${colEntries
-                  .map(([formId]) => {
-                    const pt = byForm.get(formId);
-                    if (!pt) return `<td class="ds-text-muted">—</td>`;
-                    return `<td>
-                      <strong>${escapeHtml(pt.displayValue)}</strong>
-                      ${pt.isManual ? '<span title="Corrigé manuellement">✍️</span>' : ""}
-                      ${pt.deltaDisplay ? `<small class="ds-raw-pill__delta">(${escapeHtml(pt.deltaDisplay)})</small>` : ""}
-                    </td>`;
-                  })
-                  .join("")}
-              </tr>`;
-            })
-            .join("")}
-        </tbody>
-      </table>
+          </tbody>
+        </table>
+      </div>
     </div>
   </section>`;
 }
@@ -506,33 +684,33 @@ export function renderPatientDashboardPanel(
 
   const emptyMetricsHtml =
     dashboard.metrics.length === 0
-      ? `<div class="ds-card ds-empty-state" data-testid="dashboard_metrics_empty">
-          <p>${
-            lang === "fr"
-              ? "Aucune métrique longitudinale brute relevée dans les fiches RCP de ce dossier."
-              : "No raw longitudinal metrics found across this patient's MDT forms."
-          }</p>
+      ? `<div class="ds-alert ds-alert--guidance" data-testid="dashboard_metrics_empty">
+          <span class="ds-alert__icon" aria-hidden="true">${iconSvg("ic-info")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">${
+              lang === "fr"
+                ? "Aucune métrique longitudinale brute relevée"
+                : "No raw longitudinal metrics found"
+            }</span>
+            <span>${
+              lang === "fr"
+                ? "Les courbes et jalons apparaîtront automatiquement dès que des scores ou statuts cliniques seront extraits des fiches RCP de ce patient."
+                : "Charts and milestones will appear automatically once clinical scores or statuses are extracted from this patient's MDT forms."
+            }</span>
+          </div>
         </div>`
       : "";
 
-  return `<div class="ds-patient-dashboard" data-testid="patient_dashboard_root" data-patient-id="${escapeHtml(dashboard.patientId)}">
+  return `<div class="ds-patient-dashboard ds-stack--lg" data-testid="patient_dashboard_root" data-patient-id="${esc(dashboard.patientId)}">
     ${renderSummaryCard(dashboard, dashboard.summary, lang)}
 
-    <div class="ds-patient-dashboard__section-header">
-      <div>
-        <h3 class="ds-patient-dashboard__heading">📈 ${
-          lang === "fr"
-            ? "Suivi longitudinal brut des métriques cliniques (Multi-années)"
-            : "Multi-Year Raw Longitudinal Clinical Metrics Tracking"
-        }</h3>
-        <p class="ds-patient-dashboard__subheading">
-          ${
-            lang === "fr"
-              ? "Valeurs brutes non lissées (scores entiers, décimaux, ratios type 34/37, bilatéraux D/G et observations qualitatives)."
-              : "Unsmoothed raw values (integers, decimals, ratios like 34/37, bilateral D/G scores, and qualitative notes)."
-          }
-        </p>
-      </div>
+    <div class="ds-pole-heading">
+      ${iconSvg("ic-trend-up", "ds-icon--xs")}
+      ${
+        lang === "fr"
+          ? "Suivi longitudinal brut des métriques cliniques (Multi-années)"
+          : "Multi-Year Raw Longitudinal Clinical Metrics Tracking"
+      }
     </div>
 
     ${emptyMetricsHtml}
@@ -540,12 +718,12 @@ export function renderPatientDashboardPanel(
     ${
       numericSeries.length > 0
         ? `<div class="ds-metric-charts-grid" data-testid="patient_dashboard_charts_grid">
-            ${numericSeries.map((s) => renderNumericChartCard(s, lang)).join("")}
+            ${numericSeries.map((s) => renderNumericChartCard(s, dashboard.domain, lang)).join("")}
           </div>`
         : ""
     }
 
-    ${renderQualitativeSwimlanes(qualitativeSeries, lang)}
-    ${renderRawMatrixTable(dashboard.metrics, lang)}
+    ${renderQualitativeSwimlanes(qualitativeSeries, dashboard.domain, lang)}
+    ${renderRawMatrixTable(dashboard, dashboard.metrics, lang)}
   </div>`;
 }

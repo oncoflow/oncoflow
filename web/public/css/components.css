@@ -5801,181 +5801,43 @@ a.ds-timeline__link:hover {
 }
 
 /* 25. Patient Longitudinal Dashboard (Raw Multi-Year Metrics & AI Summary) == */
+.ds-patient-header__bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ds-space-3);
+  margin-top: var(--ds-space-1);
+}
+.ds-tabs--patient-level {
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--ds-color-surface) 75%, transparent);
+  border-radius: var(--ds-radius-pill);
+  padding: 0.15rem 0.35rem;
+}
+.ds-tabs--patient-level .ds-tab {
+  min-height: 2.15rem;
+  padding: 0.25rem var(--ds-space-3);
+  font-size: var(--ds-text-xs);
+}
+.ds-synoptic[data-patient-view="dashboard"] .ds-synoptic__row--rcp-only {
+  display: none;
+}
+
 .ds-patient-dashboard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-4);
-}
-.ds-patient-dashboard__section-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-  padding-top: var(--ds-space-1);
-}
-.ds-patient-dashboard__heading {
-  margin: 0;
-  font-size: var(--ds-text-base);
-  font-weight: var(--ds-weight-bold);
-  color: var(--ds-color-text);
-}
-.ds-patient-dashboard__subheading {
-  margin: 0.15rem 0 0;
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text-muted);
+  width: 100%;
 }
 
-/* On-Demand Global Patient Record Summary Card */
-.ds-summary-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-3);
-  padding: var(--ds-space-4) var(--ds-space-5);
-  border-left: 4px solid var(--ds-color-primary);
-}
-.ds-summary-card--obsolete {
-  border-left-color: var(--ds-color-warning);
-}
-.ds-summary-card__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--ds-space-3);
-}
-.ds-summary-card__title-group {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ds-space-2);
-}
-.ds-summary-card__title {
-  margin: 0;
-  font-size: var(--ds-text-base);
-  font-weight: var(--ds-weight-bold);
-  color: var(--ds-color-text);
-}
-.ds-summary-card__form {
-  margin: 0;
-}
-.ds-summary-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--ds-space-3);
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text-muted);
-}
-.ds-summary-obsolete-banner {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  padding: var(--ds-space-3) var(--ds-space-4);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-color-warning-bg);
-  color: var(--ds-color-warning-fg);
-  border: 1px solid color-mix(in srgb, var(--ds-color-warning) 35%, transparent);
-  font-size: var(--ds-text-xs);
-}
-.ds-summary-obsolete-banner__title {
-  font-weight: var(--ds-weight-bold);
-  font-size: var(--ds-text-sm);
-}
-.ds-summary-queued-banner {
-  padding: var(--ds-space-3) var(--ds-space-4);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-color-info-bg);
-  color: var(--ds-color-info-fg);
-  font-size: var(--ds-text-xs);
-}
-.ds-summary-card__content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: var(--ds-space-3);
-  padding-top: var(--ds-space-2);
-  border-top: 1px solid var(--ds-color-border);
-}
-.ds-summary-card__content.is-obsolete {
-  opacity: 0.92;
-}
-.ds-summary-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: var(--ds-space-3);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-nested);
-}
-.ds-summary-block__title {
-  margin: 0;
-  font-size: var(--ds-text-xs);
-  font-weight: var(--ds-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  color: var(--ds-color-primary-text);
-}
-.ds-summary-block__text {
-  margin: 0;
-  font-size: var(--ds-text-sm);
-  line-height: 1.5;
-  color: var(--ds-color-text);
-}
-.ds-summary-list {
-  margin: 0;
-  padding-left: 1.15rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text);
-}
-
-/* Apache ECharts Raw Longitudinal Metric Cards */
+/* Apache ECharts Raw Longitudinal Metric Cards (Full-Width 2-Column Desktop Grid) */
 .ds-metric-charts-grid {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--ds-space-4);
 }
-.ds-metric-chart-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-3);
-  padding: var(--ds-space-4);
-}
-.ds-metric-chart-card__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--ds-space-2);
-}
-.ds-metric-chart-card__title {
-  margin: 0;
-  font-size: var(--ds-text-sm);
-  font-weight: var(--ds-weight-bold);
-  color: var(--ds-color-text);
-}
-.ds-metric-chart-card__subtitle {
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text-muted);
-}
-.ds-metric-chart-card__latest {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding: 0.25rem 0.65rem;
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-color-primary-soft);
-  color: var(--ds-orientation-adapt-fg);
-}
-.ds-metric-chart-card__latest-label {
-  font-size: 0.68rem;
-  opacity: 0.9;
-}
-.ds-metric-chart-card__latest-val {
-  font-size: var(--ds-text-sm);
-  font-weight: var(--ds-weight-bold);
-  font-variant-numeric: tabular-nums;
+@media (min-width: 64rem) {
+  .ds-metric-charts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .ds-metric-chart-card__canvas {
   width: 100%;
@@ -6000,7 +5862,7 @@ a.ds-timeline__link:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.25rem 0.6rem;
+  padding: 0.25rem 0.65rem;
   border-radius: var(--ds-radius-pill);
   background: var(--ds-surface-nested);
   border: 1px solid var(--ds-border-nested);
@@ -6020,52 +5882,30 @@ a.ds-timeline__link:hover {
   font-variant-numeric: tabular-nums;
 }
 .ds-raw-pill__delta {
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   color: var(--ds-color-primary-text);
   font-weight: var(--ds-weight-semibold);
+  font-variant-numeric: tabular-nums;
 }
 
-/* Qualitative Swimlanes & Raw Comparative Matrix */
-.ds-qualitative-swimlanes,
-.ds-raw-matrix-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-3);
-  padding: var(--ds-space-4);
-}
-.ds-qualitative-swimlanes__title,
-.ds-raw-matrix-card__title {
-  margin: 0;
-  font-size: var(--ds-text-sm);
-  font-weight: var(--ds-weight-bold);
-  color: var(--ds-color-text);
-}
-.ds-qualitative-swimlanes__rows {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ds-space-2);
-}
-.ds-Swimlane-row {
+/* Qualitative Clinical Status & Milestone Swimlanes */
+.ds-swimlane-row {
   display: grid;
-  grid-template-columns: minmax(11rem, 15rem) minmax(0, 1fr);
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
   align-items: center;
   gap: var(--ds-space-3);
-  padding: var(--ds-space-2) var(--ds-space-3);
-  border-radius: var(--ds-radius-md);
-  background: var(--ds-surface-nested);
 }
-.ds-Swimlane-row__label {
+@media (max-width: 48rem) {
+  .ds-swimlane-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ds-swimlane-row__label {
   display: flex;
   flex-direction: column;
-  font-size: var(--ds-text-xs);
-  color: var(--ds-color-text);
+  gap: 0.15rem;
 }
-.ds-Swimlane-row__label span {
-  font-size: 0.68rem;
-  color: var(--ds-color-text-muted);
-  font-family: var(--ds-font-mono);
-}
-.ds-Swimlane-row__steps {
+.ds-swimlane-row__steps {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -6079,22 +5919,13 @@ a.ds-timeline__link:hover {
 }
 .ds-step-node__date {
   color: var(--ds-color-text-muted);
-  font-size: 0.7rem;
-}
-.ds-step-node__value {
-  padding: 0.15rem 0.5rem;
-  border-radius: var(--ds-radius-sm);
-  background: var(--ds-color-surface);
-  border: 1px solid var(--ds-color-border);
-  font-weight: var(--ds-weight-semibold);
-  color: var(--ds-color-text);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
 }
 .ds-step-node__arrow {
+  display: inline-flex;
+  align-items: center;
   color: var(--ds-color-text-muted);
-}
-.ds-table-scroll {
-  width: 100%;
-  overflow-x: auto;
 }
 
 @media print {
