@@ -303,6 +303,96 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         value_type="numeric_or_mixed",
     ),
     PatientMetricDescriptor(
+        metric_key="TumorBiology.ace",
+        section="TumorBiology",
+        field="ace",
+        label="Marqueur tumoral ACE (CEA)",
+        clinical_category="Biologie & Biomarqueurs",
+        unit="ng/mL",
+        scale_min=0.0,
+        polarity="lower_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="TumorBiology.afp",
+        section="TumorBiology",
+        field="afp",
+        label="Alpha-fœtoprotéine (AFP)",
+        clinical_category="Biologie & Biomarqueurs",
+        unit="ng/mL",
+        scale_min=0.0,
+        polarity="lower_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="TumorBiology.dpd_uracilemia",
+        section="TumorBiology",
+        field="dpd_uracilemia",
+        label="Uracilémie pré-thérapeutique (DPD)",
+        clinical_category="Biologie & Biomarqueurs",
+        unit="ng/mL",
+        scale_min=0.0,
+        polarity="lower_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="CancerDescription.target_lesion_size_mm",
+        section="CancerDescription",
+        field="target_lesion_size_mm",
+        label="Taille de la lésion cible",
+        clinical_category="Caractéristiques tumorales",
+        unit="mm",
+        scale_min=0.0,
+        polarity="lower_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="NutritionalStatus.weight_kg",
+        section="NutritionalStatus",
+        field="weight_kg",
+        label="Poids corporel",
+        clinical_category="Nutrition & État général",
+        unit="kg",
+        scale_min=0.0,
+        polarity="higher_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="NutritionalStatus.weight_loss_percent",
+        section="NutritionalStatus",
+        field="weight_loss_percent",
+        label="Perte de poids",
+        clinical_category="Nutrition & État général",
+        unit="%",
+        scale_min=0.0,
+        scale_max=100.0,
+        polarity="lower_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="NutritionalStatus.bmi",
+        section="NutritionalStatus",
+        field="bmi",
+        label="Indice de Masse Corporelle (IMC)",
+        clinical_category="Nutrition & État général",
+        unit="kg/m²",
+        scale_min=10.0,
+        scale_max=60.0,
+        polarity="higher_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
+        metric_key="HepaticStatus.bilirubin_umol_l",
+        section="HepaticStatus",
+        field="bilirubin_umol_l",
+        label="Bilirubine totale",
+        clinical_category="Fonction hépatique",
+        unit="µmol/L",
+        scale_min=0.0,
+        polarity="lower_is_better",
+        value_type="numeric_or_mixed",
+    ),
+    PatientMetricDescriptor(
         metric_key="CancerDescription.tnm_status",
         section="CancerDescription",
         field="tnm_status",
@@ -313,10 +403,20 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         value_type="categorical",
     ),
     PatientMetricDescriptor(
+        metric_key="CancerDescription.recist_response",
+        section="CancerDescription",
+        field="recist_response",
+        label="Réponse radiologique (RECIST 1.1)",
+        clinical_category="Caractéristiques tumorales",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
+    ),
+    PatientMetricDescriptor(
         metric_key="CancerDescription.figo_stage",
         section="CancerDescription",
         field="figo_stage",
-        label="Stade FIGO",
+        label="Stade FIGO / UICC",
         clinical_category="Caractéristiques tumorales",
         unit="",
         polarity="neutral",
@@ -343,6 +443,16 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         value_type="categorical",
     ),
     PatientMetricDescriptor(
+        metric_key="CancerDescription.metastatic_sites",
+        section="CancerDescription",
+        field="metastatic_sites",
+        label="Sites métastatiques",
+        clinical_category="Caractéristiques tumorales",
+        unit="",
+        polarity="lower_is_better",
+        value_type="list",
+    ),
+    PatientMetricDescriptor(
         metric_key="TumorLocation.tumor_location",
         section="TumorLocation",
         field="tumor_location",
@@ -357,6 +467,26 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         section="TumorBiology",
         field="msi_state",
         label="Statut MSI / MMR",
+        clinical_category="Biologie & Biomarqueurs",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
+    ),
+    PatientMetricDescriptor(
+        metric_key="TumorBiology.ras_braf_status",
+        section="TumorBiology",
+        field="ras_braf_status",
+        label="Statut moléculaire RAS / BRAF",
+        clinical_category="Biologie & Biomarqueurs",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
+    ),
+    PatientMetricDescriptor(
+        metric_key="TumorBiology.her2_status",
+        section="TumorBiology",
+        field="her2_status",
+        label="Statut HER2 / PD-L1",
         clinical_category="Biologie & Biomarqueurs",
         unit="",
         polarity="neutral",
@@ -381,6 +511,46 @@ ONCOLOGY_METRIC_DESCRIPTORS: list[PatientMetricDescriptor] = [
         unit="",
         polarity="neutral",
         value_type="boolean",
+    ),
+    PatientMetricDescriptor(
+        metric_key="SurgicalStatus.resection_margin",
+        section="SurgicalStatus",
+        field="resection_margin",
+        label="Marges d'exérèse (R0/R1/R2)",
+        clinical_category="Chirurgie & Traitements",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
+    ),
+    PatientMetricDescriptor(
+        metric_key="HepaticStatus.child_pugh_score",
+        section="HepaticStatus",
+        field="child_pugh_score",
+        label="Score de Child-Pugh",
+        clinical_category="Fonction hépatique",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
+    ),
+    PatientMetricDescriptor(
+        metric_key="HepaticStatus.bclc_stage",
+        section="HepaticStatus",
+        field="bclc_stage",
+        label="Stade BCLC (CHC)",
+        clinical_category="Fonction hépatique",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
+    ),
+    PatientMetricDescriptor(
+        metric_key="NutritionalStatus.nutritional_status",
+        section="NutritionalStatus",
+        field="nutritional_status",
+        label="Statut nutritionnel",
+        clinical_category="Nutrition & État général",
+        unit="",
+        polarity="neutral",
+        value_type="categorical",
     ),
     PatientMetricDescriptor(
         metric_key="Chemotherapy.chemotherapy_name",
@@ -443,7 +613,7 @@ def parse_raw_metric_value(
 
     if isinstance(raw_value, (int, float)):
         num = float(raw_value)
-        disp = str(int(raw_value)) if isinstance(raw_value, int) else f"{num:g}"
+        disp = str(raw_value) if isinstance(raw_value, int) else f"{num:g}"
         return RawMetricObservation(
             raw_value=raw_value,
             display_value=disp,
@@ -588,9 +758,20 @@ def build_patient_metric_series(
 
         for pos, (dt, _, doc) in enumerate(dated_forms):
             sec_data = doc.get(desc.section)
+            if not isinstance(sec_data, dict) and desc.section == "Chemotherapy":
+                sec_data = doc.get("ChemotherapyTreament")
             if not isinstance(sec_data, dict):
                 continue
             raw_val = sec_data.get(desc.field)
+            if (
+                (raw_val is None or raw_val == "" or raw_val == [])
+                and desc.section == "Chemotherapy"
+                and isinstance(sec_data.get("chemotherapy_list"), list)
+                and sec_data["chemotherapy_list"]
+            ):
+                first_line = sec_data["chemotherapy_list"][0]
+                if isinstance(first_line, dict):
+                    raw_val = first_line.get(desc.field)
             if raw_val is None or raw_val == "" or raw_val == []:
                 continue
 

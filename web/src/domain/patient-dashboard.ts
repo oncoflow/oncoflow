@@ -160,6 +160,88 @@ export const ONCOLOGY_METRIC_SPECS: MetricDescriptorSpec[] = [
     valueType: "numeric_or_mixed",
   },
   {
+    metricKey: "TumorBiology.ace",
+    section: "TumorBiology",
+    field: "ace",
+    label: "Marqueur tumoral ACE (CEA)",
+    unit: "ng/mL",
+    scaleMin: 0,
+    polarity: "lower_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "TumorBiology.afp",
+    section: "TumorBiology",
+    field: "afp",
+    label: "Alpha-fœtoprotéine (AFP)",
+    unit: "ng/mL",
+    scaleMin: 0,
+    polarity: "lower_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "TumorBiology.dpd_uracilemia",
+    section: "TumorBiology",
+    field: "dpd_uracilemia",
+    label: "Uracilémie pré-thérapeutique (DPD)",
+    unit: "ng/mL",
+    scaleMin: 0,
+    polarity: "lower_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "CancerDescription.target_lesion_size_mm",
+    section: "CancerDescription",
+    field: "target_lesion_size_mm",
+    label: "Taille de la lésion cible",
+    unit: "mm",
+    scaleMin: 0,
+    polarity: "lower_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "NutritionalStatus.weight_kg",
+    section: "NutritionalStatus",
+    field: "weight_kg",
+    label: "Poids corporel",
+    unit: "kg",
+    scaleMin: 0,
+    polarity: "higher_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "NutritionalStatus.weight_loss_percent",
+    section: "NutritionalStatus",
+    field: "weight_loss_percent",
+    label: "Perte de poids",
+    unit: "%",
+    scaleMin: 0,
+    scaleMax: 100,
+    polarity: "lower_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "NutritionalStatus.bmi",
+    section: "NutritionalStatus",
+    field: "bmi",
+    label: "Indice de Masse Corporelle (IMC)",
+    unit: "kg/m²",
+    scaleMin: 10,
+    scaleMax: 60,
+    polarity: "higher_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
+    metricKey: "HepaticStatus.bilirubin_umol_l",
+    section: "HepaticStatus",
+    field: "bilirubin_umol_l",
+    label: "Bilirubine totale",
+    unit: "µmol/L",
+    scaleMin: 0,
+    polarity: "lower_is_better",
+    valueType: "numeric_or_mixed",
+  },
+  {
     metricKey: "CancerDescription.tnm_status",
     section: "CancerDescription",
     field: "tnm_status",
@@ -169,10 +251,136 @@ export const ONCOLOGY_METRIC_SPECS: MetricDescriptorSpec[] = [
     valueType: "categorical",
   },
   {
+    metricKey: "CancerDescription.recist_response",
+    section: "CancerDescription",
+    field: "recist_response",
+    label: "Réponse radiologique (RECIST 1.1)",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "CancerDescription.figo_stage",
+    section: "CancerDescription",
+    field: "figo_stage",
+    label: "Stade FIGO / UICC",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "CancerDescription.histological_grade",
+    section: "CancerDescription",
+    field: "histological_grade",
+    label: "Grade histologique",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "CancerDescription.type_of_cancer",
+    section: "CancerDescription",
+    field: "type_of_cancer",
+    label: "Type histologique / tumoral",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "CancerDescription.metastatic_sites",
+    section: "CancerDescription",
+    field: "metastatic_sites",
+    label: "Sites métastatiques",
+    unit: "",
+    polarity: "lower_is_better",
+    valueType: "list",
+  },
+  {
     metricKey: "TumorLocation.tumor_location",
     section: "TumorLocation",
     field: "tumor_location",
     label: "Localisation tumorale",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "TumorBiology.msi_state",
+    section: "TumorBiology",
+    field: "msi_state",
+    label: "Statut MSI / MMR",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "TumorBiology.ras_braf_status",
+    section: "TumorBiology",
+    field: "ras_braf_status",
+    label: "Statut moléculaire RAS / BRAF",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "TumorBiology.her2_status",
+    section: "TumorBiology",
+    field: "her2_status",
+    label: "Statut HER2 / PD-L1",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "SurgicalStatus.resectability_status",
+    section: "SurgicalStatus",
+    field: "resectability_status",
+    label: "Statut de résécabilité",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "SurgicalStatus.surgery_done",
+    section: "SurgicalStatus",
+    field: "surgery_done",
+    label: "Chirurgie réalisée",
+    unit: "",
+    polarity: "neutral",
+    valueType: "boolean",
+  },
+  {
+    metricKey: "SurgicalStatus.resection_margin",
+    section: "SurgicalStatus",
+    field: "resection_margin",
+    label: "Marges d'exérèse (R0/R1/R2)",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "HepaticStatus.child_pugh_score",
+    section: "HepaticStatus",
+    field: "child_pugh_score",
+    label: "Score de Child-Pugh",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "HepaticStatus.bclc_stage",
+    section: "HepaticStatus",
+    field: "bclc_stage",
+    label: "Stade BCLC (CHC)",
+    unit: "",
+    polarity: "neutral",
+    valueType: "categorical",
+  },
+  {
+    metricKey: "NutritionalStatus.nutritional_status",
+    section: "NutritionalStatus",
+    field: "nutritional_status",
+    label: "Statut nutritionnel",
     unit: "",
     polarity: "neutral",
     valueType: "categorical",
@@ -338,9 +546,23 @@ export function buildPatientMetricSeriesFromForms(
     let prevNumeric: number | null = null;
 
     chronological.forEach((form, idx) => {
-      const sec = form.sections[spec.section];
+      let sec = form.sections[spec.section];
+      if (!sec && spec.section === "Chemotherapy") {
+        sec = form.sections.ChemotherapyTreament;
+      }
       if (!sec) return;
-      const rawVal = sec[spec.field];
+      let rawVal = sec[spec.field];
+      if (
+        (rawVal === undefined || rawVal === null || rawVal === "") &&
+        spec.section === "Chemotherapy" &&
+        Array.isArray(sec.chemotherapy_list) &&
+        sec.chemotherapy_list.length > 0
+      ) {
+        const firstLine = sec.chemotherapy_list[0];
+        if (firstLine && typeof firstLine === "object") {
+          rawVal = (firstLine as Record<string, unknown>)[spec.field];
+        }
+      }
       if (rawVal === undefined || rawVal === null || rawVal === "") return;
       if (Array.isArray(rawVal) && rawVal.length === 0) return;
 

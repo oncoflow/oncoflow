@@ -235,7 +235,7 @@ def trigger_patient_summary_endpoint(
     request: PatientSummaryTriggerRequest | None = None,
 ):
     """Enqueue an on-demand global `PatientRecord` summary synthesis job in the AI `PriorityQueue`."""
-    force = bool(request.force) if request is not None else False
+    force = request.force if request is not None else False
     result = record_service.trigger_patient_record_summary(patient_id, force=force)
     if not result:
         raise HTTPException(

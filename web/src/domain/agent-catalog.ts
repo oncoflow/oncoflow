@@ -108,9 +108,13 @@ export function getDomainUserPromptsForAgent(
         ]
       : [
           "TumorLocation",
+          "CancerDescription",
           "TumorBiology",
+          "HepaticStatus",
           "PatientPerformanceStatus",
+          "NutritionalStatus",
           "RadiologicExams",
+          "SurgicalStatus",
           "PreviousCurativeSurgery",
           "ChemotherapyTreament",
           "PlannedCurativeSurgery",

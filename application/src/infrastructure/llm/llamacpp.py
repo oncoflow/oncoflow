@@ -179,11 +179,11 @@ class LlamaCppConnect(LLMConnect):
         tools = tools or []
         # Set JSON mode if output is specified and no tools are provided.
         # When tools are present, JSON mode conflicts with tool calling.
-        model_kwargs = {}
+        model_kwargs: dict[str, Any] = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
 
-        chat_kwargs = {
+        chat_kwargs: dict[str, Any] = {
             "base_url": self.base_url,
             "api_key": self.api_key,
             "model": model,

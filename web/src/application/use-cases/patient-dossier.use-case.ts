@@ -526,10 +526,61 @@ export class PatientDossierUseCase {
     if (sectionName === "TumorLocation") {
       return translateValue(rawObj.tumor_location, lang);
     }
-    if (sectionName === "TumorBiology") {
-      const parts = [rawObj.msi_state, rawObj.ca19_9]
+    if (sectionName === "CancerDescription") {
+      const parts = [
+        rawObj.type_of_cancer,
+        rawObj.tnm_status,
+        rawObj.recist_response,
+        rawObj.target_lesion_size_mm !== undefined && rawObj.target_lesion_size_mm !== null
+          ? `${rawObj.target_lesion_size_mm} mm`
+          : null,
+      ]
         .filter((v) => v !== undefined && v !== null && v !== "")
         .map((v) => translateValue(v, lang));
+      return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "TumorBiology") {
+      const parts = [
+        rawObj.msi_state !== undefined && rawObj.msi_state !== null
+          ? translateValue(rawObj.msi_state, lang)
+          : null,
+        rawObj.ca19_9 !== undefined && rawObj.ca19_9 !== null
+          ? `CA 19-9: ${rawObj.ca19_9} U/mL`
+          : null,
+        rawObj.ace !== undefined && rawObj.ace !== null ? `ACE: ${rawObj.ace} ng/mL` : null,
+        rawObj.dpd_uracilemia !== undefined && rawObj.dpd_uracilemia !== null
+          ? `Uracilémie: ${rawObj.dpd_uracilemia} ng/mL`
+          : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "HepaticStatus") {
+      const parts = [
+        rawObj.child_pugh_score ? `Child-Pugh ${rawObj.child_pugh_score}` : null,
+        rawObj.bclc_stage ? `BCLC ${rawObj.bclc_stage}` : null,
+        rawObj.bilirubin_umol_l !== undefined && rawObj.bilirubin_umol_l !== null
+          ? `${rawObj.bilirubin_umol_l} µmol/L`
+          : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "NutritionalStatus") {
+      const parts = [
+        rawObj.weight_kg !== undefined && rawObj.weight_kg !== null
+          ? `${rawObj.weight_kg} kg`
+          : null,
+        rawObj.weight_loss_percent !== undefined && rawObj.weight_loss_percent !== null
+          ? `-${rawObj.weight_loss_percent} %`
+          : null,
+        rawObj.bmi !== undefined && rawObj.bmi !== null ? `IMC ${rawObj.bmi}` : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "SurgicalStatus") {
+      const parts = [
+        rawObj.resectability_status ? translateValue(rawObj.resectability_status, lang) : null,
+        rawObj.resection_margin ? String(rawObj.resection_margin) : null,
+      ].filter((v): v is string => Boolean(v));
       return parts.join(" · ") || translateValue(null, lang);
     }
     if (sectionName === "PatientPerformanceStatus") {

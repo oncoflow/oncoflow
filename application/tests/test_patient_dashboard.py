@@ -584,3 +584,200 @@ def test_patient_dashboard_and_summary_fastapi_endpoints():
     assert post_body["summary"]["has_summary"] is True
     assert post_body["summary"]["is_obsolete"] is False
     assert post_body["summary"]["generated_at"] is not None
+
+
+# ---------------------------------------------------------------------------
+# 5. Enriched Oncology Clinical Sections & Longitudinal Metric Series
+# ---------------------------------------------------------------------------
+
+
+def test_oncology_enriched_clinical_sections_and_longitudinal_metrics():
+    """
+    PatientMDTOncologicForm must expose and validate the enriched TNCD digestive oncology
+    sections (`CancerDescription`, `TumorBiology`, `SurgicalStatus`, `NutritionalStatus`,
+    `HepaticStatus`) and `build_patient_metric_series(domain="oncology")` must extract
+    numeric and categorical series across longitudinal forms.
+    """
+    # 1. Verify section models exist on PatientMDTOncologicForm
+    for sec_name in (
+        "CancerDescription",
+        "TumorBiology",
+        "SurgicalStatus",
+        "NutritionalStatus",
+        "HepaticStatus",
+    ):
+        assert hasattr(PatientMDTOncologicForm, sec_name), f"Missing section {sec_name}"
+        sec_cls = getattr(PatientMDTOncologicForm, sec_name)
+        assert PatientMDTOncologicForm.is_section_manually_editable(sec_cls) is True
+
+    # 2. Validate Pydantic models directly
+    cancer_desc = PatientMDTOncologicForm.CancerDescription(
+        type_of_cancer="Adénocarcinome canalaire pancréatique",
+        histological_grade="G2 (modérément différencié)",
+        tnm_status="cT3N1M0",
+        figo_stage="Non applicable",
+        metastatic_status=False,
+        metastatic_sites=[],
+        target_lesion_size_mm=28.0,
+        recist_response="Réponse partielle (RP)",
+    )
+    assert cancer_desc.tnm_status == "cT3N1M0"
+    assert cancer_desc.target_lesion_size_mm == 28.0
+
+    tumor_bio = PatientMDTOncologicForm.TumorBiology(
+        msi_state=False,
+        ca19_9="180 U/mL",
+        ace=3.2,
+        afp=None,
+        dpd_uracilemia=8.5,
+        ras_braf_status="KRAS G12D muté, BRAF sauvage",
+        her2_status="HER2 négatif (0)",
+    )
+    assert tumor_bio.msi_state is False
+    assert tumor_bio.ca19_9 == "180 U/mL"
+    assert tumor_bio.dpd_uracilemia == 8.5
+
+    surg_status = PatientMDTOncologicForm.SurgicalStatus(
+        resectability_status="Borderline",
+        surgery_done=False,
+        resection_margin=None,
+    )
+    assert surg_status.resectability_status == "Borderline"
+    assert surg_status.surgery_done is False
+
+    nutri_status = PatientMDTOncologicForm.NutritionalStatus(
+        weight_kg=62.5,
+        weight_loss_percent=8.0,
+        bmi=21.6,
+        nutritional_status="Dénutrition modérée",
+    )
+    assert nutri_status.weight_kg == 62.5
+    assert nutri_status.weight_loss_percent == 8.0
+
+    hepatic_status = PatientMDTOncologicForm.HepaticStatus(
+        bilirubin_umol_l=18.0,
+        child_pugh_score="A5",
+        bclc_stage="Non applicable",
+    )
+    assert hepatic_status.bilirubin_umol_l == 18.0
+    assert hepatic_status.child_pugh_score == "A5"
+
+    # 3. Build multi-RCP longitudinal oncology metric series
+    forms = [
+        {
+            "file": "onco_t0.pdf",
+            "PatientAdministrative": {"date_rcp": "2026-01-15"},
+            "PatientPerformanceStatus": {"performance_status": 1},
+            "CancerDescription": {
+                "type_of_cancer": "Adénocarcinome pancréatique",
+                "tnm_status": "cT3N1M0",
+                "target_lesion_size_mm": 36.0,
+                "recist_response": "Bilan initial",
+            },
+            "TumorBiology": {
+                "msi_state": False,
+                "ca19_9": "420 U/mL",
+                "ace": "6.5 ng/mL",
+                "dpd_uracilemia": 9.2,
+                "ras_braf_status": "KRAS G12D",
+            },
+            "SurgicalStatus": {
+                "resectability_status": "Borderline",
+                "surgery_done": False,
+            },
+            "NutritionalStatus": {
+                "weight_kg": 58.0,
+                "weight_loss_percent": 11.0,
+            },
+            "HepaticStatus": {
+                "bilirubin_umol_l": 45.0,
+                "child_pugh_score": "A6",
+            },
+            "ChemotherapyTreament": {
+                "chemotherapy": True,
+                "chemotherapy_list": [
+                    {
+                        "chemotherapy_name": "FOLFIRINOX néo-adjuvant",
+                        "chemotherapy_start_date": "2026-01-20",
+                        "chemotherapy_tolerance": "Good",
+                    }
+                ],
+            },
+        },
+        {
+            "file": "onco_m6.pdf",
+            "PatientAdministrative": {"date_rcp": "2026-07-15"},
+            "PatientPerformanceStatus": {"performance_status": 0},
+            "CancerDescription": {
+                "type_of_cancer": "Adénocarcinome pancréatique",
+                "tnm_status": "ypT1N0M0",
+                "target_lesion_size_mm": 18.0,
+                "recist_response": "Réponse partielle (RP)",
+            },
+            "TumorBiology": {
+                "msi_state": False,
+                "ca19_9": "48 U/mL",
+                "ace": "2.1 ng/mL",
+                "dpd_uracilemia": 9.2,
+                "ras_braf_status": "KRAS G12D",
+            },
+            "SurgicalStatus": {
+                "resectability_status": "Resectable",
+                "surgery_done": True,
+                "resection_margin": "R0",
+            },
+            "NutritionalStatus": {
+                "weight_kg": 63.5,
+                "weight_loss_percent": 2.0,
+            },
+            "HepaticStatus": {
+                "bilirubin_umol_l": 11.0,
+                "child_pugh_score": "A5",
+            },
+            "ChemotherapyTreament": {
+                "chemotherapy": True,
+                "chemotherapy_list": [
+                    {
+                        "chemotherapy_name": "FOLFIRINOX adjuvant",
+                        "chemotherapy_start_date": "2026-08-01",
+                        "chemotherapy_tolerance": "Medium",
+                    }
+                ],
+            },
+        },
+    ]
+
+    series_list = build_patient_metric_series(forms, domain="oncology")
+    by_key = {s.metric_key: s for s in series_list}
+
+    assert "TumorBiology.ca19_9" in by_key
+    assert by_key["TumorBiology.ca19_9"].points[0].numeric_value == 420.0
+    assert by_key["TumorBiology.ca19_9"].points[1].numeric_value == 48.0
+    assert by_key["TumorBiology.ca19_9"].points[1].delta_numeric == -372.0
+
+    assert "CancerDescription.target_lesion_size_mm" in by_key
+    assert (
+        by_key["CancerDescription.target_lesion_size_mm"].points[1].delta_numeric
+        == -18.0
+    )
+
+    assert "NutritionalStatus.weight_kg" in by_key
+    assert by_key["NutritionalStatus.weight_kg"].points[1].delta_numeric == 5.5
+
+    assert "HepaticStatus.bilirubin_umol_l" in by_key
+    assert by_key["HepaticStatus.bilirubin_umol_l"].points[1].delta_numeric == -34.0
+
+    assert "SurgicalStatus.resectability_status" in by_key
+    assert "SurgicalStatus.resection_margin" in by_key
+
+    # Chemotherapy fallback from ChemotherapyTreament.chemotherapy_list[0]
+    assert "Chemotherapy.chemotherapy_name" in by_key
+    assert (
+        by_key["Chemotherapy.chemotherapy_name"].points[0].display_value
+        == "FOLFIRINOX néo-adjuvant"
+    )
+    assert "Chemotherapy.chemotherapy_tolerance" in by_key
+    assert (
+        by_key["Chemotherapy.chemotherapy_tolerance"].points[1].display_value
+        == "Medium"
+    )

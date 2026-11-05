@@ -76,7 +76,7 @@ class LiteLLMConnect(LLMConnect):
         # If temperature is not provided, fallback to the config value
         temp = temperature if temperature is not None else self.config.llm.temp
 
-        model_kwargs = {}
+        model_kwargs: dict[str, Any] = {}
         if not tools and output is not None:
             model_kwargs["response_format"] = {"type": "json_object"}
         if reasoning:

@@ -655,4 +655,155 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(rulmSeries?.points[1]?.isManual).toBe(true);
     expect(rulmSeries?.points[1]?.daysSinceFirstRcp).toBeGreaterThan(1500);
   });
+
+  it("extracts oncology longitudinal metric series across CancerDescription, TumorBiology, SurgicalStatus, NutritionalStatus, and HepaticStatus", () => {
+    const oncoForms: MdtFormDetail[] = [
+      {
+        file: "onco_2026_01_15.pdf",
+        patientId: "O-101",
+        domain: "oncology",
+        mdtDate: "2026-01-15",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Jean",
+            last_name: "DUPONT",
+            date_rcp: "2026-01-15",
+          },
+          TumorLocation: { tumor_location: "Pancreas" },
+          CancerDescription: {
+            type_of_cancer: "Adénocarcinome canalaire pancréatique",
+            tnm_status: "cT3N1M0",
+            target_lesion_size_mm: 36.0,
+            recist_response: "Baseline",
+          },
+          TumorBiology: {
+            msi_state: false,
+            ca19_9: 1450.0,
+            ace: 14.2,
+            dpd_uracilemia: 9.5,
+          },
+          SurgicalStatus: {
+            resectability_status: "Borderline",
+            surgery_done: false,
+          },
+          NutritionalStatus: {
+            weight_kg: 68.0,
+            weight_loss_percent: 11.5,
+            bmi: 22.1,
+          },
+          HepaticStatus: {
+            bilirubin_umol_l: 85.0,
+            child_pugh_score: "A6",
+          },
+          PatientPerformanceStatus: { performance_status: 1 },
+          ChemotherapyTreament: {
+            chemotherapy: true,
+            chemotherapy_list: [
+              {
+                chemotherapy_name: "FOLFIRINOX",
+                chemotherapy_tolerance: "Good",
+              },
+            ],
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+      {
+        file: "onco_2026_05_15.pdf",
+        patientId: "O-101",
+        domain: "oncology",
+        mdtDate: "2026-05-15",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Jean",
+            last_name: "DUPONT",
+            date_rcp: "2026-05-15",
+          },
+          TumorLocation: { tumor_location: "Pancreas" },
+          CancerDescription: {
+            type_of_cancer: "Adénocarcinome canalaire pancréatique",
+            tnm_status: "ypT2N0M0",
+            target_lesion_size_mm: 21.0,
+            recist_response: "PR",
+          },
+          TumorBiology: {
+            msi_state: false,
+            ca19_9: 185.0,
+            ace: 4.1,
+            dpd_uracilemia: 9.5,
+          },
+          SurgicalStatus: {
+            resectability_status: "Resectable",
+            surgery_done: true,
+            resection_margin: "R0",
+          },
+          NutritionalStatus: {
+            weight_kg: 71.5,
+            weight_loss_percent: 3.0,
+            bmi: 23.2,
+          },
+          HepaticStatus: {
+            bilirubin_umol_l: 14.0,
+            child_pugh_score: "A5",
+          },
+          PatientPerformanceStatus: { performance_status: 0 },
+          ChemotherapyTreament: {
+            chemotherapy: true,
+            chemotherapy_list: [
+              {
+                chemotherapy_name: "FOLFIRINOX",
+                chemotherapy_tolerance: "Good",
+              },
+            ],
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+    ];
+
+    const dashboard = buildPatientDashboardFromForms(
+      "O-101",
+      "Jean DUPONT",
+      "oncology",
+      oncoForms,
+      null,
+    );
+    const byKey = new Map(dashboard.metrics.map((m) => [m.metricKey, m]));
+
+    expect(byKey.get("TumorBiology.ca19_9")?.points.map((p) => p.numericValue)).toEqual([
+      1450.0, 185.0,
+    ]);
+    expect(
+      byKey.get("CancerDescription.target_lesion_size_mm")?.points.map((p) => p.numericValue),
+    ).toEqual([36.0, 21.0]);
+    expect(
+      byKey.get("CancerDescription.recist_response")?.points.map((p) => p.displayValue),
+    ).toEqual(["Baseline", "PR"]);
+    expect(
+      byKey.get("SurgicalStatus.resectability_status")?.points.map((p) => p.displayValue),
+    ).toEqual(["Borderline (limite)", "Résécable"]);
+    expect(byKey.get("SurgicalStatus.resection_margin")?.points.map((p) => p.displayValue)).toEqual(
+      ["R0"],
+    );
+    expect(byKey.get("NutritionalStatus.weight_kg")?.points.map((p) => p.numericValue)).toEqual([
+      68.0, 71.5,
+    ]);
+    expect(byKey.get("HepaticStatus.bilirubin_umol_l")?.points.map((p) => p.numericValue)).toEqual([
+      85.0, 14.0,
+    ]);
+    expect(byKey.get("Chemotherapy.chemotherapy_name")?.points.map((p) => p.displayValue)).toEqual([
+      "FOLFIRINOX",
+      "FOLFIRINOX",
+    ]);
+  });
 });

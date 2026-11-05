@@ -774,7 +774,7 @@ class PatientRecordService:
     def _resolve_domain_name(self) -> str:
         """Resolve the normalized clinical domain name ('oncology' or 'sma')."""
         if self.config is not None and getattr(self.config, "domain", None):
-            return str(self.config.domain).strip().lower()
+            return self.config.domain.strip().lower()
         if self.form_cls.__name__.lower().endswith("smaform"):
             return "sma"
         return "oncology"
@@ -893,10 +893,17 @@ class PatientRecordService:
         if use_llm and self.config is not None and forms_list:
             try:
                 from langchain_core.messages import HumanMessage, SystemMessage
-                from src.application.app_functions.llm import get_llm
+                from src.infrastructure.llm.factory import get_llm_client
 
-                llm = get_llm(self.config, temperature=0.1)
-                structured_llm = llm.with_structured_output(PatientRecordSummaryContent)
+                llm_client = get_llm_client(self.config)
+                chat_model = llm_client.chat(
+                    model=model_name,
+                    output=PatientRecordSummaryContent,
+                    temperature=0.1,
+                )
+                structured_llm = chat_model.with_structured_output(
+                    PatientRecordSummaryContent
+                )
                 sys_prompt = (
                     "Tu es un assistant médical hospitalier français spécialisé en synthèse longitudinale "
                     "de dossiers RCP (Réunion de Concertation Pluridisciplinaire). "
