@@ -84,7 +84,11 @@ export interface MdtFormDetail {
   executionTimes: Record<string, number>;
   metrics: CardMetrics;
   markdownText?: string;
-  chunks?: Array<{ index: number; content: string; metadata?: Record<string, unknown> }>;
+  chunks?: Array<{
+    index: number;
+    content: string;
+    metadata?: Record<string, unknown>;
+  }>;
 }
 
 export interface PatientListItem {
@@ -342,4 +346,21 @@ export interface MdtAgendaMoveInput {
   direction?: "up" | "down";
   targetPosition?: number;
   pinned?: boolean;
+}
+
+export interface FormSectionSchema {
+  name: string;
+  description: string;
+  question?: string | null;
+  multi_agent: boolean;
+  collaborative?: boolean;
+  agents: string[];
+  editable: boolean;
+  json_schema: Record<string, unknown>;
+}
+
+export interface DomainFormSchema {
+  domain: ClinicalDomain | string;
+  sections: FormSectionSchema[];
+  enums: Record<string, Array<string | number>>;
 }

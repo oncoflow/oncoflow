@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, ClassVar
+from typing import Any, ClassVar, cast
 
 from src.application.agent.agent import OncowflowAgent
 from src.application.config import AppConfig
@@ -17,7 +17,9 @@ class Agents:
                 and "_model" not in cls_attribute.__name__
             ):
                 if hasattr(cls_attribute, "agent_name"):
-                    self.list[cls_attribute.agent_name] = cls_attribute
+                    self.list[cls_attribute.agent_name] = cast(
+                        type[OncowflowAgent], cls_attribute
+                    )
 
         self.expert_agents: list[type[OncowflowAgent]] = []
         for name in dir(self.__class__):
@@ -109,7 +111,7 @@ class Agents:
             patient_readers: list[Any] | None = None,
         ) -> None:
             # Set on the instance (`self`), never mutating `self.__class__.system_prompt`
-            self.system_prompt = self.get_system_prompt()
+            self.system_prompt = self.get_system_prompt()  # pyrefly: ignore [read-only]
             super(Agents.Expert_model, self).__init__(
                 config=config,
                 mtd=mtd,

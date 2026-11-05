@@ -1,0 +1,49 @@
+exclude: '^(experiment/|docker/)'
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+    -   id: check-yaml
+    -   id: end-of-file-fixer
+    -   id: trailing-whitespace
+    -   id: check-added-large-files
+        args: ["--maxkb=1024"]
+    -   id: detect-private-key
+    -   id: check-merge-conflict
+# Ruff and pyrefly run from the uv-locked versions (same as CI), not a separate pin.
+-   repo: local
+    hooks:
+    -   id: ruff-check
+        name: ruff check
+        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff check --config application/pyproject.toml --fix "$@"; elif [ -x .venv/bin/ruff ]; then exec .venv/bin/ruff check --config pyproject.toml --fix "$@"; else exec uv run --project application --frozen ruff check --config application/pyproject.toml --fix "$@"; fi' --
+        language: system
+        types: [python]
+    -   id: ruff-format
+        name: ruff format
+        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff format --config application/pyproject.toml "$@"; elif [ -x .venv/bin/ruff ]; then exec .venv/bin/ruff format --config pyproject.toml "$@"; fi' --
+        language: system
+        types: [python]
+    -   id: web-format
+        name: web format (Biome)
+        entry: npm --prefix web run format
+        language: system
+        files: ^web/
+        pass_filenames: false
+    -   id: web-lint
+        name: web lint (Biome, tsc --noEmit, WCAG contrast)
+        entry: npm --prefix web run lint
+        language: system
+        files: ^web/
+        pass_filenames: false
+    -   id: web-build
+        name: web build (tsc -p tsconfig.build.json)
+        entry: npm --prefix web run build
+        language: system
+        files: ^web/
+        pass_filenames: false
+    -   id: web-test
+        name: web unit & integration tests (Vitest)
+        entry: npm --prefix web run test
+        language: system
+        files: ^web/
+        pass_filenames: false

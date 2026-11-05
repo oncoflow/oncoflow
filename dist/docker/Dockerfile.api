@@ -52,4 +52,4 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
   CMD ["curl", "-sf", "http://127.0.0.1:8000/health"]
 
 # Lancement exclusif de l'API FastAPI Cross-Domains (avec Worker PriorityQueue intégré)
-CMD ["uv", "run", "--no-sync", "python", "app-api.py"]
+CMD ["uv", "run", "--no-sync", "--no-build", "python", "app-api.py"]

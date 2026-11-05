@@ -55,7 +55,13 @@ export function resolveCitationPdfHref(
   const domainParam = encodeURIComponent(domain);
   const pageNum = page ? String(page).replace(/[^\d]/g, "") || "1" : "1";
   const pageHash = `#page=${encodeURIComponent(pageNum)}&amp;view=FitH`;
-  const cleaned = (rawName || "").trim();
+  const cleaned = (rawName || "")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/\.\.+/g, ".")
+    .replace(/\//g, " - ")
+    .replace(/[\r\n\0]+/g, " ")
+    .trim();
   if (!cleaned && fallbackFormFile) {
     return `/files/forms/${encodeURIComponent(fallbackFormFile)}/pdf?domain=${domainParam}${pageHash}`;
   }
