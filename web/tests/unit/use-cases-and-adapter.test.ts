@@ -5,7 +5,10 @@ import { IngestUseCase } from "../../src/application/use-cases/ingest.use-case.j
 import { PatientDossierUseCase } from "../../src/application/use-cases/patient-dossier.use-case.js";
 import { QueueAdminUseCase } from "../../src/application/use-cases/queue-admin.use-case.js";
 import { WorklistUseCase } from "../../src/application/use-cases/worklist.use-case.js";
-import { HttpOncoflowApiAdapter } from "../../src/infrastructure/api/http-oncoflow-api.adapter.js";
+import {
+  bffRequestContext,
+  HttpOncoflowApiAdapter,
+} from "../../src/infrastructure/api/http-oncoflow-api.adapter.js";
 import { InMemoryOncoflowApiFake } from "../../src/infrastructure/api/in-memory-oncoflow-api.fake.js";
 
 describe("Application Use-Cases with InMemoryOncoflowApiFake", () => {
@@ -794,5 +797,55 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
     await adapter.clearMdtAgenda("oncology");
     await adapter.deleteForm(sampleFile, "oncology");
     await adapter.deletePatient(samplePid, "oncology");
+  });
+
+  it("propagates X-Forwarded-For / X-Oncoflow-User via bffRequestContext and caches short-TTL calls with invalidation on write", async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          patient_id: "P-1",
+          first_name: "Jeanne",
+          last_name: "Fictive",
+          rcp_count: 2,
+        },
+      ],
+    }));
+
+    const adapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      cacheTtlMs: 15_000,
+    });
+
+    await bffRequestContext.run(
+      {
+        clientIp: "10.20.30.40",
+        userId: "dr.martin",
+        userName: "Dr Martin",
+        requestId: "req-123",
+      },
+      async () => {
+        const p1 = await adapter.listPatients("oncology", false);
+        const p2 = await adapter.listPatients("oncology", false);
+        expect(p1).toEqual(p2);
+        // Second call within TTL must hit the in-memory cache
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+
+        const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+        const headers = init.headers as Record<string, string>;
+        expect(headers["X-Forwarded-For"]).toBe("10.20.30.40");
+        expect(headers["X-Real-IP"]).toBe("10.20.30.40");
+        expect(headers["X-Oncoflow-User"]).toBe("dr.martin");
+        expect(headers["X-Oncoflow-User-Name"]).toBe("Dr Martin");
+        expect(headers["X-Request-ID"]).toBe("req-123");
+
+        // Any write invalidates the dossier caches
+        await adapter.deleteForm("doc.pdf", "oncology");
+        await adapter.listPatients("oncology", false);
+        expect(fetchMock).toHaveBeenCalledTimes(3);
+      },
+    );
   });
 });

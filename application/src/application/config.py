@@ -517,7 +517,7 @@ class ApiSecuritySettings(BaseSettings):
         description="Enable per-IP sliding-window rate limiting on the REST API (APP_API_RATE_LIMIT_ENABLED).",
     )
     rate_limit_requests: int = Field(
-        default=300,
+        default=1200,
         ge=1,
         description="Maximum requests allowed per client IP within the rate-limit window (APP_API_RATE_LIMIT_REQUESTS).",
     )
