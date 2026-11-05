@@ -27,9 +27,6 @@ MAX_RESOURCE_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB
 
 def _get_resources_dir(config) -> str:
     """Resolve the domain clinical reference resources directory from config."""
-    data_cfg = getattr(config, "Data", None)
-    if data_cfg is not None and getattr(data_cfg, "ressources_path", None) is not None:
-        return str(data_cfg.ressources_path)
     return str(config.rcp.additional_path)
 
 

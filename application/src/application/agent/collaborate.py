@@ -95,7 +95,7 @@ def collaborative_debate(
     callbacks: list | None = None,
 ) -> dict:
     if coordinator_agent_cls is None:
-        domain = getattr(config, "domain", None)
+        domain = config.domain
         if isinstance(Agents.Coordinator_agent, type) and isinstance(domain, str):
             coordinator_agent_cls = get_domain_agents_cls(domain).Coordinator_agent
         else:

@@ -1,6 +1,7 @@
 import uuid
 import time
 import inspect
+from urllib.parse import urlunsplit
 import warnings
 
 # Suppress PyMilvus async client initialization and ORM deprecation warnings before import
@@ -88,7 +89,15 @@ Milvus.drop = patched_drop
 
 class MilvusDB(VectorialDataBase):
     def init_client(self, config: AppConfig):
-        self.uri = f"http://{config.milvus.host}:{config.milvus.port}"
+        self.uri = urlunsplit(
+            (
+                config.milvus.scheme,
+                f"{config.milvus.host}:{config.milvus.port}",
+                "",
+                "",
+                "",
+            )
+        )  # NOSONAR
         self.token = config.milvus.token
         self.database = config.milvus.database
         retry = 3

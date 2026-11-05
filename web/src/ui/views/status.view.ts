@@ -1,5 +1,5 @@
 import type { UserSession } from "../../domain/types.js";
-import { INLINE_ICONS_SVG, html, iconSvg, raw, stripDomainQuery } from "./html.js";
+import { html, INLINE_ICONS_SVG, iconSvg, raw, stripDomainQuery } from "./html.js";
 
 export interface StatusPageOptions {
   statusCode: number;

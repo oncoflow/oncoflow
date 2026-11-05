@@ -1,18 +1,18 @@
 import {
-  type FieldInputKind,
-  type FieldSelectOption,
-  type NormalizedChemoItem,
-  type NormalizedExamItem,
-  type SectionPresentationMeta,
   coerceSectionUpdatePayload,
   extractNormalizedChemoList,
   extractNormalizedExamsList,
+  type FieldInputKind,
+  type FieldSelectOption,
   formatFieldLabel,
   formatRawEditValue,
   getAgentPresentation,
   getSectionFieldSchemas,
   getSectionPresentation,
+  type NormalizedChemoItem,
+  type NormalizedExamItem,
   resolveCanonicalSectionName,
+  type SectionPresentationMeta,
 } from "../../domain/catalog.js";
 import { translateValue } from "../../domain/i18n.js";
 import {
@@ -647,7 +647,7 @@ export class PatientDossierUseCase {
         // Skip duplicate radiological_exams alias if exams_list is already present
         if (k === "radiological_exams" && orderedKeys.includes("exams_list")) continue;
 
-        const wasPresentInRaw = Object.prototype.hasOwnProperty.call(rawObj, k);
+        const wasPresentInRaw = Object.hasOwn(rawObj, k);
         const v =
           k === "exams_list" &&
           rawObj.exams_list === undefined &&

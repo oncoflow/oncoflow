@@ -88,7 +88,7 @@ class PatientMDTFormExtractionService:
             else logging.getLogger(__name__)
         )
         self.filename = filename or ""
-        domain_val = getattr(config, "domain", None)
+        domain_val = config.domain
         self.form_cls = form_cls or get_domain_mdt_form_cls(
             domain_val if isinstance(domain_val, str) else None
         )
@@ -112,14 +112,12 @@ class PatientMDTFormExtractionService:
                     patient_repo=self.patient_repo,
                     mdt_form_repo=self.mdt_form_repo,
                     cache_repo=self.cache_repo,
-                    mdt_form_storage_path=getattr(
-                        getattr(config, "rcp", None), "path", None
-                    ),
+                    mdt_form_storage_path=config.rcp.path,
                     form_cls=self.form_cls,
                     config=config,
                 )
             )
-        elif getattr(getattr(config, "rcp", None), "display_type", None) == "mongodb":
+        elif config.rcp.display_type == "mongodb":
             if self._db_client is None:
                 self._db_client = Mongodb(config)
                 self._owns_db_client = True
@@ -151,9 +149,7 @@ class PatientMDTFormExtractionService:
                     patient_repo=self.patient_repo,
                     mdt_form_repo=self.mdt_form_repo,
                     cache_repo=self.cache_repo,
-                    mdt_form_storage_path=getattr(
-                        getattr(config, "rcp", None), "path", None
-                    ),
+                    mdt_form_storage_path=config.rcp.path,
                     form_cls=self.form_cls,
                     config=config,
                 )

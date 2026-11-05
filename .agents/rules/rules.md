@@ -2,6 +2,7 @@
 trigger: always_on
 ---
 
-Must be read :
-- no commit from agent
-- no push from agent
+- must verify prek pass
+- must use sonarlint
+- must pass ruff format
+- must pass vitest

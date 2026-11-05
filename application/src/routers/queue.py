@@ -85,8 +85,17 @@ def get_active_thinking_endpoint(
     request: Request,
     manager: QueueManagerDep,
     domain: Annotated[Optional[str], Query()] = None,
+    job_id: Annotated[Optional[str], Query()] = None,
 ):
-    """Return a snapshot of the live AI reasoning for the currently running task."""
+    """Return a snapshot of the live AI reasoning for the currently running task or a specific `job_id`."""
+    if job_id:
+        snap = manager.get_job_thinking(job_id=job_id)
+        if not snap.get("job_id"):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Tâche '{job_id}' introuvable.",
+            )
+        return snap
     target_domain = getattr(request.state, "requested_domain", domain)
     return manager.get_job_thinking(job_id=None, domain=target_domain)
 
@@ -96,12 +105,15 @@ def stream_active_thinking_endpoint(
     request: Request,
     manager: QueueManagerDep,
     domain: Annotated[Optional[str], Query()] = None,
+    job_id: Annotated[Optional[str], Query()] = None,
     timeout: Annotated[float, Query(ge=1.0, le=300.0)] = 30.0,
 ) -> Iterable[ServerSentEvent]:
-    """Stream live AI reasoning tokens (SSE) for the currently running task in the queue."""
-    target_domain = getattr(request.state, "requested_domain", domain)
+    """Stream live AI reasoning tokens (SSE) for the currently running task or a specific `job_id`."""
+    target_domain = (
+        None if job_id else getattr(request.state, "requested_domain", domain)
+    )
     for ev in manager.stream_job_thinking(
-        job_id=None, domain=target_domain, timeout=timeout
+        job_id=job_id, domain=target_domain, timeout=timeout
     ):
         payload = QueueThinkingStreamEvent.model_validate(ev)
         yield ServerSentEvent(data=payload, event=payload.event)
@@ -185,6 +197,19 @@ def enqueue_rerun_endpoint(
 
 
 @router.post(
+    "/jobs/retry",
+    response_model=QueueJobResponse,
+    dependencies=[Depends(require_admin)],
+)
+def retry_queue_job_by_query_endpoint(
+    job_id: Annotated[str, Query()],
+    manager: QueueManagerDep,
+):
+    """Re-enqueue a specific task by query parameter `job_id`."""
+    return retry_queue_job_endpoint(job_id=job_id, manager=manager)
+
+
+@router.post(
     "/jobs/{job_id}/retry",
     response_model=QueueJobResponse,
     dependencies=[Depends(require_admin)],
@@ -198,6 +223,19 @@ def retry_queue_job_endpoint(job_id: str, manager: QueueManagerDep):
             detail=f"Tâche '{job_id}' introuvable.",
         )
     return updated
+
+
+@router.delete(
+    "/jobs",
+    response_model=JobDeletedResponse,
+    dependencies=[Depends(require_admin)],
+)
+def delete_queue_job_by_query_endpoint(
+    job_id: Annotated[str, Query()],
+    manager: QueueManagerDep,
+):
+    """Cancel or delete a task by query parameter `job_id`."""
+    return delete_queue_job_endpoint(job_id=job_id, manager=manager)
 
 
 @router.delete(

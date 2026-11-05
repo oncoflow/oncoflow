@@ -39,6 +39,25 @@ def _strip_thinking(text: str) -> str:
     return text_clean.strip()
 
 
+def _extract_fenced_blocks(text: str, prefix: str = "") -> list[str]:
+    """Extract content inside ```<prefix> ... ``` fenced blocks in linear O(n) time."""
+    blocks: list[str] = []
+    open_fence = f"```{prefix}"
+    open_len = len(open_fence)
+    search_from = 0
+    while True:
+        start = text.find(open_fence, search_from)
+        if start < 0:
+            break
+        content_start = start + open_len
+        end = text.find("```", content_start)
+        if end < 0:
+            break
+        blocks.append(text[content_start:end].strip())
+        search_from = end + 3
+    return blocks
+
+
 def extract_json_candidates(text: str, *, allow_repair: bool = True) -> list[str]:
     """
     Return candidate JSON object substrings found in ``text``, ordered from most
@@ -54,25 +73,14 @@ def extract_json_candidates(text: str, *, allow_repair: bool = True) -> list[str
             seen.add(c)
             candidates.append(c)
 
-    # 1. Content inside ```json ... ``` blocks (final block first)
-    json_blocks = re.findall(r"```json\s*(.*?)\s*```", text_clean, re.DOTALL)
-    for block in reversed(json_blocks):
-        block_clean = block.strip()
-        try:
-            if isinstance(json.loads(block_clean), dict):
-                _add(block_clean)
-        except json.JSONDecodeError:
-            pass
-
-    # 2. Content inside general ``` ... ``` blocks (final block first)
-    code_blocks = re.findall(r"```\s*(.*?)\s*```", text_clean, re.DOTALL)
-    for block in reversed(code_blocks):
-        block_clean = block.strip()
-        try:
-            if isinstance(json.loads(block_clean), dict):
-                _add(block_clean)
-        except json.JSONDecodeError:
-            pass
+    # 1 & 2. Content inside ```json ... ``` and general ``` ... ``` blocks (final block first)
+    for prefix in ("json", ""):
+        for block_clean in reversed(_extract_fenced_blocks(text_clean, prefix)):
+            try:
+                if isinstance(json.loads(block_clean), dict):
+                    _add(block_clean)
+            except json.JSONDecodeError:
+                pass
 
     # 3. Scan top-level brace blocks in O(n) using JSONDecoder.raw_decode.
     # Reverse order so the final JSON object in the message is tried first.
@@ -244,7 +252,7 @@ class OncowflowAgent:
             self.output_format = output_format
 
         # Determine language dynamically from config
-        self.response_language = getattr(config, "language", "french")
+        self.response_language = config.language or "french"
 
         # Initialize the LLM client based on configuration
         llm_client = get_llm_client(config)
@@ -256,7 +264,7 @@ class OncowflowAgent:
         self.models = models_list
 
         if reasoning is None:
-            reasoning = getattr(config.llm, "reasoning", True)
+            reasoning = config.llm.reasoning
 
         if reasoning_budget is not None:
             self.reasoning_budget = reasoning_budget
