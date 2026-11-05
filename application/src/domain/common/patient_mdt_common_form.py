@@ -113,7 +113,7 @@ class PatientMDTForm:
         self.processing_status = (
             processing_status.value
             if isinstance(processing_status, RCPProcessingStatus)
-            else str(processing_status or RCPProcessingStatus.COMPLETED.value)
+            else (processing_status or RCPProcessingStatus.COMPLETED.value)
         )
         self.processing_step = processing_step
         self.processing_progress_pct = float(processing_progress_pct or 0.0)
@@ -387,16 +387,10 @@ class PatientMDTForm:
         doc = existing_doc or {}
         now = edited_at or datetime.now()
         manual_edits = dict(doc.get("manual_edits") or {})
-        prev_entry = (
-            dict(manual_edits.get(section_name))
-            if isinstance(manual_edits.get(section_name), dict)
-            else {}
-        )
-        current_section_val = (
-            dict(doc.get(section_name))
-            if isinstance(doc.get(section_name), dict)
-            else None
-        )
+        raw_prev = manual_edits.get(section_name)
+        prev_entry = dict(raw_prev) if isinstance(raw_prev, dict) else {}
+        raw_curr = doc.get(section_name)
+        current_section_val = dict(raw_curr) if isinstance(raw_curr, dict) else None
 
         # Capture the original AI output once before the first manual edit of the current AI cycle
         if prev_entry.get("is_manual") and "ai_original" in prev_entry:
@@ -431,35 +425,16 @@ class PatientMDTForm:
                     "human_value": human_val,
                 }
 
-        prev_clean = (
-            {k: v for k, v in current_section_val.items() if k not in meta_keys}
-            if isinstance(current_section_val, dict)
-            else {}
-        )
-        step_keys = list(
-            dict.fromkeys(list(prev_clean.keys()) + list(human_clean.keys()))
-        )
-        step_changed_fields = [
-            k for k in step_keys if prev_clean.get(k) != human_clean.get(k)
-        ]
-
-        history = list(prev_entry.get("edit_history") or [])
-        history.append(
-            {
-                "edited_at": now,
-                "edited_by": edited_by,
-                "previous_value": prev_clean if prev_clean else None,
-                "new_value": human_clean,
-                "changed_fields": step_changed_fields,
-            }
-        )
-
         ai_thinking = (
             ai_original.get("reasoning_thinking")
             if isinstance(ai_original, dict)
             else None
         )
-        archived_traces = list(prev_entry.get("archived_judge_traces") or [])
+
+        # Single user modification snapshot per section; if the user edits back to the exact AI baseline, clear the manual edit
+        if isinstance(ai_original, dict) and ai_clean and not modified_fields:
+            manual_edits.pop(section_name, None)
+            return manual_edits
 
         manual_edits[section_name] = {
             "is_manual": True,
@@ -469,8 +444,6 @@ class PatientMDTForm:
             "ai_reasoning_thinking": ai_thinking,
             "human_value": human_clean,
             "modified_fields": modified_fields,
-            "edit_history": history,
-            "archived_judge_traces": archived_traces,
         }
         return manual_edits
 
@@ -600,7 +573,7 @@ class PatientMDTForm:
             )
             if is_multi_agent and isinstance(value, dict):
                 validated_by_agent: dict[str, Any] = {}
-                for agent_cls in model_cls.agents:
+                for agent_cls in getattr(model_cls, "agents", []):
                     if agent_cls.agent_name in value:
                         raw_agent_val = value[agent_cls.agent_name]
                         try:
@@ -827,10 +800,30 @@ class PatientMDTForm:
             if hide_missing_items
             else [m for m in raw_missing if m not in hidden_set]
         )
+        has_mtd_completed = (
+            "MTDCompleted" in d
+            and isinstance(d["MTDCompleted"], dict)
+            and len(d["MTDCompleted"]) > 0
+        )
+        status_upper = (
+            (
+                processing_status.value
+                if isinstance(processing_status, Enum)
+                else str(processing_status or "COMPLETED")
+            )
+            .strip()
+            .upper()
+        )
+        is_ai_completed = (
+            status_upper == "COMPLETED" and has_mtd_completed
+        ) or cls.is_section_manually_edited(d, "MTDCompleted")
+
         if hide_missing_items or (
             raw_missing and all(m in hidden_set for m in raw_missing)
         ):
             is_complete = True
+        elif not is_ai_completed:
+            is_complete = False
         elif raw_is_mtd_complete is not None and not missing:
             is_complete = raw_is_mtd_complete
         else:

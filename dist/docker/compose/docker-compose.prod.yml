@@ -181,6 +181,8 @@ services:
       - "q4_0"
       - "--cache-type-v"
       - "q4_0"
+      - "--cache-ram"
+      - "${LLM_CACHE_RAM_MIB:-2048}"
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
       interval: 15s

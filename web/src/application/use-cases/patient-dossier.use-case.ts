@@ -1,8 +1,18 @@
 import {
+  type FieldInputKind,
+  type FieldSelectOption,
+  type NormalizedChemoItem,
+  type NormalizedExamItem,
   type SectionPresentationMeta,
+  coerceSectionUpdatePayload,
+  extractNormalizedChemoList,
+  extractNormalizedExamsList,
   formatFieldLabel,
+  formatRawEditValue,
   getAgentPresentation,
+  getSectionFieldSchemas,
   getSectionPresentation,
+  resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
 import { translateValue } from "../../domain/i18n.js";
 import {
@@ -17,6 +27,7 @@ import type {
   AgentModuleInfo,
   CitationRef,
   ClinicalDomain,
+  DomainFormSchema,
   ExpertSuggestion,
   Language,
   LongitudinalDelta,
@@ -51,8 +62,21 @@ export interface DossierFieldView {
   label: string;
   value: string;
   rawValue: unknown;
+  editValue: string;
+  inputType: FieldInputKind;
+  nullable: boolean;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+  examItems?: NormalizedExamItem[];
+  chemoItems?: NormalizedChemoItem[];
   isLongText: boolean;
   hiddenInReadView?: boolean;
+  isModified?: boolean;
+  originalAiValue?: string;
 }
 
 export interface DossierSectionView {
@@ -227,16 +251,27 @@ export class PatientDossierUseCase {
             (x) => Boolean(x) && x !== "no data" && !hiddenSet.has(x),
           )
         : allMissingItems.filter((x) => !hiddenSet.has(x));
+    const hasMtdCompleted = Object.keys(mtdCompletedRaw).length > 0;
+    const isAiCompleted =
+      String(currentForm.processingStatus ?? "COMPLETED")
+        .trim()
+        .toUpperCase() === "COMPLETED";
+    const isFormComplete =
+      hideAllMissing || (allMissingItems.length > 0 && missingItems.length === 0)
+        ? true
+        : !isAiCompleted || !hasMtdCompleted
+          ? false
+          : missingItems.length === 0
+            ? typeof currentForm.metrics.is_complete === "boolean"
+              ? currentForm.metrics.is_complete
+              : mtdNested.is_mtd_complete !== false
+            : false;
     const completenessBadge = deriveCompletenessInfo(
       {
-        is_complete:
-          hideAllMissing || missingItems.length === 0
-            ? true
-            : typeof currentForm.metrics.is_complete === "boolean"
-              ? currentForm.metrics.is_complete
-              : mtdNested.is_mtd_complete !== false && missingItems.length === 0,
+        is_complete: isFormComplete,
         missing_count: missingItems.length,
         missing_items: missingItems,
+        processing_status: currentForm.processingStatus,
       },
       lang,
     );
@@ -271,9 +306,15 @@ export class PatientDossierUseCase {
       : [];
     const specialties = rawSpecs.map((s) => getAgentPresentation(s, lang));
 
+    const [allPatients, agents, domainSchema] = await Promise.all([
+      this.api.listPatients(domain, false),
+      this.api.listAgents(domain, lang),
+      this.api.getDomainSchema(domain).catch(() => null),
+    ]);
+
     const deltas = computeLongitudinalDeltas(currentForm, previousForm, lang);
     const synopticMarkers = this.buildSynopticMarkers(currentForm, deltas, lang);
-    const sections = this.buildSections(currentForm, lang);
+    const sections = this.buildSections(currentForm, lang, domainSchema);
     const opinions = this.buildOpinions(currentForm, lang);
 
     const timeline: TimelineSessionItem[] = sorted.map((f, idx) => {
@@ -306,11 +347,6 @@ export class PatientDossierUseCase {
       (acc, v) => acc + (typeof v === "number" ? v : 0),
       0,
     );
-
-    const [allPatients, agents] = await Promise.all([
-      this.api.listPatients(domain, false),
-      this.api.listAgents(domain, lang),
-    ]);
 
     const careMeta = getSectionPresentation("CareOrientationProposal", currentForm.domain, lang);
     const careReasoning =
@@ -546,7 +582,11 @@ export class PatientDossierUseCase {
     );
   }
 
-  private buildSections(form: MdtFormDetail, lang: Language): DossierSectionView[] {
+  private buildSections(
+    form: MdtFormDetail,
+    lang: Language,
+    domainSchema?: DomainFormSchema | null,
+  ): DossierSectionView[] {
     const skip = new Set(["ExpertAnswer", "CareOrientationProposal"]);
     const internalKeys = new Set([
       "reasoning_thinking",
@@ -596,11 +636,38 @@ export class PatientDossierUseCase {
           }))
         : [];
 
-      for (const [k, v] of Object.entries(rawObj)) {
-        if (internalKeys.has(k)) continue;
+      const schemaFields = getSectionFieldSchemas(sectionName, domainSchema);
+      const schemaByKey = new Map(schemaFields.map((s) => [s.key, s]));
+      const orderedKeys = Array.from(
+        new Set([...schemaFields.map((s) => s.key), ...Object.keys(rawObj)]),
+      );
 
-        if ((k === "exams_list" || k === "radiological_exams") && Array.isArray(v)) {
-          for (const item of v) {
+      for (const k of orderedKeys) {
+        if (internalKeys.has(k)) continue;
+        // Skip duplicate radiological_exams alias if exams_list is already present
+        if (k === "radiological_exams" && orderedKeys.includes("exams_list")) continue;
+
+        const wasPresentInRaw = Object.prototype.hasOwnProperty.call(rawObj, k);
+        const v =
+          k === "exams_list" &&
+          rawObj.exams_list === undefined &&
+          Array.isArray(rawObj.radiological_exams)
+            ? rawObj.radiological_exams
+            : rawObj[k];
+        const fieldSchema = schemaByKey.get(k);
+        const mapOptions = (opts?: FieldSelectOption[]) =>
+          opts?.map((o) => ({
+            value: o.value,
+            label: lang === "fr" ? o.labelFr : o.labelEn,
+          }));
+
+        if (
+          k === "exams_list" ||
+          k === "radiological_exams" ||
+          fieldSchema?.inputType === "exams_list"
+        ) {
+          const examArr = Array.isArray(v) ? v : [];
+          for (const item of examArr) {
             if (item && typeof item === "object") {
               const ex = item as Record<string, unknown>;
               subCards.push({
@@ -626,18 +693,23 @@ export class PatientDossierUseCase {
                   .join(" ; ")
               : translateValue(null, lang);
           fields.push({
-            key: k,
-            label: formatFieldLabel(k, lang),
+            key: "exams_list",
+            label: formatFieldLabel("exams_list", lang),
             value: summaryVal,
-            rawValue: v,
+            rawValue: examArr,
+            editValue: "",
+            inputType: "exams_list",
+            nullable: false,
+            examItems: extractNormalizedExamsList(rawObj),
             isLongText: true,
             hiddenInReadView: subCards.length > 0,
           });
           continue;
         }
 
-        if (k === "chemotherapy_list" && Array.isArray(v)) {
-          for (const item of v) {
+        if (k === "chemotherapy_list" || fieldSchema?.inputType === "chemotherapy_list") {
+          const chemoArr = Array.isArray(v) ? v : [];
+          for (const item of chemoArr) {
             if (item && typeof item === "object") {
               const ch = item as Record<string, unknown>;
               const dates = [ch.chemotherapy_start_date, ch.chemotherapy_end_date]
@@ -661,18 +733,24 @@ export class PatientDossierUseCase {
                   .join(" ; ")
               : translateValue(null, lang);
           fields.push({
-            key: k,
-            label: formatFieldLabel(k, lang),
+            key: "chemotherapy_list",
+            label: formatFieldLabel("chemotherapy_list", lang),
             value: summaryVal,
-            rawValue: v,
+            rawValue: chemoArr,
+            editValue: "",
+            inputType: "chemotherapy_list",
+            nullable: false,
+            chemoItems: extractNormalizedChemoList(rawObj),
             isLongText: true,
-            hiddenInReadView: subCards.length > 0,
+            hiddenInReadView: subCards.length > 0 || !wasPresentInRaw,
           });
           continue;
         }
 
         let formatted: string;
-        if (Array.isArray(v)) {
+        if (sectionName === "TumorBiology" && k === "msi_state" && typeof v === "boolean") {
+          formatted = v ? "MSI" : "MSS";
+        } else if (Array.isArray(v)) {
           formatted =
             v.length === 0
               ? lang === "fr"
@@ -699,12 +777,27 @@ export class PatientDossierUseCase {
 
         const finalVal = formatted || translateValue(null, lang);
         const cleanedRaw = typeof v === "string" && /\d{4}-\d{2}-\d{2}T/.test(v) ? finalVal : v;
+        const inputType: FieldInputKind =
+          fieldSchema?.inputType ??
+          (LONG_TEXT_KEYS.has(k) || finalVal.length > 90 ? "textarea" : "text");
+        const editValue = formatRawEditValue(v, fieldSchema);
+
         fields.push({
           key: k,
           label: formatFieldLabel(k, lang),
           value: finalVal,
           rawValue: cleanedRaw,
-          isLongText: LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
+          editValue,
+          inputType,
+          nullable: fieldSchema?.nullable ?? true,
+          min: fieldSchema?.min,
+          max: fieldSchema?.max,
+          step: fieldSchema?.step,
+          unit: fieldSchema?.unit,
+          placeholder: lang === "fr" ? fieldSchema?.placeholderFr : fieldSchema?.placeholderEn,
+          options: mapOptions(fieldSchema?.options),
+          isLongText: inputType === "textarea" || LONG_TEXT_KEYS.has(k) || finalVal.length > 90,
+          hiddenInReadView: !wasPresentInRaw,
         });
       }
 
@@ -716,17 +809,35 @@ export class PatientDossierUseCase {
         lang,
       );
 
-      const manualMeta = form.manualEdits[sectionName] ?? null;
+      const canonicalSection = resolveCanonicalSectionName(sectionName);
+      const rawManualMeta =
+        form.manualEdits[sectionName] ?? form.manualEdits[canonicalSection] ?? null;
+      const isManual = Boolean(
+        rawManualMeta && (rawManualMeta as Record<string, unknown>).is_manual !== false,
+      );
+      const manualMeta = isManual ? rawManualMeta : null;
       const manualDiffs: DossierManualDiffView[] = [];
+      const diffMap = new Map<string, string>();
       if (manualMeta?.modified_fields && typeof manualMeta.modified_fields === "object") {
         for (const [fKey, diff] of Object.entries(manualMeta.modified_fields)) {
           if (diff && typeof diff === "object") {
+            const aiFormatted = translateValue(diff.ai_value, lang);
             manualDiffs.push({
               key: fKey,
               label: formatFieldLabel(fKey, lang),
-              aiValue: translateValue(diff.ai_value, lang),
+              aiValue: aiFormatted,
               humanValue: translateValue(diff.human_value, lang),
             });
+            diffMap.set(fKey, aiFormatted);
+          }
+        }
+      }
+
+      if (isManual && diffMap.size > 0) {
+        for (const f of fields) {
+          if (diffMap.has(f.key)) {
+            f.isModified = true;
+            f.originalAiValue = diffMap.get(f.key);
           }
         }
       }
@@ -749,7 +860,7 @@ export class PatientDossierUseCase {
         subCards,
         references,
         rawData: rawObj,
-        isManual: Boolean(manualMeta),
+        isManual,
         manualMeta,
         manualDiffs,
         reasoningThinking,
@@ -835,7 +946,21 @@ export class PatientDossierUseCase {
     editedBy: string,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
-    return this.api.updateFormSection(filename, section, data, editedBy, domain);
+    const [existingForm, domainSchema] = await Promise.all([
+      this.api.getFormDetail(filename, domain).catch(() => null),
+      this.api.getDomainSchema(domain).catch(() => null),
+    ]);
+    const existingSectionObj = (existingForm?.sections[section] ?? {}) as Record<string, unknown>;
+    const coercedData = coerceSectionUpdatePayload(section, data, existingSectionObj, domainSchema);
+    return this.api.updateFormSection(filename, section, coercedData, editedBy, domain);
+  }
+
+  async rollbackSection(
+    filename: string,
+    section: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    return this.api.rollbackSection(filename, section, domain);
   }
 
   async updateMissingItems(

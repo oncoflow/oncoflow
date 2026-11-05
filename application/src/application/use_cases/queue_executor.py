@@ -75,8 +75,9 @@ class QueueThinkingCallbackHandler(BaseCallbackHandler):
                 return k
         return 0
 
-    def on_llm_new_token(self, token: str, **kwargs: Any) -> None:
+    def on_llm_new_token(self, token: Any, **kwargs: Any) -> Any:
         """Extract live reasoning tokens from `reasoning_content` or `<think>` tags."""
+        token_str = token if isinstance(token, str) else ""
         chunk = kwargs.get("chunk")
         reasoning_token = ""
         if chunk is not None and hasattr(chunk, "message"):
@@ -92,13 +93,13 @@ class QueueThinkingCallbackHandler(BaseCallbackHandler):
 
         if reasoning_token:
             self._emit_thinking(reasoning_token)
-            if not token:
+            if not token_str:
                 return
 
-        if not token:
+        if not token_str:
             return
 
-        self._raw_buffer += token
+        self._raw_buffer += token_str
         open_tag = "<think>"
         close_tag = "</think>"
 
@@ -157,9 +158,7 @@ class PatientMDTFormQueueJobExecutor:
         if domain_conf.rcp.display_type != "mongodb":
             return
 
-        status_val = (
-            status.value if isinstance(status, RCPProcessingStatus) else str(status)
-        )
+        status_val = status.value if isinstance(status, RCPProcessingStatus) else status
         now = datetime.now()
         fields: dict[str, Any] = {
             "processing_status": status_val,
@@ -353,40 +352,18 @@ class PatientMDTFormQueueJobExecutor:
                     )
                     continue
 
-                thinking_cb = QueueThinkingCallbackHandler(
+                self._run_model_extraction_step(
+                    service=service,
+                    reader=reader,
+                    model_cls=model_cls,
+                    model_name=model_name,
+                    step_label=f"Extraction clinique ({idx}/{total}) — {model_name}",
+                    idx=idx,
+                    total=total,
+                    completed_models=completed_models,
+                    preserve_manual=preserve_manual,
                     queue_manager=queue_manager,
                     job_id=job_id,
-                    run_id=run_id,
-                    lease_id=lease_id,
-                    section_name=model_name,
-                )
-                queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Extraction clinique ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round(((idx - 1) / total) * 100.0, 1),
-                    run_id=run_id,
-                    lease_id=lease_id,
-                )
-                extra_kwargs = (
-                    {"clear_manual_flag": True} if not preserve_manual else {}
-                )
-                service.extract_section(
-                    model_cls=model_cls,
-                    upsert=True,
-                    callbacks=[thinking_cb],
-                    form=service.form,
-                    reader=reader,
-                    **extra_kwargs,
-                )
-                if model_name not in completed_models:
-                    completed_models.append(model_name)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Extraction clinique ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round((idx / total) * 100.0, 1),
                     run_id=run_id,
                     lease_id=lease_id,
                 )
@@ -405,6 +382,60 @@ class PatientMDTFormQueueJobExecutor:
             self.on_job_enqueued(domain, filename, next_status)
         finally:
             service.close()
+
+    @staticmethod
+    def _run_model_extraction_step(
+        *,
+        service: PatientMDTFormExtractionService,
+        reader: DocumentReader,
+        model_cls: Any,
+        model_name: str,
+        step_label: str,
+        idx: int,
+        total: int,
+        completed_models: list[str],
+        preserve_manual: bool,
+        queue_manager: Any,
+        job_id: str,
+        run_id: str | None,
+        lease_id: str,
+    ) -> None:
+        """Execute a single section extraction step and report progress before and after."""
+        thinking_cb = QueueThinkingCallbackHandler(
+            queue_manager=queue_manager,
+            job_id=job_id,
+            run_id=run_id,
+            lease_id=lease_id,
+            section_name=model_name,
+        )
+        queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=step_label,
+            completed_models=completed_models,
+            progress_pct=round(((idx - 1) / total) * 100.0, 1),
+            run_id=run_id,
+            lease_id=lease_id,
+        )
+        extra_kwargs = {"clear_manual_flag": True} if not preserve_manual else {}
+        service.extract_section(
+            model_cls=model_cls,
+            upsert=True,
+            callbacks=[thinking_cb],
+            form=service.form,
+            reader=reader,
+            **extra_kwargs,
+        )
+        if model_name not in completed_models:
+            completed_models.append(model_name)
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step=step_label,
+            completed_models=completed_models,
+            progress_pct=round((idx / total) * 100.0, 1),
+            run_id=run_id,
+            lease_id=lease_id,
+        )
 
     def execute_wave3_experts(
         self, job: dict[str, Any], lease_id: str, queue_manager: Any
@@ -464,40 +495,18 @@ class PatientMDTFormQueueJobExecutor:
                     )
                     continue
 
-                thinking_cb = QueueThinkingCallbackHandler(
+                self._run_model_extraction_step(
+                    service=service,
+                    reader=reader,
+                    model_cls=model_cls,
+                    model_name=model_name,
+                    step_label=f"Concertation d'experts ({idx}/{total}) — {model_name}",
+                    idx=idx,
+                    total=total,
+                    completed_models=completed_models,
+                    preserve_manual=preserve_manual,
                     queue_manager=queue_manager,
                     job_id=job_id,
-                    run_id=run_id,
-                    lease_id=lease_id,
-                    section_name=model_name,
-                )
-                queue_manager.refresh_gpu_lease(lease_id, job_id=job_id)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Concertation d'experts ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round(((idx - 1) / total) * 100.0, 1),
-                    run_id=run_id,
-                    lease_id=lease_id,
-                )
-                extra_kwargs = (
-                    {"clear_manual_flag": True} if not preserve_manual else {}
-                )
-                service.extract_section(
-                    model_cls=model_cls,
-                    upsert=True,
-                    callbacks=[thinking_cb],
-                    form=service.form,
-                    reader=reader,
-                    **extra_kwargs,
-                )
-                if model_name not in completed_models:
-                    completed_models.append(model_name)
-                queue_manager.update_job_progress(
-                    job_id=job_id,
-                    current_step=f"Concertation d'experts ({idx}/{total}) — {model_name}",
-                    completed_models=completed_models,
-                    progress_pct=round((idx / total) * 100.0, 1),
                     run_id=run_id,
                     lease_id=lease_id,
                 )
@@ -555,14 +564,7 @@ class PatientMDTFormQueueJobExecutor:
                 and target_cls.__name__ in service.form.sections
             ):
                 pass
-            elif target_cls.__name__ == "PatientAdministrative":
-                if not preserve_manual:
-                    service.form.manual_edits = (
-                        service.form_cls.archive_manual_edit_before_ai_rerun(
-                            service.form.manual_edits,
-                            "PatientAdministrative",
-                        )
-                    )
+            elif target_cls.__name__ == "PatientAdministrative" and preserve_manual:
                 service.process_patient_association(
                     run_admin_ai=True,
                     callbacks=[thinking_cb],
@@ -571,12 +573,7 @@ class PatientMDTFormQueueJobExecutor:
                 )
             else:
                 extra_kwargs = (
-                    {"clear_manual_flag": True}
-                    if (
-                        not preserve_manual
-                        and target_cls.__name__ in service.form.manual_edits
-                    )
-                    else {}
+                    {"clear_manual_flag": True} if not preserve_manual else {}
                 )
                 service.extract_section(
                     model_cls=target_cls,
@@ -588,6 +585,59 @@ class PatientMDTFormQueueJobExecutor:
                 )
         finally:
             service.close()
+
+    def clear_manual_edit_before_rerun(
+        self,
+        domain: str,
+        filename: str,
+        section_name: str,
+    ) -> None:
+        """
+        Immediately clear the manual edit badge (`is_manual: False`) and restore
+        any cached AI baseline in MongoDB when a single-section AI rerun with
+        `preserve_manual_edits=False` is enqueued, so the UI reflects the reset
+        immediately even while the background LLM job is pending.
+        """
+        try:
+            domain_conf = self._resolve_domain_config(domain)
+            form_cls = get_domain_mdt_form_cls(domain_conf.domain)
+            target_cls = form_cls.get_section_model(section_name)
+            canonical_name = target_cls.__name__ if target_cls else section_name
+            repo = MongoPatientMDTFormRepository(domain_conf)
+            try:
+                doc = repo.get_by_file(filename)
+                if not isinstance(doc, dict):
+                    return
+                manual_edits = doc.get("manual_edits")
+                if not isinstance(manual_edits, dict):
+                    return
+                updated_fields: dict[str, Any] = {}
+                existing_meta = manual_edits.get(canonical_name) or manual_edits.get(
+                    section_name
+                )
+                if isinstance(existing_meta, dict):
+                    ai_orig = existing_meta.get(
+                        "previous_ai_value"
+                    ) or existing_meta.get("ai_original")
+                    if isinstance(ai_orig, dict) and ai_orig:
+                        updated_fields[canonical_name] = dict(ai_orig)
+                updated_manual = form_cls.archive_manual_edit_before_ai_rerun(
+                    manual_edits,
+                    canonical_name,
+                )
+                if section_name != canonical_name and section_name in updated_manual:
+                    updated_manual = form_cls.archive_manual_edit_before_ai_rerun(
+                        updated_manual,
+                        section_name,
+                    )
+                updated_fields["manual_edits"] = updated_manual
+                repo.upsert_fields(filename, fields=updated_fields)
+            finally:
+                repo.db_client.close()
+        except Exception as exc:
+            self.logger.warning(
+                f"Could not pre-clear manual edit for {domain}/{filename} ({section_name}): {exc}"
+            )
 
     def recover_unfinished_jobs(self, queue_manager: Any) -> int:
         """

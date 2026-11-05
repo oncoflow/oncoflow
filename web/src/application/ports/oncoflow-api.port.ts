@@ -4,6 +4,7 @@ import type {
   BugReportItem,
   CitationRef,
   ClinicalDomain,
+  DomainFormSchema,
   Language,
   MdtAgendaEnrollInput,
   MdtAgendaMoveInput,
@@ -45,10 +46,15 @@ export interface OncoflowApiPort {
   deleteForm(filename: string, domain: ClinicalDomain): Promise<void>;
 
   // Dossier & Longitudinal Forms
+  getDomainSchema(domain: ClinicalDomain): Promise<DomainFormSchema>;
   resolveTarget(
     target: string,
     domain: ClinicalDomain,
-  ): Promise<{ kind: "patient" | "form"; patientId?: string | null; filename?: string | null }>;
+  ): Promise<{
+    kind: "patient" | "form";
+    patientId?: string | null;
+    filename?: string | null;
+  }>;
   getFormDetail(filename: string, domain: ClinicalDomain): Promise<MdtFormDetail | null>;
   getPatientForms(patientId: string, domain: ClinicalDomain): Promise<MdtFormDetail[]>;
   updateFormSection(
@@ -56,6 +62,11 @@ export interface OncoflowApiPort {
     section: string,
     data: Record<string, unknown>,
     editedBy: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail>;
+  rollbackSection(
+    filename: string,
+    section: string,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail>;
   updateMissingItems(

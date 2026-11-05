@@ -300,6 +300,8 @@ class PatientMDTFormExtractionService:
                 "execution_times": dict(target_form.execution_times),
                 "date_refresh": target_form.date_refresh,
             }
+            if section_name == "PatientAdministrative" and target_form.patient_id:
+                upsert_fields_dict["patient_id"] = target_form.patient_id
             if clear_manual_flag:
                 upsert_fields_dict["manual_edits"] = dict(target_form.manual_edits)
 

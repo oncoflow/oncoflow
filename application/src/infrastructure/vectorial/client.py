@@ -19,4 +19,4 @@ class VectorialDataBaseClient:
         elif config.dbvec.type.lower() == "milvus":
             self.vectordb = MilvusDB(config, coll_prefix)
         else:
-            raise ValueError(f"{str(config.dbvec.type)} not yet supported")
+            raise ValueError(f"{config.dbvec.type} not yet supported")

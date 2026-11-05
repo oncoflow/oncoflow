@@ -39,7 +39,7 @@ def _stat_resource_metadata(base_dir: str, filename: str) -> tuple[int, str | No
         fpath = safe_path(base_dir, filename)
         st = os.stat(fpath)
         updated_at = datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat()
-        return int(st.st_size), updated_at
+        return st.st_size, updated_at
     except (UnsafePathError, OSError):
         return 0, None
 
@@ -114,7 +114,7 @@ def upload_resource(
         chunks.append(chunk)
     file_bytes = b"".join(chunks)
 
-    os.makedirs(str(base_dir), exist_ok=True)
+    os.makedirs(base_dir, exist_ok=True)
     with open(target_path, "wb") as buffer:
         buffer.write(file_bytes)
 
@@ -327,7 +327,7 @@ def get_resource_file(
 
     resolved_name, file_path = resolved
     return FileResponse(
-        str(file_path),
+        file_path,
         media_type="application/pdf",
         filename=resolved_name,
         content_disposition_type="inline",

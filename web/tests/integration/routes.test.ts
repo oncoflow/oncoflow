@@ -59,10 +59,16 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     // Styleguide link hidden unless expertMode is enabled
     expect(res.body).not.toContain('data-testid="nav-styleguide"');
 
-    const expertRes = await app.inject({ method: "GET", url: "/worklist?expert=true" });
+    const expertRes = await app.inject({
+      method: "GET",
+      url: "/worklist?expert=true",
+    });
     expect(expertRes.body).toContain('data-testid="nav-styleguide"');
 
-    const cardsRes = await app.inject({ method: "GET", url: "/worklist?display=cards" });
+    const cardsRes = await app.inject({
+      method: "GET",
+      url: "/worklist?display=cards",
+    });
     expect(cardsRes.statusCode).toBe(200);
     expect(cardsRes.body).toContain("ds-patient-grid");
 
@@ -162,11 +168,25 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(editRes.statusCode).toBe(200);
     expect(editRes.body).toContain("Modifié manuellement");
     expect(editRes.body).toContain("FOLFIRINOX modifié 7 cures");
+    expect(editRes.body).toContain("ds-kv--manual");
+    expect(editRes.body).toContain('data-testid="field-manual-chemotherapy_name"');
+    expect(editRes.body).toContain("Valeur IA initiale : FOLFIRINOX modifié, 6 cures");
+    expect(editRes.body).toContain('data-testid="btn_rollback_section_Chemotherapy"');
 
-    // Rerun TumorBiology while preserving manual edits on Chemotherapy
+    // Cancel edit returns read-only partial without is-editing
+    const cancelEditRes = await app.inject({
+      method: "GET",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?view=1",
+      headers: { "hx-request": "true" },
+    });
+    expect(cancelEditRes.statusCode).toBe(200);
+    expect(cancelEditRes.body).not.toContain("is-editing");
+    expect(cancelEditRes.body).toContain("FOLFIRINOX modifié 7 cures");
+
+    // Rerun Chemotherapy while preserving manual edits by default
     const rerunRes = await app.inject({
       method: "POST",
-      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/TumorBiology/rerun",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rerun",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       payload: "preserve_manual_edits=true",
     });
@@ -182,6 +202,18 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(checkRes.body).toContain('data-testid="prompt-TumorLocation"');
     expect(checkRes.body).toContain('data-testid="trace-Chemotherapy"');
     expect(checkRes.body).toContain("Chunk #1");
+
+    // Rollback Chemotherapy restores the original AI value and removes manual badge + field highlight
+    const rollbackRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rollback",
+      headers: { "hx-request": "true" },
+    });
+    expect(rollbackRes.statusCode).toBe(200);
+    expect(rollbackRes.body).not.toContain("Modifié manuellement");
+    expect(rollbackRes.body).not.toContain("ds-kv--manual");
+    expect(rollbackRes.body).not.toContain("FOLFIRINOX modifié 7 cures");
+    expect(rollbackRes.body).toContain("FOLFIRINOX modifié, 6 cures");
     await app.close();
   });
 
@@ -299,7 +331,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
   it("GET /ingest and POST /preferences persist theme, language, and expertMode cookies", async () => {
     const { app } = await createTestApp();
-    const ingestRes = await app.inject({ method: "GET", url: "/ingest?domain=oncology" });
+    const ingestRes = await app.inject({
+      method: "GET",
+      url: "/ingest?domain=oncology",
+    });
     expect(ingestRes.statusCode).toBe(200);
     expect(ingestRes.body).toContain('data-testid="input-ingest-files"');
     expect(ingestRes.body).toContain('data-testid="btn_ingest_submit"');
@@ -346,6 +381,15 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     });
     expect(citationPdf.statusCode).toBe(200);
     expect(citationPdf.headers["content-type"]).toContain("application/pdf");
+
+    // SMA PNDS link with em-dash (—), section sign (§), and accents must never throw 500 ERR_INVALID_CHAR
+    const smaPndsPdf = await app.inject({
+      method: "GET",
+      url: `/files/resources/${encodeURIComponent("PNDS — Amyotrophie Spinale 2025 §6.1")}?domain=sma`,
+    });
+    expect(smaPndsPdf.statusCode).toBe(200);
+    expect(smaPndsPdf.headers["content-type"]).toContain("application/pdf");
+    expect(smaPndsPdf.headers["content-disposition"]).toMatch(/^[\x20-\x7E]+$/);
 
     const pdfJsMod = await app.inject({
       method: "GET",
@@ -550,7 +594,10 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     const { app } = await createTestApp();
 
     // 1. Static asset ETag + 304 Not Modified
-    const assetRes = await app.inject({ method: "GET", url: "/public/css/tokens.css" });
+    const assetRes = await app.inject({
+      method: "GET",
+      url: "/public/css/tokens.css",
+    });
     expect(assetRes.statusCode).toBe(200);
     const assetEtag = assetRes.headers.etag;
     expect(assetEtag).toBeTruthy();
@@ -586,6 +633,152 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
     expect(sseRes.statusCode).toBe(200);
     expect(sseRes.headers["content-type"]).toContain("text/event-stream");
     expect(sseRes.body).toContain("retry: 3000\nevent: banner\ndata: ");
+
+    await app.close();
+  });
+
+  it("distributes domain JSON schemas via GET /api/schema and enforces strict field types on SMA & Oncology section updates without 500 errors", async () => {
+    const { app } = await createTestApp();
+
+    // 1. Verify GET /api/schema?domain=sma and GET /api/schema?domain=oncology
+    const smaSchemaRes = await app.inject({
+      method: "GET",
+      url: "/api/schema?domain=sma",
+    });
+    expect(smaSchemaRes.statusCode).toBe(200);
+    const smaSchema = smaSchemaRes.json();
+    expect(smaSchema.domain).toBe("sma");
+    expect(Array.isArray(smaSchema.sections)).toBe(true);
+    const motorSection = smaSchema.sections.find(
+      (s: { name: string }) => s.name === "MotorFunctionStatus",
+    );
+    expect(motorSection?.json_schema?.properties?.hfmse_score).toBeDefined();
+
+    // 2. Verify SMA section edit endpoints render dynamic typed inputs from schema
+    const smaMotorEditRes = await app.inject({
+      method: "GET",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/MotorFunctionStatus/edit?domain=sma",
+    });
+    expect(smaMotorEditRes.statusCode).toBe(200);
+    expect(smaMotorEditRes.body).toContain('data-field-type="integer"');
+    expect(smaMotorEditRes.body).toContain('data-field-type="select"');
+    expect(smaMotorEditRes.body).toContain('data-field-type="string_list"');
+
+    const smaRespEditRes = await app.inject({
+      method: "GET",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/RespiratoryFunction/edit?domain=sma",
+    });
+    expect(smaRespEditRes.statusCode).toBe(200);
+    expect(smaRespEditRes.body).toContain('data-field-type="boolean"');
+    expect(smaRespEditRes.body).toContain('data-field-type="float"');
+
+    // 3. Update SMA MotorFunctionStatus with mixed string/number/placeholder inputs — must coerce cleanly (200 OK)
+    const updateMotorRes = await app.inject({
+      method: "POST",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/MotorFunctionStatus?domain=sma",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload:
+        "best_motor_function=Assis+sans+appui+%28Sitter%29&hfmse_score=44&chop_intend_score=Non+renseign%C3%A9&rulm_score=31&motor_milestones=Station+assise+autonome%0APropulsion+fauteuil&physiotherapy_frequency=3+s%C3%A9ances+%2F+semaine",
+    });
+    expect(updateMotorRes.statusCode).toBe(200);
+    expect(updateMotorRes.body).toContain('<span class="ds-kv__value ">44</span>');
+    expect(updateMotorRes.body).toContain("Station assise autonome ; Propulsion fauteuil");
+    expect(updateMotorRes.body).toContain("Modifié manuellement");
+
+    // 4. Update SMA RespiratoryFunction with boolean and float fields
+    const updateRespRes = await app.inject({
+      method: "POST",
+      url: "/forms/leo_exemple_2026_11_12.pdf/sections/RespiratoryFunction?domain=sma",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload:
+        "non_invasive_ventilation=false&daily_ventilation_hours=&forced_vital_capacity_percent=79.5&cough_assist_used=true&respiratory_infections_history=Aucune+infection",
+    });
+    expect(updateRespRes.statusCode).toBe(200);
+    expect(updateRespRes.body).toContain("79.5");
+    expect(updateRespRes.body).toContain("Modifié manuellement");
+
+    await app.close();
+  });
+
+  it("renders visual processing indicators and auto-refresh attributes when a fiche is in progress, and adapts delete dialogs to patient names", async () => {
+    const { app, api } = await createTestApp();
+
+    // Trigger processing on jeanne_fictive_2026_11_06.pdf
+    await api.processFullForm("jeanne_fictive_2026_11_06.pdf", true, "oncology");
+
+    // 1. Worklist Table view shows processing badge & auto-refresh attribute and adapted delete dialog
+    const worklistRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology",
+    });
+    expect(worklistRes.statusCode).toBe(200);
+    expect(worklistRes.body).toContain('data-testid="badge-processing-A-1042"');
+    expect(worklistRes.body).toContain('data-processing-active="true"');
+    expect(worklistRes.body).toContain('data-patient-name="FICTIVE Jeanne"');
+    expect(worklistRes.body).toContain(
+      "Supprimer le dossier de <span data-del-patient-name>FICTIVE Jeanne</span> ?",
+    );
+    expect(worklistRes.body).toContain(
+      "<strong data-del-patient-name>FICTIVE Jeanne</strong> (#A-1042)",
+    );
+
+    // 2. Worklist Cards view also contains delete menu button and dialog
+    const cardsRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology&display=cards",
+    });
+    expect(cardsRes.statusCode).toBe(200);
+    expect(cardsRes.body).toContain('data-testid="badge-processing-A-1042"');
+    expect(cardsRes.body).toContain('data-open="del-dialog-A-1042"');
+    expect(cardsRes.body).toContain('id="del-dialog-A-1042"');
+
+    // 3. Dossier view shows processing badge in header and M3 processing banner with auto-refresh attribute
+    const dossierRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology",
+    });
+    expect(dossierRes.statusCode).toBe(200);
+    expect(dossierRes.body).toContain('data-testid="badge-processing-status"');
+    expect(dossierRes.body).toContain('data-testid="dossier-processing-banner"');
+    expect(dossierRes.body).toContain('data-processing-active="true"');
+    expect(dossierRes.body).toContain('id="delete-dossier-modal"');
+    expect(dossierRes.body).toContain(
+      "Supprimer le dossier de <span data-del-patient-name>FICTIVE Jeanne</span> ?",
+    );
+
+    // 4. Deleting a single form via POST /forms/:filename/delete redirects to /worklist
+    const delFormRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_09_18.pdf/delete?domain=oncology",
+    });
+    expect(delFormRes.statusCode).toBe(302);
+    expect(delFormRes.headers.location).toContain("/worklist");
+
+    // Trigger processing on paul_modele_2026_11_06.pdf (#A-1037, which had 0 missing items)
+    // While AI processing is active, it must NOT be marked as "Dossier complet" in the worklist
+    await api.processFullForm("paul_modele_2026_11_06.pdf", true, "oncology");
+    const worklistWhilePaulProcessing = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology",
+    });
+    expect(worklistWhilePaulProcessing.statusCode).toBe(200);
+    expect(worklistWhilePaulProcessing.body).toContain('data-testid="badge-processing-A-1037"');
+    expect(worklistWhilePaulProcessing.body).toContain("En attente IA");
+    expect(worklistWhilePaulProcessing.body).not.toContain("Dossier complet");
+
+    // Complete filter must exclude records whose AI analysis is not completed
+    const completeOnlyRes = await app.inject({
+      method: "GET",
+      url: "/worklist?domain=oncology&completeness=complete",
+    });
+    expect(completeOnlyRes.statusCode).toBe(200);
+    expect(completeOnlyRes.body).not.toContain("MODÈLE Paul");
 
     await app.close();
   });

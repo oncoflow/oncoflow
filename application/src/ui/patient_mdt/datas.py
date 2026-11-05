@@ -68,11 +68,13 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
         except Exception as e:
             logger.warning(f"Callback on_llm_start failed: {e}")
 
-    def on_llm_new_token(self, token: str, chunk: Any = None, **kwargs: Any) -> None:
+    def on_llm_new_token(self, token: Any, **kwargs: Any) -> Any:
         try:
             if self.ctx and not get_script_run_ctx():
                 add_script_run_ctx(threading.current_thread(), self.ctx)
 
+            token_str = token if isinstance(token, str) else ""
+            chunk = kwargs.get("chunk")
             reasoning_token = None
             if chunk and hasattr(chunk, "message"):
                 msg = chunk.message
@@ -83,19 +85,19 @@ class ThreadSafeStreamlitCallbackHandler(BaseCallbackHandler):
                     reasoning_token = msg.additional_kwargs.get("reasoning_content")
 
             is_think_token = False
-            clean_token = token
+            clean_token = token_str
 
             if reasoning_token:
                 is_think_token = True
-                clean_token = reasoning_token
+                clean_token = str(reasoning_token)
             else:
-                if "<think>" in token:
+                if "<think>" in token_str:
                     self.in_think = True
-                    clean_token = token.replace("<think>", "")
+                    clean_token = token_str.replace("<think>", "")
                     is_think_token = True
-                elif "</think>" in token:
+                elif "</think>" in token_str:
                     self.in_think = False
-                    clean_token = token.replace("</think>", "")
+                    clean_token = token_str.replace("</think>", "")
                     is_think_token = True
                 elif self.in_think:
                     is_think_token = True
@@ -221,7 +223,7 @@ def _format_duration(seconds: float | int) -> str:
     if total_sec < 60:
         return f"{total_sec:.1f} s"
     mins = int(total_sec // 60)
-    secs = int(round(total_sec % 60))
+    secs = round(total_sec % 60)
     if secs == 60:
         mins += 1
         secs = 0
@@ -818,7 +820,7 @@ def rerun_all_models(filename: str, section_key: str = "default"):
 
 
 def get_mtd_reader(filename: str | None = None):
-    target_file = filename or st.query_params.get("file")
+    target_file = filename or st.query_params.get("file") or ""
     if (
         "reader" not in st.session_state
         or st.session_state["reader"] is None
@@ -962,12 +964,9 @@ def open_patient_identity_and_link_dialog(
             format="DD/MM/YYYY",
             key=f"dlg_link_date_rcp_{filename}",
         )
-        has_clinical_data = bool(
-            isinstance(active_doc, dict)
-            and any(
-                m.__name__ in active_doc
-                for m in extraction_service.form_cls.get_clinical_models()
-            )
+        has_clinical_data = isinstance(active_doc, dict) and any(
+            m.__name__ in active_doc
+            for m in extraction_service.form_cls.get_clinical_models()
         )
         launch_ai_after_link = False
         if not has_clinical_data:
@@ -1111,12 +1110,9 @@ def open_patient_identity_and_link_dialog(
             )
             apply_all = scope_choice.startswith("Mettre à jour tout")
 
-        has_clinical_data = bool(
-            isinstance(active_doc, dict)
-            and any(
-                m.__name__ in active_doc
-                for m in extraction_service.form_cls.get_clinical_models()
-            )
+        has_clinical_data = isinstance(active_doc, dict) and any(
+            m.__name__ in active_doc
+            for m in extraction_service.form_cls.get_clinical_models()
         )
         launch_ai_after_save = False
         if not has_clinical_data:
@@ -1220,7 +1216,7 @@ def render_unified_patient_banner(
     )
 
     try:
-        file_path = safe_path(app_conf.rcp.path, default_file)
+        file_path: str | None = str(safe_path(app_conf.rcp.path, default_file))
     except UnsafePathError:
         file_path = None
     has_pdf = file_path is not None and os.path.exists(file_path)
@@ -1607,15 +1603,15 @@ def render_unified_patient_banner(
                         key=timeline_widget_key,
                     )
 
-            chosen_file = chosen_file or default_file
-            if chosen_file != filename:
-                st.query_params["file"] = chosen_file
+            chosen_file_str = str(chosen_file or default_file)
+            if chosen_file_str != filename:
+                st.query_params["file"] = chosen_file_str
                 if patient is not None:
                     st.query_params["patient_id"] = patient.patient_id
                 st.rerun()
-            return chosen_file, has_pdf, file_path, active_state
+            return chosen_file_str, has_pdf, file_path, active_state
 
-    return default_file, has_pdf, file_path, active_state
+    return str(default_file), has_pdf, file_path, active_state
 
 
 def power_mode(
@@ -1634,7 +1630,7 @@ def power_mode(
         )
 
         rcp_files = [
-            d["file"]
+            str(d["file"])
             for d in (patient_rcps or [])
             if isinstance(d, dict) and "file" in d
         ]
@@ -1642,14 +1638,15 @@ def power_mode(
             rcp_files.insert(0, active_file)
 
         if len(rcp_files) > 1:
-            target_rcp_file = po.selectbox(
+            selected_rcp_file = po.selectbox(
                 "Fiche RCP à relancer",
                 options=rcp_files,
                 index=rcp_files.index(active_file) if active_file in rcp_files else 0,
                 key=f"pow_target_file_{key_prefix}_{active_file}",
             )
+            target_rcp_file = selected_rcp_file or active_file or ""
         else:
-            target_rcp_file = active_file
+            target_rcp_file = active_file or ""
             po.caption(f":material/description: Fiche RCP cible : `{target_rcp_file}`")
 
         nm = po.selectbox(
@@ -2653,7 +2650,7 @@ def _render_inline_section_editor(
                         filename=target_filename,
                         section_name=model_name,
                         section_data={
-                            "chemotherapy": bool(has_chemo or len(chemo_out) > 0),
+                            "chemotherapy": has_chemo or len(chemo_out) > 0,
                             "chemotherapy_list": chemo_out,
                         },
                         edited_by=st.session_state.get("username"),
@@ -2714,12 +2711,10 @@ def _render_inline_section_editor(
             elif field_info.annotation is bool or isinstance(cur_val, bool):
                 updated_values[field_name] = st.toggle(label, value=bool(cur_val))
             elif field_info.annotation in (int, int | None):
-                updated_values[field_name] = int(
-                    st.number_input(
-                        label,
-                        value=int(cur_val) if isinstance(cur_val, (int, float)) else 0,
-                        step=1,
-                    )
+                updated_values[field_name] = st.number_input(
+                    label,
+                    value=int(cur_val) if isinstance(cur_val, (int, float)) else 0,
+                    step=1,
                 )
             elif field_info.annotation in (float, float | None):
                 updated_values[field_name] = float(
@@ -3190,7 +3185,7 @@ def render_rcp_detail_view(
 
     if file_path is None and has_pdf is None:
         try:
-            file_path = safe_path(app_conf.rcp.path, target_filename)
+            file_path = str(safe_path(app_conf.rcp.path, target_filename))
         except UnsafePathError:
             file_path = None
         has_pdf = file_path is not None and os.path.exists(file_path)
@@ -3359,7 +3354,6 @@ def form():
     patient, patient_rcps, filename = resolve_patient_and_rcps()
     if not filename:
         st.switch_page(f"{PAGES_DIR_SRC}/patient_mdt/cards.py")
-        return
 
     if st.query_params.get("file") != filename:
         st.query_params["file"] = filename
