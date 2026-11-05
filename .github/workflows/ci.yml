@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: true
           cache-dependency-glob: "**/application/uv.lock"
@@ -61,7 +61,7 @@ jobs:
           PYTHONPATH=. ./.venv/bin/pytest --timeout=300 --cov=src --cov-report=xml:coverage.xml tests/ src/
 
       - name: Archive Python coverage report for SonarQube
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-python
           path: application/coverage.xml
@@ -169,7 +169,7 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node.js 26
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "26"
           cache: "npm"
@@ -191,7 +191,7 @@ jobs:
         run: npm --prefix web run test:coverage
 
       - name: Archive Web coverage report for SonarQube
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-web
           path: web/coverage/lcov.info
@@ -284,14 +284,14 @@ jobs:
           fetch-depth: 0
 
       - name: Download Python coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: coverage-python
           path: application
 
       - name: Download Web coverage report
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           name: coverage-web
@@ -308,7 +308,7 @@ jobs:
 
       - name: Run SonarCloud Scan
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703 # v5
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304 # v8.4.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
