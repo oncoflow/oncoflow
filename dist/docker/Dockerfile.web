@@ -9,7 +9,7 @@ RUN groupadd -g 1002 appuser && \
 WORKDIR /build
 
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --ignore-scripts=false
+RUN npm ci --ignore-scripts
 
 COPY web/tsconfig.json web/tsconfig.build.json ./
 COPY web/src ./src

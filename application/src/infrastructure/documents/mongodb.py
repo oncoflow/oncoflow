@@ -163,7 +163,7 @@ class Mongodb:
         filter: dict,
         upsertable_data: dict | None = None,
     ):
-        upsertable_data = sanitize_bson_payload(upsertable_data or {})
+        upsertable_data = sanitize_bson_payload(upsertable_data or {}) or {}
         # Never log `upsertable_data` values: they can contain patient PII (GDPR).
         self.logger.info(
             "Start update document in %s (keys=%s)",

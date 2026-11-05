@@ -7,7 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.162.0",
     "uvicorn>=0.54.0",
-    "python-multipart>=0.0.32",
+    "python-multipart>=0.0.33",
     "chromadb>=1.5.9",
     "docling-core[chunking]>=2.105.0",
     "pydantic-settings>=2.16.2",
@@ -19,7 +19,7 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "langchain-openai>=1.7.3",
     "langchain-litellm>=0.11.2",
-    "openai>=3.41.0",
+    "openai>=3.42.1",
     "docling>=2.145.0",
     "ollama-ocr>=0.1.6",
     "openparse>=0.7.0",
@@ -36,16 +36,16 @@ dependencies = [
     "langchain>=1.4.7",
     "pyyaml>=6.0.3",
     "tenacity>=9.2.1",
-    "json-repair>=0.64.2",
+    "json-repair>=0.64.3",
     "filetype>=1.2.0",
     "pillow>=13.0.0",
-    "filelock>=4.2.4",
+    "filelock>=4.2.6",
 ]
 
 [tool.uv]
 override-dependencies = [
     "pillow>=13.0.0",
-    "filelock>=4.2.4",
+    "filelock>=4.2.6",
 ]
 
 [[tool.uv.index]]
@@ -72,7 +72,7 @@ dev = [
   "pytest>=9.2.0,<10",
   "pytest-cov>=7.1.0",
   "ruff>=0.17.3,<0.18",
-  "pre-commit",
+  "prek",
   "pyrefly",
   "respx>=0.23.1",
   "pytest-timeout>=2.4.0",

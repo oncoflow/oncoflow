@@ -19,10 +19,21 @@ export class WorklistUseCase {
 
   async execute(domain: ClinicalDomain, filter: WorklistFilter = {}): Promise<WorklistViewResult> {
     const viewMode = filter.viewMode ?? "patients";
-    const allCards =
+    const rawCards =
       viewMode === "rcp"
         ? await this.api.listRcpCards(domain)
         : await this.api.listPatientCards(domain);
+
+    const allCards = rawCards.map((c) => {
+      const isAiCompleted =
+        String(c.processingStatus ?? "COMPLETED")
+          .trim()
+          .toUpperCase() === "COMPLETED";
+      if (!isAiCompleted && c.isComplete) {
+        return { ...c, isComplete: false };
+      }
+      return c;
+    });
 
     const kpis = computeWorklistKpis(allCards);
     const cards = filterAndSortCards(allCards, filter);

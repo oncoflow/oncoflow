@@ -48,8 +48,8 @@ if not available_resources:
 else:
     default_index = 0
     query_resource = st.query_params.get("resource")
-    if query_resource in available_resources:
-        default_index = available_resources.index(str(query_resource))
+    if query_resource and query_resource in available_resources:
+        default_index = available_resources.index(query_resource)
 
     with st.container(border=True):
         top_c1, top_c2, top_c3, top_c4 = st.columns(
@@ -186,6 +186,7 @@ else:
                 )
 
     if os.path.exists(file_path):
+        col_chat = None
         if chat_active:
             col_doc, col_chat = st.columns([3, 2], gap="large")
         else:
@@ -255,7 +256,7 @@ else:
                 else:
                     st.info("Aperçu PDF non disponible pour ce type de fichier.")
 
-        if chat_active:
+        if chat_active and col_chat is not None:
             with col_chat:
                 st.subheader(":material/chat: Assistant IA (Référentiel)")
                 st.caption(

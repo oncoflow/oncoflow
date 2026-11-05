@@ -506,7 +506,7 @@ class MDTAgendaScheduler:
                     quorum_met=cand.quorum_met,
                     expert_coverage_ratio=cand.expert_coverage_ratio,
                     cluster_key=cand.cluster_key,
-                    pinned=bool(
+                    pinned=(
                         cand.entry.pinned and cand.entry.pinned_position is not None
                     ),
                     rank_reason=reason,

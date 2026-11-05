@@ -56,7 +56,7 @@ class VectorialDataBase:
             pass
 
         self.logger.info(
-            "Class vectorial_db succesfully init - server version: %s", str(db_version)
+            "Class vectorial_db succesfully init - server version: %s", db_version
         )
 
     def init_client(self, config: AppConfig):
@@ -109,6 +109,10 @@ class VectorialDataBase:
         Checks if the collection exists and has indexed entities.
         """
         return False
+
+    def delete_collection(self) -> None:
+        """Delete the underlying vector collection if supported by the backend."""
+        return None
 
     # Add a document to the collection.
 

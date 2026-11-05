@@ -38,6 +38,7 @@ All development operations must follow these exact shell commands. Standard pref
 | **Install Dependencies**| `uv pip install -e .` or `uv sync` | Fast dependency resolution using `uv` |
 | **Run Linter** | `ruff check src/` | Lint python files with Ruff rules |
 | **Format Code** | `ruff format src/` | Format python files according to PEP8 |
+| **Run Git Hooks** | `prek run` or `make hooks` | Run Git pre-commit hooks (Rust-native `prek`) |
 | **Run Unit Tests** | `pytest src/application/agent/tests/` | Run test suite for the LangChain agent |
 | **Run App Dev Mode** | `uv run streamlit run app-ui.py` | Start Streamlit UI server locally |
 | **Web UI Install** | `npm --prefix web ci` | Install Node.js dependencies for the M3 Web UI |

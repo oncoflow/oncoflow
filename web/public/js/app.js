@@ -41,7 +41,7 @@
           "HX-Request": "true",
         },
         body: "theme=" + encodeURIComponent(normalized),
-      });
+      }).catch(function () {});
     } catch (_e) {}
   }
 
@@ -863,11 +863,11 @@
     var promptChip = e.target.closest("[data-quick-prompt]");
     if (promptChip) {
       closeAllMenus(null);
-      var promptText = promptChip.getAttribute("data-quick-prompt") || "";
+      var chipPromptText = promptChip.getAttribute("data-quick-prompt") || "";
       var targetInputId = promptChip.getAttribute("data-target-input") || "chat-input";
       var inputEl = document.getElementById(targetInputId);
       if (inputEl) {
-        inputEl.value = promptText;
+        inputEl.value = chipPromptText;
         autoResizeChatInput(inputEl);
         inputEl.focus();
       }
@@ -887,15 +887,29 @@
     if (openBtn) {
       closeAllMenus(null);
       var dlg = document.getElementById(openBtn.getAttribute("data-open"));
-      if (dlg && typeof dlg.showModal === "function") {
-        dlg.showModal();
+      if (dlg) {
+        var patientName = openBtn.getAttribute("data-patient-name");
+        if (patientName) {
+          dlg.querySelectorAll("[data-del-patient-name]").forEach(function (el) {
+            el.textContent = patientName;
+          });
+        }
+        if (typeof dlg.showModal === "function") {
+          dlg.showModal();
+        } else {
+          dlg.setAttribute("open", "");
+        }
       }
     }
     var closeBtn = e.target.closest("[data-close]");
     if (closeBtn) {
       var cDlg = document.getElementById(closeBtn.getAttribute("data-close"));
-      if (cDlg && typeof cDlg.close === "function") {
-        cDlg.close();
+      if (cDlg) {
+        if (typeof cDlg.close === "function") {
+          cDlg.close();
+        } else {
+          cDlg.removeAttribute("open");
+        }
       }
     }
   });
@@ -1166,6 +1180,93 @@
 
   // Inline section edit link (progressive enhancement)
   document.addEventListener("click", function (e) {
+    var addExamBtn = e.target.closest("[data-add-exam-row]");
+    if (addExamBtn) {
+      e.preventDefault();
+      var secName = addExamBtn.getAttribute("data-add-exam-row") || "RadiologicExams";
+      var container = addExamBtn.closest("[data-exams-list-container]");
+      var rowsHost = container ? container.querySelector("[data-exams-rows]") : null;
+      if (rowsHost) {
+        var idx = rowsHost.querySelectorAll("[data-exam-row]").length;
+        var inputId = "inp-" + secName + "-exams_list";
+        var rowEl = document.createElement("div");
+        rowEl.className = "ds-subcard";
+        rowEl.setAttribute("data-exam-row", String(idx));
+        rowEl.style.marginBottom = "var(--ds-space-2)";
+        rowEl.innerHTML =
+          '<div class="ds-kv-grid">' +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + inputId + "-name-" + idx + '">Nom de l\'examen #' + (idx + 1) + "</label>" +
+          '<input class="ds-input" type="text" id="' + inputId + "-name-" + idx + '" name="exam_name_' + idx + '" value="" data-field-type="text" placeholder="Ex : Scanner TAP injecté">' +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + inputId + "-type-" + idx + '">Modalité (Type)</label>' +
+          '<select class="ds-select" id="' + inputId + "-type-" + idx + '" name="exam_type_' + idx + '" data-field-type="select">' +
+          '<option value="CT" selected>CT — Scanner (TDM)</option>' +
+          '<option value="MRI">MRI — IRM</option>' +
+          '<option value="PET">PET — TEP-TDM</option>' +
+          '<option value="EUS">EUS — Écho-endoscopie</option>' +
+          "</select>" +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + inputId + "-date-" + idx + '">Date de l\'examen</label>' +
+          '<input class="ds-input" type="date" id="' + inputId + "-date-" + idx + '" name="exam_date_' + idx + '" value="" data-field-type="date">' +
+          "</div>" +
+          "</div>" +
+          '<div class="ds-field" style="margin-top:var(--ds-space-2)">' +
+          '<label class="ds-label" for="' + inputId + "-res-" + idx + '">Conclusion / Résultat</label>' +
+          '<textarea class="ds-textarea" rows="2" id="' + inputId + "-res-" + idx + '" name="exam_result_' + idx + '" data-field-type="textarea" placeholder="Résumé des conclusions radiologiques"></textarea>' +
+          "</div>";
+        rowsHost.appendChild(rowEl);
+        initM3TextFields(rowEl);
+        initM3Selects(rowEl);
+      }
+      return;
+    }
+
+    var addChemoBtn = e.target.closest("[data-add-chemo-row]");
+    if (addChemoBtn) {
+      e.preventDefault();
+      var chemoSec = addChemoBtn.getAttribute("data-add-chemo-row") || "ChemotherapyTreament";
+      var chemoContainer = addChemoBtn.closest("[data-chemo-list-container]");
+      var chemoRowsHost = chemoContainer ? chemoContainer.querySelector("[data-chemo-rows]") : null;
+      if (chemoRowsHost) {
+        var cIdx = chemoRowsHost.querySelectorAll("[data-chemo-row]").length;
+        var cInputId = "inp-" + chemoSec + "-chemotherapy_list";
+        var cRowEl = document.createElement("div");
+        cRowEl.className = "ds-subcard";
+        cRowEl.setAttribute("data-chemo-row", String(cIdx));
+        cRowEl.style.marginBottom = "var(--ds-space-2)";
+        cRowEl.innerHTML =
+          '<div class="ds-kv-grid">' +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-name-" + cIdx + '">Protocole / Molécule #' + (cIdx + 1) + "</label>" +
+          '<input class="ds-input" type="text" id="' + cInputId + "-name-" + cIdx + '" name="chemotherapy_name_' + cIdx + '" value="" data-field-type="text" placeholder="Ex : FOLFIRINOX">' +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-tol-" + cIdx + '">Tolérance</label>' +
+          '<select class="ds-select" id="' + cInputId + "-tol-" + cIdx + '" name="chemotherapy_tolerance_' + cIdx + '" data-field-type="select">' +
+          '<option value="Good" selected>Bonne (Good)</option>' +
+          '<option value="Medium">Moyenne / Modérée (Medium)</option>' +
+          '<option value="Poor">Mauvaise / Toxicité (Poor)</option>' +
+          "</select>" +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-start-" + cIdx + '">Date de début</label>' +
+          '<input class="ds-input" type="date" id="' + cInputId + "-start-" + cIdx + '" name="chemotherapy_start_date_' + cIdx + '" value="" data-field-type="date">' +
+          "</div>" +
+          '<div class="ds-field">' +
+          '<label class="ds-label" for="' + cInputId + "-end-" + cIdx + '">Date de fin</label>' +
+          '<input class="ds-input" type="date" id="' + cInputId + "-end-" + cIdx + '" name="chemotherapy_end_date_' + cIdx + '" value="" data-field-type="date">' +
+          "</div>" +
+          "</div>";
+        chemoRowsHost.appendChild(cRowEl);
+        initM3TextFields(cRowEl);
+        initM3Selects(cRowEl);
+      }
+      return;
+    }
+
     var editLink = e.target.closest("[data-edit-section]");
     if (!editLink) return;
     var targetId = editLink.getAttribute("data-edit-section");
@@ -1174,15 +1275,19 @@
     e.preventDefault();
     fetch(href, { headers: { "HX-Request": "true" } })
       .then(function (r) {
+        if (!r.ok) return null;
         return r.text();
       })
       .then(function (html) {
+        if (!html) return;
         var host = document.getElementById(targetId);
         if (host) {
           host.outerHTML = html;
           initM3TextFields(document);
+          initM3Selects(document);
         }
-      });
+      })
+      .catch(function () {});
   });
 
   // Auto-grow AI Chat textarea on newline / multi-line input
@@ -1248,12 +1353,19 @@
         body: body,
       })
         .then(function (r) {
+          if (!r.ok) return null;
           return r.text();
         })
         .then(function (html) {
+          if (!html) return;
           var host = document.getElementById(secId);
-          if (host) host.outerHTML = html;
-        });
+          if (host) {
+            host.outerHTML = html;
+            initM3TextFields(document);
+            initM3Selects(document);
+          }
+        })
+        .catch(function () {});
       return;
     }
 
@@ -1930,14 +2042,162 @@
       });
   }
 
-  // Live SSE Queue Banner stream
+  // =========================================================================
+  // 21. Live SSE Queue Banner & In-Progress Fiche Auto-Refresh Controller
+  // =========================================================================
+  var isAutoRefreshing = false;
+  var lastRefreshAt = 0;
+
+  function canSafelyAutoRefresh() {
+    if (isAutoRefreshing) return false;
+    if (document.hidden) return false;
+    if (document.querySelector("dialog[open]")) return false;
+    if (document.querySelector(".ds-section.is-editing, [data-chat-busy='true']")) return false;
+    var active = document.activeElement;
+    if (
+      active &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        active.isContentEditable)
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  function snapshotOpenDetails(scopeEl) {
+    var openKeys = {};
+    (scopeEl || document).querySelectorAll("details[open]").forEach(function (d) {
+      var key = d.id || d.getAttribute("data-testid");
+      if (key) openKeys[key] = true;
+    });
+    return openKeys;
+  }
+
+  function restoreOpenDetails(scopeEl, openKeys) {
+    (scopeEl || document).querySelectorAll("details").forEach(function (d) {
+      var key = d.id || d.getAttribute("data-testid");
+      if (key && Object.prototype.hasOwnProperty.call(openKeys, key)) {
+        d.open = Boolean(openKeys[key]);
+      }
+    });
+  }
+
+  function softRefreshCurrentPage() {
+    if (!canSafelyAutoRefresh()) return;
+    var now = Date.now();
+    if (now - lastRefreshAt < 1800) return;
+    isAutoRefreshing = true;
+    lastRefreshAt = now;
+
+    fetch(window.location.href, {
+      method: "GET",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: { "X-Requested-With": "AutoRefresh" },
+    })
+      .then(function (res) {
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        return res.text();
+      })
+      .then(function (htmlText) {
+        if (!canSafelyAutoRefresh()) return;
+        var parser = new DOMParser();
+        var nextDoc = parser.parseFromString(htmlText, "text/html");
+
+        var nextBanner = nextDoc.getElementById("queue-banner");
+        var curBanner = document.getElementById("queue-banner");
+        if (nextBanner && curBanner) {
+          curBanner.outerHTML = nextBanner.outerHTML;
+        }
+
+        var nextDrawerBody = nextDoc.getElementById("queue-drawer-body");
+        var curDrawerBody = document.getElementById("queue-drawer-body");
+        if (nextDrawerBody && curDrawerBody) {
+          curDrawerBody.innerHTML = nextDrawerBody.innerHTML;
+        }
+
+        var curMain = document.getElementById("main");
+        var nextMain = nextDoc.getElementById("main");
+        if (!curMain || !nextMain) return;
+
+        var openDetailsMap = snapshotOpenDetails(curMain);
+
+        // On Dossier view, update synoptic & clinical panels in-place so the PDF iframe never reloads
+        var curSplit = document.getElementById("dossier-split-view");
+        var nextSplit = nextDoc.getElementById("dossier-split-view");
+        if (curSplit && nextSplit) {
+          var curSynoptic = curMain.querySelector(".ds-synoptic");
+          var nextSynoptic = nextMain.querySelector(".ds-synoptic");
+          if (curSynoptic && nextSynoptic) {
+            curSynoptic.outerHTML = nextSynoptic.outerHTML;
+          }
+          ["panel-clinical", "panel-opinions", "panel-expert"].forEach(function (panelId) {
+            var curPanel = document.getElementById(panelId);
+            var nextPanel = nextDoc.getElementById(panelId);
+            if (curPanel && nextPanel) {
+              curPanel.innerHTML = nextPanel.innerHTML;
+            }
+          });
+          ["tab-clinical", "tab-opinions", "tab-expert"].forEach(function (tabId) {
+            var curTab = document.getElementById(tabId);
+            var nextTab = nextDoc.getElementById(tabId);
+            if (curTab && nextTab) {
+              curTab.innerHTML = nextTab.innerHTML;
+            }
+          });
+          restoreOpenDetails(curMain, openDetailsMap);
+          initM3Selects(curMain);
+          initM3TextFields(curMain);
+        } else {
+          curMain.innerHTML = nextMain.innerHTML;
+          syncMobileCollapsibleDrawers();
+          syncMobileWorklistDefaultDisplay();
+          restoreOpenDetails(curMain, openDetailsMap);
+          initM3Selects(curMain);
+          initM3TextFields(curMain);
+        }
+      })
+      .catch(function () {})
+      .finally(function () {
+        isAutoRefreshing = false;
+      });
+  }
+
+  // Poll auto-refresh every 4s while any fiche on the current page is marked as processing
+  window.setInterval(function () {
+    if (document.querySelector('[data-processing-active="true"]')) {
+      softRefreshCurrentPage();
+    }
+  }, 4000);
+
   if (typeof window.EventSource === "function" && document.getElementById("queue-banner")) {
     try {
       var es = new EventSource("/events/queue");
       es.addEventListener("banner", function (ev) {
         var current = document.getElementById("queue-banner");
-        if (current && ev.data) {
-          current.outerHTML = ev.data;
+        if (!current || !ev.data) return;
+        var prevActive = current.getAttribute("data-queue-active");
+        var prevCompleted = current.getAttribute("data-queue-completed");
+        var prevActiveFile = current.getAttribute("data-active-file");
+
+        current.outerHTML = ev.data;
+
+        var updated = document.getElementById("queue-banner");
+        if (!updated) return;
+        var nextActive = updated.getAttribute("data-queue-active");
+        var nextCompleted = updated.getAttribute("data-queue-completed");
+        var nextActiveFile = updated.getAttribute("data-active-file");
+
+        var hasPageProcessing = Boolean(document.querySelector('[data-processing-active="true"]'));
+        var queueStateChanged =
+          prevActive !== nextActive ||
+          prevCompleted !== nextCompleted ||
+          prevActiveFile !== nextActiveFile;
+
+        if (hasPageProcessing && (queueStateChanged || nextActive === "true")) {
+          softRefreshCurrentPage();
         }
       });
     } catch (_err) {}

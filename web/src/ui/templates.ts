@@ -87,10 +87,176 @@ export interface ShellLayoutOptions {
   toastMessage?: string | null;
 }
 
+export interface FormProcessingState {
+  isProcessing: boolean;
+  isFailed: boolean;
+  label: string;
+  stepLabel: string | null;
+  progressPct: number;
+}
+
+const ACTIVE_PROCESSING_STATUSES = new Set([
+  "PENDING",
+  "RUNNING",
+  "PROCESSING",
+  "IN_PROGRESS",
+  "QUEUED",
+  "PENDING_ADMIN",
+  "PROCESSING_ADMIN",
+  "PENDING_CLINICAL",
+  "PROCESSING_CLINICAL",
+  "PENDING_EXPERTS",
+  "PROCESSING_EXPERTS",
+]);
+
+export function deriveFormProcessingState(
+  processingStatus: string | null | undefined,
+  processingStep: string | null | undefined,
+  processingProgressPct: number | null | undefined,
+  filename: string,
+  queueJobs: QueueJobItem[],
+  queueStats: QueueStats,
+  lang: "fr" | "en" = "fr",
+  extraFiles: string[] = [],
+): FormProcessingState {
+  const candidateFiles = new Set([filename, ...extraFiles].filter(Boolean));
+  const statusUpper = String(processingStatus ?? "")
+    .trim()
+    .toUpperCase();
+
+  const matchingJobs = queueJobs.filter((j) => j.filename && candidateFiles.has(j.filename));
+  const runningJob = matchingJobs.find((j) => j.status === "RUNNING");
+  const pendingJob = matchingJobs.find((j) => j.status === "PENDING");
+  const isActiveInBanner =
+    Boolean(queueStats.activeFormFile && candidateFiles.has(queueStats.activeFormFile)) &&
+    queueStats.running + queueStats.pending > 0;
+  const isStatusCompleted = statusUpper === "COMPLETED";
+  const isStatusProcessing = ACTIVE_PROCESSING_STATUSES.has(statusUpper);
+  const activeJobForForm = !isStatusCompleted
+    ? runningJob || pendingJob
+    : matchingJobs.find(
+        (j) => (j.status === "RUNNING" || j.status === "PENDING") && j.jobType === "SECTION_RERUN",
+      );
+
+  const isProcessing = Boolean(
+    isStatusProcessing || activeJobForForm || (!isStatusCompleted && isActiveInBanner),
+  );
+  const isFailed =
+    !isProcessing &&
+    (statusUpper === "FAILED" ||
+      statusUpper === "ERROR" ||
+      matchingJobs.some((j) => j.status === "FAILED" && statusUpper !== "COMPLETED"));
+
+  let label = lang === "fr" ? "Traitement terminée" : "Completed";
+  if (isProcessing) {
+    if (statusUpper.includes("ADMIN")) {
+      label = lang === "fr" ? "Extraction administrative en cours" : "Extracting admin data";
+    } else if (statusUpper.includes("CLINICAL")) {
+      label = lang === "fr" ? "Extraction clinique en cours" : "Extracting clinical data";
+    } else if (statusUpper.includes("EXPERTS")) {
+      label = lang === "fr" ? "Concertation IA en cours" : "Generating AI opinions";
+    } else if (runningJob) {
+      label = runningJob.section
+        ? lang === "fr"
+          ? `Analyse ${runningJob.section} en cours`
+          : `Analyzing ${runningJob.section}`
+        : lang === "fr"
+          ? "Traitement IA en cours"
+          : "Processing in progress";
+    } else if (pendingJob || statusUpper.startsWith("PENDING") || statusUpper === "QUEUED") {
+      label = lang === "fr" ? "En cours de traitement" : "Queued for processing";
+    } else {
+      label = lang === "fr" ? "Traitement en cours" : "Processing";
+    }
+  } else if (isFailed) {
+    label = lang === "fr" ? "Échec du traitement" : "Processing failed";
+  }
+
+  const stepLabel =
+    runningJob?.step ||
+    processingStep ||
+    (runningJob?.section ? `Rubrique : ${runningJob.section}` : null) ||
+    pendingJob?.step ||
+    null;
+
+  const rawProgress =
+    runningJob?.progressPct ||
+    processingProgressPct ||
+    (isActiveInBanner ? queueStats.activeProgressPct : 0) ||
+    (statusUpper.includes("EXPERTS")
+      ? 75
+      : statusUpper.includes("CLINICAL")
+        ? 45
+        : statusUpper.includes("ADMIN")
+          ? 25
+          : isProcessing
+            ? 35
+            : 0);
+  const progressPct = isProcessing ? Math.max(8, Math.min(98, Math.round(rawProgress))) : 100;
+
+  return {
+    isProcessing,
+    isFailed,
+    label,
+    stepLabel,
+    progressPct,
+  };
+}
+
+export function formatDeleteDialogPatientInfo(
+  patientName: string | null | undefined,
+  id: string,
+  file: string,
+  patientId: string | null | undefined,
+  domainParam: string,
+  viewMode: string | undefined,
+): {
+  displayName: string;
+  metaSuffix: string;
+  actionUrl: string;
+  isFormOnly: boolean;
+} {
+  const rawName = (patientName ?? "").trim();
+  const cleanName =
+    rawName && rawName.toLowerCase() !== "inconnu" && rawName !== file
+      ? rawName.replace(/_/g, " ")
+      : id && !id.toLowerCase().endsWith(".pdf")
+        ? id.replace(/[_-]+(\d{4})[_-](\d{2})[_-](\d{2})$/, "").replace(/_/g, " ")
+        : file.replace(/\.pdf$/i, "").replace(/_/g, " ");
+
+  const dob = extractDobFromPatientId(patientId ?? id);
+  const shortCode =
+    (patientId ?? id) &&
+    !(patientId ?? id).includes("_") &&
+    !(patientId ?? id).toLowerCase().endsWith(".pdf") &&
+    (patientId ?? id) !== cleanName
+      ? `#${patientId ?? id}`
+      : null;
+
+  const metaParts: string[] = [];
+  if (shortCode) metaParts.push(shortCode);
+  if (dob) metaParts.push(`né(e) le ${dob}`);
+  const metaSuffix = metaParts.length > 0 ? ` (${metaParts.join(" · ")})` : "";
+
+  const isFormOnly = viewMode === "rcp" || (!patientId && id.toLowerCase().endsWith(".pdf"));
+  const actionUrl = isFormOnly
+    ? `/forms/${encodeURIComponent(file)}/delete?domain=${domainParam}`
+    : `/patients/${encodeURIComponent(patientId ?? id)}/delete?domain=${domainParam}`;
+
+  return {
+    displayName: cleanName || file,
+    metaSuffix,
+    actionUrl,
+    isFormOnly,
+  };
+}
+
 export function renderQueueBannerPartial(stats: QueueStats, session: UserSession): string {
   const lang = session.language;
+  const isQueueActive = stats.running + stats.pending > 0;
+  const queueDataAttrs = `data-queue-active="${isQueueActive ? "true" : "false"}" data-queue-running="${stats.running}" data-queue-pending="${stats.pending}" data-queue-completed="${stats.completed}" data-active-file="${esc(stats.activeFormFile ?? "")}"`;
   if (stats.failed > 0 && stats.running === 0) {
-    return `<div class="ds-queue-banner ds-queue-banner--error" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner">
+    return `<div class="ds-queue-banner ds-queue-banner--error" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
       <span class="ds-queue-banner__text">
         ${iconSvg("ic-error")}
         <span class="ds-queue-banner__msg"><strong>${stats.failed} ${lang === "fr" ? "analyse(s) en échec" : "failed job(s)"}</strong>${stats.activeFormFile ? ` · ${esc(stats.activeFormFile)}` : ""}</span>
@@ -100,7 +266,7 @@ export function renderQueueBannerPartial(stats: QueueStats, session: UserSession
   }
 
   if (stats.running > 0 || stats.pending > 0) {
-    return `<div class="ds-queue-banner" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner">
+    return `<div class="ds-queue-banner" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
       <span class="ds-queue-banner__text">
         <span class="ds-spinner" aria-hidden="true"></span>
         <span class="ds-queue-banner__msg"><strong>${stats.running} ${esc(t("queue.banner.running", lang))}</strong> · ${stats.pending} ${lang === "fr" ? "en attente" : "pending"}${stats.activeFormFile ? ` · ${esc(stats.activeFormFile)}` : ""}</span>
@@ -110,7 +276,7 @@ export function renderQueueBannerPartial(stats: QueueStats, session: UserSession
     </div>`;
   }
 
-  return `<div class="ds-queue-banner ds-queue-banner--idle" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner">
+  return `<div class="ds-queue-banner ds-queue-banner--idle" role="status" aria-live="polite" aria-atomic="true" id="queue-banner" data-testid="queue-banner" ${queueDataAttrs}>
     <span class="ds-queue-banner__text">
       ${iconSvg("ic-clock")}
       <span class="ds-queue-banner__msg">${esc(t("queue.banner.idle", lang))}</span>
@@ -195,8 +361,8 @@ export function renderLayout(opts: ShellLayoutOptions): string {
   <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <title>${esc(title)} — DataSyntis</title>
   <link rel="icon" href="/public/img/datasyntis-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/public/css/tokens.css?v=29">
-  <link rel="stylesheet" href="/public/css/components.css?v=29">
+  <link rel="stylesheet" href="/public/css/tokens.css?v=30">
+  <link rel="stylesheet" href="/public/css/components.css?v=30">
 </head>
 <body class="ds-shell">
   ${INLINE_ICONS_SVG}
@@ -440,7 +606,7 @@ export function renderLayout(opts: ShellLayoutOptions): string {
     </a>
   </nav>
 
-  <script src="/public/js/app.js?v=29"></script>
+  <script src="/public/js/app.js?v=30"></script>
 </body>
 </html>`;
   return session.hostBoundDomain ? stripDomainQuery(html) : html;
@@ -462,11 +628,22 @@ export function renderWorklistPage(
       : cards
           .map((c) => {
             const prio = derivePriorityBadgeInfo(c.priorityLevel, lang, true);
+            const proc = deriveFormProcessingState(
+              c.processingStatus,
+              c.processingStep,
+              c.processingProgressPct,
+              c.file,
+              queueJobs,
+              queueStats,
+              lang,
+            );
+            const effectiveComplete = !proc.isProcessing && c.isComplete;
             const compl = deriveCompletenessInfo(
               {
-                is_complete: c.isComplete,
+                is_complete: effectiveComplete,
                 missing_count: c.missingCount,
                 missing_items: c.missingItems,
+                processing_status: proc.isProcessing ? "RUNNING" : c.processingStatus,
               },
               lang,
             );
@@ -477,6 +654,20 @@ export function renderWorklistPage(
               },
               lang,
             );
+            const delInfo = formatDeleteDialogPatientInfo(
+              c.patientName,
+              c.id,
+              c.file,
+              c.patientId,
+              domainParam,
+              filter.viewMode,
+            );
+            const shortProcLabel = lang === "fr" ? "IA en cours" : "Processing";
+            const procBadgeHtml = proc.isProcessing
+              ? ` <span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ? `${proc.label} (${proc.stepLabel})` : proc.label)}" data-testid="badge-processing-${esc(c.id)}"><span class="ds-spinner" aria-hidden="true"></span> ${esc(shortProcLabel)}</span>`
+              : proc.isFailed
+                ? ` <span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}">${iconSvg("ic-error")} ${esc(lang === "fr" ? "Échec IA" : "Failed")}</span>`
+                : "";
             const dossierHref = c.patientId
               ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
               : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
@@ -496,7 +687,7 @@ export function renderWorklistPage(
               : "";
 
             const completenessCell =
-              !c.isComplete && c.missingItems.length > 0
+              !effectiveComplete && c.missingItems.length > 0
                 ? `<div class="ds-hovercard" tabindex="0">
                     <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                     <div class="ds-hovercard__panel" role="tooltip">
@@ -524,10 +715,19 @@ export function renderWorklistPage(
 
             const prioSortVal =
               c.priorityLevel === "high" ? "1" : c.priorityLevel === "medium" ? "2" : "3";
-            const complSortVal = c.isComplete ? "1" : String(2 + c.missingCount);
+            const complSortVal = effectiveComplete ? "1" : String(2 + Math.max(1, c.missingCount));
             const orientSortVal = c.careAdaptationSuggested ? "1" : "2";
+            const rowCls = [
+              c.priorityLevel === "high" ? "is-urgent" : "",
+              proc.isProcessing ? "is-processing" : "",
+            ]
+              .filter(Boolean)
+              .join(" ");
+            const procDataAttrs = proc.isProcessing
+              ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
+              : "";
 
-            return `<tr class="${c.priorityLevel === "high" ? "is-urgent" : ""}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+            return `<tr class="${rowCls}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
               <td data-label="Priorité" data-sort-value="${prioSortVal}">
                 <span class="ds-badge ${prio.badgeClass} ds-badge--sm" data-testid="badge-priority-${esc(c.priorityLevel)}">
                   ${iconSvg(prio.icon)} ${esc(prio.label)}
@@ -535,7 +735,7 @@ export function renderWorklistPage(
               </td>
               <td data-label="Patient" class="ds-table__primary-cell" data-sort-value="${esc(c.patientName)}">
                 <a class="ds-table__primary-link" href="${dossierHref}">${esc(c.patientName)}</a><br>
-                <span class="ds-small ds-muted">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
+                <span class="ds-small ds-muted">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>${procBadgeHtml ? `<div style="margin-top:2px">${procBadgeHtml.trim()}</div>` : ""}
               </td>
               <td data-label="Complétude" data-sort-value="${complSortVal}">${completenessCell}</td>
               <td data-label="Orientation pré-RCP" data-sort-value="${orientSortVal}">
@@ -580,34 +780,13 @@ export function renderWorklistPage(
                         ${iconSvg("ic-bug")}
                         <span>Signaler une anomalie</span>
                       </a>
-                      <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="del-dialog-${esc(c.id)}" data-testid="btn_del_patient_${esc(c.id)}">
+                      <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="del-dialog-${esc(c.id)}" data-patient-name="${esc(delInfo.displayName)}" data-testid="btn_del_patient_${esc(c.id)}">
                         ${iconSvg("ic-delete")}
                         <span>Supprimer ce dossier…</span>
                       </button>
                     </div>
                   </details>
                 </div>
-                <dialog class="ds-modal ds-modal--danger" id="del-dialog-${esc(c.id)}" aria-labelledby="del-title-${esc(c.id)}">
-                  <div class="ds-modal__header">
-                    <span>${iconSvg("ic-delete")}</span>
-                    <h2 id="del-title-${esc(c.id)}">Supprimer le dossier de ${esc(c.patientName)} ?</h2>
-                  </div>
-                  <div class="ds-modal__body">
-                    <div class="ds-alert ds-alert--danger" role="alert">
-                      <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
-                      <div class="ds-alert__content">
-                        <span class="ds-alert__title">Action irréversible</span>
-                        <span>Les fiches RCP et les modifications manuelles associées à ${esc(c.patientName)} (#${esc(c.id)}) seront définitivement supprimées.</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="ds-modal__footer">
-                    <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
-                    <form method="post" action="/patients/${encodeURIComponent(c.id)}/delete?domain=${domainParam}">
-                      <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_${esc(c.id)}">${iconSvg("ic-delete")} Supprimer définitivement</button>
-                    </form>
-                  </div>
-                </dialog>
               </td>
             </tr>`;
           })
@@ -620,11 +799,22 @@ export function renderWorklistPage(
           ${cards
             .map((c) => {
               const prio = derivePriorityBadgeInfo(c.priorityLevel, lang, true);
+              const proc = deriveFormProcessingState(
+                c.processingStatus,
+                c.processingStep,
+                c.processingProgressPct,
+                c.file,
+                queueJobs,
+                queueStats,
+                lang,
+              );
+              const effectiveComplete = !proc.isProcessing && c.isComplete;
               const compl = deriveCompletenessInfo(
                 {
-                  is_complete: c.isComplete,
+                  is_complete: effectiveComplete,
                   missing_count: c.missingCount,
                   missing_items: c.missingItems,
+                  processing_status: proc.isProcessing ? "RUNNING" : c.processingStatus,
                 },
                 lang,
               );
@@ -635,20 +825,37 @@ export function renderWorklistPage(
                 },
                 lang,
               );
+              const delInfo = formatDeleteDialogPatientInfo(
+                c.patientName,
+                c.id,
+                c.file,
+                c.patientId,
+                domainParam,
+                filter.viewMode,
+              );
+              const procBadgeHtml = proc.isProcessing
+                ? `<span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}"><span class="ds-spinner" aria-hidden="true"></span> ${esc(proc.label)}</span>`
+                : proc.isFailed
+                  ? `<span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-${esc(c.id)}">${iconSvg("ic-error")} ${esc(proc.label)}</span>`
+                  : "";
               const dossierHref = c.patientId
                 ? `/patients/${encodeURIComponent(c.patientId)}?domain=${domainParam}`
                 : `/forms/${encodeURIComponent(c.file)}?domain=${domainParam}`;
-              const cardTone = deriveRcpTone(c.priorityLevel, c.isComplete);
-              return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}">
+              const cardTone = deriveRcpTone(c.priorityLevel, effectiveComplete);
+              const procDataAttrs = proc.isProcessing
+                ? ` data-processing-active="true" data-processing-file="${esc(c.file)}"`
+                : "";
+              return `<article class="ds-card ds-card--interactive ds-patient-card ds-patient-card--${cardTone}${proc.isProcessing ? " is-processing" : ""}" data-href="${dossierHref}" title="Cliquer pour ouvrir le dossier de ${esc(c.patientName)}" data-testid="worklist-row-${esc(c.id)}"${procDataAttrs}>
                 <div class="ds-card__header">
                   <h2 class="ds-patient-card__name"><a href="${dossierHref}">${esc(c.patientName)}</a></h2>
                   <span class="ds-patient-card__id">${esc(formatPatientSubtitle(c.id, c.rcpCount))}</span>
                 </div>
                 <div class="ds-card__body">
                   <div class="ds-cluster">
+                    ${procBadgeHtml}
                     <span class="ds-badge ${prio.badgeClass} ds-badge--sm">${iconSvg(prio.icon)} ${esc(prio.label)}</span>
                     ${
-                      !c.isComplete && c.missingItems.length > 0
+                      !effectiveComplete && c.missingItems.length > 0
                         ? `<div class="ds-hovercard" tabindex="0">
                             <span class="ds-badge ${compl.badgeClass} ds-badge--sm">${iconSvg(compl.icon)} ${esc(compl.label)}</span>
                             <div class="ds-hovercard__panel" role="tooltip">
@@ -700,6 +907,10 @@ export function renderWorklistPage(
                           ${iconSvg("ic-bug")}
                           <span>Signaler une anomalie</span>
                         </a>
+                        <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="del-dialog-${esc(c.id)}" data-patient-name="${esc(delInfo.displayName)}" data-testid="btn_del_patient_${esc(c.id)}">
+                          ${iconSvg("ic-delete")}
+                          <span>Supprimer ce dossier…</span>
+                        </button>
                       </div>
                     </details>
                   </div>
@@ -708,6 +919,43 @@ export function renderWorklistPage(
             })
             .join("")}
         </div>`;
+
+  const deleteDialogsHtml =
+    cards.length === 0
+      ? ""
+      : cards
+          .map((c) => {
+            const delInfo = formatDeleteDialogPatientInfo(
+              c.patientName,
+              c.id,
+              c.file,
+              c.patientId,
+              domainParam,
+              filter.viewMode,
+            );
+            return `<dialog class="ds-modal ds-modal--danger" id="del-dialog-${esc(c.id)}" aria-labelledby="del-title-${esc(c.id)}">
+              <div class="ds-modal__header">
+                <span>${iconSvg("ic-delete")}</span>
+                <h2 id="del-title-${esc(c.id)}">${delInfo.isFormOnly ? "Supprimer la fiche RCP de" : "Supprimer le dossier de"} <span data-del-patient-name>${esc(delInfo.displayName)}</span> ?</h2>
+              </div>
+              <div class="ds-modal__body">
+                <div class="ds-alert ds-alert--danger" role="alert">
+                  <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+                  <div class="ds-alert__content">
+                    <span class="ds-alert__title">Action irréversible</span>
+                    <span>${delInfo.isFormOnly ? "La fiche RCP et les modifications manuelles associées à" : "Les fiches RCP et les modifications manuelles associées à"} <strong data-del-patient-name>${esc(delInfo.displayName)}</strong>${esc(delInfo.metaSuffix)} seront définitivement supprimées.</span>
+                  </div>
+                </div>
+              </div>
+              <div class="ds-modal__footer">
+                <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+                <form method="post" action="${delInfo.actionUrl}">
+                  <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_${esc(c.id)}">${iconSvg("ic-delete")} Supprimer définitivement</button>
+                </form>
+              </div>
+            </dialog>`;
+          })
+          .join("");
 
   const tableWrapHtml =
     cards.length === 0
@@ -722,8 +970,16 @@ export function renderWorklistPage(
                     { key: "priority", label: "Priorité", col: 0 },
                     { key: "patient", label: "Patient", col: 1 },
                     { key: "completeness", label: "Complétude", col: 2 },
-                    { key: "orientation", label: "Orientation pré-RCP", col: 3 },
-                    { key: "specialties", label: "Spécialités requises", col: 4 },
+                    {
+                      key: "orientation",
+                      label: "Orientation pré-RCP",
+                      col: 3,
+                    },
+                    {
+                      key: "specialties",
+                      label: "Spécialités requises",
+                      col: 4,
+                    },
                     { key: "mdtDate", label: "Dernière RCP", col: 5 },
                   ] as const
                 )
@@ -862,6 +1118,7 @@ export function renderWorklistPage(
           ? cardsGridHtml
           : tableWrapHtml
     }
+    ${deleteDialogsHtml}
   `;
 
   return renderLayout({
@@ -882,20 +1139,185 @@ export function renderSectionDetailsPartial(
   editing = false,
   expertMode = false,
   missingItemsState?: PatientDossierView["missingItemsState"],
+  isProcessingSection = false,
 ): string {
   const domainParam = encodeURIComponent(domain);
   const fileParam = encodeURIComponent(filename);
   const secParam = encodeURIComponent(sec.name);
 
   if (editing) {
-    const inputsHtml = sec.fields
-      .map(
-        (f) => `<div class="ds-field">
-          <label class="ds-label" for="inp-${esc(sec.name)}-${esc(f.key)}">${esc(f.label)}</label>
-          <input class="ds-input" id="inp-${esc(sec.name)}-${esc(f.key)}" name="${esc(f.key)}" value="${esc(typeof f.rawValue === "object" ? f.value : (f.rawValue ?? f.value))}">
-        </div>`,
-      )
-      .join("");
+    const renderEditControl = (f: DossierSectionView["fields"][number]): string => {
+      const inputId = `inp-${esc(sec.name)}-${esc(f.key)}`;
+      const unitSuffix = f.unit ? ` <span class="ds-text-muted">(${esc(f.unit)})</span>` : "";
+
+      if (f.inputType === "exams_list") {
+        const items =
+          f.examItems && f.examItems.length > 0
+            ? f.examItems
+            : [
+                {
+                  exam_name: "",
+                  exam_date: null,
+                  exam_type: "CT" as const,
+                  exam_result: null,
+                },
+              ];
+        const rowsHtml = items
+          .map(
+            (
+              ex,
+              idx,
+            ) => `<div class="ds-subcard" data-exam-row="${idx}" style="margin-bottom:var(--ds-space-2)">
+              <div class="ds-kv-grid">
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-name-${idx}">Nom de l'examen #${idx + 1}</label>
+                  <input class="ds-input" type="text" id="${inputId}-name-${idx}" name="exam_name_${idx}" value="${esc(ex.exam_name)}" data-field-type="text" placeholder="Ex : Scanner TAP injecté">
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-type-${idx}">Modalité (Type)</label>
+                  <select class="ds-select" id="${inputId}-type-${idx}" name="exam_type_${idx}" data-field-type="select">
+                    <option value="CT" ${ex.exam_type === "CT" ? "selected" : ""}>CT — Scanner (TDM)</option>
+                    <option value="MRI" ${ex.exam_type === "MRI" ? "selected" : ""}>MRI — IRM</option>
+                    <option value="PET" ${ex.exam_type === "PET" ? "selected" : ""}>PET — TEP-TDM</option>
+                    <option value="EUS" ${ex.exam_type === "EUS" ? "selected" : ""}>EUS — Écho-endoscopie</option>
+                  </select>
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-date-${idx}">Date de l'examen</label>
+                  <input class="ds-input" type="date" id="${inputId}-date-${idx}" name="exam_date_${idx}" value="${esc(ex.exam_date ?? "")}" data-field-type="date">
+                </div>
+              </div>
+              <div class="ds-field" style="margin-top:var(--ds-space-2)">
+                <label class="ds-label" for="${inputId}-res-${idx}">Conclusion / Résultat</label>
+                <textarea class="ds-textarea" rows="2" id="${inputId}-res-${idx}" name="exam_result_${idx}" data-field-type="textarea" placeholder="Résumé des conclusions radiologiques">${esc(ex.exam_result ?? "")}</textarea>
+              </div>
+            </div>`,
+          )
+          .join("");
+        return `<div class="ds-field" data-exams-list-container="${esc(sec.name)}">
+          <span class="ds-label">${esc(f.label)}</span>
+          <div data-exams-rows>${rowsHtml}</div>
+          <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-add-exam-row="${esc(sec.name)}" style="align-self:flex-start;margin-top:var(--ds-space-1)">
+            ${iconSvg("ic-plus")} Ajouter un examen
+          </button>
+        </div>`;
+      }
+
+      if (f.inputType === "chemotherapy_list") {
+        const items =
+          f.chemoItems && f.chemoItems.length > 0
+            ? f.chemoItems
+            : [
+                {
+                  chemotherapy_name: "",
+                  chemotherapy_start_date: null,
+                  chemotherapy_end_date: null,
+                  chemotherapy_tolerance: "Good" as const,
+                },
+              ];
+        const rowsHtml = items
+          .map(
+            (
+              ch,
+              idx,
+            ) => `<div class="ds-subcard" data-chemo-row="${idx}" style="margin-bottom:var(--ds-space-2)">
+              <div class="ds-kv-grid">
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-name-${idx}">Protocole / Molécule #${idx + 1}</label>
+                  <input class="ds-input" type="text" id="${inputId}-name-${idx}" name="chemotherapy_name_${idx}" value="${esc(ch.chemotherapy_name)}" data-field-type="text" placeholder="Ex : FOLFIRINOX">
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-tol-${idx}">Tolérance</label>
+                  <select class="ds-select" id="${inputId}-tol-${idx}" name="chemotherapy_tolerance_${idx}" data-field-type="select">
+                    <option value="Good" ${ch.chemotherapy_tolerance === "Good" ? "selected" : ""}>Bonne (Good)</option>
+                    <option value="Medium" ${ch.chemotherapy_tolerance === "Medium" ? "selected" : ""}>Moyenne / Modérée (Medium)</option>
+                    <option value="Poor" ${ch.chemotherapy_tolerance === "Poor" ? "selected" : ""}>Mauvaise / Toxicité (Poor)</option>
+                  </select>
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-start-${idx}">Date de début</label>
+                  <input class="ds-input" type="date" id="${inputId}-start-${idx}" name="chemotherapy_start_date_${idx}" value="${esc(ch.chemotherapy_start_date ?? "")}" data-field-type="date">
+                </div>
+                <div class="ds-field">
+                  <label class="ds-label" for="${inputId}-end-${idx}">Date de fin</label>
+                  <input class="ds-input" type="date" id="${inputId}-end-${idx}" name="chemotherapy_end_date_${idx}" value="${esc(ch.chemotherapy_end_date ?? "")}" data-field-type="date">
+                </div>
+              </div>
+            </div>`,
+          )
+          .join("");
+        return `<div class="ds-field" data-chemo-list-container="${esc(sec.name)}">
+          <span class="ds-label">${esc(f.label)}</span>
+          <div data-chemo-rows>${rowsHtml}</div>
+          <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-add-chemo-row="${esc(sec.name)}" style="align-self:flex-start;margin-top:var(--ds-space-1)">
+            ${iconSvg("ic-plus")} Ajouter une ligne de traitement
+          </button>
+        </div>`;
+      }
+
+      if (
+        (f.inputType === "boolean" ||
+          f.inputType === "nullable_boolean" ||
+          f.inputType === "select" ||
+          f.inputType === "integer_select") &&
+        f.options &&
+        f.options.length > 0
+      ) {
+        const optsHtml = f.options
+          .map(
+            (opt) =>
+              `<option value="${esc(opt.value)}" ${f.editValue === opt.value ? "selected" : ""}>${esc(opt.label)}</option>`,
+          )
+          .join("");
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}${unitSuffix}</label>
+          <select class="ds-select" id="${inputId}" name="${esc(f.key)}" data-field-type="${esc(f.inputType)}">
+            ${optsHtml}
+          </select>
+        </div>`;
+      }
+
+      if (f.inputType === "integer" || f.inputType === "float") {
+        const minAttr = f.min !== undefined ? ` min="${f.min}"` : "";
+        const maxAttr = f.max !== undefined ? ` max="${f.max}"` : "";
+        const stepAttr = ` step="${f.step ?? (f.inputType === "integer" ? 1 : 0.5)}"`;
+        const modeAttr = f.inputType === "integer" ? "numeric" : "decimal";
+        const ph = f.placeholder || (f.nullable ? "Non renseigné (optionnel)" : "");
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}${unitSuffix}</label>
+          <input class="ds-input" type="number" id="${inputId}" name="${esc(f.key)}" value="${esc(f.editValue)}" data-field-type="${esc(f.inputType)}"${minAttr}${maxAttr}${stepAttr} inputmode="${modeAttr}" placeholder="${esc(ph)}">
+        </div>`;
+      }
+
+      if (f.inputType === "date") {
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}</label>
+          <input class="ds-input" type="date" id="${inputId}" name="${esc(f.key)}" value="${esc(f.editValue)}" data-field-type="date">
+        </div>`;
+      }
+
+      if (f.inputType === "textarea") {
+        const ph = f.placeholder || (f.nullable ? "Non renseigné (optionnel)" : "");
+        return `<div class="ds-field">
+          <label class="ds-label" for="${inputId}">${esc(f.label)}</label>
+          <textarea class="ds-textarea" rows="3" id="${inputId}" name="${esc(f.key)}" data-field-type="textarea" placeholder="${esc(ph)}">${esc(f.editValue)}</textarea>
+        </div>`;
+      }
+
+      const ph =
+        f.placeholder ||
+        (f.inputType === "string_list"
+          ? "Séparer les éléments par une virgule"
+          : f.nullable
+            ? "Non renseigné (optionnel)"
+            : "");
+      return `<div class="ds-field">
+        <label class="ds-label" for="${inputId}">${esc(f.label)}${unitSuffix}</label>
+        <input class="ds-input" type="text" id="${inputId}" name="${esc(f.key)}" value="${esc(f.editValue)}" data-field-type="${esc(f.inputType)}" placeholder="${esc(ph)}">
+      </div>`;
+    };
+
+    const inputsHtml = sec.fields.map(renderEditControl).join("");
 
     return `<details class="ds-section is-editing" open id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}">
       <summary>
@@ -906,7 +1328,7 @@ export function renderSectionDetailsPartial(
         ${inputsHtml}
         <div class="ds-section__actions">
           <button type="submit" class="ds-btn ds-btn--primary ds-btn--sm" data-testid="btn_save_section_${esc(sec.name)}">${iconSvg("ic-check")} Enregistrer</button>
-          <a class="ds-btn ds-btn--ghost ds-btn--sm" href="/forms/${fileParam}?domain=${domainParam}#section-${esc(sec.name)}">Annuler</a>
+          <a class="ds-btn ds-btn--ghost ds-btn--sm" href="/forms/${fileParam}/sections/${secParam}/edit?view=1&domain=${domainParam}" data-edit-section="section-${esc(sec.name)}" data-testid="btn_cancel_section_${esc(sec.name)}">Annuler</a>
         </div>
       </form>
     </details>`;
@@ -942,8 +1364,12 @@ export function renderSectionDetailsPartial(
       : `<div class="ds-kv-grid">
           ${shortFields
             .map(
-              (f) => `<div class="ds-kv">
-                <span class="ds-kv__label">${esc(f.label)}</span>
+              (f) => `<div class="ds-kv${f.isModified ? " ds-kv--manual" : ""}"${
+                f.isModified
+                  ? ` data-tooltip="Valeur IA initiale : ${esc(f.originalAiValue ?? "Non renseigné")}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
+                  : ""
+              }>
+                <span class="ds-kv__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
                 <span class="ds-kv__value ${f.value === "Non renseigné" || f.value === "Not documented" ? "is-missing" : ""}">${esc(f.value)}</span>
               </div>`,
             )
@@ -955,8 +1381,12 @@ export function renderSectionDetailsPartial(
       ? ""
       : longFields
           .map(
-            (f) => `<div class="ds-rationale">
-              <span class="ds-rationale__label">${esc(f.label)}</span>
+            (f) => `<div class="ds-rationale${f.isModified ? " ds-rationale--manual" : ""}"${
+              f.isModified
+                ? ` data-tooltip="Valeur IA initiale : ${esc(f.originalAiValue ?? "Non renseigné")}" tabindex="0" data-testid="field-manual-${esc(f.key)}"`
+                : ""
+            }>
+              <span class="ds-rationale__label">${f.isModified ? `${iconSvg("ic-edit-note", "ds-icon--xs")} ` : ""}${esc(f.label)}</span>
               <p class="ds-rationale__text">${esc(f.value)}</p>
             </div>`,
           )
@@ -1099,9 +1529,14 @@ export function renderSectionDetailsPartial(
         ? "ds-section--orange"
         : "ds-section--green"
       : "";
-  return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}">
+  return `<details class="ds-section ${sec.isManual ? "ds-section--manual" : ""} ${secToneClass}${isProcessingSection ? " is-processing" : ""}" id="section-${esc(sec.name)}" data-testid="section-${esc(sec.name)}"${isProcessingSection ? ' data-processing-active="true"' : ""}>
     <summary>
       <span class="ds-section__title">${iconSvg(sec.meta.icon)} ${esc(sec.meta.title)}</span>
+      ${
+        isProcessingSection
+          ? `<span class="ds-badge ds-badge--processing ds-badge--sm" data-testid="badge-processing-section-${esc(sec.name)}"><span class="ds-spinner" aria-hidden="true"></span> Analyse en cours…</span>`
+          : ""
+      }
       ${
         sec.isManual
           ? `<span class="ds-badge ds-badge--manual ds-badge--sm" data-testid="badge-manual-edit">${iconSvg("ic-edit-note")} Modifié manuellement</span>`
@@ -1127,9 +1562,18 @@ export function renderSectionDetailsPartial(
             ? `<a class="ds-btn ds-btn--secondary ds-btn--sm" href="/forms/${fileParam}/sections/${secParam}/edit?domain=${domainParam}" data-edit-section="section-${esc(sec.name)}" data-testid="btn_edit_section_${esc(sec.name)}">${iconSvg("ic-edit")} Modifier</a>`
             : ""
         }
+        ${
+          sec.isManual
+            ? `<form method="post" action="/forms/${fileParam}/sections/${secParam}/rollback?domain=${domainParam}" data-ajax-section="section-${esc(sec.name)}" style="display:inline-flex">
+                <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm ds-btn--rollback" data-tooltip="Annuler la modification manuelle et restaurer la valeur IA initiale" data-testid="btn_rollback_section_${esc(sec.name)}">
+                  ${iconSvg("ic-undo")} Rétablir
+                </button>
+              </form>`
+            : ""
+        }
         <form method="post" action="/forms/${fileParam}/sections/${secParam}/rerun?domain=${domainParam}" style="display:inline-flex">
           <input type="hidden" name="preserve_manual_edits" value="true">
-          <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-tooltip="Relance l'extraction IA en préservant les modifications manuelles" data-testid="btn_rerun_section_${esc(sec.name)}">
+          <button type="submit" class="ds-btn ds-btn--ghost ds-btn--sm" data-tooltip="Relance l'extraction IA de cette rubrique (les modifications manuelles sont préservées)" data-testid="btn_rerun_section_${esc(sec.name)}">
             ${iconSvg("ic-refresh")} Relancer
           </button>
         </form>
@@ -1239,6 +1683,35 @@ export function renderDossierPage(
     (s) => s.meta.tab === "opinions" && (s.name !== "PatientMDTFormCheck" || session.expertMode),
   );
 
+  const activeSectionNames = new Set(
+    queueJobs
+      .filter(
+        (j) =>
+          j.filename === dossier.currentForm.file &&
+          (j.status === "RUNNING" || j.status === "PENDING") &&
+          j.section,
+      )
+      .map((j) => j.section as string),
+  );
+  const proc = deriveFormProcessingState(
+    dossier.currentForm.processingStatus,
+    dossier.currentForm.processingStep,
+    dossier.currentForm.processingProgressPct,
+    dossier.currentForm.file,
+    queueJobs,
+    queueStats,
+    lang,
+    dossier.timeline.map((tStep) => tStep.file),
+  );
+  const dossierDelInfo = formatDeleteDialogPatientInfo(
+    dossier.patientName,
+    dossier.patientId ?? dossier.currentForm.file,
+    dossier.currentForm.file,
+    dossier.patientId,
+    domainParam,
+    dossier.patientId ? "patients" : "rcp",
+  );
+
   // Group clinical sections by Clinical Pole with clean pole headings
   const poleIcons: Record<string, string> = {
     clinical: "ic-stethoscope",
@@ -1263,6 +1736,7 @@ export function renderDossierPage(
         editingSection === s.name,
         session.expertMode,
         s.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
+        activeSectionNames.has(s.name),
       )}`;
     })
     .join("");
@@ -1276,6 +1750,7 @@ export function renderDossierPage(
         editingSection === s.name,
         session.expertMode,
         s.name === "MTDCompleted" ? dossier.missingItemsState : undefined,
+        activeSectionNames.has(s.name),
       ),
     )
     .join("");
@@ -1559,16 +2034,38 @@ export function renderDossierPage(
       </nav>`
     : "";
 
+  const dossierProcBadgeHtml = proc.isProcessing
+    ? `<span class="ds-badge ds-badge--processing ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-status"><span class="ds-spinner" aria-hidden="true"></span> ${esc(proc.label)}</span>`
+    : proc.isFailed
+      ? `<span class="ds-badge ds-badge--danger ds-badge--sm" title="${esc(proc.stepLabel ?? proc.label)}" data-testid="badge-processing-status">${iconSvg("ic-error")} ${esc(proc.label)}</span>`
+      : "";
+  const dossierProcBannerHtml = proc.isProcessing
+    ? `<div class="ds-processing-banner" role="status" aria-live="polite" data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}" data-testid="dossier-processing-banner">
+        <div class="ds-processing-banner__main">
+          <span class="ds-spinner" aria-hidden="true"></span>
+          <div class="ds-processing-banner__content">
+            <strong class="ds-processing-banner__title">Fiche en cours de traitement — ${esc(proc.label)}</strong>
+            <span class="ds-processing-banner__meta">${proc.stepLabel ? `${esc(proc.stepLabel)} · ` : ""}Rafraîchissement automatique activé — les rubriques se mettent à jour au fil de l'analyse.</span>
+          </div>
+        </div>
+        <div class="ds-processing-banner__end">
+          <progress class="ds-progress ds-processing-banner__progress" max="100" value="${proc.progressPct}" aria-label="Avancement du traitement (${proc.progressPct} %)"></progress>
+          <a class="ds-btn ds-btn--secondary ds-btn--sm" href="${baseTargetUrl}?file=${encodeURIComponent(dossier.currentForm.file)}&domain=${domainParam}" data-testid="btn_refresh_dossier">${iconSvg("ic-refresh")} Actualiser</a>
+        </div>
+      </div>`
+    : "";
+
   const bodyHtml = `
     ${agendaNavHtml}
     <!-- Unified RCP Hero Card: Compact 2-Line Header + Always-Visible Synoptic Markers + Collapsible RCP Timeline -->
-    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}" data-testid="synoptic-card">
+    <div class="ds-synoptic ds-synoptic--static ds-synoptic--${dossierTone}${proc.isProcessing ? " is-processing" : ""}" data-testid="synoptic-card"${proc.isProcessing ? ` data-processing-active="true" data-processing-file="${esc(dossier.currentForm.file)}"` : ""}>
       <!-- Top M3 Tonal Header (Line 1: Name + Badges + Actions | Line 2: Compact Identity Metadata) -->
       <div class="ds-synoptic__row ds-patient-header" data-testid="patient-rcp-header">
         <div class="ds-patient-header__top">
           <h1 class="ds-patient-header__name">${esc(dossier.patientName)}</h1>
 
           <div class="ds-patient-header__badges">
+            ${dossierProcBadgeHtml}
             <span class="ds-badge ${dossier.priorityBadge.badgeClass} ds-badge--sm">${iconSvg(dossier.priorityBadge.icon)} ${esc(dossier.priorityBadge.label)}</span>
             <div class="ds-hovercard" tabindex="0">
               <span class="ds-badge ${dossier.completenessBadge.badgeClass} ds-badge--sm">
@@ -1666,6 +2163,10 @@ export function renderDossierPage(
                   ${iconSvg("ic-bug")}
                   <span>Signaler une anomalie sur ce dossier</span>
                 </a>
+                <button type="button" class="ds-menu__item ds-menu__item--danger" role="menuitem" data-open="delete-dossier-modal" data-patient-name="${esc(dossierDelInfo.displayName)}" data-testid="btn_del_dossier">
+                  ${iconSvg("ic-delete")}
+                  <span>Supprimer ce dossier…</span>
+                </button>
               </div>
             </details>
           </div>
@@ -1679,6 +2180,8 @@ export function renderDossierPage(
           <li><span class="ds-section__duration" title="Temps cumulé d'analyse IA">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span></li>
         </ul>
       </div>
+
+      ${dossierProcBannerHtml}
 
       <!-- Row 1: Synoptic Clinical Markers (Always Visible) -->
       <div class="ds-synoptic__row">
@@ -1853,6 +2356,29 @@ export function renderDossierPage(
         </div>
       </form>
     </dialog>
+
+    <!-- Modal: Delete Dossier -->
+    <dialog class="ds-modal ds-modal--danger" id="delete-dossier-modal" aria-labelledby="del-dossier-title">
+      <div class="ds-modal__header">
+        <span>${iconSvg("ic-delete")}</span>
+        <h2 id="del-dossier-title">${dossierDelInfo.isFormOnly ? "Supprimer la fiche RCP de" : "Supprimer le dossier de"} <span data-del-patient-name>${esc(dossierDelInfo.displayName)}</span> ?</h2>
+      </div>
+      <div class="ds-modal__body">
+        <div class="ds-alert ds-alert--danger" role="alert">
+          <span class="ds-alert__icon">${iconSvg("ic-priority-high")}</span>
+          <div class="ds-alert__content">
+            <span class="ds-alert__title">Action irréversible</span>
+            <span>${dossierDelInfo.isFormOnly ? "La fiche RCP et les modifications manuelles associées à" : "Les fiches RCP et les modifications manuelles associées à"} <strong data-del-patient-name>${esc(dossierDelInfo.displayName)}</strong>${esc(dossierDelInfo.metaSuffix)} seront définitivement supprimées.</span>
+          </div>
+        </div>
+      </div>
+      <div class="ds-modal__footer">
+        <form method="dialog"><button class="ds-btn ds-btn--ghost" autofocus>Annuler</button></form>
+        <form method="post" action="${dossierDelInfo.actionUrl}">
+          <button type="submit" class="ds-btn ds-btn--danger" data-testid="btn_danger_confirm_dossier">${iconSvg("ic-delete")} Supprimer définitivement</button>
+        </form>
+      </div>
+    </dialog>
   `;
 
   return renderLayout({
@@ -1860,8 +2386,14 @@ export function renderDossierPage(
     activeNav: agendaNav ? "agenda" : "dossier",
     breadcrumbs: [
       agendaNav
-        ? { label: t("nav.agenda", lang), href: `/agenda?domain=${domainParam}` }
-        : { label: t("nav.worklist", lang), href: `/worklist?domain=${domainParam}` },
+        ? {
+            label: t("nav.agenda", lang),
+            href: `/agenda?domain=${domainParam}`,
+          }
+        : {
+            label: t("nav.worklist", lang),
+            href: `/worklist?domain=${domainParam}`,
+          },
       { label: dossier.patientName },
     ],
     session,

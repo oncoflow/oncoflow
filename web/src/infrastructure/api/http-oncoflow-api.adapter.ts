@@ -4,13 +4,21 @@ import type {
   OncoflowApiPort,
   UploadFileInput,
 } from "../../application/ports/oncoflow-api.port.js";
-import { getAgentPresentation, getDomainUserPromptsForAgent } from "../../domain/catalog.js";
+import {
+  buildDefaultDomainFormSchema,
+  buildStrictBackendSectionPayload,
+  coerceSectionUpdatePayload,
+  getAgentPresentation,
+  getDomainUserPromptsForAgent,
+  resolveCanonicalSectionName,
+} from "../../domain/catalog.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
   BatchStatus,
   BugReportItem,
   ClinicalDomain,
+  DomainFormSchema,
   Language,
   MdtAgendaEnrollInput,
   MdtAgendaMoveInput,
@@ -50,6 +58,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   private readonly fallback?: OncoflowApiPort;
   private readonly timeoutMs: number;
   private readonly chatTimeoutMs: number;
+  private readonly domainSchemaCache = new Map<ClinicalDomain, DomainFormSchema>();
 
   constructor(options: HttpOncoflowApiAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
@@ -137,7 +146,12 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         : [];
     const missingCount =
       typeof raw.missing_count === "number" ? raw.missing_count : missingItems.length;
-    const isComplete = typeof raw.is_complete === "boolean" ? raw.is_complete : missingCount === 0;
+    const processingStatus = String(raw.processing_status ?? "COMPLETED");
+    const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
+    const isComplete =
+      isAiCompleted &&
+      (typeof raw.is_complete === "boolean" ? raw.is_complete : missingCount === 0) &&
+      missingCount === 0;
     const specialties = Array.isArray(raw.specialties)
       ? (raw.specialties as string[])
       : Array.isArray(raw.experts)
@@ -164,7 +178,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         typeof raw.care_adaptation_suggested === "boolean" ? raw.care_adaptation_suggested : null,
       proposedCareType: raw.proposed_care_type ? String(raw.proposed_care_type) : null,
       specialties,
-      processingStatus: String(raw.processing_status ?? "COMPLETED"),
+      processingStatus,
       processingStep: raw.processing_step ? String(raw.processing_step) : null,
       processingProgressPct: Number(raw.processing_progress_pct ?? 100),
       rcpCount: Number(raw.rcp_count ?? 1),
@@ -279,12 +293,21 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
           ? (rawMetrics.missing as string[]).filter((x) => !hiddenSet.has(x))
           : allMissingItems.filter((x) => !hiddenSet.has(x));
     const missingCount = missingItems.length;
+    const processingStatus = String(raw.processing_status ?? "COMPLETED");
+    const isAiCompleted = processingStatus.trim().toUpperCase() === "COMPLETED";
+    const hasMtdCompleted = Boolean(
+      sections.MTDCompleted && Object.keys(sections.MTDCompleted).length > 0,
+    );
     const isComplete =
-      hideMissingItems || missingCount === 0
+      hideMissingItems || (allMissingItems.length > 0 && missingCount === 0)
         ? true
-        : typeof rawMetrics.is_complete === "boolean"
-          ? rawMetrics.is_complete
-          : derivedIsComplete;
+        : !isAiCompleted || !hasMtdCompleted
+          ? false
+          : missingCount === 0
+            ? typeof rawMetrics.is_complete === "boolean"
+              ? rawMetrics.is_complete
+              : derivedIsComplete
+            : false;
     const specialties = Array.isArray(rawMetrics.specialties)
       ? (rawMetrics.specialties as string[])
       : Array.isArray(rawMetrics.experts)
@@ -314,8 +337,17 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       specialties,
     };
 
-    const manualEdits =
-      ((raw.manual_edits ?? raw.manually_edited_sections) as MdtFormDetail["manualEdits"]) ?? {};
+    const rawManualEdits =
+      ((raw.manual_edits ?? raw.manually_edited_sections) as Record<
+        string,
+        Record<string, unknown>
+      >) ?? {};
+    const manualEdits: MdtFormDetail["manualEdits"] = {};
+    for (const [secKey, metaVal] of Object.entries(rawManualEdits)) {
+      if (metaVal && typeof metaVal === "object" && metaVal.is_manual !== false) {
+        manualEdits[secKey] = metaVal as MdtFormDetail["manualEdits"][string];
+      }
+    }
 
     return {
       file: String(raw.file ?? ""),
@@ -415,10 +447,43 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     }
   }
 
+  async getDomainSchema(domain: ClinicalDomain): Promise<DomainFormSchema> {
+    const cached = this.domainSchemaCache.get(domain);
+    if (cached) return cached;
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/schema?domain=${encodeURIComponent(domain)}`,
+        domain,
+      );
+      if (res && Array.isArray(res.sections)) {
+        const schema: DomainFormSchema = {
+          domain: String(res.domain ?? domain),
+          sections: res.sections as DomainFormSchema["sections"],
+          enums:
+            res.enums && typeof res.enums === "object"
+              ? (res.enums as Record<string, Array<string | number>>)
+              : {},
+        };
+        this.domainSchemaCache.set(domain, schema);
+        return schema;
+      }
+      return buildDefaultDomainFormSchema(domain);
+    } catch {
+      if (this.fallback) {
+        return this.fallback.getDomainSchema(domain);
+      }
+      return buildDefaultDomainFormSchema(domain);
+    }
+  }
+
   async resolveTarget(
     target: string,
     domain: ClinicalDomain,
-  ): Promise<{ kind: "patient" | "form"; patientId?: string | null; filename?: string | null }> {
+  ): Promise<{
+    kind: "patient" | "form";
+    patientId?: string | null;
+    filename?: string | null;
+  }> {
     try {
       const isPdf = target.toLowerCase().endsWith(".pdf");
       const query = isPdf
@@ -522,14 +587,22 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
     try {
+      const canonicalSection = resolveCanonicalSectionName(section);
+      const domainSchema = await this.getDomainSchema(domain).catch(() => null);
+      const coerced = coerceSectionUpdatePayload(canonicalSection, data, {}, domainSchema);
+      const strictPayload = buildStrictBackendSectionPayload(
+        canonicalSection,
+        coerced,
+        domainSchema,
+      );
       await this.requestJson<Record<string, unknown>>(
-        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(section)}?domain=${encodeURIComponent(domain)}`,
+        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(canonicalSection)}?domain=${encodeURIComponent(domain)}`,
         domain,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            section_data: data,
+            section_data: strictPayload,
             edited_by: editedBy,
           }),
         },
@@ -542,6 +615,29 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     } catch (err) {
       if (this.fallback) {
         return this.fallback.updateFormSection(filename, section, data, editedBy, domain);
+      }
+      throw err;
+    }
+  }
+
+  async rollbackSection(
+    filename: string,
+    section: string,
+    domain: ClinicalDomain,
+  ): Promise<MdtFormDetail> {
+    try {
+      const canonicalSection = resolveCanonicalSectionName(section);
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/${encodeURIComponent(filename)}/sections/${encodeURIComponent(canonicalSection)}/rollback?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "POST",
+        },
+      );
+      return this.mapRawDetail(res, domain);
+    } catch (err) {
+      if (this.fallback) {
+        return this.fallback.rollbackSection(filename, section, domain);
       }
       throw err;
     }
@@ -583,6 +679,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     preserveManualEdits: boolean,
     domain: ClinicalDomain,
   ): Promise<{ jobId: string; preserveManualEdits: boolean }> {
+    const canonicalSection = resolveCanonicalSectionName(section);
     try {
       const res = await this.requestJson<Record<string, unknown>>(
         `/api/v1/queue/rerun?domain=${encodeURIComponent(domain)}`,
@@ -592,7 +689,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             filename,
-            model_name: section,
+            model_name: canonicalSection,
             preserve_manual_edits: preserveManualEdits,
           }),
         },
@@ -744,7 +841,9 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       const filenames: string[] = [];
       for (const f of files) {
         const formData = new FormData();
-        const blob = new Blob([new Uint8Array(f.content)], { type: "application/pdf" });
+        const blob = new Blob([new Uint8Array(f.content)], {
+          type: "application/pdf",
+        });
         formData.append("file", blob, f.filename);
         formData.append("batch_id", batchId);
         if (f.patientId) {
@@ -893,11 +992,35 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       const resp = await this.fetchImpl(url, {
         headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
       });
-      if (!resp.ok) {
-        if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
-        return null;
+      if (resp.ok) {
+        return Buffer.from(await resp.arrayBuffer());
       }
-      return Buffer.from(await resp.arrayBuffer());
+      // If citation title did not match a resource filename directly, resolve against domain resources
+      const available = await this.listResources(domain).catch(() => []);
+      if (available.length > 0) {
+        const lowerQuery = filename.toLowerCase();
+        const best =
+          available.find(
+            (r) => lowerQuery.includes("pnds") && r.filename.toLowerCase().includes("pnds"),
+          ) ??
+          available.find(
+            (r) =>
+              lowerQuery.includes("argumentaire") &&
+              r.filename.toLowerCase().includes("argumentaire"),
+          ) ??
+          available[0];
+        if (best && best.filename !== filename) {
+          const fallbackUrl = `${this.baseUrl}/api/v1/resources/${encodeURIComponent(best.filename)}/file?domain=${encodeURIComponent(domain)}${formParam}`;
+          const fallbackResp = await this.fetchImpl(fallbackUrl, {
+            headers: this.buildHeaders(domain, { Accept: "application/pdf" }),
+          });
+          if (fallbackResp.ok) {
+            return Buffer.from(await fallbackResp.arrayBuffer());
+          }
+        }
+      }
+      if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
+      return null;
     } catch (err) {
       if (this.fallback) return this.fallback.getResourcePdfBuffer(filename, domain, formFile);
       throw err;

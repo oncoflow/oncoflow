@@ -12,6 +12,7 @@ from src.infrastructure.llm.factory import get_llm_client
 # Legacy import to support existing patch-based unit tests
 from src.application.reader import DocumentReader
 from src.application.agent.tools import (
+    _cap_tool_output,
     search_on_ressources,
     get_mtd_markdown,
     get_patient_mtds_markdown,
@@ -160,15 +161,62 @@ class OncowflowAgent:
 
     @classmethod
     def get_system_prompt(cls) -> str:
-        """Retourne le prompt système de la classe sans instanciation."""
+        """Return the class-level system prompt without instantiating the agent."""
         return cls.system_prompt
 
     @classmethod
     def get_models(cls, config: AppConfig) -> list[str]:
-        """Retourne les modèles configurés pour la classe sans instanciation."""
+        """Return the configured model identifiers for the class without instantiation."""
         if cls.models is not None:
             return cls.models
         return [m.strip() for m in config.llm.models.split(",") if m.strip()]
+
+    @staticmethod
+    def _extract_prefetched_mtd_markdown(
+        mtd: DocumentReader | None,
+        patient_readers: list[DocumentReader] | None = None,
+        *,
+        is_chat_mode: bool = False,
+    ) -> str | None:
+        """
+        Return the pre-loaded patient record Markdown when already available in memory
+        on `mtd` or `patient_readers` (without triggering I/O or parser execution).
+
+        Placing this invariant document context before agent-specific persona and
+        section-specific JSON schema maximizes Longest Common Prefix (LCP) KV cache
+        hits on `llama.cpp` across sequential `PatientMDTForm` section extractions.
+        """
+        if is_chat_mode:
+            return None
+
+        if patient_readers:
+            parts: list[str] = []
+            for reader in patient_readers:
+                exporter = getattr(reader, "markdown_exporter", None)
+                if not isinstance(exporter, (list, tuple)) or not exporter:
+                    return None
+                page_content = getattr(exporter[0], "page_content", None)
+                if not isinstance(page_content, str) or not page_content.strip():
+                    return None
+                doc_label = getattr(reader, "document", None)
+                header = (
+                    doc_label.strip()
+                    if isinstance(doc_label, str) and doc_label.strip()
+                    else "Document"
+                )
+                parts.append(f"=== FICHE RCP : {header} ===\n{page_content.strip()}")
+            if parts:
+                return _cap_tool_output("\n\n".join(parts))
+            return None
+
+        if mtd is not None:
+            exporter = getattr(mtd, "markdown_exporter", None)
+            if isinstance(exporter, (list, tuple)) and exporter:
+                page_content = getattr(exporter[0], "page_content", None)
+                if isinstance(page_content, str) and page_content.strip():
+                    return _cap_tool_output(page_content.strip())
+
+        return None
 
     def __init__(
         self,
@@ -229,6 +277,18 @@ class OncowflowAgent:
             or additionnal_readers
         )
         is_chat_mode = self.output_format is ChatResponse
+        prefetched_markdown = self._extract_prefetched_mtd_markdown(
+            mtd=mtd,
+            patient_readers=self.patient_readers,
+            is_chat_mode=is_chat_mode,
+        )
+        self._has_prefetched_markdown = prefetched_markdown is not None
+        prefetched_context_block = (
+            f"\n        ## PATIENT RECORD CONTEXT (PRE-LOADED)\n{prefetched_markdown}\n"
+            if prefetched_markdown is not None
+            else ""
+        )
+
         if not has_tools:
             step1_block = """## STEP 1 — Analyze the provided context
         - Use strictly the information provided in the user prompt.
@@ -240,6 +300,15 @@ class OncowflowAgent:
         - Only when the user asks a clinical or administrative question about the patient record or scientific guidelines:
           - Call `{mtd_tool_name}` at most ONCE to retrieve the patient record text.{history_tool_instruction}
           - Call `search_on_ressources` (at most 1 or 2 targeted searches with `k=2`) ONLY if scientific guideline evidence is needed.
+        - Do NOT guess, mock, or fabricate any clinical information."""
+        elif prefetched_markdown is not None:
+            resource_search_instruction = (
+                "\n        - Call `search_on_ressources` to search reference guidelines if needed."
+                if (self.ressources or additionnal_readers)
+                else ""
+            )
+            step1_block = f"""## STEP 1 — Analyze the pre-loaded patient record and gather complementary information if needed
+        - The full patient record Markdown is already pre-loaded above in `## PATIENT RECORD CONTEXT (PRE-LOADED)`. Use it directly without calling `{mtd_tool_name}` again.{history_tool_instruction}{resource_search_instruction}
         - Do NOT guess, mock, or fabricate any clinical information."""
         else:
             step1_block = f"""## STEP 1 — Gather information (use tools)
@@ -258,7 +327,7 @@ class OncowflowAgent:
         )
 
         system_prompt = f"""Answer in {self.response_language.capitalize()} language, not mention it in the answer.
-        You are a clinical data extraction assistant operating in a live production environment.
+        You are a clinical data extraction assistant operating in a live production environment.{prefetched_context_block}
         {self.system_prompt}
 
         {step1_block}
@@ -412,7 +481,7 @@ class OncowflowAgent:
         self.latest_thinking = ""
         self.logger.info('Ask "%s" to agent ...', question)
 
-        retry = max(1, int(retry))
+        retry = max(1, retry)
         validation_error = None
         result = None
         last_failed_output = None
@@ -506,7 +575,7 @@ class OncowflowAgent:
                             validated = json.loads(candidate)
                         self.logger.info("AI response : %s", validated)
                         return validated
-                    except (ValidationError, ValueError, json.JSONDecodeError) as e:
+                    except (ValidationError, ValueError) as e:
                         # Keep the error of the most recent AI message's primary candidate only
                         if round_error is None:
                             round_error = e
@@ -530,7 +599,7 @@ class OncowflowAgent:
                             validated = json.loads(repaired_cand)
                         self.logger.info("AI response : %s", validated)
                         return validated
-                    except (ValidationError, ValueError, json.JSONDecodeError):
+                    except (ValidationError, ValueError):
                         continue
             validation_error = round_error or validation_error
 
@@ -630,6 +699,14 @@ class OncowflowAgent:
             failed_output or ""
         ) or "ContextWindowExceededError" in str(error or "")
         if is_context_exceeded:
+            if getattr(self, "_has_prefetched_markdown", False):
+                return (
+                    f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
+                    f"{original_question}\n\n"
+                    "IMPORTANT: The previous attempt exceeded the model context window because too many tool searches were performed. "
+                    "Do NOT call `get_mtd_markdown` (the patient record is already pre-loaded in the system prompt). "
+                    "Call `search_on_ressources` at most ONCE with `k=2` if needed, then immediately output the final JSON object."
+                )
             return (
                 f"Answer in {self.response_language.capitalize()} language, not mention it in the answer.\n"
                 f"{original_question}\n\n"
