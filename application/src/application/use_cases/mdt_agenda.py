@@ -225,12 +225,12 @@ class MDTAgendaService:
             resolved_strategy = (
                 sort_strategy
                 if isinstance(sort_strategy, MDTAgendaSortStrategy)
-                else MDTAgendaSortStrategy(str(sort_strategy).strip().lower())
+                else MDTAgendaSortStrategy(sort_strategy.strip().lower())
             )
             agenda.sort_strategy = resolved_strategy
 
         if defer_incomplete_files is not None:
-            agenda.defer_incomplete_files = bool(defer_incomplete_files)
+            agenda.defer_incomplete_files = defer_incomplete_files
 
         if attending_experts is not None:
             agenda.set_attending_experts(attending_experts, self.available_experts)
@@ -265,7 +265,7 @@ class MDTAgendaService:
         agenda = self._get_or_init_agenda()
         snapshots_by_id, ordered_snapshots = self._collect_snapshots()
 
-        should_enroll_all = bool(add_all_candidates or enroll_all_candidates)
+        should_enroll_all = add_all_candidates or enroll_all_candidates
         resolved_mode = (filter_mode or "all").strip().lower()
 
         if should_enroll_all:
@@ -348,7 +348,7 @@ class MDTAgendaService:
         elif direction == "down":
             new_pos = min(total_n, curr_pos + 1)
         elif target_position is not None:
-            new_pos = min(max(1, int(target_position)), total_n)
+            new_pos = min(max(1, target_position), total_n)
 
         if direction in ("up", "down") or target_position is not None:
             reordered_ids = list(current_order_ids)
@@ -360,7 +360,7 @@ class MDTAgendaService:
                 e = entry_map[pid]
                 e.manual_order = idx
                 if pid == patient_id:
-                    e.pinned = True if pinned is None else bool(pinned)
+                    e.pinned = True if pinned is None else pinned
                     e.pinned_position = new_pos if e.pinned else None
                 elif e.pinned and e.pinned_position == new_pos:
                     e.pinned_position = curr_pos

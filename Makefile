@@ -46,7 +46,7 @@ RESET := \033[0m
 
 .DEFAULT_GOAL := help
 
-.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
+.PHONY: help init update install install-web upgrade upgrade-web start-api start-ui start-web start-worker start-ui-dev start-web-dev start-dev cloudrun-proxy cloudrun-proxy-stop stop test test-web coverage lint lint-web format format-web hooks hooks-all e2e-web build-web docker-build-api docker-build-ui docker-build-web mongo-init docker-up docker-up-proxy docker-down docker-update docker-status pull-models clean status get-bugs api ui web worker ui-dev web-dev proxy proxy-stop dev init-prod sudoers-prod pull-models-prod logrotate-prod mongo-init-prod build-prod docker-up-prod docker-down-prod start-prod start-prod-st stop-prod restart-prod prod-update prod-update-all status-prod logs-prod up-prod down-prod prod pprod
 
 ## Affiche l'aide et la liste des commandes disponibles
 help:
@@ -90,6 +90,8 @@ help:
 	@echo -e "  $(YELLOW)make lint-web$(RESET)            Vérifie le code TypeScript/CSS de $(WEB_DIR)/ avec Biome, tsc --noEmit et check-contrast.mjs"
 	@echo -e "  $(YELLOW)make format$(RESET)              Formate le code avec Ruff"
 	@echo -e "  $(YELLOW)make format-web$(RESET)          Formate le code de $(WEB_DIR)/ avec Biome"
+	@echo -e "  $(YELLOW)make hooks$(RESET)               Exécute les hooks Git (prek) sur les fichiers modifiés"
+	@echo -e "  $(YELLOW)make hooks-all$(RESET)           Exécute tous les hooks Git (prek) sur l'ensemble du projet"
 	@echo -e "  $(YELLOW)make e2e-web$(RESET)             Exécute les tests end-to-end Playwright de $(WEB_DIR)/"
 	@echo -e "  $(YELLOW)make get-bugs$(RESET)            Récupère et affiche les rapports de bugs depuis MongoDB"
 	@echo ""
@@ -123,6 +125,15 @@ update: upgrade docker-update
 install:
 	@echo -e "$(CYAN)--> Installation des dépendances avec uv sync...$(RESET)"
 	cd $(APP_DIR) && $(UV) sync
+	@if [ -d .git ]; then \
+		if command -v prek >/dev/null 2>&1; then \
+			prek install -f >/dev/null 2>&1 || true; \
+		elif [ -x $(APP_DIR)/.venv/bin/prek ]; then \
+			$(APP_DIR)/.venv/bin/prek install -f >/dev/null 2>&1 || true; \
+		else \
+			$(UV) run --project $(APP_DIR) prek install -f >/dev/null 2>&1 || true; \
+		fi; \
+	fi
 
 ## Installe les dépendances Node.js de l'interface web
 install-web:
@@ -315,6 +326,26 @@ format:
 format-web:
 	@echo -e "$(CYAN)--> Formatage Biome sur $(WEB_DIR)/...$(RESET)"
 	npm --prefix $(WEB_DIR) run format
+
+## Exécute les hooks Git (prek) sur les fichiers modifiés
+hooks:
+	@if command -v prek >/dev/null 2>&1; then \
+		prek run; \
+	elif [ -x $(APP_DIR)/.venv/bin/prek ]; then \
+		$(APP_DIR)/.venv/bin/prek run; \
+	else \
+		$(UV) run --project $(APP_DIR) prek run; \
+	fi
+
+## Exécute tous les hooks Git (prek) sur l'ensemble du projet
+hooks-all:
+	@if command -v prek >/dev/null 2>&1; then \
+		prek run --all-files; \
+	elif [ -x $(APP_DIR)/.venv/bin/prek ]; then \
+		$(APP_DIR)/.venv/bin/prek run --all-files; \
+	else \
+		$(UV) run --project $(APP_DIR) prek run --all-files; \
+	fi
 
 ## Exécute les tests end-to-end Playwright de web/
 e2e-web:

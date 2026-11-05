@@ -165,7 +165,7 @@ class DocumentReader:
         self.logger = config.set_logger(
             "reader",
             default_context={
-                "document": str(document),
+                "document": document,
                 "embeddings": config.llm.embeddings,
                 "parser": config.rcp.doc_type,
             },

@@ -266,7 +266,7 @@ class InMemoryQueueManager:
                 target_patient_id=target_patient_id,
                 job_type=JobType.WAVE1_ADMIN,
                 status=JobStatus.PENDING,
-                priority=int(JobPriority.WAVE1_ADMIN_IMPORT),
+                priority=JobPriority.WAVE1_ADMIN_IMPORT,
                 current_step="En attente d'identification du patient",
                 total_models=1,
                 max_retries=self.base_config.queue.max_retries,
@@ -287,7 +287,7 @@ class InMemoryQueueManager:
                     target_patient_id=target_patient_id,
                     job_type=JobType.WAVE2_CLINICAL,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.WAVE2_CLINICAL_IMPORT),
+                    priority=JobPriority.WAVE2_CLINICAL_IMPORT,
                     depends_on_job_id=wave1_job["job_id"],
                     current_step="En attente de l'extraction clinique",
                     total_models=max(1, total_clinical_models),
@@ -307,7 +307,7 @@ class InMemoryQueueManager:
                     target_patient_id=target_patient_id,
                     job_type=JobType.WAVE3_EXPERTS,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.WAVE3_EXPERTS_IMPORT),
+                    priority=JobPriority.WAVE3_EXPERTS_IMPORT,
                     depends_on_job_id=wave2_job["job_id"],
                     current_step="En attente de la concertation d'experts",
                     total_models=max(1, total_expert_models),
@@ -406,7 +406,7 @@ class InMemoryQueueManager:
                     job_type=JobType.SINGLE_MODEL,
                     model_name=model_name,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.SINGLE_MODEL_RERUN),
+                    priority=JobPriority.SINGLE_MODEL_RERUN,
                     current_step=f"Relance en attente ({model_name})",
                     total_models=1,
                     preserve_manual_edits=preserve_manual_edits,
@@ -444,7 +444,7 @@ class InMemoryQueueManager:
                     filename=filename,
                     job_type=JobType.WAVE3_EXPERTS,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.WAVE3_EXPERTS_RERUN),
+                    priority=JobPriority.WAVE3_EXPERTS_RERUN,
                     current_step="Relance de la concertation d'experts en attente",
                     total_models=max(1, total_expert_models),
                     force_replace=force_replace,
@@ -464,7 +464,7 @@ class InMemoryQueueManager:
                         filename=filename,
                         job_type=JobType.WAVE1_ADMIN,
                         status=JobStatus.PENDING,
-                        priority=int(JobPriority.WAVE1_ADMIN_IMPORT),
+                        priority=JobPriority.WAVE1_ADMIN_IMPORT,
                         current_step="En attente d'identification du patient",
                         total_models=1,
                         force_replace=force_replace,
@@ -484,7 +484,7 @@ class InMemoryQueueManager:
                     filename=filename,
                     job_type=JobType.WAVE2_CLINICAL,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.WAVE2_CLINICAL_RERUN),
+                    priority=JobPriority.WAVE2_CLINICAL_RERUN,
                     depends_on_job_id=depends_id,
                     current_step="Relance de l'extraction clinique en attente",
                     total_models=max(1, total_clinical_models),
@@ -505,7 +505,7 @@ class InMemoryQueueManager:
                     filename=filename,
                     job_type=JobType.WAVE3_EXPERTS,
                     status=JobStatus.PENDING,
-                    priority=int(JobPriority.WAVE3_EXPERTS_RERUN),
+                    priority=JobPriority.WAVE3_EXPERTS_RERUN,
                     depends_on_job_id=wave2_job["job_id"],
                     current_step="En attente de la concertation d'experts",
                     total_models=max(1, total_expert_models),
@@ -1137,7 +1137,7 @@ class InMemoryQueueManager:
                 and (not filename or j.get("filename") == filename)
             ]
         jobs.sort(key=lambda j: j.get("created_at") or datetime.min, reverse=True)
-        return jobs[: int(limit)]
+        return jobs[:limit]
 
     def cancel_or_delete_job(self, job_id: str) -> bool:
         file_to_stabilize: tuple[str, str] | None = None

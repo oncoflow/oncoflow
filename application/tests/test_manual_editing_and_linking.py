@@ -212,7 +212,8 @@ class TestManualSectionEditing:
                 "human_value": "Colon",
             }
         }
-        assert len(trace1["edit_history"]) == 1
+        assert trace1["human_value"] == {"tumor_location": "Colon"}
+        assert trace1["edited_by"] == "dr_dupuis"
 
         # Second manual edit by clinician: Colon -> Pancreas (ai_original must stay "Stomach"!)
         doc_after_edit2 = service.update_patient_mdt_form_section(
@@ -229,11 +230,8 @@ class TestManualSectionEditing:
                 "human_value": "Pancreas",
             }
         }
-        assert len(trace2["edit_history"]) == 2
-        assert trace2["edit_history"][1]["previous_value"] == {
-            "tumor_location": "Colon"
-        }
-        assert trace2["edit_history"][1]["new_value"] == {"tumor_location": "Pancreas"}
+        assert trace2["human_value"] == {"tumor_location": "Pancreas"}
+        assert trace2["edited_by"] == "dr_martin"
 
         # If the section is later re-extracted by AI, the judge trace is archived and never lost
         archived_map = PatientMDTOncologicForm.archive_manual_edit_before_ai_rerun(

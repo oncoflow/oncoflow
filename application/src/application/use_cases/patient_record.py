@@ -215,6 +215,56 @@ class PatientRecordService:
         )
         return self.mdt_form_repo.get_by_file(filename) or {}
 
+    def rollback_patient_mdt_form_section(
+        self,
+        filename: str,
+        section_name: str,
+    ) -> dict[str, Any]:
+        """
+        Rollback a manually edited section on a `PatientMDTForm` record back to its
+        original AI extraction (`ai_original`) and remove its entry from `manual_edits`.
+        """
+        existing_doc = self.mdt_form_repo.get_by_file(filename)
+        if existing_doc is None:
+            raise FileNotFoundError(
+                f"PatientMDTForm document '{filename}' was not found."
+            )
+
+        target_cls = self.form_cls.get_section_model(section_name)
+        canonical_name = target_cls.__name__ if target_cls else section_name
+
+        manual_edits = dict(existing_doc.get("manual_edits") or {})
+        entry = manual_edits.get(canonical_name) or manual_edits.get(section_name)
+        ai_original = None
+        if isinstance(entry, dict):
+            raw_orig = entry.get("ai_original") or entry.get("previous_ai_value")
+            if isinstance(raw_orig, dict):
+                ai_original = dict(raw_orig)
+
+        manual_edits.pop(canonical_name, None)
+        manual_edits.pop(section_name, None)
+
+        now = datetime.now()
+        fields_to_update: dict[str, Any] = {
+            "manual_edits": manual_edits,
+            "date_refresh": now,
+        }
+        if ai_original is not None:
+            if canonical_name == "PatientAdministrative":
+                patient, merged_admin = self.synchronize_patient_from_admin(
+                    filename=filename,
+                    admin_data=ai_original,
+                    target_patient_id=existing_doc.get("patient_id"),
+                )
+                fields_to_update["patient_id"] = patient.patient_id
+                fields_to_update["PatientAdministrative"] = merged_admin
+            else:
+                fields_to_update[canonical_name] = ai_original
+
+        self.mdt_form_repo.upsert_fields(filename, fields_to_update)
+        updated_doc = self.mdt_form_repo.get_by_file(filename) or existing_doc
+        return self.enrich_form_doc(updated_doc)
+
     def update_missing_items_visibility(
         self,
         filename: str,
@@ -238,9 +288,9 @@ class PatientRecordService:
             str(x) for x in (existing_doc.get("hidden_missing_items") or []) if x
         ]
         if hidden_missing_items is not None:
-            current_hidden = [str(x) for x in hidden_missing_items if x]
+            current_hidden = [x for x in hidden_missing_items if x]
         if toggle_item:
-            item_str = str(toggle_item).strip()
+            item_str = toggle_item.strip()
             if item_str:
                 if item_str in current_hidden:
                     current_hidden = [x for x in current_hidden if x != item_str]
@@ -248,7 +298,7 @@ class PatientRecordService:
                     current_hidden.append(item_str)
 
         effective_hide_all = (
-            bool(hide_missing_items)
+            hide_missing_items
             if hide_missing_items is not None
             else bool(existing_doc.get("hide_missing_items", False))
         )
@@ -261,7 +311,7 @@ class PatientRecordService:
         }
 
         if what_missing is not None:
-            clean_missing = [str(x).strip() for x in what_missing if str(x).strip()]
+            clean_missing = [x.strip() for x in what_missing if x.strip()]
             mtd_sec = dict(existing_doc.get("MTDCompleted") or {})
             nested = mtd_sec.get("mtd_complete")
             nested_dict = dict(nested) if isinstance(nested, dict) else {}
@@ -416,6 +466,26 @@ class PatientRecordService:
                 )
                 saved_patient = self.patient_repo.save(new_patient, filename=filename)
 
+        return self._persist_administrative_section_update(
+            filename=filename,
+            form_doc=form_doc,
+            saved_patient=saved_patient,
+            validated_admin=validated_admin,
+            edited_by=edited_by,
+            now=now,
+        )
+
+    def _persist_administrative_section_update(
+        self,
+        *,
+        filename: str,
+        form_doc: dict[str, Any],
+        saved_patient: Patient,
+        validated_admin: dict[str, Any],
+        edited_by: str | None,
+        now: datetime,
+    ) -> tuple[Patient, dict[str, Any]]:
+        """Persist `PatientAdministrative` and manual edit trace onto the `PatientMDTForm` document."""
         manual_edits = self.form_cls.build_manual_edit_trace(
             form_doc,
             "PatientAdministrative",
@@ -483,30 +553,14 @@ class PatientRecordService:
         target_patient.attach_file(filename)
         saved_patient = self.patient_repo.save(target_patient, filename=filename)
 
-        now = datetime.now()
-        manual_edits = self.form_cls.build_manual_edit_trace(
-            form_doc,
-            "PatientAdministrative",
-            validated_admin,
+        return self._persist_administrative_section_update(
+            filename=filename,
+            form_doc=form_doc,
+            saved_patient=saved_patient,
+            validated_admin=validated_admin,
             edited_by=edited_by,
-            edited_at=now,
+            now=datetime.now(),
         )
-        fields_to_update: dict[str, Any] = {
-            "patient_id": saved_patient.patient_id,
-            "PatientAdministrative": validated_admin,
-            "manual_edits": manual_edits,
-            "date_refresh": now,
-        }
-        if form_doc.get("processing_status") == RCPProcessingStatus.FAILED.value:
-            fields_to_update["processing_status"] = RCPProcessingStatus.COMPLETED.value
-            fields_to_update["processing_error"] = None
-
-        self.mdt_form_repo.upsert_fields(
-            filename,
-            fields_to_update,
-            set_on_insert={"file": filename, "ui_date": now},
-        )
-        return saved_patient, self.mdt_form_repo.get_by_file(filename) or {}
 
     def _collect_patients_including_unlinked(
         self, all_forms: list[dict[str, Any]]

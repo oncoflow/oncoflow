@@ -160,9 +160,13 @@ def display_as_list(
     }
     default_val = default_value_map.get(sort_by, "")
 
+    def _sort_key(x: dict[str, Any]) -> Any:
+        val = x.get(sort_by)
+        return val if val is not None else default_val
+
     sorted_data = sorted(
         data,
-        key=lambda x: x.get(sort_by) if x.get(sort_by) is not None else default_val,
+        key=_sort_key,
         reverse=not ascending,
     )
 

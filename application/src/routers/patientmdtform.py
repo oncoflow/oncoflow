@@ -763,6 +763,37 @@ def update_rcp_section(
         ) from err
 
 
+@router.post(
+    "/{filename}/sections/{section_name}/rollback",
+    response_model=PatientMDTFormDetailResponse,
+)
+def rollback_rcp_section(
+    filename: str,
+    section_name: str,
+    config: DomainConfigDep,
+    db=Depends(require_db),
+):
+    """Rollback a manually edited section on a PatientMDTForm back to its original AI extraction."""
+    _safe_mdt_form_path(config.rcp.path, filename)
+    record_service = _build_record_service(config, db=db)
+    try:
+        updated_doc = record_service.rollback_patient_mdt_form_section(
+            filename=filename,
+            section_name=section_name,
+        )
+        return serialize_mongo_doc(updated_doc)
+    except FileNotFoundError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(err),
+        ) from err
+    except ValueError as err:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(err),
+        ) from err
+
+
 @router.patch(
     "/{filename}/administrative",
     response_model=AdministrativeUpdateResponse,

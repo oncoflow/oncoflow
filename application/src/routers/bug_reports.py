@@ -1,6 +1,6 @@
 """REST router for managing domain bug reports and user suggestions (`/api/v1/bug-reports`)."""
 
-from typing import Annotated, Optional
+from typing import Annotated, Optional, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -22,7 +22,7 @@ def get_bug_report_repo(
     config: DomainConfigDep, db=Depends(require_db)
 ) -> BugReportRepository:
     """Instantiate a domain-scoped `BugReportRepository` backed by MongoDB."""
-    return MongoBugReportRepository(config, db_client=db)
+    return cast(BugReportRepository, MongoBugReportRepository(config, db_client=db))
 
 
 BugReportRepoDep = Annotated[BugReportRepository, Depends(get_bug_report_repo)]

@@ -36,7 +36,9 @@ class PatientMDTSmaForm(PatientMDTForm):
             description="Is the homozygous deletion or mutation of SMN1 confirmed?"
         )
         smn2_copy_count: int = Field(
-            description="Number of SMN2 backup gene copies (crucial for prognosis and treatment eligibility)"
+            ge=0,
+            le=10,
+            description="Number of SMN2 backup gene copies (crucial for prognosis and treatment eligibility)",
         )
         other_genetic_variants: Optional[str] = Field(
             default=None,
@@ -53,21 +55,36 @@ class PatientMDTSmaForm(PatientMDTForm):
         """
 
         sma_type: str = Field(
-            description="Clinical type of SMA: Type 1 (Werdnig-Hoffmann), Type 2, Type 3 (Kugelberg-Welander), or Type 4"
+            description="Clinical type of SMA: Type 1 (Werdnig-Hoffmann), Type 2, Type 3 (Kugelberg-Welander), or Type 4",
+            json_schema_extra={
+                "options": [
+                    "Type 1",
+                    "Type 2",
+                    "Type 3",
+                    "Type 4",
+                    "Pré-symptomatique",
+                ]
+            },
         )
         motor_milestones: list[str] = Field(
             description="Achieved motor milestones (e.g. head control, sitting unsupported, standing, independent walking)"
         )
         hfmse_score: Optional[int] = Field(
             default=None,
+            ge=0,
+            le=66,
             description="Hammersmith Functional Motor Scale Expanded (HFMSE) score (0-66)",
         )
         chop_intend_score: Optional[int] = Field(
             default=None,
+            ge=0,
+            le=64,
             description="CHOP INTEND score (usually for Type 1 infants, 0-64)",
         )
         rulm_score: Optional[int] = Field(
             default=None,
+            ge=0,
+            le=37,
             description="Revised Upper Limb Module (RULM) score (0-37)",
         )
 
@@ -86,15 +103,27 @@ class PatientMDTSmaForm(PatientMDTForm):
         ventilation_type: Optional[str] = Field(
             default=None,
             description="Type of support: Non-invasive ventilation (NIV/BiPAP), Tracheostomy, or None",
+            json_schema_extra={
+                "options": [
+                    "None",
+                    "Non-invasive ventilation (NIV/BiPAP)",
+                    "Tracheostomy",
+                ]
+            },
         )
         daily_ventilation_hours: Optional[float] = Field(
-            default=None, description="Number of hours of ventilation per day"
+            default=None,
+            ge=0,
+            le=24,
+            description="Number of hours of ventilation per day",
         )
         uses_cough_assist: bool = Field(
             description="Does the patient use a mechanical insufflator-exsufflator (cough assist)?"
         )
         forced_vital_capacity_percent: Optional[float] = Field(
             default=None,
+            ge=0,
+            le=150,
             description="Forced Vital Capacity (FVC / CVF) in % of predicted value",
         )
 
@@ -109,7 +138,10 @@ class PatientMDTSmaForm(PatientMDTForm):
 
         has_scoliosis: bool = Field(description="Presence of scoliosis")
         scoliosis_cobb_angle: Optional[float] = Field(
-            default=None, description="Scoliosis Cobb angle in degrees if measured"
+            default=None,
+            ge=0,
+            le=180,
+            description="Scoliosis Cobb angle in degrees if measured",
         )
         spine_surgery_history: bool = Field(
             description="Has the patient undergone spinal fusion / arthrodesis?"
@@ -134,13 +166,28 @@ class PatientMDTSmaForm(PatientMDTForm):
             description="Does the patient have swallowing difficulties?"
         )
         feeding_mode: str = Field(
-            description="Primary feeding mode: Oral, Oral with thickening, Gastrostomy tube (G-tube / GPE), or Nasogastric tube"
+            description="Primary feeding mode: Oral, Oral with thickening, Gastrostomy tube (G-tube / GPE), or Nasogastric tube",
+            json_schema_extra={
+                "options": [
+                    "Oral",
+                    "Oral with thickening",
+                    "Gastrostomy tube (G-tube / GPE)",
+                    "Nasogastric tube",
+                ]
+            },
         )
         history_aspiration_pneumonia: bool = Field(
             description="History of aspiration pneumonia (fausses routes)"
         )
         nutritional_status: str = Field(
-            description="Nutritional status: Normal, Failure to thrive / Underweight, Overweight"
+            description="Nutritional status: Normal, Failure to thrive / Underweight, Overweight",
+            json_schema_extra={
+                "options": [
+                    "Normal",
+                    "Failure to thrive / Underweight",
+                    "Overweight",
+                ]
+            },
         )
 
         question: ClassVar[str] = (
