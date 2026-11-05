@@ -1089,6 +1089,30 @@ class PatientMDTForm:
             3. Date of birth must be strictly before Date of RCP.
             """
 
+    class ExpertAnswer(default_model):
+        agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
+
+        expert_relevant: bool = Field(
+            description="Is your expertise relevant for this patient's case?"
+        )
+        patient_priority: PatientPriority = Field(  # noqa: F405
+            description="Urgency of the patient's treatment"
+        )
+        why_relevant: str = Field(
+            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
+        )
+        sources_relevant: list[Reference] = Field(  # noqa: F405
+            description="Give the sources of your relevant answer"
+        )
+        suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
+            description="List of suggestions. Empty if expert is not relevant."
+        )
+
+        question: ClassVar[str] = """
+            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
+            You can use tools multiple times for each element and have more scientific elements.
+            """
+
     class MTDCompleted(default_model):
         agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents
         mtd_complete: MTDComplete = Field(description="Is the MDT file complete?")  # noqa: F405

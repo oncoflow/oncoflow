@@ -781,3 +781,133 @@ def test_oncology_enriched_clinical_sections_and_longitudinal_metrics():
         by_key["Chemotherapy.chemotherapy_tolerance"].points[1].display_value
         == "Medium"
     )
+
+
+def test_patient_dashboard_router_endpoints_and_llm_summary_branch(monkeypatch):
+    """Test router endpoints (200 + 404) and generate_and_save_patient_record_summary with use_llm=True."""
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from src.domain.patient_dashboard import PatientRecordSummaryContent
+    from src.models.rcp import PatientSummaryTriggerRequest
+    from src.routers.patientmdtform import (
+        get_patient_dashboard_endpoint,
+        get_patient_summary_endpoint,
+        trigger_patient_summary_endpoint,
+    )
+
+    patient = Patient(
+        patient_id="martin_paul_1960_01_01",
+        first_name="Paul",
+        last_name="Martin",
+        date_birth="1960-01-01",
+        files=["onco_1.pdf"],
+    )
+    forms = [
+        {
+            "file": "onco_1.pdf",
+            "patient_id": "martin_paul_1960_01_01",
+            "PatientAdministrative": {
+                "first_name": "Paul",
+                "last_name": "Martin",
+                "date_rcp": "2026-02-10",
+            },
+            "TumorBiology": {"ca19_9": 250.0, "msi_state": False},
+        }
+    ]
+    form_repo = InMemoryPatientMDTFormRepository(forms)
+    patient_repo = InMemoryPatientRepository([patient])
+    fake_cfg = SimpleNamespace(
+        domain="oncology",
+        llm=SimpleNamespace(models=["mistral-nemo"]),
+        queue=SimpleNamespace(enabled=False),
+        rcp=SimpleNamespace(display_type="json", path="/tmp"),
+    )
+    service = PatientRecordService(
+        config=fake_cfg,
+        mdt_form_repo=form_repo,
+        patient_repo=patient_repo,
+    )
+
+    # 1. Router 404 when patient is missing
+    for fn in (
+        lambda: get_patient_dashboard_endpoint("unknown", service),
+        lambda: get_patient_summary_endpoint("unknown", service),
+        lambda: trigger_patient_summary_endpoint(
+            "unknown", service, PatientSummaryTriggerRequest(force=True)
+        ),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            fn()
+        assert exc_info.value.status_code == 404
+
+    # 2. Router 200 for dashboard, summary, and trigger
+    dash_res = get_patient_dashboard_endpoint("martin_paul_1960_01_01", service)
+    assert dash_res["rcp_count"] == 1
+    sum_res = get_patient_summary_endpoint("martin_paul_1960_01_01", service)
+    assert sum_res["has_summary"] is False
+
+    trig_res = trigger_patient_summary_endpoint(
+        "martin_paul_1960_01_01",
+        service,
+        PatientSummaryTriggerRequest(force=True),
+    )
+    assert trig_res["summary"]["has_summary"] is True
+
+    # 3. Test use_llm=True branch with mocked get_llm_client
+    class _FakeStructuredLlm:
+        def invoke(self, messages, config=None):
+            return PatientRecordSummaryContent(
+                clinical_trajectory_overview="Synthèse LLM structurée validée.",
+                disease_and_treatment_evolution="Réponse partielle sous protocole.",
+                notable_metric_changes=["CA 19-9 = 250 U/mL"],
+                unresolved_vigilance_points=["Contrôle TDM à 3 mois"],
+                mdt_decisions_recap=["Poursuite traitement"],
+                sources_used=["onco_1.pdf"],
+            )
+
+    class _FakeChatModel:
+        def with_structured_output(self, schema):
+            return _FakeStructuredLlm()
+
+    class _FakeLlmClient:
+        def chat(self, **kwargs):
+            return _FakeChatModel()
+
+    import src.infrastructure.llm.factory as llm_factory
+
+    monkeypatch.setattr(llm_factory, "get_llm_client", lambda cfg: _FakeLlmClient())
+
+    llm_summary = service.generate_and_save_patient_record_summary(
+        "martin_paul_1960_01_01", use_llm=True
+    )
+    assert llm_summary is not None
+    assert (
+        llm_summary["content"]["clinical_trajectory_overview"]
+        == "Synthèse LLM structurée validée."
+    )
+    assert (
+        service.generate_and_save_patient_record_summary(
+            "missing_patient", use_llm=True
+        )
+        is None
+    )
+
+    # 4. Removed form & manual_edits obsolescence detection
+    obs_removed = evaluate_patient_record_summary_obsolescence(
+        {
+            "generated_at": "2026-01-01T00:00:00",
+            "covered_form_ids": ["onco_1.pdf", "deleted_form.pdf"],
+            "content": llm_summary["content"],
+        },
+        [
+            {
+                "file": "onco_1.pdf",
+                "date_refresh": "2026-03-01T12:00:00",
+                "manual_edits": {"TumorBiology": {"edited_at": "2026-03-01T12:00:00"}},
+            }
+        ],
+    )
+    assert obs_removed is not None
+    assert obs_removed["is_obsolete"] is True
+    assert "deleted_form.pdf" in obs_removed["removed_forms_since_summary"]
+    assert "onco_1.pdf" in obs_removed["modified_forms_since_summary"]

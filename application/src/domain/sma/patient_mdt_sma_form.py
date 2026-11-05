@@ -246,7 +246,7 @@ class PatientMDTSmaForm(PatientMDTForm):
             "List all radiological exams found in the documents. Include date, name, type, and a summary of results for each."
         )
 
-    class ExpertAnswer(PatientMDTForm.default_model):
+    class ExpertAnswer(PatientMDTForm.ExpertAnswer):
         agents: ClassVar[list[type[OncowflowAgent]]] = [
             Agents.Neurologist_expert_agent,
             Agents.Geneticist_expert_agent,
@@ -254,31 +254,6 @@ class PatientMDTSmaForm(PatientMDTForm):
             Agents.Physiotherapy_expert_agent,
             Agents.Orthopedist_expert_agent,
         ]
-
-        expert_relevant: bool = Field(
-            description="Is your expertise relevant for this patient's case?"
-        )
-
-        patient_priority: PatientPriority = Field(  # noqa: F405
-            description="Urgency of the patient's treatment"
-        )
-
-        why_relevant: str = Field(
-            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
-        )
-
-        sources_relevant: list[Reference] = Field(  # noqa: F405
-            description="Give the sources of your relevant answer"
-        )
-
-        suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
-            description="List of suggestions. Empty if expert is not relevant."
-        )
-
-        question: ClassVar[str] = """
-            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
-            You can use tools multiple times for each element and have more scientific elements.
-            """
 
     class MTDCompleted(PatientMDTForm.MTDCompleted):
         agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents

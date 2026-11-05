@@ -848,4 +848,179 @@ describe("HttpOncoflowApiAdapter server-side security headers & contract", () =>
       },
     );
   });
+
+  it("maps getPatientDashboard and triggerPatientSummary responses, caches non-active dashboard, and falls back gracefully", async () => {
+    const dashboardPayload = {
+      patient: {
+        patient_id: "P-DASH",
+        first_name: "Paul",
+        last_name: "Durand",
+      },
+      latest_file: "durand_2026_05.pdf",
+      rcp_count: 2,
+      metrics: [
+        {
+          metric_key: "TumorBiology.ca19_9",
+          section: "TumorBiology",
+          field: "ca19_9",
+          label: "CA 19-9",
+          unit: "U/mL",
+          scale_min: 0,
+          scale_max: 5000,
+          polarity: "lower_is_better",
+          value_type: "numeric_or_mixed",
+          points: [
+            {
+              form_id: "durand_2026_01.pdf",
+              form_date: "2026-01-10",
+              form_date_label: "2026-01-10",
+              days_since_first_rcp: 0,
+              x_ratio: 0,
+              raw_value: 850,
+              display_value: "850",
+              numeric_value: 850,
+              sub_values: { D: 850 },
+              is_annotative_only: false,
+              is_manual: true,
+              edited_by: "Dr. Durand",
+              edited_at: "2026-01-11T09:00:00Z",
+              delta_numeric: -200,
+              delta_display: "-200",
+            },
+          ],
+        },
+      ],
+      summary: {
+        has_summary: true,
+        generated_at: "2026-05-15T10:00:00Z",
+        covered_form_ids: ["durand_2026_01.pdf", "durand_2026_05.pdf"],
+        latest_form_id_at_generation: "durand_2026_05.pdf",
+        latest_form_date_at_generation: "2026-05-15",
+        model_used: "mistral-nemo",
+        is_obsolete: false,
+        obsolete_reasons: [],
+        new_forms_since_summary: [],
+        removed_forms_since_summary: [],
+        modified_forms_since_summary: [],
+        content: {
+          clinical_trajectory_overview: "Réponse biologique favorable sous FOLFIRINOX.",
+          disease_and_treatment_evolution: "Diminution CA 19-9.",
+          notable_metric_changes: ["CA 19-9: 850 → 120 U/mL"],
+          unresolved_vigilance_points: ["Scanner thoracique à programmer"],
+          mdt_decisions_recap: ["Poursuite chimiothérapie"],
+          sources_used: ["durand_2026_01.pdf"],
+        },
+        active_job: null,
+      },
+    };
+
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.includes("/summary")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            queued: true,
+            already_queued: false,
+            job: { job_id: "JOB-SUM-1", status: "PENDING" },
+            summary: {
+              ...dashboardPayload.summary,
+              active_job: { job_id: "JOB-SUM-1", status: "PENDING" },
+            },
+          }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => dashboardPayload,
+      };
+    });
+
+    const adapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      cacheTtlMs: 15_000,
+    });
+    const useCase = new PatientDossierUseCase(adapter);
+
+    const dash1 = await useCase.getPatientDashboard("P-DASH", "oncology");
+    const dash2 = await useCase.getPatientDashboard("P-DASH", "oncology");
+    expect(dash1?.patientName).toBe("Durand Paul");
+    expect(dash1?.metrics[0]?.points[0]?.numericValue).toBe(850);
+    expect(dash1?.metrics[0]?.points[0]?.subValues).toEqual({ D: 850 });
+    expect(dash1?.summary.content?.clinicalTrajectoryOverview).toContain("FOLFIRINOX");
+    expect(dash2).toEqual(dash1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const trig = await useCase.triggerPatientSummary("P-DASH", "oncology", true);
+    expect(trig.queued).toBe(true);
+    expect(trig.jobId).toBe("JOB-SUM-1");
+    expect(trig.summary?.activeJob).toEqual({ job_id: "JOB-SUM-1", status: "PENDING" });
+
+    // Fallback when HTTP fails and no InMemory fallback is attached (computes from getPatientForms)
+    const failingAdapter = new HttpOncoflowApiAdapter({
+      baseUrl: "http://127.0.0.1:8000",
+      fetchImpl: (async (url: string) => {
+        if (url.includes("/dashboard")) {
+          throw new Error("dashboard endpoint down");
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            {
+              file: "f1.pdf",
+              patient_id: "P-FALL",
+              PatientAdministrative: {
+                first_name: "Claire",
+                last_name: "Moreau",
+                date_rcp: "2026-03-01",
+              },
+              CancerDescription: {
+                type_of_cancer: "Pancreas",
+                tnm_status: "cT2N0M0",
+                recist_response: "PR",
+                target_lesion_size_mm: 24,
+              },
+              TumorBiology: {
+                msi_state: false,
+                ca19_9: 310,
+                ace: 3.2,
+                dpd_uracilemia: 8.1,
+              },
+              HepaticStatus: {
+                child_pugh_score: "A5",
+                bclc_stage: "A",
+                bilirubin_umol_l: 12,
+              },
+              NutritionalStatus: {
+                weight_kg: 64,
+                weight_loss_percent: 4,
+                bmi: 21.5,
+              },
+              SurgicalStatus: {
+                resectability_status: "Resectable",
+                resection_margin: "R0",
+              },
+            },
+          ],
+        };
+      }) as unknown as typeof fetch,
+    });
+
+    const fallbackDash = await failingAdapter.getPatientDashboard("P-FALL", "oncology");
+    expect(fallbackDash?.patientName).toBe("Moreau Claire");
+    expect(fallbackDash?.metrics.length).toBeGreaterThan(0);
+
+    // Also verify PatientDossierUseCase summary pills for CancerDescription, TumorBiology, HepaticStatus, NutritionalStatus, SurgicalStatus
+    const failingUseCase = new PatientDossierUseCase(failingAdapter);
+    const richDossier = await failingUseCase.getDossier("P-FALL", "oncology", "fr");
+    const sectionTitles = new Map(richDossier?.sections.map((s) => [s.name, s.summaryText]) ?? []);
+    expect(sectionTitles.get("CancerDescription")).toContain("cT2N0M0");
+    expect(sectionTitles.get("TumorBiology")).toContain("CA 19-9: 310 U/mL");
+    expect(sectionTitles.get("HepaticStatus")).toContain("Child-Pugh A5");
+    expect(sectionTitles.get("NutritionalStatus")).toContain("64 kg");
+    expect(sectionTitles.get("SurgicalStatus")).toContain("R0");
+  });
 });

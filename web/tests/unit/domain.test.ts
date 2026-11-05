@@ -37,6 +37,7 @@ import {
   priorityRank,
 } from "../../src/domain/triage.js";
 import type { MdtFormCard, MdtFormDetail } from "../../src/domain/types.js";
+import { renderPatientDashboardPanel } from "../../src/ui/components/patient-dashboard.component.js";
 
 describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
   it("normalizes priority strings and ranks high > medium > low > none", () => {
@@ -805,5 +806,281 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
       "FOLFIRINOX",
       "FOLFIRINOX",
     ]);
+  });
+
+  it("renders patient dashboard panel and ECharts SSR SVG across FR/EN, summary states, bilateral series, and qualitative swimlanes", () => {
+    // 1. Empty metrics + queued AI job in English
+    const emptyEnHtml = renderPatientDashboardPanel(
+      {
+        patientId: "P-EMPTY",
+        patientName: "Alice Martin",
+        domain: "sma",
+        latestFile: null,
+        rcpCount: 0,
+        metrics: [],
+        summary: {
+          hasSummary: false,
+          isObsolete: false,
+          obsoleteReasons: [],
+          newFormsSinceSummary: [],
+          modifiedFormsSinceSummary: [],
+          removedFormsSinceSummary: [],
+          generatedAt: null,
+          coveredFormIds: [],
+          latestFormIdAtGeneration: null,
+          latestFormDateAtGeneration: null,
+          modelUsed: null,
+          content: null,
+          activeJob: {
+            job_id: "J-99",
+            status: "RUNNING",
+            current_step: null,
+          },
+        },
+      },
+      "en",
+    );
+    expect(emptyEnHtml).toContain("No raw longitudinal metrics found");
+    expect(emptyEnHtml).toContain("Queued in AI Worker");
+    expect(emptyEnHtml).toContain("Task queued in AI PriorityQueue");
+    expect(emptyEnHtml).toContain("Longitudinal synthesis waiting for AI worker");
+    expect(emptyEnHtml).toContain("Generating in AI queue");
+
+    // 2. Full dashboard with obsolete summary (new forms + modified forms), bilateral D/G, manual edits, annotative-only points, multi-year span, and qualitative step changes in FR & EN
+    const richDashboard = {
+      patientId: "P-RICH",
+      patientName: "Lucas Bernard",
+      domain: "sma" as const,
+      latestFile: "f3.pdf",
+      rcpCount: 3,
+      metrics: [
+        {
+          metricKey: "OrthopedicStatus.cobb_angle",
+          section: "OrthopedicStatus",
+          field: "cobb_angle",
+          label: "OrthopedicStatus.cobb_angle",
+          unit: "°",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "lower_is_better" as const,
+          scaleMin: 0,
+          scaleMax: 90,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2024-01-10",
+              formDateLabel: "2024-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: "D: 18°, G: 14°",
+              displayValue: "D: 18°, G: 14°",
+              numericValue: 18,
+              subValues: { D: 18, G: 14 },
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2025-06-15",
+              formDateLabel: "",
+              daysSinceFirstRcp: 522,
+              xRatio: 0.5,
+              rawValue: "D: 22°, G: 19°",
+              displayValue: "22",
+              numericValue: 22,
+              subValues: { D: 22, G: 19 },
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2025-06-16T10:00:00Z",
+              deltaNumeric: 4,
+              deltaDisplay: "+4",
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f3.pdf",
+              formDate: null,
+              formDateLabel: "Date non renseignée",
+              daysSinceFirstRcp: 0,
+              xRatio: 1,
+              rawValue: "Corset Garchois porté",
+              displayValue: "Corset Garchois porté",
+              numericValue: null,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: true,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.hfmse_score",
+          section: "MotorFunctionStatus",
+          field: "hfmse_score",
+          label: "Score HFMSE",
+          unit: "/66",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "higher_is_better" as const,
+          scaleMin: null,
+          scaleMax: null,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2026-01-10",
+              formDateLabel: "2026-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: 40,
+              displayValue: "40/66",
+              numericValue: 40,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2026-02-10",
+              formDateLabel: "2026-02-10",
+              daysSinceFirstRcp: 31,
+              xRatio: 1,
+              rawValue: 42,
+              displayValue: "42/66",
+              numericValue: 42,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: 2,
+              deltaDisplay: "+2",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.current_motor_milestone",
+          section: "MotorFunctionStatus",
+          field: "current_motor_milestone",
+          label: "Statut moteur actuel",
+          unit: "",
+          valueType: "categorical" as const,
+          polarity: "neutral" as const,
+          scaleMin: null,
+          scaleMax: null,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2024-01-10",
+              formDateLabel: "2024-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: ["Sitter", "Assisted standing"],
+              displayValue: "Sitter, Assisted standing",
+              numericValue: null,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2025-06-15",
+              formDateLabel: "2025-06-15",
+              daysSinceFirstRcp: 522,
+              xRatio: 1,
+              rawValue: "",
+              displayValue: "Non-sitter",
+              numericValue: null,
+              subValues: null,
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2025-06-16T10:00:00Z",
+              deltaNumeric: null,
+              deltaDisplay: "Assis sans appui → Non-assis",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+      ],
+      summary: {
+        hasSummary: true,
+        isObsolete: true,
+        obsoleteReasons: ["1 nouvelle séance RCP"],
+        newFormsSinceSummary: ["f3.pdf"],
+        modifiedFormsSinceSummary: ["f2.pdf"],
+        removedFormsSinceSummary: [],
+        generatedAt: "2026-06-15T14:30:00Z",
+        coveredFormIds: ["f1.pdf", "f2.pdf"],
+        latestFormIdAtGeneration: "f2.pdf",
+        latestFormDateAtGeneration: "2025-06-15",
+        modelUsed: "mistral-nemo",
+        content: {
+          clinicalTrajectoryOverview: "Suivi longitudinal SMA sur 3 séances.",
+          diseaseAndTreatmentEvolution: "Stabilisation sous Risdiplam.",
+          notableMetricChanges: ["HFMSE : 40 → 42 (+2)"],
+          unresolvedVigilancePoints: ["EFR à contrôler"],
+          mdtDecisionsRecap: ["2025-06-15 : Poursuite Risdiplam"],
+          sourcesUsed: ["f1.pdf", "f2.pdf"],
+        },
+        activeJob: null,
+      },
+    };
+
+    const frHtml = renderPatientDashboardPanel(richDashboard, "fr");
+    expect(frHtml).toContain("Résumé global obsolète");
+    expect(frHtml).toContain("1 nouvelle(s) séance(s) RCP");
+    expect(frHtml).toContain("Suivi longitudinal SMA sur 3 séances.");
+    expect(frHtml).toContain("HFMSE : 40 → 42 (+2)");
+    expect(frHtml).toContain("EFR à contrôler");
+    expect(frHtml).toContain("2025-06-15 : Poursuite Risdiplam");
+    expect(frHtml).toContain("<svg");
+    expect(frHtml).toContain("D: 18°, G: 14°");
+
+    // Test EN rendering with up-to-date summary and modified-only obsolete branch
+    const enHtml = renderPatientDashboardPanel(
+      {
+        ...richDashboard,
+        summary: {
+          ...richDashboard.summary,
+          isObsolete: true,
+          newFormsSinceSummary: [],
+          generatedAt: "invalid-date-format",
+        },
+      },
+      "en",
+    );
+    expect(enHtml).toContain("One or more MDT sessions were updated since invalid-date-format.");
+    expect(enHtml).toContain("<svg");
+
+    const upToDateEnHtml = renderPatientDashboardPanel(
+      {
+        ...richDashboard,
+        metrics: [
+          richDashboard.metrics[0]!.points[0]
+            ? { ...richDashboard.metrics[0]!, points: [richDashboard.metrics[0]!.points[0]!] }
+            : richDashboard.metrics[0]!,
+        ],
+        summary: {
+          ...richDashboard.summary,
+          isObsolete: false,
+          generatedAt: "2026-06-15T14:30:00Z",
+        },
+      },
+      "en",
+    );
+    expect(upToDateEnHtml).toContain("Up to date");
+    expect(upToDateEnHtml).toContain("Regenerate global summary");
+    expect(upToDateEnHtml).toContain("1 session");
   });
 });

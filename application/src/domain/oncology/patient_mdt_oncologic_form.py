@@ -263,37 +263,12 @@ class PatientMDTOncologicForm(PatientMDTForm):
             "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments."
         )
 
-    class ExpertAnswer(PatientMDTForm.default_model):
+    class ExpertAnswer(PatientMDTForm.ExpertAnswer):
         agents: ClassVar[list[type[OncowflowAgent]]] = [
             Agents.Pancreas_expert_agent,
             Agents.Oesophagus_expert_agent,
             Agents.Hepatocellular_expert_agent,
         ]
-
-        expert_relevant: bool = Field(
-            description="Is your expertise relevant for this patient's case?"
-        )
-
-        patient_priority: PatientPriority = Field(  # noqa: F405
-            description="Urgency of the patient's treatment"
-        )
-
-        why_relevant: str = Field(
-            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
-        )
-
-        sources_relevant: list[Reference] = Field(  # noqa: F405
-            description="Give the sources of your relevant answer"
-        )
-
-        suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
-            description="List of suggestions. Empty if expert is not relevant."
-        )
-
-        question: ClassVar[str] = """
-            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
-            You can use tools multiple times for each element and have more scientific elements.
-            """
 
     class MTDCompleted(PatientMDTForm.MTDCompleted):
         agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents

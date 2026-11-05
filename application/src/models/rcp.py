@@ -90,14 +90,12 @@ class ChatRequest(BaseModel):
     )
 
 
-class RCPCardResponse(BaseModel):
-    file: str
-    link: Optional[str] = None
-    patient_id: Optional[str] = None
+class _RcpTriageCardBase(BaseModel):
     patient: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     date_birth: Optional[datetime] = None
+    link: Optional[str] = None
     date_refresh: Optional[datetime] = None
     date: Optional[datetime] = None
     experts: List[str] = Field(default_factory=list)
@@ -118,34 +116,16 @@ class RCPCardResponse(BaseModel):
     processing_progress_pct: Optional[float] = None
 
 
-class PatientCardResponse(BaseModel):
+class RCPCardResponse(_RcpTriageCardBase):
+    file: str
+    patient_id: Optional[str] = None
+
+
+class PatientCardResponse(_RcpTriageCardBase):
     patient_id: str
-    patient: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    date_birth: Optional[datetime] = None
     rcp_count: int = 1
     file: Optional[str] = None
     latest_file: str
-    link: Optional[str] = None
-    date_refresh: Optional[datetime] = None
-    date: Optional[datetime] = None
-    experts: List[str] = Field(default_factory=list)
-    missing: List[str] = Field(default_factory=list)
-    all_missing_items: List[str] = Field(default_factory=list)
-    hidden_missing_items: List[str] = Field(default_factory=list)
-    hide_missing_items: bool = False
-    is_complete: Optional[bool] = None
-    urgency: str
-    urgency_score: int
-    priority_level: Optional[int] = None
-    intervention_required: Optional[bool] = None
-    intervention_type: Optional[str] = None
-    care_adaptation_suggested: Optional[bool] = None
-    proposed_care_type: Optional[str] = None
-    processing_status: Optional[str] = None
-    processing_step: Optional[str] = None
-    processing_progress_pct: Optional[float] = None
 
 
 class PatientResponse(BaseModel):
