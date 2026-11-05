@@ -12,6 +12,7 @@ import {
   getDomainUserPromptsForAgent,
   resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
+import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
@@ -27,7 +28,11 @@ import type {
   MdtAgendaView,
   MdtFormCard,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientMetricPointView,
+  PatientMetricSeriesView,
+  PatientRecordSummaryView,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -1612,6 +1617,196 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       return this.mapRawAgenda(res, domain);
     } catch (err) {
       if (this.fallback) return this.fallback.movePatientInMdtAgenda(patientId, input, domain);
+      throw err;
+    }
+  }
+
+  private mapRawSummary(raw: Record<string, unknown> | null | undefined): PatientRecordSummaryView {
+    if (!raw || typeof raw !== "object") {
+      return {
+        hasSummary: false,
+        generatedAt: null,
+        coveredFormIds: [],
+        latestFormIdAtGeneration: null,
+        latestFormDateAtGeneration: null,
+        modelUsed: null,
+        isObsolete: false,
+        obsoleteReasons: [],
+        newFormsSinceSummary: [],
+        removedFormsSinceSummary: [],
+        modifiedFormsSinceSummary: [],
+        content: null,
+        activeJob: null,
+      };
+    }
+    const rawContent =
+      raw.content && typeof raw.content === "object"
+        ? (raw.content as Record<string, unknown>)
+        : null;
+    return {
+      hasSummary: Boolean(raw.has_summary ?? rawContent !== null),
+      generatedAt: raw.generated_at ? String(raw.generated_at) : null,
+      coveredFormIds: Array.isArray(raw.covered_form_ids)
+        ? (raw.covered_form_ids as unknown[]).map(String)
+        : [],
+      latestFormIdAtGeneration: raw.latest_form_id_at_generation
+        ? String(raw.latest_form_id_at_generation)
+        : null,
+      latestFormDateAtGeneration: raw.latest_form_date_at_generation
+        ? String(raw.latest_form_date_at_generation)
+        : null,
+      modelUsed: raw.model_used ? String(raw.model_used) : null,
+      isObsolete: Boolean(raw.is_obsolete),
+      obsoleteReasons: Array.isArray(raw.obsolete_reasons)
+        ? (raw.obsolete_reasons as unknown[]).map(String)
+        : [],
+      newFormsSinceSummary: Array.isArray(raw.new_forms_since_summary)
+        ? (raw.new_forms_since_summary as unknown[]).map(String)
+        : [],
+      removedFormsSinceSummary: Array.isArray(raw.removed_forms_since_summary)
+        ? (raw.removed_forms_since_summary as unknown[]).map(String)
+        : [],
+      modifiedFormsSinceSummary: Array.isArray(raw.modified_forms_since_summary)
+        ? (raw.modified_forms_since_summary as unknown[]).map(String)
+        : [],
+      content: rawContent
+        ? {
+            clinicalTrajectoryOverview: String(rawContent.clinical_trajectory_overview ?? ""),
+            diseaseAndTreatmentEvolution: String(rawContent.disease_and_treatment_evolution ?? ""),
+            notableMetricChanges: Array.isArray(rawContent.notable_metric_changes)
+              ? (rawContent.notable_metric_changes as unknown[]).map(String)
+              : [],
+            unresolvedVigilancePoints: Array.isArray(rawContent.unresolved_vigilance_points)
+              ? (rawContent.unresolved_vigilance_points as unknown[]).map(String)
+              : [],
+            mdtDecisionsRecap: Array.isArray(rawContent.mdt_decisions_recap)
+              ? (rawContent.mdt_decisions_recap as unknown[]).map(String)
+              : [],
+            sourcesUsed: Array.isArray(rawContent.sources_used)
+              ? (rawContent.sources_used as unknown[]).map(String)
+              : [],
+          }
+        : null,
+      activeJob:
+        raw.active_job && typeof raw.active_job === "object"
+          ? (raw.active_job as Record<string, unknown>)
+          : null,
+    };
+  }
+
+  async getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null> {
+    try {
+      const raw = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}/dashboard?domain=${encodeURIComponent(domain)}`,
+        domain,
+      );
+      const patientObj =
+        raw.patient && typeof raw.patient === "object"
+          ? (raw.patient as Record<string, unknown>)
+          : {};
+      const patientName =
+        `${String(patientObj.last_name ?? "")} ${String(patientObj.first_name ?? "")}`.trim() ||
+        patientId;
+      const rawSeries = Array.isArray(raw.metrics)
+        ? (raw.metrics as Record<string, unknown>[])
+        : [];
+      const metrics: PatientMetricSeriesView[] = rawSeries.map((s) => ({
+        metricKey: String(s.metric_key ?? ""),
+        section: String(s.section ?? ""),
+        field: String(s.field ?? ""),
+        label: String(s.label ?? ""),
+        unit: String(s.unit ?? ""),
+        scaleMin: typeof s.scale_min === "number" ? s.scale_min : null,
+        scaleMax: typeof s.scale_max === "number" ? s.scale_max : null,
+        polarity: String(s.polarity ?? "neutral"),
+        valueType: String(s.value_type ?? "numeric_or_mixed"),
+        points: Array.isArray(s.points)
+          ? (s.points as Record<string, unknown>[]).map(
+              (p): PatientMetricPointView => ({
+                formId: String(p.form_id ?? ""),
+                formDate: p.form_date ? String(p.form_date) : null,
+                formDateLabel: String(p.form_date_label ?? ""),
+                daysSinceFirstRcp: Number(p.days_since_first_rcp ?? 0),
+                xRatio: Number(p.x_ratio ?? 0),
+                rawValue: p.raw_value,
+                displayValue: String(p.display_value ?? ""),
+                numericValue: typeof p.numeric_value === "number" ? p.numeric_value : null,
+                subValues:
+                  p.sub_values && typeof p.sub_values === "object"
+                    ? (p.sub_values as Record<string, number>)
+                    : null,
+                isAnnotativeOnly: Boolean(p.is_annotative_only),
+                isManual: Boolean(p.is_manual),
+                editedBy: p.edited_by ? String(p.edited_by) : null,
+                editedAt: p.edited_at ? String(p.edited_at) : null,
+                deltaNumeric: typeof p.delta_numeric === "number" ? p.delta_numeric : null,
+                deltaDisplay: p.delta_display ? String(p.delta_display) : null,
+              }),
+            )
+          : [],
+      }));
+
+      return {
+        patientId: String(patientObj.patient_id ?? patientId),
+        patientName,
+        domain,
+        latestFile: raw.latest_file ? String(raw.latest_file) : null,
+        rcpCount: Number(raw.rcp_count ?? 0),
+        metrics,
+        summary: this.mapRawSummary(
+          raw.summary && typeof raw.summary === "object"
+            ? (raw.summary as Record<string, unknown>)
+            : null,
+        ),
+      };
+    } catch (_err) {
+      if (this.fallback) return this.fallback.getPatientDashboard(patientId, domain);
+      const forms = await this.getPatientForms(patientId, domain);
+      if (forms.length === 0) return null;
+      const admin = forms[0]?.sections.PatientAdministrative ?? {};
+      const patientName =
+        `${String(admin.last_name ?? "")} ${String(admin.first_name ?? "")}`.trim() || patientId;
+      return buildPatientDashboardFromForms(patientId, patientName, domain, forms, null);
+    }
+  }
+
+  async triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    force = false,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }> {
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}/summary?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force }),
+        },
+      );
+      const jobObj =
+        res.job && typeof res.job === "object" ? (res.job as Record<string, unknown>) : null;
+      return {
+        queued: Boolean(res.queued ?? true),
+        alreadyQueued: Boolean(res.already_queued ?? false),
+        jobId: jobObj?.job_id ? String(jobObj.job_id) : null,
+        summary: this.mapRawSummary(
+          res.summary && typeof res.summary === "object"
+            ? (res.summary as Record<string, unknown>)
+            : null,
+        ),
+      };
+    } catch (err) {
+      if (this.fallback) return this.fallback.triggerPatientSummary(patientId, domain, force);
       throw err;
     }
   }

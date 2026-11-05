@@ -817,6 +817,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       patientId,
       query.file,
     );
+    const activeTab =
+      query.tab === "patient-dashboard" || query.tab === "dashboard"
+        ? "patient-dashboard"
+        : query.tab === "opinions"
+          ? "opinions"
+          : "clinical";
     const html = renderDossierPage(
       dossier,
       session,
@@ -825,8 +831,21 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       [],
       query.editSection,
       agendaNav,
+      activeTab,
     );
     return reply.type("text/html; charset=utf-8").send(html);
+  });
+
+  app.post("/patients/:patientId/summary", async (req, reply) => {
+    const session = resolveSession(req);
+    const { patientId } = req.params as { patientId: string };
+    const body = (req.body ?? {}) as Record<string, string | boolean | undefined>;
+    const force = body.force !== "false" && body.force !== false;
+
+    await dossierUseCase.triggerPatientSummary(patientId, session.domain, force);
+    return reply.redirect(
+      `/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(session.domain)}&tab=patient-dashboard#patient-summary-card`,
+    );
   });
 
   app.get("/forms/:filename", async (req, reply) => {
@@ -859,6 +878,12 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       filename,
       filename,
     );
+    const activeTab =
+      query.tab === "patient-dashboard" || query.tab === "dashboard"
+        ? "patient-dashboard"
+        : query.tab === "opinions"
+          ? "opinions"
+          : "clinical";
     const html = renderDossierPage(
       dossier,
       session,
@@ -867,6 +892,7 @@ export async function buildServer({ config, api }: BuildServerOptions): Promise<
       [],
       query.editSection,
       agendaNav,
+      activeTab,
     );
     return reply.type("text/html; charset=utf-8").send(html);
   });

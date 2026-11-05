@@ -12,7 +12,9 @@ import type {
   MdtAgendaView,
   MdtFormCard,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientRecordSummaryView,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -57,6 +59,20 @@ export interface OncoflowApiPort {
   }>;
   getFormDetail(filename: string, domain: ClinicalDomain): Promise<MdtFormDetail | null>;
   getPatientForms(patientId: string, domain: ClinicalDomain): Promise<MdtFormDetail[]>;
+  getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null>;
+  triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    force?: boolean,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }>;
   updateFormSection(
     filename: string,
     section: string,

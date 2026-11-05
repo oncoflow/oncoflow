@@ -221,6 +221,88 @@ class InMemoryQueueManager:
             return True
         return False
 
+    def get_active_summary_job_for_patient(
+        self, patient_id: str, domain: str | None = None
+    ) -> dict[str, Any] | None:
+        """Return the active (PENDING or PROCESSING) `PATIENT_SUMMARY` job for `patient_id` if any."""
+        target_domain = self._normalize_domain(domain)
+        with self._lock:
+            for j in self._jobs.values():
+                if (
+                    j["domain"] == target_domain
+                    and j.get("job_type") == JobType.PATIENT_SUMMARY.value
+                    and (
+                        j.get("target_patient_id") == patient_id
+                        or j.get("resolved_patient_id") == patient_id
+                        or j.get("filename") == patient_id
+                    )
+                    and j["status"]
+                    in (JobStatus.PENDING.value, JobStatus.PROCESSING.value)
+                ):
+                    return self._clone_job(j)
+        return None
+
+    def enqueue_patient_summary(
+        self,
+        patient_id: str,
+        patient_label: str | None = None,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
+        """Enqueue an on-demand global `PatientRecord` summary synthesis job in the `PriorityQueue`."""
+        target_domain = self._normalize_domain(domain)
+        with self._lock:
+            for j in self._jobs.values():
+                if (
+                    j["domain"] == target_domain
+                    and j.get("job_type") == JobType.PATIENT_SUMMARY.value
+                    and (
+                        j.get("target_patient_id") == patient_id
+                        or j.get("resolved_patient_id") == patient_id
+                        or j.get("filename") == patient_id
+                    )
+                    and j["status"]
+                    in (JobStatus.PENDING.value, JobStatus.PROCESSING.value)
+                ):
+                    cloned = self._clone_job(j)
+                    return {
+                        "already_queued": True,
+                        "patient_id": patient_id,
+                        "domain": target_domain,
+                        "job": cloned,
+                        "jobs": [cloned],
+                    }
+
+            now = datetime.now()
+            summary_job = QueueJob(
+                domain=target_domain,
+                filename=patient_id,
+                target_patient_id=patient_id,
+                resolved_patient_id=patient_id,
+                patient_label=patient_label or patient_id,
+                job_type=JobType.PATIENT_SUMMARY,
+                model_name="PatientRecordSummary",
+                status=JobStatus.PENDING,
+                priority=JobPriority.PATIENT_SUMMARY,
+                current_step="Synthèse longitudinale du dossier en attente",
+                total_models=1,
+                max_retries=self.base_config.queue.max_retries,
+                created_at=now,
+            ).model_dump(mode="python")
+            summary_job["job_type"] = JobType.PATIENT_SUMMARY.value
+            summary_job["status"] = JobStatus.PENDING.value
+
+            self._jobs[summary_job["job_id"]] = summary_job
+            self._push_to_pq(summary_job)
+            cloned = self._clone_job(summary_job)
+
+        return {
+            "already_queued": False,
+            "patient_id": patient_id,
+            "domain": target_domain,
+            "job": cloned,
+            "jobs": [cloned],
+        }
+
     # ------------------------------------------------------------------
     # Enqueue Operations (Step 1 + Step 2 & Reruns)
     # ------------------------------------------------------------------
@@ -1408,6 +1490,12 @@ class InMemoryQueueManager:
     def _execute_single_model(self, job: dict[str, Any], lease_id: str) -> None:
         self.executor.execute_single_model(job, lease_id, self)
 
+    def _execute_patient_record_summary(
+        self, job: dict[str, Any], lease_id: str
+    ) -> None:
+        if hasattr(self.executor, "execute_patient_record_summary"):
+            self.executor.execute_patient_record_summary(job, lease_id, self)
+
     def execute_claimed_job(self, job: dict[str, Any], lease_id: str) -> None:
         job_id = job["job_id"]
         run_id = job.get("run_id")
@@ -1435,6 +1523,8 @@ class InMemoryQueueManager:
                 self._execute_wave3_experts(job, lease_id)
             elif job_type == JobType.SINGLE_MODEL.value:
                 self._execute_single_model(job, lease_id)
+            elif job_type == JobType.PATIENT_SUMMARY.value:
+                self._execute_patient_record_summary(job, lease_id)
             else:
                 raise ValueError(f"Unsupported job_type: {job_type}")
 
@@ -1451,6 +1541,7 @@ class InMemoryQueueManager:
             )
         except Exception as exc:
             is_non_mdt_form = isinstance(exc, NonPatientMDTFormError)
+            is_patient_summary = job_type == JobType.PATIENT_SUMMARY.value
             if is_non_mdt_form:
                 self.logger.warning(
                     "Job %s rejected (non-PatientMDTForm): %s", job_id, exc
@@ -1463,7 +1554,7 @@ class InMemoryQueueManager:
                 lease_id=lease_id,
                 run_id=run_id,
                 no_retry=is_non_mdt_form,
-                skip_rcp_status_update=is_non_mdt_form,
+                skip_rcp_status_update=(is_non_mdt_form or is_patient_summary),
             )
         finally:
             hb_stop.set()
@@ -1664,6 +1755,25 @@ class QueueBroker:
             job_types=job_types,
             model_name=model_name,
             domain=self.domain,
+        )
+
+    def get_active_summary_job_for_patient(
+        self, patient_id: str, domain: str | None = None
+    ) -> dict[str, Any] | None:
+        return self._manager.get_active_summary_job_for_patient(
+            patient_id=patient_id, domain=domain or self.domain
+        )
+
+    def enqueue_patient_summary(
+        self,
+        patient_id: str,
+        patient_label: str | None = None,
+        domain: str | None = None,
+    ) -> dict[str, Any]:
+        return self._manager.enqueue_patient_summary(
+            patient_id=patient_id,
+            patient_label=patient_label,
+            domain=domain or self.domain,
         )
 
     def enqueue_import_file(

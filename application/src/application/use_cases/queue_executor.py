@@ -586,6 +586,59 @@ class PatientMDTFormQueueJobExecutor:
         finally:
             service.close()
 
+    def execute_patient_record_summary(
+        self, job: dict[str, Any], lease_id: str, queue_manager: Any
+    ) -> None:
+        """Execute a `JobType.PATIENT_SUMMARY` job to synthesize the global longitudinal patient summary."""
+        from src.application.use_cases.patient_record import PatientRecordService
+
+        job_id = job["job_id"]
+        run_id = job.get("run_id")
+        domain = job.get("domain") or "oncology"
+        patient_id = (
+            job.get("target_patient_id")
+            or job.get("resolved_patient_id")
+            or job.get("filename")
+        )
+        if not patient_id:
+            raise ValueError("Missing patient_id for PATIENT_SUMMARY job.")
+
+        queue_manager.update_job_progress(
+            job_id=job_id,
+            current_step="Synthèse longitudinale du dossier patient en cours",
+            progress_pct=25.0,
+            run_id=run_id,
+            lease_id=lease_id,
+        )
+        thinking_cb = QueueThinkingCallbackHandler(
+            queue_manager=queue_manager,
+            job_id=job_id,
+            run_id=run_id,
+            lease_id=lease_id,
+            section_name="PatientRecordSummary",
+        )
+        domain_conf = self._resolve_domain_config(domain)
+        db_client = Mongodb(domain_conf)
+        try:
+            record_service = PatientRecordService.from_config(
+                domain_conf, db_client=db_client, queue_broker=queue_manager
+            )
+            record_service.generate_and_save_patient_record_summary(
+                str(patient_id),
+                callbacks=[thinking_cb],
+                use_llm=True,
+            )
+            queue_manager.update_job_progress(
+                job_id=job_id,
+                current_step="Résumé global du dossier généré",
+                completed_models=["PatientRecordSummary"],
+                progress_pct=100.0,
+                run_id=run_id,
+                lease_id=lease_id,
+            )
+        finally:
+            db_client.close()
+
     def clear_manual_edit_before_rerun(
         self,
         domain: str,

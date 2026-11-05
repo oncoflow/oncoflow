@@ -1059,4 +1059,73 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
     await app.close();
   });
+
+  it("renders Patient Dashboard as 3rd secondary tab with ECharts SVG curves and on-demand summary obsolescence", async () => {
+    const { app } = await createTestApp();
+
+    // 1. Default patient selection opens #tab-clinical first (not the dashboard)
+    const dossierRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology",
+    });
+    expect(dossierRes.statusCode).toBe(200);
+    expect(dossierRes.body).toContain(
+      'id="tab-clinical" aria-selected="true" aria-controls="panel-clinical"',
+    );
+    expect(dossierRes.body).toContain(
+      'id="tab-patient-dashboard" aria-selected="false" aria-controls="panel-patient-dashboard"',
+    );
+
+    // Tab button itself must NOT contain any obsolete warning badge
+    const tabBtnMatch = dossierRes.body.match(
+      /<button[^>]*id="tab-patient-dashboard"[^>]*>([\s\S]*?)<\/button>/,
+    );
+    expect(tabBtnMatch).not.toBeNull();
+    expect(tabBtnMatch?.[1]).toContain("Tableau de bord patient");
+    expect(tabBtnMatch?.[1]).not.toContain("Obsolète");
+    expect(tabBtnMatch?.[1]).not.toContain("⚠️");
+
+    // Inside #panel-patient-dashboard: ECharts SVG curves + Obsolete alert inside #patient-summary-card
+    expect(dossierRes.body).toContain('id="panel-patient-dashboard"');
+    expect(dossierRes.body).toContain('id="patient-summary-card"');
+    expect(dossierRes.body).toContain('data-testid="alert_summary_obsolete"');
+    expect(dossierRes.body).toContain('data-testid="patient_dashboard_charts_grid"');
+    expect(dossierRes.body).toContain('data-testid="patient_dashboard_raw_table"');
+    expect(dossierRes.body).toContain("<svg ");
+
+    // 2. Trigger on-demand summary regeneration via POST /patients/A-1042/summary
+    const triggerRes = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/summary?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "force=true",
+    });
+    expect(triggerRes.statusCode).toBe(302);
+    expect(triggerRes.headers.location).toBe(
+      "/patients/A-1042?domain=oncology&tab=patient-dashboard#patient-summary-card",
+    );
+
+    // 3. Following the redirect with ?tab=patient-dashboard opens the dashboard tab with an up-to-date summary
+    const updatedRes = await app.inject({
+      method: "GET",
+      url: "/patients/A-1042?domain=oncology&tab=patient-dashboard",
+    });
+    expect(updatedRes.statusCode).toBe(200);
+    expect(updatedRes.body).toContain(
+      'id="tab-patient-dashboard" aria-selected="true" aria-controls="panel-patient-dashboard"',
+    );
+    expect(updatedRes.body).toContain('data-testid="badge_summary_up_to_date"');
+    expect(updatedRes.body).not.toContain('data-testid="alert_summary_obsolete"');
+
+    // 4. SMA patient S-0007 renders RULM / HFMSE raw curves in ECharts SVG
+    const smaRes = await app.inject({
+      method: "GET",
+      url: "/patients/S-0007?domain=sma&tab=patient-dashboard",
+    });
+    expect(smaRes.statusCode).toBe(200);
+    expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.rulm_score"');
+    expect(smaRes.body).toContain('data-testid="metric_chart_MotorFunctionStatus.hfmse_score"');
+
+    await app.close();
+  });
 });

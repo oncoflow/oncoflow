@@ -364,3 +364,69 @@ export interface DomainFormSchema {
   sections: FormSectionSchema[];
   enums: Record<string, Array<string | number>>;
 }
+
+export interface PatientMetricPointView {
+  formId: string;
+  formDate: string | null;
+  formDateLabel: string;
+  daysSinceFirstRcp: number;
+  xRatio: number;
+  rawValue: unknown;
+  displayValue: string;
+  numericValue: number | null;
+  subValues?: Record<string, number> | null;
+  isAnnotativeOnly: boolean;
+  isManual: boolean;
+  editedBy?: string | null;
+  editedAt?: string | null;
+  deltaNumeric?: number | null;
+  deltaDisplay?: string | null;
+}
+
+export interface PatientMetricSeriesView {
+  metricKey: string;
+  section: string;
+  field: string;
+  label: string;
+  unit: string;
+  scaleMin?: number | null;
+  scaleMax?: number | null;
+  polarity: "higher_is_better" | "lower_is_better" | "neutral" | string;
+  valueType: "numeric_or_mixed" | "categorical" | "boolean" | "list" | string;
+  points: PatientMetricPointView[];
+}
+
+export interface PatientRecordSummaryContentView {
+  clinicalTrajectoryOverview: string;
+  diseaseAndTreatmentEvolution: string;
+  notableMetricChanges: string[];
+  unresolvedVigilancePoints: string[];
+  mdtDecisionsRecap: string[];
+  sourcesUsed: string[];
+}
+
+export interface PatientRecordSummaryView {
+  hasSummary: boolean;
+  generatedAt: string | null;
+  coveredFormIds: string[];
+  latestFormIdAtGeneration: string | null;
+  latestFormDateAtGeneration: string | null;
+  modelUsed: string | null;
+  isObsolete: boolean;
+  obsoleteReasons: string[];
+  newFormsSinceSummary: string[];
+  removedFormsSinceSummary: string[];
+  modifiedFormsSinceSummary: string[];
+  content: PatientRecordSummaryContentView | null;
+  activeJob: Record<string, unknown> | null;
+}
+
+export interface PatientDashboardView {
+  patientId: string;
+  patientName: string;
+  domain: ClinicalDomain;
+  latestFile: string | null;
+  rcpCount: number;
+  metrics: PatientMetricSeriesView[];
+  summary: PatientRecordSummaryView;
+}

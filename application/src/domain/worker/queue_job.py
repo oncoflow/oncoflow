@@ -55,12 +55,13 @@ class JobStatus(str, Enum):
 
 
 class JobType(str, Enum):
-    """Task type in the three-wave priority processing queue."""
+    """Task type in the priority processing queue."""
 
     WAVE1_ADMIN = "WAVE1_ADMIN"
     WAVE2_CLINICAL = "WAVE2_CLINICAL"
     WAVE3_EXPERTS = "WAVE3_EXPERTS"
     SINGLE_MODEL = "SINGLE_MODEL"
+    PATIENT_SUMMARY = "PATIENT_SUMMARY"
 
     @classmethod
     def labels_fr(cls) -> dict[str, str]:
@@ -69,6 +70,7 @@ class JobType(str, Enum):
             cls.WAVE2_CLINICAL.value: "Extraction du dossier clinique",
             cls.WAVE3_EXPERTS.value: "Concertation d'experts & décision RCP",
             cls.SINGLE_MODEL.value: "Mise à jour d'une rubrique",
+            cls.PATIENT_SUMMARY.value: "Résumé global du dossier patient",
         }
 
 
@@ -79,6 +81,7 @@ class JobPriority:
     WAVE1_ADMIN_IMPORT = 100
     WAVE1_ADMIN_RERUN = 95
     SINGLE_MODEL_RERUN = 90
+    PATIENT_SUMMARY = 85
     FULL_RCP_RERUN = 80
     WAVE2_CLINICAL_RERUN = 80
     WAVE3_EXPERTS_RERUN = 75

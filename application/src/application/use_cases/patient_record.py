@@ -9,6 +9,12 @@ from src.application.app_functions import to_naive
 from src.application.config import AppConfig
 from src.application.paths import UnsafePathError, safe_path
 from src.domain.patient import Patient
+from src.domain.patient_dashboard import (
+    PatientRecordSummaryContent,
+    build_patient_metric_series,
+    evaluate_patient_record_summary_obsolescence,
+    synthesize_patient_record_summary_from_forms,
+)
 from src.domain.patient_mdt_form import PatientMDTForm, get_domain_mdt_form_cls
 from src.domain.repositories import (
     DocumentCacheRepository,
@@ -386,6 +392,7 @@ class PatientRecordService:
                 date_birth=validated_admin.get("date_birth"),
                 gender=validated_admin.get("gender") or "Not_given",
                 files=all_patient_files,
+                record_summary=old_patient.record_summary,
                 updated_at=now,
             )
             saved_patient = self.patient_repo.save(updated_patient, filename=filename)
@@ -762,6 +769,214 @@ class PatientRecordService:
             "patient": patient.model_dump(mode="json"),
             "latest_file": latest_file,
             "rcps": [self.enrich_form_doc(d) for d in forms_list],
+        }
+
+    def _resolve_domain_name(self) -> str:
+        """Resolve the normalized clinical domain name ('oncology' or 'sma')."""
+        if self.config is not None and getattr(self.config, "domain", None):
+            return str(self.config.domain).strip().lower()
+        if self.form_cls.__name__.lower().endswith("smaform"):
+            return "sma"
+        return "oncology"
+
+    def _get_active_summary_job(self, patient_id: str) -> dict[str, Any] | None:
+        """Query the queue broker for any active `PATIENT_SUMMARY` job for `patient_id`."""
+        domain = self._resolve_domain_name()
+        if self.queue_broker is not None and hasattr(
+            self.queue_broker, "get_active_summary_job_for_patient"
+        ):
+            try:
+                return self.queue_broker.get_active_summary_job_for_patient(
+                    patient_id, domain=domain
+                )
+            except Exception:
+                return None
+        if (
+            self.config is not None
+            and isinstance(self.patient_repo, MongoPatientRepository)
+            and getattr(self.config.queue, "enabled", False)
+            and getattr(self.config.rcp, "display_type", "") == "mongodb"
+        ):
+            try:
+                from src.infrastructure.queue.memory_queue import (
+                    get_global_queue_manager,
+                )
+
+                mgr = get_global_queue_manager(self.config)
+                return mgr.get_active_summary_job_for_patient(patient_id, domain=domain)
+            except Exception:
+                return None
+        return None
+
+    def get_patient_record_dashboard(self, patient_id: str) -> dict[str, Any] | None:
+        """
+        Build the longitudinal `PatientRecord` dashboard payload containing raw
+        multi-year metric series and the on-demand global summary state with live
+        obsolescence detection.
+        """
+        patient, forms_list, latest_file = self._get_patient_and_forms(patient_id)
+        if patient is None:
+            return None
+
+        domain = self._resolve_domain_name()
+        series = build_patient_metric_series(forms_list, domain=domain)
+        evaluated_summary = evaluate_patient_record_summary_obsolescence(
+            patient.record_summary, forms_list
+        )
+        active_job = self._get_active_summary_job(patient.patient_id)
+
+        if evaluated_summary is None:
+            summary_payload: dict[str, Any] = {
+                "has_summary": False,
+                "generated_at": None,
+                "covered_form_ids": [],
+                "latest_form_id_at_generation": None,
+                "latest_form_date_at_generation": None,
+                "model_used": None,
+                "is_obsolete": False,
+                "obsolete_reasons": [],
+                "new_forms_since_summary": [],
+                "removed_forms_since_summary": [],
+                "modified_forms_since_summary": [],
+                "content": None,
+                "active_job": active_job,
+            }
+        else:
+            summary_payload = {
+                **evaluated_summary,
+                "active_job": active_job,
+            }
+
+        return {
+            "patient": patient.model_dump(mode="json"),
+            "domain": domain,
+            "latest_file": latest_file,
+            "rcp_count": len(forms_list),
+            "metrics": [s.model_dump(mode="json") for s in series],
+            "summary": summary_payload,
+        }
+
+    def generate_and_save_patient_record_summary(
+        self,
+        patient_id: str,
+        *,
+        callbacks: list[Any] | None = None,
+        use_llm: bool = False,
+    ) -> dict[str, Any] | None:
+        """
+        Synthesize and persist the global longitudinal summary onto the `Patient` aggregate.
+        Uses structured LLM synthesis when `use_llm=True` and falls back to deterministic
+        grounded synthesis when offline or in unit tests.
+        """
+        patient, forms_list, _ = self._get_patient_and_forms(patient_id)
+        if patient is None:
+            return None
+
+        domain = self._resolve_domain_name()
+        llm_models = (
+            getattr(self.config.llm, "models", None)
+            if self.config is not None and hasattr(self.config, "llm")
+            else None
+        )
+        model_name = (
+            str(llm_models[0])
+            if isinstance(llm_models, list) and llm_models
+            else (str(llm_models) if llm_models else "deterministic-synthesis")
+        )
+        snapshot = synthesize_patient_record_summary_from_forms(
+            patient_label=patient.display_label,
+            forms=forms_list,
+            domain=domain,
+            model_used=model_name,
+        )
+
+        if use_llm and self.config is not None and forms_list:
+            try:
+                from langchain_core.messages import HumanMessage, SystemMessage
+                from src.application.app_functions.llm import get_llm
+
+                llm = get_llm(self.config, temperature=0.1)
+                structured_llm = llm.with_structured_output(PatientRecordSummaryContent)
+                sys_prompt = (
+                    "Tu es un assistant médical hospitalier français spécialisé en synthèse longitudinale "
+                    "de dossiers RCP (Réunion de Concertation Pluridisciplinaire). "
+                    "À partir de l'historique structuré des fiches RCP du patient, rédige un résumé global "
+                    "factuel, neutre, non-prescriptif et intégralement sourcé sur les valeurs brutes fournies."
+                )
+                user_prompt = (
+                    f"Patient : {patient.display_label} (Domaine : {domain})\n"
+                    f"Synthèse factuelle de référence : {snapshot['content']}\n"
+                    "Consolide ce résumé longitudinal en français médical précis."
+                )
+                invoke_cfg = {"callbacks": callbacks} if callbacks else {}
+                llm_res = structured_llm.invoke(
+                    [
+                        SystemMessage(content=sys_prompt),
+                        HumanMessage(content=user_prompt),
+                    ],
+                    config=invoke_cfg,
+                )
+                if isinstance(llm_res, PatientRecordSummaryContent):
+                    content_dict = llm_res.model_dump(mode="json")
+                    content_dict["sources_used"] = snapshot["covered_form_ids"]
+                    snapshot["content"] = content_dict
+            except Exception:
+                pass
+
+        patient.record_summary = snapshot
+        patient.updated_at = datetime.now()
+        self.patient_repo.save(patient)
+        return evaluate_patient_record_summary_obsolescence(snapshot, forms_list)
+
+    def trigger_patient_record_summary(
+        self, patient_id: str, *, force: bool = False
+    ) -> dict[str, Any] | None:
+        """
+        Enqueue an on-demand global `PatientRecord` summary job in the AI `PriorityQueue`
+        (or execute synchronously when no queue broker is configured).
+        """
+        patient, forms_list, _ = self._get_patient_and_forms(patient_id)
+        if patient is None:
+            return None
+
+        domain = self._resolve_domain_name()
+        broker = self.queue_broker
+        if (
+            broker is None
+            and self.config is not None
+            and isinstance(self.patient_repo, MongoPatientRepository)
+            and getattr(self.config.queue, "enabled", False)
+            and getattr(self.config.rcp, "display_type", "") == "mongodb"
+        ):
+            from src.infrastructure.queue.memory_queue import get_global_queue_manager
+
+            broker = get_global_queue_manager(self.config)
+
+        if broker is not None and hasattr(broker, "enqueue_patient_summary"):
+            res = broker.enqueue_patient_summary(
+                patient_id=patient.patient_id,
+                patient_label=patient.display_label,
+                domain=domain,
+            )
+            dash = self.get_patient_record_dashboard(patient.patient_id)
+            return {
+                "patient_id": patient.patient_id,
+                "domain": domain,
+                "queued": True,
+                "already_queued": bool(res.get("already_queued", False)),
+                "job": res.get("job"),
+                "summary": dash["summary"] if dash else None,
+            }
+
+        self.generate_and_save_patient_record_summary(patient.patient_id, use_llm=False)
+        dash = self.get_patient_record_dashboard(patient.patient_id)
+        return {
+            "patient_id": patient.patient_id,
+            "domain": domain,
+            "queued": False,
+            "already_queued": False,
+            "job": None,
+            "summary": dash["summary"] if dash else None,
         }
 
     def resolve_patient_record(

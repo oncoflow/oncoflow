@@ -32,6 +32,7 @@ import {
   renderChatLogMessagePartial,
   resolveCitationPdfHref,
 } from "./components/ai-chat.component.js";
+import { renderPatientDashboardPanel } from "./components/patient-dashboard.component.js";
 import {
   deriveRcpTone,
   esc,
@@ -1615,6 +1616,7 @@ export function renderDossierPage(
   chatHistory: Array<{ question: string; reply: ChatReply }> = [],
   editingSection?: string,
   agendaNav?: AgendaDossierNavContext,
+  activeTab: "clinical" | "opinions" | "patient-dashboard" = "clinical",
 ): string {
   const lang = session.language;
   const domainParam = encodeURIComponent(session.domain);
@@ -2265,11 +2267,14 @@ export function renderDossierPage(
 
       <div class="ds-split__pane ds-split__pane--clinical">
         <div class="ds-tabs" role="tablist" aria-label="Vues du dossier patient">
-          <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="true" aria-controls="panel-clinical" data-testid="tab-clinical">
+          <button type="button" class="ds-tab" role="tab" id="tab-clinical" aria-selected="${activeTab === "clinical" ? "true" : "false"}" aria-controls="panel-clinical"${activeTab === "clinical" ? "" : ' tabindex="-1"'} data-testid="tab-clinical">
             ${iconSvg("ic-stethoscope")} Dossier clinique (${clinicalSections.length})
           </button>
-          <button type="button" class="ds-tab" role="tab" id="tab-opinions" aria-selected="false" aria-controls="panel-opinions" tabindex="-1" data-testid="tab-opinions">
+          <button type="button" class="ds-tab" role="tab" id="tab-opinions" aria-selected="${activeTab === "opinions" ? "true" : "false"}" aria-controls="panel-opinions"${activeTab === "opinions" ? "" : ' tabindex="-1"'} data-testid="tab-opinions">
             ${iconSvg("ic-scale")} Avis &amp; orientation pré-RCP (${dossier.opinions.length})
+          </button>
+          <button type="button" class="ds-tab" role="tab" id="tab-patient-dashboard" aria-selected="${activeTab === "patient-dashboard" ? "true" : "false"}" aria-controls="panel-patient-dashboard"${activeTab === "patient-dashboard" ? "" : ' tabindex="-1"'} data-testid="tab-patient-dashboard">
+            ${iconSvg("ic-trend-up")} ${lang === "fr" ? "Tableau de bord patient" : "Patient Dashboard"}
           </button>
           ${
             session.expertMode
@@ -2279,7 +2284,7 @@ export function renderDossierPage(
         </div>
 
         <!-- Tab 1: Editable Clinical Sections (Collapsed by default, grouped by Clinical Pole) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0">
+        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-clinical" aria-labelledby="tab-clinical" tabindex="0"${activeTab === "clinical" ? "" : " hidden"}>
           <div class="ds-cluster" style="justify-content:space-between">
             <span class="ds-small ds-muted">${clinicalSections.length} rubriques structurées · Cliquez sur une catégorie pour la déplier</span>
             <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-clinical" data-testid="btn_toggle_all_sections">
@@ -2290,7 +2295,7 @@ export function renderDossierPage(
         </div>
 
         <!-- Tab 2: Pre-MDT Orientation, Completeness Check & Specialty Opinions (Collapsed by default) -->
-        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0" hidden>
+        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-opinions" aria-labelledby="tab-opinions" tabindex="0"${activeTab === "opinions" ? "" : " hidden"}>
           <div class="ds-cluster" style="justify-content:space-between">
             <span class="ds-small ds-muted">Synthèse pré-RCP &amp; ${dossier.opinions.length} avis spécialisé(s)</span>
             <button type="button" class="ds-btn ds-btn--tonal ds-btn--sm" data-action="toggle-all-accordions" data-target-panel="panel-opinions" data-testid="btn_toggle_all_opinions">
@@ -2300,6 +2305,11 @@ export function renderDossierPage(
           ${careOrientationHtml}
           ${opinionSectionsHtml}
           ${opinionsHtml}
+        </div>
+
+        <!-- Tab 3: Patient Longitudinal Dashboard (Raw Multi-Year Metrics & On-Demand Global Summary) -->
+        <div class="ds-tabpanel ds-stack" role="tabpanel" id="panel-patient-dashboard" aria-labelledby="tab-patient-dashboard" tabindex="0"${activeTab === "patient-dashboard" ? "" : " hidden"}>
+          ${renderPatientDashboardPanel(dossier.dashboard, lang)}
         </div>
 
         ${

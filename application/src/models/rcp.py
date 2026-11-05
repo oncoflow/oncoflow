@@ -308,3 +308,98 @@ class MeResponse(BaseModel):
     username: Optional[str] = None
     display_name: Optional[str] = None
     is_admin: bool = False
+
+
+class PatientMetricPointResponse(BaseModel):
+    """Single chronological observation along a multi-year patient metric timeline."""
+
+    form_id: str
+    form_date: Optional[str] = None
+    form_date_label: str = "Date non renseignée"
+    days_since_first_rcp: int = 0
+    x_ratio: float = 0.0
+    raw_value: Any = None
+    display_value: str = ""
+    numeric_value: Optional[float] = None
+    sub_values: Optional[dict[str, float]] = None
+    is_annotative_only: bool = False
+    is_manual: bool = False
+    edited_by: Optional[str] = None
+    edited_at: Optional[str] = None
+    delta_numeric: Optional[float] = None
+    delta_display: Optional[str] = None
+
+
+class PatientMetricSeriesResponse(BaseModel):
+    """Chronological series of raw metric observations across all forms of a patient."""
+
+    metric_key: str
+    section: str
+    field: str
+    label: str
+    unit: str = ""
+    scale_min: Optional[float] = None
+    scale_max: Optional[float] = None
+    polarity: str = "neutral"
+    value_type: str = "numeric_or_mixed"
+    points: List[PatientMetricPointResponse] = Field(default_factory=list)
+
+
+class PatientRecordSummaryContentResponse(BaseModel):
+    """Structured longitudinal clinical synthesis content."""
+
+    clinical_trajectory_overview: str = ""
+    disease_and_treatment_evolution: str = ""
+    notable_metric_changes: List[str] = Field(default_factory=list)
+    unresolved_vigilance_points: List[str] = Field(default_factory=list)
+    mdt_decisions_recap: List[str] = Field(default_factory=list)
+    sources_used: List[str] = Field(default_factory=list)
+
+
+class PatientRecordSummaryStateResponse(BaseModel):
+    """Global longitudinal patient summary state including obsolescence metadata and active queue job."""
+
+    has_summary: bool = False
+    generated_at: Optional[str] = None
+    covered_form_ids: List[str] = Field(default_factory=list)
+    latest_form_id_at_generation: Optional[str] = None
+    latest_form_date_at_generation: Optional[str] = None
+    model_used: Optional[str] = None
+    is_obsolete: bool = False
+    obsolete_reasons: List[str] = Field(default_factory=list)
+    new_forms_since_summary: List[str] = Field(default_factory=list)
+    removed_forms_since_summary: List[str] = Field(default_factory=list)
+    modified_forms_since_summary: List[str] = Field(default_factory=list)
+    content: Optional[PatientRecordSummaryContentResponse] = None
+    active_job: Optional[dict[str, Any]] = None
+
+
+class PatientDashboardResponse(BaseModel):
+    """Consolidated longitudinal patient dashboard payload."""
+
+    patient: PatientResponse
+    domain: str
+    latest_file: Optional[str] = None
+    rcp_count: int = 0
+    metrics: List[PatientMetricSeriesResponse] = Field(default_factory=list)
+    summary: PatientRecordSummaryStateResponse
+
+
+class PatientSummaryTriggerRequest(BaseModel):
+    """Request payload to trigger on-demand global patient record summary generation."""
+
+    force: bool = Field(
+        default=False,
+        description="Forcer la régénération même si le résumé n'est pas marqué obsolète",
+    )
+
+
+class PatientSummaryTriggerResponse(BaseModel):
+    """Response returned when enqueuing or executing a global patient record summary."""
+
+    patient_id: str
+    domain: str
+    queued: bool = True
+    already_queued: bool = False
+    job: Optional[dict[str, Any]] = None
+    summary: Optional[PatientRecordSummaryStateResponse] = None

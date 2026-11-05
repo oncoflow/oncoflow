@@ -15,6 +15,7 @@ import {
   type SectionPresentationMeta,
 } from "../../domain/catalog.js";
 import { translateValue } from "../../domain/i18n.js";
+import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import {
   computeLongitudinalDeltas,
   deriveCompletenessInfo,
@@ -33,7 +34,9 @@ import type {
   LongitudinalDelta,
   ManualEditMetadata,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientRecordSummaryView,
   PriorityLevel,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
@@ -149,6 +152,7 @@ export interface PatientDossierView {
   };
   allPatients: PatientListItem[];
   agents: AgentModuleInfo[];
+  dashboard: PatientDashboardView;
 }
 
 const LONG_TEXT_KEYS = new Set([
@@ -306,11 +310,21 @@ export class PatientDossierUseCase {
       : [];
     const specialties = rawSpecs.map((s) => getAgentPresentation(s, lang));
 
-    const [allPatients, agents, domainSchema] = await Promise.all([
+    const resolvedPatientId =
+      currentForm.patientId ?? (!target.toLowerCase().endsWith(".pdf") ? target : currentForm.file);
+
+    const [allPatients, agents, domainSchema, apiDashboard] = await Promise.all([
       this.api.listPatients(domain, false),
       this.api.listAgents(domain, lang),
       this.api.getDomainSchema(domain).catch(() => null),
+      typeof this.api.getPatientDashboard === "function"
+        ? this.api.getPatientDashboard(resolvedPatientId, domain).catch(() => null)
+        : Promise.resolve(null),
     ]);
+
+    const dashboard: PatientDashboardView =
+      apiDashboard ??
+      buildPatientDashboardFromForms(resolvedPatientId, patientName, domain, sorted, null);
 
     const deltas = computeLongitudinalDeltas(currentForm, previousForm, lang);
     const synopticMarkers = this.buildSynopticMarkers(currentForm, deltas, lang);
@@ -396,6 +410,7 @@ export class PatientDossierUseCase {
       },
       allPatients,
       agents,
+      dashboard,
     };
   }
 
@@ -1004,5 +1019,25 @@ export class PatientDossierUseCase {
     agentName?: string,
   ): Promise<ChatReply> {
     return this.api.askDossierQuestion(target, question, domain, lang, agentName);
+  }
+
+  async getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null> {
+    return this.api.getPatientDashboard(patientId, domain);
+  }
+
+  async triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    force = false,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }> {
+    return this.api.triggerPatientSummary(patientId, domain, force);
   }
 }

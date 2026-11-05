@@ -347,6 +347,11 @@ class Mongodb:
             "files": files,
             "updated_at": patient_data.get("updated_at") or datetime.now(),
         }
+        record_summary = patient_data.get("record_summary")
+        if record_summary is None and existing:
+            record_summary = existing.get("record_summary")
+        if record_summary is not None:
+            upsertable["record_summary"] = record_summary
 
         self.update_doc(
             collection="patients",

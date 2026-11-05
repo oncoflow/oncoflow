@@ -21,6 +21,13 @@ import {
 } from "../../src/domain/catalog.js";
 import { t, translateValue } from "../../src/domain/i18n.js";
 import {
+  buildPatientDashboardFromForms,
+  evaluatePatientSummaryObsolescence,
+  parseRawMetricObservation,
+  SMA_METRIC_SPECS,
+  synthesizePatientSummaryFromForms,
+} from "../../src/domain/patient-dashboard.js";
+import {
   computeLongitudinalDeltas,
   computeWorklistKpis,
   deriveCompletenessInfo,
@@ -541,5 +548,111 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(adminCoerced.extra_field).toBe("extra");
     const strictAdmin = buildStrictBackendSectionPayload("PatientAdministrative", adminCoerced);
     expect(strictAdmin).not.toHaveProperty("extra_field");
+  });
+
+  it("supports raw non-integer RULM/HFMSE observations, multi-year series, and obsolescence detection", () => {
+    const smaSchema = buildDefaultDomainFormSchema("sma");
+    const coercedRatio = coerceSectionUpdatePayload(
+      "MotorFunctionStatus",
+      {
+        best_motor_function: "Sitter",
+        rulm_score: "34/37",
+        hfmse_score: "31.5",
+        chop_intend_score: "Non testable (fatigue)",
+      },
+      {},
+      smaSchema,
+    );
+    expect(coercedRatio.rulm_score).toBe("34/37");
+    expect(coercedRatio.hfmse_score).toBe(31.5);
+    expect(coercedRatio.chop_intend_score).toBe("Non testable (fatigue)");
+
+    const rulmSpec = SMA_METRIC_SPECS[0]!;
+    const obsRatio = parseRawMetricObservation("34/37", rulmSpec);
+    expect(obsRatio.numericValue).toBe(34);
+    expect(obsRatio.displayValue).toBe("34/37");
+
+    const obsBilateral = parseRawMetricObservation("28 (D) / 30 (G)", rulmSpec);
+    expect(obsBilateral.numericValue).toBe(29);
+    expect(obsBilateral.subValues).toEqual({ D: 28, G: 30 });
+
+    const obsAnnot = parseRawMetricObservation("Non testable (douleur épaule)", rulmSpec);
+    expect(obsAnnot.numericValue).toBeNull();
+    expect(obsAnnot.isAnnotativeOnly).toBe(true);
+
+    const smaForms: MdtFormDetail[] = [
+      {
+        file: "sma_2022_03_10.pdf",
+        patientId: "S-0007",
+        domain: "sma",
+        mdtDate: "2022-03-10",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Léo",
+            last_name: "Test",
+            date_rcp: "2022-03-10",
+          },
+          MotorFunctionStatus: {
+            rulm_score: "28 (D) / 30 (G)",
+            hfmse_score: 40,
+            best_motor_function: "Assis sans appui (Sitter)",
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+      {
+        file: "sma_2026_11_05.pdf",
+        patientId: "S-0007",
+        domain: "sma",
+        mdtDate: "2026-11-05",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Léo",
+            last_name: "Test",
+            date_rcp: "2026-11-05",
+          },
+          MotorFunctionStatus: {
+            rulm_score: "34/37",
+            hfmse_score: 46.5,
+            best_motor_function: "Assis sans appui (Sitter)",
+          },
+        },
+        manualEdits: {
+          MotorFunctionStatus: { edited_by: "Dr. Martin", edited_at: "2026-11-05T10:00:00Z" },
+        },
+        executionTimes: {},
+        metrics: {},
+      },
+    ];
+
+    const summary2022 = synthesizePatientSummaryFromForms("Léo Test", smaForms.slice(0, 1), "sma");
+    const evaluatedObsolete = evaluatePatientSummaryObsolescence(summary2022, smaForms);
+    expect(evaluatedObsolete.isObsolete).toBe(true);
+    expect(evaluatedObsolete.newFormsSinceSummary).toEqual(["sma_2026_11_05.pdf"]);
+
+    const dashboard = buildPatientDashboardFromForms(
+      "S-0007",
+      "Léo Test",
+      "sma",
+      smaForms,
+      summary2022,
+    );
+    const rulmSeries = dashboard.metrics.find(
+      (m) => m.metricKey === "MotorFunctionStatus.rulm_score",
+    );
+    expect(rulmSeries).toBeDefined();
+    expect(rulmSeries?.points).toHaveLength(2);
+    expect(rulmSeries?.points[0]?.displayValue).toBe("28 (D) / 30 (G)");
+    expect(rulmSeries?.points[1]?.displayValue).toBe("34/37");
+    expect(rulmSeries?.points[1]?.isManual).toBe(true);
+    expect(rulmSeries?.points[1]?.daysSinceFirstRcp).toBeGreaterThan(1500);
   });
 });
