@@ -585,12 +585,27 @@ def get_domain_metric_descriptors(
     return list(ONCOLOGY_METRIC_DESCRIPTORS)
 
 
-_BILATERAL_PATTERN = re.compile(
-    r"(?P<v1>\d+(?:[.,]\d+)?)\s*\(\s*(?P<k1>[DGdgRrlL])\s*\)\s*[/|,-]\s*(?P<v2>\d+(?:[.,]\d+)?)\s*\(\s*(?P<k2>[DGdgRrlL])\s*\)"
-)
-_RATIO_OR_LEADING_NUMBER_PATTERN = re.compile(
-    r"^\s*(?P<num>[-+]?\d+(?:[.,]\d+)?)(?:\s*/\s*(?P<den>\d+(?:[.,]\d+)?))?"
-)
+_BILATERAL_PART_PATTERN = re.compile(r"^(\d+(?:[.,]\d+)?)\(([DGRL])\)$")
+_LEADING_NUMBER_PATTERN = re.compile(r"^[-+]?\d+(?:[.,]\d+)?")
+
+
+def _parse_bilateral_scores(text: str) -> dict[str, float] | None:
+    """Extract bilateral limb scores (e.g. '28 (D) / 30 (G)') without complex regexes."""
+    compact = "".join(text.split()).upper()
+    for sep in ("/", "|", ",", "-"):
+        if sep not in compact:
+            continue
+        parts = compact.split(sep)
+        if len(parts) != 2:
+            return None
+        m1 = _BILATERAL_PART_PATTERN.match(parts[0])
+        m2 = _BILATERAL_PART_PATTERN.match(parts[1])
+        if m1 and m2:
+            v1 = float(m1.group(1).replace(",", "."))
+            v2 = float(m2.group(1).replace(",", "."))
+            return {m1.group(2): v1, m2.group(2): v2}
+        return None
+    return None
 
 
 def parse_raw_metric_value(
@@ -649,26 +664,21 @@ def parse_raw_metric_value(
         )
 
     # Check bilateral pattern first: e.g. "28 (D) / 30 (G)"
-    bilat_match = _BILATERAL_PATTERN.search(text)
-    if bilat_match:
-        k1 = bilat_match.group("k1").upper()
-        k2 = bilat_match.group("k2").upper()
-        v1 = float(bilat_match.group("v1").replace(",", "."))
-        v2 = float(bilat_match.group("v2").replace(",", "."))
-        sub = {k1: v1, k2: v2}
-        avg = (v1 + v2) / 2.0
+    bilat_sub = _parse_bilateral_scores(text)
+    if bilat_sub:
+        vals = list(bilat_sub.values())
         return RawMetricObservation(
             raw_value=raw_value,
             display_value=text,
-            numeric_value=avg,
-            sub_values=sub,
+            numeric_value=(vals[0] + vals[1]) / 2.0,
+            sub_values=bilat_sub,
             is_annotative_only=False,
         )
 
     # Check leading numeric or ratio: e.g. "34/37", "31.5 pts", "32"
-    num_match = _RATIO_OR_LEADING_NUMBER_PATTERN.match(text)
+    num_match = _LEADING_NUMBER_PATTERN.match(text)
     if num_match:
-        num = float(num_match.group("num").replace(",", "."))
+        num = float(num_match.group(0).replace(",", "."))
         return RawMetricObservation(
             raw_value=raw_value,
             display_value=text,

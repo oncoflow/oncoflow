@@ -107,9 +107,28 @@ export function getDomainMetricSpecs(domain: ClinicalDomain): MetricDescriptorSp
   return domain === "sma" ? SMA_METRIC_SPECS : ONCOLOGY_METRIC_SPECS;
 }
 
-const BILATERAL_RE =
-  /(\d+(?:[.,]\d+)?)\s*\(\s*([DGdgRrLl])\s*\)\s*[/|,-]\s*(\d+(?:[.,]\d+)?)\s*\(\s*([DGdgRrLl])\s*\)/;
-const LEADING_NUM_RE = /^\s*([-+]?\d+(?:[.,]\d+)?)(?:\s*\/\s*(\d+(?:[.,]\d+)?))?/;
+const BILATERAL_PART_RE = /^(\d+(?:[.,]\d+)?)\(([DGRL])\)$/;
+const LEADING_NUM_RE = /^[-+]?\d+(?:[.,]\d+)?/;
+const ISO_DATE_PREFIX_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+function parseBilateralScores(text: string): Record<string, number> | null {
+  const compact = text.split(/\s+/).join("").toUpperCase();
+  for (const sep of ["/", "|", ",", "-"]) {
+    if (!compact.includes(sep)) continue;
+    const parts = compact.split(sep);
+    if (parts.length !== 2) return null;
+    const m1 = BILATERAL_PART_RE.exec(parts[0] ?? "");
+    const m2 = BILATERAL_PART_RE.exec(parts[1] ?? "");
+    if (m1?.[1] && m1[2] && m2?.[1] && m2[2]) {
+      return {
+        [m1[2]]: Number(m1[1].replace(",", ".")),
+        [m2[2]]: Number(m2[1].replace(",", ".")),
+      };
+    }
+    return null;
+  }
+  return null;
+}
 
 export function parseRawMetricObservation(
   rawValue: unknown,
@@ -174,24 +193,21 @@ export function parseRawMetricObservation(
     };
   }
 
-  const bilat = text.match(BILATERAL_RE);
-  if (bilat) {
-    const v1 = Number(bilat[1]?.replace(",", "."));
-    const k1 = (bilat[2] ?? "D").toUpperCase();
-    const v2 = Number(bilat[3]?.replace(",", "."));
-    const k2 = (bilat[4] ?? "G").toUpperCase();
+  const bilatSub = parseBilateralScores(text);
+  if (bilatSub) {
+    const vals = Object.values(bilatSub);
     return {
       rawValue,
       displayValue: text,
-      numericValue: (v1 + v2) / 2,
-      subValues: { [k1]: v1, [k2]: v2 },
+      numericValue: ((vals[0] ?? 0) + (vals[1] ?? 0)) / 2,
+      subValues: bilatSub,
       isAnnotativeOnly: false,
     };
   }
 
-  const numMatch = text.match(LEADING_NUM_RE);
-  if (numMatch?.[1]) {
-    const num = Number(numMatch[1].replace(",", "."));
+  const numMatch = LEADING_NUM_RE.exec(text);
+  if (numMatch?.[0]) {
+    const num = Number(numMatch[0].replace(",", "."));
     if (Number.isFinite(num)) {
       return {
         rawValue,
@@ -214,7 +230,7 @@ export function parseRawMetricObservation(
 
 function formatFrDate(isoDate: string | null): string {
   if (!isoDate) return "Date non renseignée";
-  const m = isoDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  const m = ISO_DATE_PREFIX_RE.exec(isoDate);
   if (m) return `${m[3]}/${m[2]}/${m[1]}`;
   return isoDate;
 }
