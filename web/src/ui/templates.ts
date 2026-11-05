@@ -33,8 +33,6 @@ import {
   resolveCitationPdfHref,
 } from "./components/ai-chat.component.js";
 import {
-  INLINE_ICONS_SVG,
-  SafeHtml,
   deriveRcpTone,
   esc,
   escapeHtml,
@@ -42,15 +40,15 @@ import {
   formatDurationMinSec,
   formatPatientSubtitle,
   html,
+  INLINE_ICONS_SVG,
   iconSvg,
   raw,
+  SafeHtml,
   stripDomainQuery,
 } from "./views/html.js";
-import { type StatusPageOptions, renderStatusPage } from "./views/status.view.js";
+import { renderStatusPage, type StatusPageOptions } from "./views/status.view.js";
 
 export {
-  SafeHtml,
-  type StatusPageOptions,
   deriveRcpTone,
   esc,
   escapeHtml,
@@ -65,6 +63,8 @@ export {
   renderAiThinkingModule,
   renderChatLogMessagePartial,
   renderStatusPage,
+  SafeHtml,
+  type StatusPageOptions,
   stripDomainQuery,
 };
 

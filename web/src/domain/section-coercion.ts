@@ -1,8 +1,8 @@
 import {
   type FieldSelectOption,
-  type SectionFieldSchema,
   getSectionFieldSchemas,
   resolveCanonicalSectionName,
+  type SectionFieldSchema,
 } from "./field-schema.js";
 import type { DomainFormSchema } from "./types.js";
 

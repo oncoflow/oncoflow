@@ -784,7 +784,7 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
   });
 
   it("handles delete endpoints, form view, link-patient, non-htmx chat, multipart uploads, and error/not-found routes", async () => {
-    const { app, api } = await createTestApp();
+    const { app } = await createTestApp();
 
     // 1. GET /forms/:filename (200 OK & 404 Not Found) and GET /patients/:patientId (404 Not Found)
     const formViewRes = await app.inject({
