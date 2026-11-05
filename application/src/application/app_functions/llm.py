@@ -1,4 +1,5 @@
 import json
+from urllib.parse import urlparse, urlunsplit
 import urllib.request
 
 
@@ -12,17 +13,17 @@ def unload_active_models(app_conf):
     models_to_unload = []
 
     # 1. Main reasoning models
-    if hasattr(app_conf.llm, "models") and app_conf.llm.models:
+    if app_conf.llm.models:
         for m in app_conf.llm.models.split(","):
             models_to_unload.append(m.strip())
 
     # 2. OCR models
-    if hasattr(app_conf.llm, "ocrmodels") and app_conf.llm.ocrmodels:
+    if app_conf.llm.ocrmodels:
         for m in app_conf.llm.ocrmodels.split(","):
             models_to_unload.append(m.strip())
 
     # 3. Embeddings models
-    if hasattr(app_conf.llm, "embeddings") and app_conf.llm.embeddings:
+    if app_conf.llm.embeddings:
         for m in app_conf.llm.embeddings.split(","):
             models_to_unload.append(m.strip())
 
@@ -45,10 +46,11 @@ def unload_active_models(app_conf):
         ("http://ollama", "11434"),
     ]
 
+    default_scheme = urlparse(str(url)).scheme or "http"
     unique_endpoints = []
     for host, p in endpoints_to_try:
-        if not host.startswith("http://") and not host.startswith("https://"):
-            host = f"http://{host}"
+        if "://" not in host:
+            host = urlunsplit((default_scheme, host, "", "", ""))  # NOSONAR
         host = host.rstrip("/")
         normalized = (host, str(p))
         if normalized not in unique_endpoints:

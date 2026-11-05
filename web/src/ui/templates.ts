@@ -221,7 +221,10 @@ export function formatDeleteDialogPatientInfo(
     rawName && rawName.toLowerCase() !== "inconnu" && rawName !== file
       ? rawName.replace(/_/g, " ")
       : id && !id.toLowerCase().endsWith(".pdf")
-        ? id.replace(/[_-]+(\d{4})[_-](\d{2})[_-](\d{2})$/, "").replace(/_/g, " ")
+        ? id
+            .replace(/[_-](\d{4})[_-](\d{2})[_-](\d{2})$/, "")
+            .replace(/_/g, " ")
+            .trim()
         : file.replace(/\.pdf$/i, "").replace(/_/g, " ");
 
   const dob = extractDobFromPatientId(patientId ?? id);

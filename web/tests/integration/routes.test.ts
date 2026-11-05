@@ -782,4 +782,281 @@ describe("Fastify BFF Routes & Material Design 3 HTML Views (Integration)", () =
 
     await app.close();
   });
+
+  it("handles delete endpoints, form view, link-patient, non-htmx chat, multipart uploads, and error/not-found routes", async () => {
+    const { app, api } = await createTestApp();
+
+    // 1. GET /forms/:filename (200 OK & 404 Not Found) and GET /patients/:patientId (404 Not Found)
+    const formViewRes = await app.inject({
+      method: "GET",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf?domain=oncology&from=agenda",
+    });
+    expect(formViewRes.statusCode).toBe(200);
+    expect(formViewRes.body).toContain("jeanne_fictive_2026_11_06.pdf");
+
+    const formNotFound = await app.inject({
+      method: "GET",
+      url: "/forms/unknown_missing.pdf?domain=oncology",
+    });
+    expect(formNotFound.statusCode).toBe(404);
+
+    const patientNotFound = await app.inject({
+      method: "GET",
+      url: "/patients/P-UNKNOWN-999?domain=oncology",
+    });
+    expect(patientNotFound.statusCode).toBe(404);
+
+    // 2. GET /forms/:filename/sections/:section/edit (non-htmx view=1 redirect, non-htmx edit page, and 404)
+    const secEditNotFound = await app.inject({
+      method: "GET",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/NonExistentSection/edit?domain=oncology",
+    });
+    expect(secEditNotFound.statusCode).toBe(404);
+
+    const secCancelRedirect = await app.inject({
+      method: "GET",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?view=1&domain=oncology",
+    });
+    expect(secCancelRedirect.statusCode).toBe(302);
+
+    const secFullPageEdit = await app.inject({
+      method: "GET",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/edit?domain=oncology",
+    });
+    expect(secFullPageEdit.statusCode).toBe(200);
+
+    // Non-htmx POST section update & rollback redirect
+    const secUpdateRedirect = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "chemotherapy_name=FOLFIRINOX",
+    });
+    expect(secUpdateRedirect.statusCode).toBe(302);
+
+    const secRollbackRedirect = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/sections/Chemotherapy/rollback?domain=oncology",
+    });
+    expect(secRollbackRedirect.statusCode).toBe(302);
+
+    // 3. POST /forms/:filename/process & POST /forms/:filename/link-patient
+    const processFormRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/process?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "preserve_manual_edits=true",
+    });
+    expect(processFormRes.statusCode).toBe(302);
+
+    const linkPatientRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/link-patient?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "patientId=A-1042",
+    });
+    expect(linkPatientRes.statusCode).toBe(302);
+    expect(linkPatientRes.headers.location).toContain("/patients/A-1042");
+
+    const unlinkPatientRes = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/link-patient?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "patientId=",
+    });
+    expect(unlinkPatientRes.statusCode).toBe(302);
+    expect(unlinkPatientRes.headers.location).toContain("/forms/jeanne_fictive_2026_11_06.pdf");
+
+    // Re-link back to A-1042
+    await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/link-patient?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "patientId=A-1042",
+    });
+
+    // 4. Non-htmx POST /patients/:patientId/chat, POST /forms/:filename/chat (htmx & non-htmx), POST /guidelines/chat (non-htmx)
+    const patientChatFull = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/chat?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "question=Bilan+biologique&scope=form&filename=jeanne_fictive_2026_11_06.pdf",
+    });
+    expect(patientChatFull.statusCode).toBe(200);
+
+    const formChatHtmx = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/chat?domain=oncology",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        "hx-request": "true",
+      },
+      payload: "question=Resume+clinique",
+    });
+    expect(formChatHtmx.statusCode).toBe(200);
+
+    const formChatFull = await app.inject({
+      method: "POST",
+      url: "/forms/jeanne_fictive_2026_11_06.pdf/chat?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "question=Resume+clinique",
+    });
+    expect(formChatFull.statusCode).toBe(200);
+
+    const guidelinesChatFull = await app.inject({
+      method: "POST",
+      url: "/guidelines/chat?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "question=Protocole+FOLFIRINOX&filename=TNCD_Pancreas_2026.pdf",
+    });
+    expect(guidelinesChatFull.statusCode).toBe(200);
+
+    // 5. Guidelines upload (multipart), reindex, and delete
+    const boundary = "----WebKitFormBoundaryTest123";
+    const multipartBody = [
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="patientId"',
+      "",
+      "A-1042",
+      `--${boundary}`,
+      'Content-Disposition: form-data; name="files"; filename="nouveau_doc_test.pdf"',
+      "Content-Type: application/pdf",
+      "",
+      "%PDF-1.4 fake pdf content",
+      `--${boundary}--`,
+      "",
+    ].join("\r\n");
+
+    const ingestUploadRes = await app.inject({
+      method: "POST",
+      url: "/ingest/upload?domain=oncology",
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: multipartBody,
+    });
+    expect(ingestUploadRes.statusCode).toBe(302);
+    expect(ingestUploadRes.headers.location).toContain("batchId=");
+
+    const batchStatusRes = await app.inject({
+      method: "GET",
+      url: "/ingest/batches/batch-test?domain=oncology",
+    });
+    expect(batchStatusRes.statusCode).toBe(200);
+
+    const ingestWithBatchPage = await app.inject({
+      method: "GET",
+      url: "/ingest?domain=oncology&batchId=batch-test",
+    });
+    expect(ingestWithBatchPage.statusCode).toBe(200);
+
+    const guidelineUploadRes = await app.inject({
+      method: "POST",
+      url: "/guidelines/upload?domain=oncology",
+      headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+      payload: multipartBody,
+    });
+    expect(guidelineUploadRes.statusCode).toBe(302);
+
+    const reindexBad = await app.inject({
+      method: "POST",
+      url: "/guidelines/..%2Fbad.pdf/reindex?domain=oncology",
+    });
+    expect(reindexBad.statusCode).toBe(400);
+
+    const reindexOk = await app.inject({
+      method: "POST",
+      url: "/guidelines/TNCD_Pancreas_2026.pdf/reindex?domain=oncology",
+    });
+    expect(reindexOk.statusCode).toBe(302);
+
+    const deleteGuidelineBad = await app.inject({
+      method: "POST",
+      url: "/guidelines/..%2Fbad.pdf/delete?domain=oncology",
+    });
+    expect(deleteGuidelineBad.statusCode).toBe(400);
+
+    const deleteGuidelineOk = await app.inject({
+      method: "POST",
+      url: "/guidelines/nouveau_doc_test.pdf/delete?domain=oncology",
+    });
+    expect(deleteGuidelineOk.statusCode).toBe(302);
+
+    // 6. PDF edge cases (400 invalid filename, 404 missing PDF, resource fallback to formFile)
+    const badFormPdf = await app.inject({
+      method: "GET",
+      url: "/files/forms/..%2Fsecret.pdf/pdf",
+    });
+    expect(badFormPdf.statusCode).toBe(400);
+
+    const bboxFormPdf = await app.inject({
+      method: "GET",
+      url: "/files/forms/jeanne_fictive_2026_11_06.pdf/pdf?variant=bbox",
+    });
+    expect(bboxFormPdf.statusCode).toBe(200);
+
+    const badResPdf = await app.inject({
+      method: "GET",
+      url: "/files/resources/..%2Fsecret.pdf",
+    });
+    expect(badResPdf.statusCode).toBe(400);
+
+    const fallbackResPdf = await app.inject({
+      method: "GET",
+      url: "/files/resources/unknown_ref.pdf?formFile=jeanne_fictive_2026_11_06.pdf&domain=oncology",
+    });
+    expect(fallbackResPdf.statusCode).toBe(200);
+
+    const synthResPdf = await app.inject({
+      method: "GET",
+      url: "/files/resources/unknown_ref.pdf?domain=oncology",
+    });
+    expect(synthResPdf.statusCode).toBe(200);
+
+    // 7. Feedback status update & Queue job delete
+    const feedbackStatusRes = await app.inject({
+      method: "POST",
+      url: "/feedback/BUG-101/status?domain=oncology",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "status=resolved",
+    });
+    expect(feedbackStatusRes.statusCode).toBe(302);
+
+    const delQueueJobRes = await app.inject({
+      method: "POST",
+      url: "/admin/queue/jobs/job-failed-1039/delete?domain=oncology",
+    });
+    expect(delQueueJobRes.statusCode).toBe(302);
+
+    // 8. Delete form and patient via DELETE & POST endpoints
+    const delFormApi = await app.inject({
+      method: "DELETE",
+      url: "/forms/jeanne_fictive_2026_09_18.pdf?domain=oncology",
+    });
+    expect(delFormApi.statusCode).toBe(200);
+
+    const delPatientPdfPost = await app.inject({
+      method: "POST",
+      url: "/patients/jeanne_fictive_2026_11_06.pdf/delete?domain=oncology",
+    });
+    expect(delPatientPdfPost.statusCode).toBe(302);
+
+    const delPatientPost = await app.inject({
+      method: "POST",
+      url: "/patients/A-1042/delete?domain=oncology",
+    });
+    expect(delPatientPost.statusCode).toBe(302);
+
+    const delPatientPdfApi = await app.inject({
+      method: "DELETE",
+      url: "/patients/paul_modele_2026_11_06.pdf?domain=oncology",
+    });
+    expect(delPatientPdfApi.statusCode).toBe(200);
+
+    const delPatientApi = await app.inject({
+      method: "DELETE",
+      url: "/patients/A-1037?domain=oncology",
+    });
+    expect(delPatientApi.statusCode).toBe(200);
+
+    await app.close();
+  });
 });

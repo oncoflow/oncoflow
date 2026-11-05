@@ -26,6 +26,7 @@ class TestVectorialDatabases(unittest.TestCase):
         # Milvus config
         self.mock_config.milvus.host = "localhost"
         self.mock_config.milvus.port = "19530"
+        self.mock_config.milvus.scheme = "http"
         self.mock_config.milvus.token = "root:Milvus"
         self.mock_config.milvus.database = "oncowflow"
 

@@ -180,6 +180,10 @@ class ConfigllmSettings(BaseSettings):
         default="4000",
         description="Port number of the embeddings LLM server.",
     )
+    reasoning: bool = Field(
+        default=True,
+        description="Enable reasoning/thinking mode for LLM agents.",
+    )
     api_key: str = Field(
         default="ollama",
         validation_alias=AliasChoices(
@@ -235,6 +239,10 @@ class MilvusDBSettings(BaseSettings):
     host: str = Field(
         default="localhost",
         description="Hostname or IP address of the Milvus server.",
+    )
+    scheme: str = Field(
+        default="http",
+        description="Protocol scheme for the Milvus server connection (http or https).",
     )
 
 

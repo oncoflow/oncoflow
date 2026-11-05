@@ -1616,7 +1616,7 @@ class QueueBroker:
         return bool(self.api_url)
 
     def _auth_headers(self) -> dict[str, str]:
-        token = getattr(self.config, "api_token", None)
+        token = self.config.api_token
         if token is not None:
             return {"Authorization": f"Bearer {token.get_secret_value()}"}
         return {}
@@ -1913,7 +1913,8 @@ class QueueBroker:
         if self._use_remote_api():
             try:
                 resp = httpx.delete(
-                    f"{self.api_url}/api/v1/queue/jobs/{job_id}",
+                    f"{self.api_url}/api/v1/queue/jobs",
+                    params={"job_id": job_id},
                     headers=self._auth_headers(),
                     timeout=5.0,
                 )
@@ -1930,7 +1931,8 @@ class QueueBroker:
         if self._use_remote_api():
             try:
                 resp = httpx.post(
-                    f"{self.api_url}/api/v1/queue/jobs/{job_id}/retry",
+                    f"{self.api_url}/api/v1/queue/jobs/retry",
+                    params={"job_id": job_id},
                     headers=self._auth_headers(),
                     timeout=5.0,
                 )
@@ -1967,14 +1969,13 @@ class QueueBroker:
         target_domain = None if cross_domain else self.domain
         if self._use_remote_api():
             try:
+                params: dict[str, Any] = {}
                 if job_id:
-                    url = f"{self.api_url}/api/v1/queue/jobs/{job_id}/thinking"
-                    params: dict[str, Any] = {}
-                else:
-                    url = f"{self.api_url}/api/v1/queue/thinking"
-                    params = {"domain": target_domain} if target_domain else {}
+                    params["job_id"] = job_id
+                elif target_domain:
+                    params["domain"] = target_domain
                 resp = httpx.get(
-                    url,
+                    f"{self.api_url}/api/v1/queue/thinking",
                     params=params,
                     headers=self._auth_headers(),
                     timeout=3.0,
@@ -1997,17 +1998,14 @@ class QueueBroker:
         target_domain = None if cross_domain else self.domain
         if self._use_remote_api():
             try:
+                params: dict[str, Any] = {"timeout": timeout}
                 if job_id:
-                    url = f"{self.api_url}/api/v1/queue/jobs/{job_id}/thinking/stream"
-                    params: dict[str, Any] = {"timeout": timeout}
-                else:
-                    url = f"{self.api_url}/api/v1/queue/thinking/stream"
-                    params = {"timeout": timeout}
-                    if target_domain:
-                        params["domain"] = target_domain
+                    params["job_id"] = job_id
+                elif target_domain:
+                    params["domain"] = target_domain
                 with httpx.stream(
                     "GET",
-                    url,
+                    f"{self.api_url}/api/v1/queue/thinking/stream",
                     params=params,
                     headers=self._auth_headers(),
                     timeout=timeout + 5.0,
@@ -2026,7 +2024,3 @@ class QueueBroker:
             domain=target_domain,
             timeout=timeout,
         )
-
-
-# Backward-compatible alias
-SqliteQueueBroker = QueueBroker

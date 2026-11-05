@@ -92,6 +92,22 @@ class _FakeCollection:
     def delete_one(self, query: dict):
         return self.delete_many(query)
 
+    def create_index(self, *args, **kwargs):
+        return None
+
+    def find_one_and_update(
+        self, query: dict, update: dict, upsert: bool = False, return_document=None
+    ):
+        self.update_one(query, update, upsert=upsert)
+        if "$addToSet" in update:
+            for doc in self._docs:
+                if all(doc.get(k) == v for k, v in query.items()):
+                    for k, v in update["$addToSet"].items():
+                        lst = doc.setdefault(k, [])
+                        if v not in lst:
+                            lst.append(v)
+        return self.find_one(query)
+
 
 class _FakeDatabase:
     def __init__(self):
@@ -1088,3 +1104,364 @@ class TestPriorityQueueAndCrossDomainAPI:
             )
             assert manager.run_once() is True
             assert "TumorLocation" in extracted_names
+
+    def test_app_functions_llm_and_common_and_agent_fenced_blocks(self, mock_mongo_Env):
+        from datetime import datetime, timezone
+        from pydantic import BaseModel
+        from src.application.agent.agent import (
+            _extract_fenced_blocks,
+            extract_json_candidates,
+        )
+        from src.application.app_functions.common import (
+            json_safe_dict,
+            normalize_date_str,
+            serialize_ai_value,
+            to_naive,
+        )
+        from src.application.app_functions.llm import unload_active_models
+
+        conf, _ = mock_mongo_Env
+        conf.llm.models = "openai/agents, mistral-nemo"
+        conf.llm.ocrmodels = "granite3.2-vision"
+        conf.llm.embeddings = "openai/embeddings"
+        conf.llm.url = "127.0.0.1"
+        conf.llm.port = "11434"
+
+        class _FakeResp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return b"{}"
+
+        with patch("urllib.request.urlopen", return_value=_FakeResp()) as mock_urlopen:
+            unload_active_models(conf)
+            assert mock_urlopen.called
+
+        # Empty models short-circuit
+        empty_conf = conf.model_copy(deep=True)
+        empty_conf.llm.models = ""
+        empty_conf.llm.ocrmodels = ""
+        empty_conf.llm.embeddings = ""
+        unload_active_models(empty_conf)
+
+        # Common helpers
+        assert to_naive(None) is None
+        aware_dt = datetime(2026, 3, 15, 10, 0, tzinfo=timezone.utc)
+        naive_dt = to_naive(aware_dt)
+        assert naive_dt is not None and naive_dt.tzinfo is None
+        assert to_naive(naive_dt) == naive_dt
+
+        assert normalize_date_str(None) is None
+        assert normalize_date_str("") is None
+        assert normalize_date_str("2026-03-15") == "2026_03_15"
+        assert normalize_date_str("15 mars 2026") == "15_mars_2026"
+        assert normalize_date_str(naive_dt) == "2026_03_15"
+
+        class _SampleModel(BaseModel):
+            name: str
+            reasoning_thinking: str | None = None
+
+        sample = _SampleModel(name="test", reasoning_thinking="think")
+        assert json_safe_dict(sample)["name"] == "test"
+        serialized = serialize_ai_value(
+            {
+                "_id": "oid",
+                "id": "123",
+                "execution_times": [1.0],
+                "reasoning_thinking": "hidden",
+                "nested": [sample, {"keep": 42, "reasoning_thinking": "drop"}],
+            }
+        )
+        assert "_id" not in serialized
+        assert "reasoning_thinking" not in serialized
+        assert serialized["nested"][0] == {"name": "test"}
+        assert serialized["nested"][1] == {"keep": 42}
+
+        # Linear-time fenced block extraction
+        raw_md = 'Text before\n```json\n{"a": 1}\n```\nMiddle\n```\n{"b": 2}\n```\nUnclosed ```json {"c": 3}'
+        assert _extract_fenced_blocks(raw_md, "json") == ['{"a": 1}']
+        cands = extract_json_candidates(raw_md)
+        assert '{"a": 1}' in cands
+        assert '{"b": 2}' in cands
+
+    def test_queue_broker_remote_http_and_query_param_routes(self, mock_mongo_Env):
+        from fastapi import FastAPI
+        from pydantic import SecretStr
+        from src.routers.queue import get_queue_manager, router as queue_router
+
+        conf, _ = mock_mongo_Env
+        conf.api_token = SecretStr("test-secret-token")
+        conf.queue.api_url = "http://127.0.0.1:8000"
+        broker = QueueBroker(conf)
+        manager = broker._manager
+
+        assert broker._use_remote_api() is True
+        assert broker._auth_headers() == {"Authorization": "Bearer test-secret-token"}
+        client_http = broker._get_http_client()
+        assert client_http is not None
+        broker.close()
+        assert broker._http_client is None
+
+        # Wire FastAPI TestClient to test query-param endpoints directly
+        test_app = FastAPI()
+        test_app.dependency_overrides[get_queue_manager] = lambda: manager
+        test_app.include_router(queue_router, prefix="/api/v1")
+        api_client = TestClient(test_app)
+
+        enq = manager.enqueue_import_file(
+            filename="remote_test.pdf",
+            include_clinical=False,
+            domain="oncology",
+        )
+        job_id = enq["jobs"][0]["job_id"]
+
+        # Test query-param thinking & stream endpoints on router
+        snap_resp = api_client.get("/api/v1/queue/thinking", params={"job_id": job_id})
+        assert snap_resp.status_code == 200
+        assert snap_resp.json()["job_id"] == job_id
+
+        snap_404 = api_client.get(
+            "/api/v1/queue/thinking", params={"job_id": "nonexistent-job"}
+        )
+        assert snap_404.status_code == 404
+
+        stream_done = api_client.get(
+            "/api/v1/queue/thinking/stream", params={"job_id": "nonexistent-job"}
+        )
+        assert stream_done.status_code == 200
+        assert "event: done" in stream_done.text
+
+        retry_resp = api_client.post(
+            "/api/v1/queue/jobs/retry", params={"job_id": job_id}
+        )
+        assert retry_resp.status_code == 200
+        assert retry_resp.json()["job_id"] == job_id
+
+        del_resp = api_client.delete("/api/v1/queue/jobs", params={"job_id": job_id})
+        assert del_resp.status_code == 200
+        assert del_resp.json()["deleted"] is True
+
+        # Mock httpx calls on QueueBroker to cover all remote delegation branches
+        mock_resp_200_list = MagicMock(
+            status_code=200,
+            json=lambda: [
+                {"job_id": "j1", "status": JobStatus.PENDING.value, "filename": "a.pdf"}
+            ],
+        )
+        mock_resp_200_dict = MagicMock(
+            status_code=200,
+            json=lambda: {
+                "job_id": "j1",
+                "released_locks": 1,
+                "pending": 0,
+                "affected_jobs": 1,
+            },
+        )
+        with (
+            patch("httpx.get", return_value=mock_resp_200_list),
+            patch("httpx.post", return_value=mock_resp_200_dict),
+            patch("httpx.delete", return_value=mock_resp_200_dict),
+        ):
+            assert broker.get_active_jobs_for_file("a.pdf") == [
+                {"job_id": "j1", "status": JobStatus.PENDING.value, "filename": "a.pdf"}
+            ]
+            assert broker.has_active_job("a.pdf") is False
+            assert broker.get_all_gpu_leases() == [
+                {"job_id": "j1", "status": JobStatus.PENDING.value, "filename": "a.pdf"}
+            ]
+            assert broker.get_queue_jobs(
+                status="pending", batch_id="b1", filename="a.pdf"
+            ) == [
+                {"job_id": "j1", "status": JobStatus.PENDING.value, "filename": "a.pdf"}
+            ]
+            assert broker.cancel_or_delete_job("j1") is True
+            assert broker.retry_job("j1")["job_id"] == "j1"
+            assert broker.clean_queue(mode="completed")["affected_jobs"] == 1
+            assert broker.release_gpu_lease(lease_id="l1", job_id="j1") == 1
+            assert broker.enqueue_import_file("a.pdf")["job_id"] == "j1"
+            assert (
+                broker.enqueue_rcp_rerun("a.pdf", model_name="TumorLocation")["job_id"]
+                == "j1"
+            )
+
+        with patch("httpx.get", return_value=mock_resp_200_dict):
+            assert broker.get_queue_stats()["job_id"] == "j1"
+            assert broker.get_job_thinking(job_id="j1")["job_id"] == "j1"
+            assert broker.get_job_thinking(job_id=None)["job_id"] == "j1"
+
+        class _FakeStreamResp:
+            status_code = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def iter_lines(self):
+                yield 'data: {"event": "done", "job_id": "j1"}'
+
+        with patch("httpx.stream", return_value=_FakeStreamResp()):
+            events = list(broker.stream_job_thinking(job_id="j1", timeout=1.0))
+            assert len(events) == 1
+            assert events[0]["event"] == "done"
+
+    def test_milvus_uri_scheme_and_collection_helpers(self, mock_mongo_Env):
+        from src.infrastructure.vectorial.milvus import MilvusDB, patched_drop
+
+        conf, _ = mock_mongo_Env
+        assert conf.milvus.scheme == "http"
+
+        milvus_obj = MilvusDB.__new__(MilvusDB)
+        milvus_obj.logger = conf.set_logger("test_milvus")
+        milvus_obj.coll_name = "test_coll"
+        milvus_obj.embeddings = MagicMock()
+        milvus_obj.llm_embeddings = MagicMock()
+
+        with (
+            patch("src.infrastructure.vectorial.milvus.connections.connect"),
+            patch(
+                "src.infrastructure.vectorial.milvus.db.list_database",
+                return_value=[],
+            ),
+            patch("src.infrastructure.vectorial.milvus.db.create_database"),
+            patch("src.infrastructure.vectorial.milvus.db.using_database"),
+        ):
+            milvus_obj.init_client(conf)
+            assert milvus_obj.uri == f"http://{conf.milvus.host}:{conf.milvus.port}"
+            assert milvus_obj.get_embedding() is milvus_obj.llm_embeddings
+
+        # Test patched_drop helper
+        dummy_milvus = MagicMock()
+        dummy_milvus.collection_name = "c1"
+        dummy_milvus.client.has_collection.return_value = True
+        dummy_milvus.client._get_connection.return_value = MagicMock(
+            schema_cache={"c1": True}
+        )
+        dummy_milvus._async_milvus_client = None
+        patched_drop(dummy_milvus)
+        dummy_milvus.client.drop_collection.assert_called_once_with("c1")
+
+    def test_patient_record_rollback_and_router_mutation_endpoints(
+        self, mock_mongo_Env, tmp_path
+    ):
+        from importlib import import_module
+        from src.routers.dependencies import get_domain_config
+
+        conf, _ = mock_mongo_Env
+        conf.rcp.path = tmp_path
+        pdf_path = tmp_path / "rollback_case.pdf"
+        pdf_path.write_bytes(b"%PDF-1.4 dummy pdf")
+        bbox_path = Path(f"{pdf_path}.bbox")
+        bbox_path.write_bytes(b"%PDF-1.4 dummy bbox pdf")
+
+        app_api = import_module("app-api")
+        app_api.app.dependency_overrides[get_domain_config] = lambda: conf
+        try:
+            client = TestClient(app_api.app)
+            record_svc = PatientRecordService.from_config(conf)
+
+            # Seed a patient and form via synchronize_patient_from_admin
+            patient, _ = record_svc.synchronize_patient_from_admin(
+                filename="rollback_case.pdf",
+                admin_data={
+                    "first_name": "Claire",
+                    "last_name": "Moreau",
+                    "date_birth": "1975-06-15",
+                    "date_rcp": "2026-03-10",
+                    "gender": "Female",
+                },
+            )
+            record_svc.mdt_form_repo.upsert_fields(
+                "rollback_case.pdf",
+                {
+                    "TumorLocation": {"tumor_location": "Pancreas"},
+                    "MTDCompleted": {
+                        "is_mtd_complete": False,
+                        "what_missing": ["IRM hépatique", "Dosage CA 19-9"],
+                    },
+                },
+            )
+
+            # 1. Manual section update & rollback via REST router
+            patch_sec = client.patch(
+                "/api/v1/patientmdtform/rollback_case.pdf/sections/TumorLocation",
+                json={
+                    "section_data": {"tumor_location": "Colon"},
+                    "edited_by": "Dr. Test",
+                },
+            )
+            assert patch_sec.status_code == 200
+            assert patch_sec.json()["TumorLocation"]["tumor_location"] == "Colon"
+            assert "TumorLocation" in (patch_sec.json().get("manual_edits") or {})
+
+            rb_sec = client.post(
+                "/api/v1/patientmdtform/rollback_case.pdf/sections/TumorLocation/rollback"
+            )
+            assert rb_sec.status_code == 200
+            assert rb_sec.json()["TumorLocation"]["tumor_location"] == "Pancreas"
+            assert "TumorLocation" not in (rb_sec.json().get("manual_edits") or {})
+
+            # 2. Missing items toggle & hide via REST router
+            miss_resp = client.patch(
+                "/api/v1/patientmdtform/rollback_case.pdf/missing-items",
+                json={"toggle_item": "IRM hépatique", "edited_by": "Dr. Test"},
+            )
+            assert miss_resp.status_code == 200
+            assert "IRM hépatique" in (
+                miss_resp.json().get("hidden_missing_items") or []
+            )
+
+            # 3. Administrative update & rollback
+            admin_resp = client.patch(
+                "/api/v1/patientmdtform/rollback_case.pdf/administrative",
+                json={
+                    "first_name": "Claire",
+                    "last_name": "Moreau",
+                    "date_birth": "1975-06-15",
+                    "date_rcp": "2026-03-20",
+                    "gender": "Female",
+                    "edited_by": "Secrétaire",
+                },
+            )
+            assert admin_resp.status_code == 200
+            assert "2026-03-20" in str(
+                admin_resp.json()["form"]["PatientAdministrative"]["date_rcp"]
+            )
+
+            rb_admin = client.post(
+                "/api/v1/patientmdtform/rollback_case.pdf/sections/PatientAdministrative/rollback"
+            )
+            assert rb_admin.status_code == 200
+            assert "2026-03-10" in str(
+                rb_admin.json()["PatientAdministrative"]["date_rcp"]
+            )
+            assert "PatientAdministrative" not in (
+                rb_admin.json().get("manual_edits") or {}
+            )
+
+            # 4. Download PDF (plain + bbox + inline) and status endpoint
+            pdf_plain = client.get(
+                "/api/v1/patientmdtform/rollback_case.pdf/pdf?inline=true"
+            )
+            assert pdf_plain.status_code == 200
+            pdf_bbox = client.get(
+                "/api/v1/patientmdtform/rollback_case.pdf/pdf?variant=bbox&inline=true"
+            )
+            assert pdf_bbox.status_code == 200
+
+            status_resp = client.get("/api/v1/patientmdtform/rollback_case.pdf/status")
+            assert status_resp.status_code == 200
+            assert status_resp.json()["filename"] == "rollback_case.pdf"
+
+            # 5. Delete patient record via REST router
+            del_pat = client.delete(
+                f"/api/v1/patientmdtform/patients/{patient.patient_id}"
+            )
+            assert del_pat.status_code == 200
+        finally:
+            app_api.app.dependency_overrides.pop(get_domain_config, None)

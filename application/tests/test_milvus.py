@@ -16,6 +16,7 @@ class TestMilvusVectorialDB(unittest.TestCase):
         self.mock_config.llm.embeddings = "all-MiniLM-L6-v2"
         self.mock_config.milvus.host = "localhost"
         self.mock_config.milvus.port = "19530"
+        self.mock_config.milvus.scheme = "http"
         self.mock_config.milvus.token = "root:Milvus"
         self.mock_config.milvus.database = "oncowflow"
 

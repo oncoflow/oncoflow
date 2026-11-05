@@ -34,23 +34,23 @@ def _build_llm_cache_key(
     config: AppConfig,
     target_cls: type[LLMConnect],
 ) -> tuple[Any, ...]:
-    llm_cfg = getattr(config, "llm", None)
-    raw_temp = getattr(llm_cfg, "temp", 0.0)
+    llm_cfg = config.llm
+    raw_temp = llm_cfg.temp
     try:
         temp_val: float | str = float(raw_temp or 0.0)
     except (TypeError, ValueError):
         temp_val = str(raw_temp)
     return (
         id(target_cls),
-        str(getattr(llm_cfg, "type", "") or "").strip().lower(),
-        str(getattr(llm_cfg, "url", "") or "").strip(),
-        str(getattr(llm_cfg, "port", "") or "").strip(),
-        str(getattr(llm_cfg, "uri", "") or "").strip(),
-        str(getattr(llm_cfg, "embeddings_port", "") or "").strip(),
-        str(getattr(llm_cfg, "embeddings", "") or "").strip(),
-        str(getattr(llm_cfg, "models", "") or "").strip(),
+        (llm_cfg.type or "").strip().lower(),
+        (llm_cfg.url or "").strip(),
+        (llm_cfg.port or "").strip(),
+        (llm_cfg.uri or "").strip(),
+        (llm_cfg.embeddings_port or "").strip(),
+        (llm_cfg.embeddings or "").strip(),
+        (llm_cfg.models or "").strip(),
         temp_val,
-        _extract_secret_str(getattr(llm_cfg, "api_key", None)),
+        _extract_secret_str(llm_cfg.api_key),
     )
 
 
@@ -111,7 +111,7 @@ def get_llm_client(config: AppConfig) -> LLMConnect:
     if raw_embedding is not None and not isinstance(
         raw_embedding, CachedEmbeddingsProxy
     ):
-        model_key = str(getattr(config.llm, "embeddings", "") or "")
+        model_key = config.llm.embeddings or ""
         client.embedding = CachedEmbeddingsProxy(
             raw_embedding,
             model_key=model_key,

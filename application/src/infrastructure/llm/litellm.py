@@ -38,7 +38,7 @@ class LiteLLMConnect(LLMConnect):
         self.test_connection()
 
         # Initialize LiteLLM embeddings pointing to LiteLLM Proxy or dedicated embeddings server
-        embeddings_port = getattr(config.llm, "embeddings_port", None)
+        embeddings_port = config.llm.embeddings_port
         if (
             isinstance(embeddings_port, str)
             and embeddings_port.strip()
