@@ -2843,8 +2843,33 @@ a.ds-timeline__link:hover {
 .ds-timeline__marker--high   { background: var(--ds-urgency-high-bg);   color: var(--ds-urgency-high-fg); }
 .ds-timeline__marker--medium { background: var(--ds-urgency-medium-bg); color: var(--ds-urgency-medium-fg); }
 .ds-timeline__marker--low    { background: var(--ds-urgency-low-bg);    color: var(--ds-urgency-low-fg); }
-.ds-timeline__content { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; }
-.ds-timeline__date { display: block; font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-sm); }
+.ds-timeline__content { display: flex; flex-direction: column; gap: 2px; text-align: left; min-width: 0; flex: 1; }
+.ds-timeline__date { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-2); font-weight: var(--ds-weight-semibold); font-size: var(--ds-text-sm); }
+.ds-timeline__date-main { display: inline-flex; align-items: center; gap: 0.25rem; min-width: 0; }
+.ds-timeline__duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.6875rem;
+  font-weight: var(--ds-weight-medium);
+  font-variant-numeric: tabular-nums;
+  color: inherit;
+  opacity: 0.72;
+  white-space: nowrap;
+  flex: none;
+}
+.ds-timeline__duration .ds-icon,
+.ds-timeline__summary-duration .ds-icon {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+.ds-timeline__summary-duration {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.82;
+}
 .ds-timeline__meta { display: block; font-size: var(--ds-text-xs); color: var(--ds-color-text-muted); }
 .ds-timeline__link[aria-current="step"] {
   background: var(--ds-color-primary-soft);
@@ -4895,10 +4920,11 @@ a.ds-timeline__link:hover {
     scroll-snap-type: x proximity;
     -webkit-overflow-scrolling: touch;
     padding-bottom: var(--ds-space-1);
+    padding-inline: max(var(--ds-space-2), calc(50% - 6.75rem));
   }
   .ds-timeline__item {
     flex: 0 0 13.5rem;
-    scroll-snap-align: start;
+    scroll-snap-align: center;
   }
 
   /* Clinical Sections, Opinions, KV Grid & Subcards on Mobile */
@@ -5810,15 +5836,54 @@ a.ds-timeline__link:hover {
   margin-top: var(--ds-space-1);
 }
 .ds-tabs--patient-level {
+  position: relative;
+  isolation: isolate;
   border-bottom: 0;
-  background: color-mix(in srgb, var(--ds-color-surface) 75%, transparent);
+  background: color-mix(in srgb, currentColor 11%, transparent);
   border-radius: var(--ds-radius-pill);
-  padding: 0.15rem 0.35rem;
+  padding: 0.2rem;
+  gap: 0.15rem;
+  overflow: hidden;
+}
+.ds-tabs--patient-level .ds-tabs__indicator {
+  top: 0.2rem;
+  bottom: 0.2rem;
+  left: 0;
+  height: auto;
+  border-radius: var(--ds-radius-pill);
+  background: var(--ds-color-surface);
+  box-shadow: var(--ds-shadow-xs);
+  z-index: 0;
 }
 .ds-tabs--patient-level .ds-tab {
-  min-height: 2.15rem;
-  padding: 0.25rem var(--ds-space-3);
+  position: relative;
+  z-index: 1;
+  min-height: 2.1rem;
+  padding: 0.25rem 0.85rem;
+  border-radius: var(--ds-radius-pill);
   font-size: var(--ds-text-xs);
+  color: inherit;
+  opacity: 0.82;
+  transition:
+    color var(--ds-duration-short3) var(--ds-ease-standard),
+    opacity var(--ds-duration-short3) var(--ds-ease-standard),
+    background-color var(--ds-duration-short3) var(--ds-ease-standard);
+}
+.ds-tabs--patient-level .ds-tab::after {
+  display: none !important;
+}
+.ds-tabs--patient-level .ds-tab:hover {
+  opacity: 1;
+  color: inherit;
+}
+.ds-tabs--patient-level .ds-tab[aria-selected="true"] {
+  opacity: 1;
+  color: var(--ds-color-text);
+  font-weight: var(--ds-weight-bold);
+}
+.ds-tabs--patient-level:not(:has(.ds-tabs__indicator)) .ds-tab[aria-selected="true"] {
+  background: var(--ds-color-surface);
+  box-shadow: var(--ds-shadow-xs);
 }
 .ds-synoptic[data-patient-view="dashboard"] .ds-synoptic__row--rcp-only {
   display: none;

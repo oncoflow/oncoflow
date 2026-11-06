@@ -1652,11 +1652,18 @@ export function renderDossierPage(
           : step.priorityLevel === "medium"
             ? "orange"
             : "green";
+      const stepDurationHtml =
+        step.durationSec !== null && step.durationSec > 0
+          ? `<span class="ds-timeline__duration" title="${lang === "fr" ? "Temps global de génération IA de cette fiche RCP" : "Global AI generation time for this MDT record"}">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(step.durationSec)}</span>`
+          : "";
       return `<li class="ds-timeline__item">
         <a class="ds-timeline__link ds-timeline__link--${stepTone}" href="${baseTargetUrl}?file=${encodeURIComponent(step.file)}&domain=${domainParam}${agendaNav ? "&from=agenda" : ""}" ${step.isCurrent ? 'aria-current="step"' : ""}>
           <span class="ds-timeline__marker ${markerCls}" aria-hidden="true">${iconSvg(markerIcon, "ds-icon--xs")}</span>
           <span class="ds-timeline__content">
-            <span class="ds-timeline__date">${esc(step.mdtDate)} ${step.isLatest ? iconSvg("ic-star", "ds-icon--xs") : ""}</span>
+            <span class="ds-timeline__date">
+              <span class="ds-timeline__date-main">${esc(step.mdtDate)} ${step.isLatest ? iconSvg("ic-star", "ds-icon--xs") : ""}</span>
+              ${stepDurationHtml}
+            </span>
             <span class="ds-timeline__meta">${esc(step.priorityLabel)} · ${esc(step.orientationLabel)}</span>
           </span>
         </a>
@@ -2190,7 +2197,6 @@ export function renderDossierPage(
             ${dossier.gender ? `<li>${esc(dossier.gender)}</li>` : ""}
             ${showShortPatientCode ? `<li class="ds-mono">Dossier ${esc(dossier.patientId)}</li>` : ""}
             <li>${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances RCP" : "séance RCP"}</li>
-            <li><span class="ds-section__duration" title="Temps cumulé d'analyse IA">${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span></li>
           </ul>
 
           <!-- Patient-Level View Switcher (Séances RCP vs Tableau de bord longitudinal du patient) -->
@@ -2224,7 +2230,7 @@ export function renderDossierPage(
               <span class="ds-badge ds-badge--neutral ds-badge--sm">${dossier.rcpCount} ${dossier.rcpCount > 1 ? "séances" : "séance"}</span>
             </span>
             <span class="ds-timeline-drawer__toggle">
-              <span class="ds-small ds-muted">Séance affichée : ${esc(dossier.currentForm.mdtDate ?? dossier.currentForm.file)}</span>
+              <span class="ds-small ds-muted">Séance affichée : ${esc(dossier.timeline.find((s) => s.isCurrent)?.mdtDate ?? dossier.currentForm.mdtDate ?? dossier.currentForm.file)}${dossier.cumulativeDurationSec > 0 ? ` <span class="ds-timeline__summary-duration" title="Temps global de génération IA de cette fiche RCP">· ${iconSvg("ic-clock", "ds-icon--xs")} ${formatDurationMinSec(dossier.cumulativeDurationSec)}</span>` : ""}</span>
               <svg class="ds-icon ds-icon--md ds-timeline-drawer__chevron" aria-hidden="true" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>
             </span>
           </summary>

@@ -914,104 +914,154 @@
     }
   });
 
+  // Center horizontally scrollable RCP session timeline on the active session (mobile / narrow viewports)
+  function centerActiveTimelineStep(scopeRoot) {
+    var scope = scopeRoot || document;
+    scope.querySelectorAll(".ds-timeline").forEach(function (timeline) {
+      if (timeline.scrollWidth <= timeline.clientWidth) return;
+      var activeLink = timeline.querySelector('.ds-timeline__link[aria-current="step"]');
+      var activeItem = activeLink ? activeLink.closest(".ds-timeline__item") || activeLink : null;
+      if (!activeItem) return;
+      var targetLeft =
+        activeItem.offsetLeft - Math.max(0, (timeline.clientWidth - activeItem.offsetWidth) / 2);
+      timeline.scrollLeft = Math.max(0, targetLeft);
+    });
+  }
+  centerActiveTimelineStep(document);
+  window.addEventListener(
+    "resize",
+    function () {
+      centerActiveTimelineStep(document);
+    },
+    { passive: true },
+  );
+  document.addEventListener(
+    "toggle",
+    function (ev) {
+      if (
+        ev.target &&
+        ev.target.classList &&
+        ev.target.classList.contains("ds-timeline-drawer") &&
+        ev.target.open
+      ) {
+        centerActiveTimelineStep(ev.target);
+      }
+    },
+    true,
+  );
+
   // ARIA tabs navigation with dedicated M3 sliding bottom indicator (.ds-tabs__indicator — icons & labels stay fixed)
-  document.querySelectorAll(".ds-tabs[role='tablist']").forEach(function (tablist) {
-    var tabs = Array.prototype.slice.call(tablist.querySelectorAll("[role='tab']"));
-    var indicator = tablist.querySelector(".ds-tabs__indicator");
-    if (!indicator && tabs.length > 0) {
-      indicator = document.createElement("span");
-      indicator.className = "ds-tabs__indicator";
-      indicator.setAttribute("aria-hidden", "true");
-      tablist.appendChild(indicator);
-    }
-
-    function syncTabIndicator(activeTab) {
-      if (!indicator || !activeTab) return;
-      var pad = 16; // matches --ds-space-4
-      var w = Math.max(16, activeTab.offsetWidth - pad * 2);
-      var x = activeTab.offsetLeft + pad;
-      indicator.style.width = w + "px";
-      indicator.style.transform = "translate3d(" + x + "px, 0, 0)";
-    }
-
-    function selectTab(idx, focus) {
-      tabs.forEach(function (t, i) {
-        var on = i === idx;
-        t.setAttribute("aria-selected", String(on));
-        t.tabIndex = on ? 0 : -1;
-        var panelId = t.getAttribute("aria-controls");
-        var panel = panelId ? document.getElementById(panelId) : null;
-        if (panel) panel.hidden = !on;
-      });
-      var nextTab = tabs[idx];
-      if (nextTab) {
-        if (nextTab.id === "tab-patient-dashboard" || nextTab.id === "tab-patient-rcp") {
-          var synopticCard = document.querySelector("[data-testid='synoptic-card']");
-          if (synopticCard) {
-            synopticCard.setAttribute(
-              "data-patient-view",
-              nextTab.id === "tab-patient-dashboard" ? "dashboard" : "rcp",
-            );
-          }
-          window.dispatchEvent(new Event("resize"));
-        }
-        syncTabIndicator(nextTab);
-        if (focus) nextTab.focus();
+  function initM3Tabs(scopeRoot) {
+    var scope = scopeRoot || document;
+    scope.querySelectorAll(".ds-tabs[role='tablist']").forEach(function (tablist) {
+      if (tablist.getAttribute("data-m3-tabs-bound") === "true") return;
+      tablist.setAttribute("data-m3-tabs-bound", "true");
+      var tabs = Array.prototype.slice.call(tablist.querySelectorAll("[role='tab']"));
+      var indicator = tablist.querySelector(".ds-tabs__indicator");
+      if (!indicator && tabs.length > 0) {
+        indicator = document.createElement("span");
+        indicator.className = "ds-tabs__indicator";
+        indicator.setAttribute("aria-hidden", "true");
+        tablist.appendChild(indicator);
       }
-    }
 
-    var initialActive =
-      tablist.querySelector("[role='tab'][aria-selected='true']") || tabs[0] || null;
-    if (initialActive) syncTabIndicator(initialActive);
+      function syncTabIndicator(activeTab) {
+        if (!indicator || !activeTab) return;
+        if (tablist.classList.contains("ds-tabs--patient-level")) {
+          indicator.style.width = activeTab.offsetWidth + "px";
+          indicator.style.transform = "translate3d(" + activeTab.offsetLeft + "px, 0, 0)";
+          return;
+        }
+        var pad = 16; // matches --ds-space-4
+        var w = Math.max(16, activeTab.offsetWidth - pad * 2);
+        var x = activeTab.offsetLeft + pad;
+        indicator.style.width = w + "px";
+        indicator.style.transform = "translate3d(" + x + "px, 0, 0)";
+      }
 
-    try {
-      var params = new URLSearchParams(window.location.search);
-      var requestedView = params.get("view");
-      var requestedTab =
-        params.get("tab") ||
-        (requestedView === "dashboard" || requestedView === "patient-dashboard"
-          ? "patient-dashboard"
-          : null);
-      if (requestedTab === "dashboard") requestedTab = "patient-dashboard";
-      if (requestedTab) {
+      function selectTab(idx, focus) {
         tabs.forEach(function (t, i) {
-          if (t.id === "tab-" + requestedTab) selectTab(i, false);
+          var on = i === idx;
+          t.setAttribute("aria-selected", String(on));
+          t.tabIndex = on ? 0 : -1;
+          var panelId = t.getAttribute("aria-controls");
+          var panel = panelId ? document.getElementById(panelId) : null;
+          if (panel) panel.hidden = !on;
         });
-      }
-    } catch (_e) {}
-
-    if (typeof window.requestAnimationFrame === "function") {
-      window.requestAnimationFrame(function () {
-        tablist.classList.add("is-ready");
-      });
-    } else {
-      tablist.classList.add("is-ready");
-    }
-
-    window.addEventListener(
-      "resize",
-      function () {
-        var cur = tablist.querySelector("[role='tab'][aria-selected='true']");
-        if (cur) syncTabIndicator(cur);
-      },
-      { passive: true },
-    );
-
-    tabs.forEach(function (tab, i) {
-      tab.addEventListener("click", function () {
-        selectTab(i, false);
-      });
-      tab.addEventListener("keydown", function (ev) {
-        if (ev.key === "ArrowRight") {
-          ev.preventDefault();
-          selectTab((i + 1) % tabs.length, true);
-        } else if (ev.key === "ArrowLeft") {
-          ev.preventDefault();
-          selectTab((i - 1 + tabs.length) % tabs.length, true);
+        var nextTab = tabs[idx];
+        if (nextTab) {
+          if (nextTab.id === "tab-patient-dashboard" || nextTab.id === "tab-patient-rcp") {
+            var synopticCard = document.querySelector("[data-testid='synoptic-card']");
+            if (synopticCard) {
+              synopticCard.setAttribute(
+                "data-patient-view",
+                nextTab.id === "tab-patient-dashboard" ? "dashboard" : "rcp",
+              );
+            }
+            if (nextTab.id === "tab-patient-rcp") {
+              centerActiveTimelineStep(document);
+            }
+            window.dispatchEvent(new Event("resize"));
+          }
+          syncTabIndicator(nextTab);
+          if (focus) nextTab.focus();
         }
+      }
+
+      var initialActive =
+        tablist.querySelector("[role='tab'][aria-selected='true']") || tabs[0] || null;
+      if (initialActive) syncTabIndicator(initialActive);
+
+      try {
+        var params = new URLSearchParams(window.location.search);
+        var requestedView = params.get("view");
+        var requestedTab =
+          params.get("tab") ||
+          (requestedView === "dashboard" || requestedView === "patient-dashboard"
+            ? "patient-dashboard"
+            : null);
+        if (requestedTab === "dashboard") requestedTab = "patient-dashboard";
+        if (requestedTab) {
+          tabs.forEach(function (t, i) {
+            if (t.id === "tab-" + requestedTab) selectTab(i, false);
+          });
+        }
+      } catch (_e) {}
+
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(function () {
+          tablist.classList.add("is-ready");
+        });
+      } else {
+        tablist.classList.add("is-ready");
+      }
+
+      window.addEventListener(
+        "resize",
+        function () {
+          var cur = tablist.querySelector("[role='tab'][aria-selected='true']");
+          if (cur) syncTabIndicator(cur);
+        },
+        { passive: true },
+      );
+
+      tabs.forEach(function (tab, i) {
+        tab.addEventListener("click", function () {
+          selectTab(i, false);
+        });
+        tab.addEventListener("keydown", function (ev) {
+          if (ev.key === "ArrowRight") {
+            ev.preventDefault();
+            selectTab((i + 1) % tabs.length, true);
+          } else if (ev.key === "ArrowLeft") {
+            ev.preventDefault();
+            selectTab((i - 1 + tabs.length) % tabs.length, true);
+          }
+        });
       });
     });
-  });
+  }
+  initM3Tabs(document);
 
   // M3 Segmented Button background pill slider (.ds-segmented__pill — only the colored background moves)
   function syncAllSegmentedPills() {
@@ -2164,15 +2214,19 @@
             }
           });
           restoreOpenDetails(curMain, openDetailsMap);
+          initM3Tabs(curMain);
           initM3Selects(curMain);
           initM3TextFields(curMain);
+          centerActiveTimelineStep(curMain);
         } else {
           curMain.innerHTML = nextMain.innerHTML;
           syncMobileCollapsibleDrawers();
           syncMobileWorklistDefaultDisplay();
           restoreOpenDetails(curMain, openDetailsMap);
+          initM3Tabs(curMain);
           initM3Selects(curMain);
           initM3TextFields(curMain);
+          centerActiveTimelineStep(curMain);
         }
       })
       .catch(function () {})

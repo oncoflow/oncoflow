@@ -106,6 +106,7 @@ export interface TimelineSessionItem {
   priorityLevel: PriorityLevel;
   priorityLabel: string;
   orientationLabel: string;
+  durationSec: number | null;
 }
 
 export interface PatientDossierView {
@@ -346,6 +347,10 @@ export class PatientDossierUseCase {
         },
         lang,
       );
+      const fExecSum = Object.values(f.executionTimes ?? {}).reduce(
+        (acc, v) => acc + (typeof v === "number" && Number.isFinite(v) ? v : 0),
+        0,
+      );
       return {
         file: f.file,
         mdtDate: f.mdtDate ? translateValue(f.mdtDate, lang) : f.file,
@@ -354,6 +359,7 @@ export class PatientDossierUseCase {
         priorityLevel: fPrio,
         priorityLabel: fPrioInfo.label,
         orientationLabel: fOrient.label,
+        durationSec: fExecSum > 0 ? Math.round(fExecSum * 10) / 10 : null,
       };
     });
 
