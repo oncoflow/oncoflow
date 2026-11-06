@@ -1,0 +1,85 @@
+name: "🐛 Bug (Defect or Regression)"
+description: "Report a functional bug, AI/RAG extraction defect, API contract regression, or UI/accessibility issue."
+title: "[Bug] "
+labels: ["type:bug", "status:to-complete"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!WARNING]
+        > **Patient Data Privacy (GDPR / Medical Confidentiality)**:
+        > **NEVER** include real patient identifiable information (names, SSN/NIR, real dates of birth, or unredacted hospital PDFs) in a GitHub issue. Always use synthetic or pseudonymized test data.
+
+  - type: input
+    id: related_issue
+    attributes:
+      label: "🔗 Related Story or Feature (Optional)"
+      description: "Link the parent Story (`#XX`) or Feature (`#YY`) if this bug is tied to an existing work item."
+      placeholder: "Related to #98 / #104"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: "🚨 Severity & Clinical/Operational Impact"
+      description: "How severely does this bug impact MDT preparation or session execution?"
+      options:
+        - "Critical — Blocks MDT session, loses human edits (manual_edits), or compromises clinical data integrity"
+        - "Major — Core feature broken with no easy workaround (extraction failure, API 500, UI crash)"
+        - "Moderate — Degraded behavior with an available workaround"
+        - "Minor — Visual/UX glitch, wording typo, or non-blocking edge case"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: domain_scope
+    attributes:
+      label: "Impacted Domain & Architectural Scope"
+      multiple: true
+      options:
+        - "domain:oncology (Digestive Oncology)"
+        - "domain:sma (Spinal Muscular Atrophy)"
+        - "domain:cross-domain (Shared Cross-Domain Core)"
+        - "scope:domain (Pure DDD Domain Model - application/src/domain/)"
+        - "scope:agents-rag (LLM Agents, OCR, Prompts & Milvus RAG)"
+        - "scope:api (FastAPI & SSE - application/src/routers/)"
+        - "scope:ui-web (Material Design 3 Web UI - web/)"
+        - "scope:ui-streamlit (Legacy Streamlit Dashboard - application/src/ui/)"
+        - "scope:infra (Docker, MongoDB, Milvus, OTel, CI/CD)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "📝 Bug Description (Mandatory)"
+      description: "Provide a clear, concise description of the bug, exact steps to reproduce, actual behavior, and expected behavior."
+      placeholder: |
+        ### Actual Behavior
+        ...
+
+        ### Expected Behavior
+        ...
+
+        ### Steps to Reproduce
+        1. ...
+        2. ...
+        3. Observe error: `...`
+
+        ### Technical Context / Logs (if available)
+        - Suspected file or endpoint: `...`
+    validations:
+      required: true
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: "✅ Definition of Done (DoD) — Mandatory"
+      description: "Mandatory acceptance criteria required to close this bug."
+      value: |
+        - [ ] **Non-Regression Test (RED -> GREEN)**: An automated test (`pytest`, `vitest`, or `playwright`) reproduces the bug before the fix and passes after the fix.
+        - [ ] **Root Cause Fixed**: The fix respects Hexagonal/DDD boundaries, `manual_edits` sovereignty, and English Ubiquitous Language (`PatientMDTForm` / `PatientRecord`).
+        - [ ] **Quality & CI Gates**: `ruff check`, `ruff format --check`, `pytest`, `npm --prefix web run test`, and `prek run` pass with zero regressions.
+    validations:
+      required: true

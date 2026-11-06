@@ -1,0 +1,153 @@
+name: Issue Governance & Completeness Check
+
+on:
+  issues:
+    types: [opened, edited, reopened, milestoned, demilestoned]
+
+permissions:
+  issues: write
+
+jobs:
+  triage-completeness:
+    name: Validate Story / Feature / Bug Completeness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Evaluate issue structure and apply governance labels
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || "";
+            const title = issue.title || "";
+            const currentLabels = issue.labels.map(l => l.name);
+
+            const labelsToAdd = new Set();
+            const labelsToRemove = new Set();
+
+            // 1. Detect issue type from title prefix or existing labels
+            const isStory = title.startsWith("[Story]") || currentLabels.includes("type:story");
+            const isFeature = title.startsWith("[Feature]") || currentLabels.includes("type:feature");
+            const isBug = title.startsWith("[Bug]") || currentLabels.includes("type:bug");
+
+            if (isStory) labelsToAdd.add("type:story");
+            if (isFeature) labelsToAdd.add("type:feature");
+            if (isBug) labelsToAdd.add("type:bug");
+
+            // 2. Auto-detect domain, scope, and persona labels from YAML form selections
+            const autoDetectTokens = [
+              "domain:oncology",
+              "domain:sma",
+              "domain:cross-domain",
+              "scope:domain",
+              "scope:agents-rag",
+              "scope:api",
+              "scope:ui-web",
+              "scope:ui-streamlit",
+              "scope:infra",
+              "persona:physician",
+              "persona:secretary"
+            ];
+            for (const token of autoDetectTokens) {
+              if (body.includes(token)) {
+                labelsToAdd.add(token);
+              }
+            }
+
+            // 3. Evaluate completeness rules
+            const reasons = [];
+
+            // Check for open clinical/PO questions
+            const hasOpenQuestions =
+              body.includes("❓") ||
+              body.includes("🩺") ||
+              /open\s+questions?|questions?\s+(ouvertes?|restantes?)/i.test(body);
+
+            if (hasOpenQuestions) {
+              labelsToAdd.add("status:needs-po-validation");
+              reasons.push("Open business or clinical questions (`❓` / `🩺`) remain to be validated with the Product Owner / Clinician.");
+            } else {
+              labelsToRemove.add("status:needs-po-validation");
+            }
+
+            // Check for incomplete placeholders in DoD or explicit 'status:to-complete' selection
+            if (
+              body.includes("[TBD") ||
+              body.includes("[À préciser") ||
+              body.includes("To Complete (status:to-complete)")
+            ) {
+              reasons.push("The ticket is explicitly marked as `To Complete` or still contains `[TBD]` placeholders in its Definition of Done.");
+            }
+
+            if (isStory) {
+              // Story must only contain business need (no code blocks or technical file paths)
+              if (
+                /```(python|ts|typescript|js|json|bash|sh)/i.test(body) ||
+                /application\/src\/|web\/src\//.test(body)
+              ) {
+                reasons.push("A **Story** must strictly contain the business need only (no code blocks or file paths). Move technical details into child **Feature** tickets.");
+              }
+            }
+
+            if (isFeature) {
+              // Feature must reference a parent Story (#XX) or be assigned to a Milestone
+              const hasParentIssueRef = /#\d+/.test(body);
+              const hasMilestone = Boolean(issue.milestone);
+              if (!hasParentIssueRef && !hasMilestone) {
+                reasons.push("A **Feature** must be linked to a parent **Story** (via `#XX` issue reference and/or a GitHub **Milestone**).");
+              }
+              // Feature must have a DoD section
+              if (!/Definition of Done|Acceptance Criteria/i.test(body)) {
+                reasons.push("A **Feature** must include a verifiable **Definition of Done (DoD)** section.");
+              }
+            }
+
+            if (isBug) {
+              if (!/Definition of Done/i.test(body) || !/Bug Description|Actual Behavior/i.test(body)) {
+                reasons.push("A **Bug** must include both a **Bug Description** and a **Definition of Done (DoD)**.");
+              }
+            }
+
+            // 4. Determine final status label
+            if (reasons.length > 0) {
+              labelsToAdd.add("status:to-complete");
+              labelsToRemove.add("status:ready");
+            } else if (isStory || isFeature || isBug) {
+              labelsToAdd.add("status:ready");
+              labelsToRemove.add("status:to-complete");
+            }
+
+            // 5. Apply label updates
+            const finalLabelsToAdd = [...labelsToAdd].filter(l => !currentLabels.includes(l));
+            if (finalLabelsToAdd.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: finalLabelsToAdd
+              });
+            }
+
+            for (const labelToRemove of labelsToRemove) {
+              if (currentLabels.includes(labelToRemove)) {
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    name: labelToRemove
+                  });
+                } catch (err) {
+                  console.log(`Could not remove label ${labelToRemove}: ${err.message}`);
+                }
+              }
+            }
+
+            // 6. Write workflow summary
+            core.summary
+              .addHeading(`Issue Governance Check — #${issue.number}`)
+              .addList(
+                reasons.length > 0
+                  ? reasons
+                  : ["✅ Ticket is complete, concise, and ready for development (`status:ready`)."]
+              )
+              .write();

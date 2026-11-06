@@ -1,0 +1,89 @@
+name: "🎯 Story (Business Need)"
+description: "Define a pure clinical or operational MDT/RCP business need (validated with the PO agent). Tracked via a GitHub Milestone and child Feature issues."
+title: "[Story] "
+labels: ["type:story", "status:to-complete"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!IMPORTANT]
+        > **DataSyntis Story Golden Rule**:
+        > This ticket **MUST ONLY contain the business description of the need** (written in English).
+        > 🚫 **Strictly forbidden here**: Python/TypeScript code snippets, file paths, API endpoints, database schemas, or technical task breakdowns (those belong in linked **Feature** tickets).
+        > A Story must be clear, concise, understandable by both clinicians and the `product-owner` agent, and associated with a matching GitHub **Milestone**.
+
+  - type: dropdown
+    id: domain
+    attributes:
+      label: "Clinical Domain"
+      description: "Which clinical domain is targeted by this business need?"
+      options:
+        - "Digestive Oncology (domain:oncology)"
+        - "Spinal Muscular Atrophy / Rare Diseases (domain:sma)"
+        - "Cross-Domain / Shared Platform (domain:cross-domain)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: persona
+    attributes:
+      label: "Primary Hospital Persona"
+      description: "Which end-user persona benefits from this Story?"
+      multiple: true
+      options:
+        - "MDT Physician / Specialist (Clinical analysis & collegial decision-making) [persona:physician]"
+        - "MDT Session Chair (Session orchestration & presenter delegation) [persona:physician]"
+        - "MDT Medical Secretary / Coordinator (Pre-session preparation, completeness & quorum) [persona:secretary]"
+        - "Platform Administrator / Hospital IT (Compliance, security & local operations)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: promise
+    attributes:
+      label: "DataSyntis Product Promise"
+      description: "Which core product promise does this Story serve?"
+      options:
+        - "1. Documentary Exhaustiveness (Multi-PDF ingestion, identity reconciliation, longitudinal multi-MDT consolidation)"
+        - "2. Guideline Compliance (Completeness checks, specialty opinions grounded in TNCD / PNDS guidelines)"
+        - "3. Operational Fluidity (Smart session ordering, discussion priority, specialty quorum & attendance)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_need
+    attributes:
+      label: "🎯 Business Need & Clinical Problem"
+      description: "Provide a clear, concise, jargon-free business description of the current clinical/operational pain point and the expected outcome."
+      placeholder: |
+        As a [Persona],
+        When [Clinical or operational situation during MDT preparation or session],
+        I currently face [Problem / friction],
+        I need [Clear functional capability] so that [Clinical benefit or medical time saved].
+    validations:
+      required: true
+
+  - type: textarea
+    id: business_rules
+    attributes:
+      label: "📏 Business Rules & Expected Outcome"
+      description: "List the core functional rules and medico-legal guardrails (non-prescriptive decision support, human-in-the-loop sovereignty)."
+      placeholder: |
+        - R1: ...
+        - R2: ...
+        - Medico-legal boundary: Pre-MDT decision support only (non-prescriptive suggestions, no automatic blocking, human edits always take precedence).
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: po_validation
+    attributes:
+      label: "✅ Product Owner Validation (`product-owner`)"
+      description: "A Story transitions from `status:to-complete` to `status:ready` only when all items below are satisfied:"
+      options:
+        - label: "Pure business scope only (zero technical implementation details, code blocks, or file paths)."
+          required: true
+        - label: "Complies with DataSyntis non-prescriptive medico-legal positioning and human-in-the-loop sovereignty."
+          required: true
+        - label: "Validated with the `product-owner` agent (and `doctor` for clinical rules 🩺) — no open questions (`❓`) remain."
+        - label: "Linked to a matching GitHub Milestone to group and track child Feature tickets."
