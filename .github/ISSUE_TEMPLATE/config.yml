@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: "📖 Architecture & AI Agent Guidelines (AGENTS.md)"
+    url: "https://github.com/oncoflow/oncoflow/blob/main/AGENTS.md"
+    about: "Read the domain rules, DDD/Hexagonal architecture boundaries, and DataSyntis product vision before opening an issue."
+  - name: "🎯 Active Milestones (Business Stories)"
+    url: "https://github.com/oncoflow/oncoflow/milestones"
+    about: "Browse active Business Stories (Milestones) to link your Feature tickets."

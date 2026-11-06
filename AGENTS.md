@@ -67,10 +67,12 @@ MedDataSyntis defines custom agent skills in `.agents/skills/` and subagents in 
 
 ```mermaid
 graph TD
-    PO[Product Owner] --> MD[Doctor / Clinical Expert]
+    PO[Product Owner] --> IM[GitHub Issue Manager]
+    PO --> MD[Doctor / Clinical Expert]
     PO --> UX[UI / UX Expert]
+    IM --> PY[Python Developer]
     MD --> PM[LLM Prompting Engineer]
-    PM --> PY[Python Developer]
+    PM --> PY
     UX --> PY
     PY --> API[API Expert]
     PY --> QE[Quality Expert]
@@ -128,6 +130,12 @@ graph TD
 - **Locations**:
   - Subagent: [sre-devops-expert.md](file:///home/guillaume/git/oncoflow/.agents/agents/sre-devops-expert.md)
   - Skill: [sre-devops-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/sre-devops-expert/SKILL.md)
+
+### 11. 🎫 GitHub Issue Manager (`github-issue-manager` Subagent & `github-issue-architect` Skill)
+- **Domain**: 100% English GitHub issue & Milestone governance (`.github/ISSUE_TEMPLATE/`), strict separation between pure business **Stories** (`01_story.yml` + Milestone validated by `product-owner`), actionable **Features** (`02_feature.yml` linked to a Story with Objective, Tasks & DoD), and **Bugs** (`03_bug.yml` with mandatory Description & DoD), automatic completeness triage (`status:to-complete` vs `status:ready`), and logical label taxonomy (`.github/labels.yml`).
+- **Locations**:
+  - Subagent: [github-issue-manager.md](file:///home/guillaume/git/oncoflow/.agents/agents/github-issue-manager.md)
+  - Skill: [github-issue-architect/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/github-issue-architect/SKILL.md)
 
 ---
 

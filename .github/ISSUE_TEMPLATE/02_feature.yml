@@ -1,0 +1,101 @@
+name: "✨ Feature (Implementation Linked to a Story)"
+description: "Specify a clear, actionable functional or technical increment linked to a parent Story, with Objective, Tasks, and DoD."
+title: "[Feature] "
+labels: ["type:feature", "status:to-complete"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        > [!NOTE]
+        > **DataSyntis Feature Golden Rule**:
+        > Every Feature **MUST be linked to a parent Story** (Issue `#XX` + GitHub Milestone) and written in **English**.
+        > It must be **clear, concise, and directly reusable by both a human developer and an AI coding agent**.
+        > ⚠️ **If the ticket is incomplete (missing parent Story, `[TBD]` placeholders in DoD, or unresolved `❓` / `🩺` questions), it MUST be marked as `status:to-complete`.**
+
+  - type: input
+    id: parent_story
+    attributes:
+      label: "🔗 Parent Story & Dependencies"
+      description: "Reference the parent Story issue (`#XX`, mandatory) and any prerequisite Feature issues. Also assign the corresponding GitHub Milestone."
+      placeholder: "Parent Story: #98 · Depends on: #100"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: domain_scope
+    attributes:
+      label: "Clinical Domain & Architectural Scope"
+      description: "Select the impacted clinical domain(s) and Hexagonal/DDD architectural layer(s)."
+      multiple: true
+      options:
+        - "domain:oncology (Digestive Oncology)"
+        - "domain:sma (Spinal Muscular Atrophy)"
+        - "domain:cross-domain (Shared Cross-Domain Core)"
+        - "scope:domain (Pure DDD Domain Model - application/src/domain/)"
+        - "scope:agents-rag (LLM Agents, Prompts & Milvus RAG)"
+        - "scope:api (FastAPI & OpenAPI Contracts - application/src/routers/)"
+        - "scope:ui-web (Material Design 3 Web UI - web/)"
+        - "scope:ui-streamlit (Legacy Streamlit Dashboard - application/src/ui/)"
+        - "scope:infra (Docker, MongoDB, Milvus, OTel, CI/CD)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: "🎯 Objective"
+      description: "In 1 to 3 concise sentences: what is the exact goal of this Feature?"
+      placeholder: "Deliver [capability] in [layer/module] so that [expected behavior], while preserving backward compatibility."
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: "📝 Description & Technical Specifications"
+      description: "Clearly state what needs to be built (domain invariants, contracts, affected modules, migration/fallback rules)."
+      placeholder: |
+        - **Expected Behavior**: ...
+        - **Impacted Layers**: `application/src/domain/...`, `application/src/application/use_cases/...`, `web/src/...`
+        - **DDD & Privacy Guardrails**: Pure domain (zero I/O in `src/domain/`), `PatientMDTForm` / `PatientRecord` ubiquitous language, `manual_edits` preservation, 100% local execution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tasks
+    attributes:
+      label: "📋 Task List (Optional)"
+      description: "Ordered, atomic implementation steps following strict TDD (Red -> Green -> Refactor) for a developer or AI agent."
+      placeholder: |
+        - [ ] **Tests (RED)**: Write failing unit/integration tests in `application/tests/...` or `web/src/...`
+        - [ ] **Domain / Use Case (GREEN)**: Implement pure domain entities/services and application use cases.
+        - [ ] **API / UI Adapters (GREEN)**: Update FastAPI routers, OpenAPI snapshot, and Web/Streamlit views.
+        - [ ] **Refactor & Quality (BLUE)**: Run linters, type checks, and full test suites.
+    validations:
+      required: false
+
+  - type: textarea
+    id: dod
+    attributes:
+      label: "✅ Definition of Done (DoD) — Mandatory"
+      description: "Verifiable, binary acceptance criteria required to consider this Feature complete."
+      value: |
+        - [ ] **Functional Criterion 1**: [TBD: Nominal behavior verified by automated test]
+        - [ ] **Functional Criterion 2**: [TBD: Edge case / backward compatibility / `manual_edits` preservation verified]
+        - [ ] **DDD & Ubiquitous Language**: 100% English docstrings/comments, strict `PatientMDTForm` / `PatientRecord` naming, zero I/O in `src/domain/` (`test_ddd_architecture.py` passes).
+        - [ ] **Python Quality**: `ruff check`, `ruff format --check`, `pyrefly`, and `pytest` pass with zero regressions.
+        - [ ] **Web Quality (if API/UI impacted)**: `npm --prefix web run lint` (WCAG 2.2 AA), `npm --prefix web run test` (Vitest), and `npm --prefix web run e2e` pass.
+        - [ ] **Git Hooks**: `prek run` passes cleanly.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: completeness_state
+    attributes:
+      label: "🚦 Ticket Completeness Status"
+      description: "If any requirement is unclear, if `[TBD]` remains in the DoD, or if open questions (`❓` / `🩺`) exist, select 'To Complete'."
+      options:
+        - "⚠️ To Complete (status:to-complete) — Ticket has open questions (❓/🩺) or DoD items still marked [TBD]"
+        - "✅ Ready for Development (status:ready) — Parent Story, scope, and DoD are 100% clear, concise, and actionable"
+    validations:
+      required: true

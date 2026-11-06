@@ -1,0 +1,89 @@
+# Taxonomy of GitHub Labels for DataSyntis / Oncoflow
+# Synchronized via `.agents/skills/github-issue-architect/scripts/sync_labels.sh`
+
+# ------------------------------------------------------------------------------
+# 1. Issue Type (Mutually exclusive per issue)
+# ------------------------------------------------------------------------------
+- name: "type:story"
+  color: "6f42c1"
+  description: "Pure business need validated by the PO agent (paired with a GitHub Milestone)"
+
+- name: "type:feature"
+  color: "0e8a16"
+  description: "Actionable functional/technical increment linked to a Story with Objective, Tasks & DoD"
+
+- name: "type:bug"
+  color: "d73a4a"
+  description: "Functional defect, regression, or anomaly with mandatory Description and DoD"
+
+# ------------------------------------------------------------------------------
+# 2. Completeness & Governance Status (Issue Lifecycle)
+# ------------------------------------------------------------------------------
+- name: "status:to-complete"
+  color: "fbca04"
+  description: "Incomplete ticket: missing parent Story, [TBD] in DoD, or unresolved questions (❓)"
+
+- name: "status:needs-po-validation"
+  color: "d93f0b"
+  description: "Awaiting business validation (product-owner) or clinical sign-off (doctor 🩺)"
+
+- name: "status:ready"
+  color: "008672"
+  description: "Complete, validated, and ready for implementation by a developer or AI agent"
+
+- name: "status:blocked"
+  color: "b60205"
+  description: "Blocked by an unresolved prerequisite issue (#XX)"
+
+# ------------------------------------------------------------------------------
+# 3. Clinical Domain (DataSyntis Multi-Domain Architecture)
+# ------------------------------------------------------------------------------
+- name: "domain:oncology"
+  color: "1d76db"
+  description: "Digestive Oncology domain (TNCD guidelines, organs, oncology MDT specialists)"
+
+- name: "domain:sma"
+  color: "5319e7"
+  description: "Spinal Muscular Atrophy / Rare Diseases domain (PNDS guidelines, longitudinal SMA follow-up)"
+
+- name: "domain:cross-domain"
+  color: "0052cc"
+  description: "Shared cross-domain platform capabilities (PatientMDTForm core, MDT Agenda, Auth)"
+
+# ------------------------------------------------------------------------------
+# 4. Architectural Scope (Hexagonal / DDD Layers)
+# ------------------------------------------------------------------------------
+- name: "scope:domain"
+  color: "c2e0c6"
+  description: "Pure DDD domain model with zero I/O (application/src/domain/)"
+
+- name: "scope:agents-rag"
+  color: "da26fd"
+  description: "Local LLM agents (Ollama/LiteLLM), prompts, OCR, multi-agent debate & Milvus RAG"
+
+- name: "scope:api"
+  color: "006b75"
+  description: "FastAPI backend, REST/SSE routers, Pydantic schemas & OpenAPI contracts"
+
+- name: "scope:ui-web"
+  color: "0075ca"
+  description: "Material Design 3 Web UI, Fastify BFF, TypeScript & WCAG 2.2 AA (web/)"
+
+- name: "scope:ui-streamlit"
+  color: "bfdadc"
+  description: "Legacy Streamlit clinical dashboard (application/src/ui/)"
+
+- name: "scope:infra"
+  color: "956018"
+  description: "Docker Compose, MongoDB, Milvus, Caddy/OAuth2, OpenTelemetry & CI/CD pipelines"
+
+# ------------------------------------------------------------------------------
+# 5. Hospital Personas
+# ------------------------------------------------------------------------------
+- name: "persona:physician"
+  color: "e99695"
+  description: "MDT Physician / Specialist or Session Chair"
+
+- name: "persona:secretary"
+  color: "f9d0c4"
+  description: "MDT Medical Secretary / Coordinator"
