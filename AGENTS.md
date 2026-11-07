@@ -69,7 +69,11 @@ MedDataSyntis defines custom agent skills in `.agents/skills/` and subagents in 
 graph TD
     PO[Product Owner] --> IM[GitHub Issue Manager]
     PO --> MD[Doctor / Clinical Expert]
+    PO --> LGE[Legal & GDPR Expert]
     PO --> UX[UI / UX Expert]
+    LGE --> IM
+    LGE --> UX
+    LGE --> SRE[SRE & DevOps Expert]
     IM --> PY[Python Developer]
     MD --> PM[LLM Prompting Engineer]
     PM --> PY
@@ -79,7 +83,7 @@ graph TD
     API --> QE
     QE --> CI[CI Expert]
     PY --> IE[Infrastructure Expert]
-    CI --> SRE[SRE & DevOps Expert]
+    CI --> SRE
     IE --> SRE
 ```
 
@@ -136,6 +140,12 @@ graph TD
 - **Locations**:
   - Subagent: [github-issue-manager.md](file:///home/guillaume/git/oncoflow/.agents/agents/github-issue-manager.md)
   - Skill: [github-issue-architect/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/github-issue-architect/SKILL.md)
+
+### 12. ⚖️ French GDPR & Medical-Legal Expert (`legal-gdpr-expert` Subagent & Skill)
+- **Domain**: French & European health data protection (**RGPD / GDPR**, **Loi Informatique et Libertés Art. 64–70**, **CNIL** health referentials, **HDS Art. L. 1111-8 CSP**, **PGSSI-S**), French Public Health Code (**Secret médical & Équipe de soins Art. L. 1110-4 / L. 1110-12 CSP**, **Garantie Humaine IA Art. L. 4001-2 CSP**, **Organisation des RCP Art. D. 6124-131 CSP / INCa / HAS / TNCD / PNDS**), **EU Medical Device Regulation (MDR 2017/745 Rule 11 & MDCG 2019-11)** non-prescriptive positioning, and **EU AI Act (2024/1689)** human oversight, transparency, and anti-hallucination grounding. Delivers structured 5-part regulatory & medico-legal opinions (*Avis motivés*).
+- **Locations**:
+  - Subagent: [legal-gdpr-expert.md](file:///home/guillaume/git/oncoflow/.agents/agents/legal-gdpr-expert.md)
+  - Skill: [legal-gdpr-expert/SKILL.md](file:///home/guillaume/git/oncoflow/.agents/skills/legal-gdpr-expert/SKILL.md)
 
 ---
 
