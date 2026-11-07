@@ -269,12 +269,28 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "title": "Localisation de la tumeur primitive",
         "default_expanded": False,
     },
+    "CancerDescription": {
+        "order": 42,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🔬",
+        "title": "Caractérisation tumorale, TNM & Réponse RECIST",
+        "default_expanded": False,
+    },
     "TumorBiology": {
         "order": 50,
         "tab": "clinical",
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🧬",
-        "title": "Biologie tumorale (Statut MSI / MSS)",
+        "title": "Biologie tumorale, Marqueurs & DPD",
+        "default_expanded": False,
+    },
+    "HepaticStatus": {
+        "order": 55,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "🧪",
+        "title": "Bilan hépatique, Child-Pugh & BCLC",
         "default_expanded": False,
     },
     "GeneticDiagnosis": {
@@ -291,6 +307,14 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🩺 Caractérisation clinique & biologique",
         "icon": "🏃",
         "title": "Statut de performance OMS",
+        "default_expanded": False,
+    },
+    "NutritionalStatus": {
+        "order": 62,
+        "tab": "clinical",
+        "pole": "🩺 Caractérisation clinique & biologique",
+        "icon": "⚖️",
+        "title": "Statut nutritionnel & évolution pondérale",
         "default_expanded": False,
     },
     "MotorFunctionStatus": {
@@ -332,6 +356,14 @@ SECTION_META: dict[str, dict[str, Any]] = {
         "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
         "icon": "🔬",
         "title": "Examens radiologiques",
+        "default_expanded": False,
+    },
+    "SurgicalStatus": {
+        "order": 95,
+        "tab": "clinical",
+        "pole": "🔬 Bilan paraclinique & Historique thérapeutique",
+        "icon": "🔪",
+        "title": "Statut de résécabilité & Marges chirurgicales",
         "default_expanded": False,
     },
     "PreviousCurativeSurgery": {
@@ -640,12 +672,40 @@ def _extract_section_header_summary(model_name: str, model_data: Any) -> str:
         loc = model_data.get("tumor_location")
         if loc:
             return f" — {translate(loc)}"
+    elif model_name == "CancerDescription":
+        tnm = model_data.get("tnm_status")
+        recist = model_data.get("recist_response")
+        if tnm and recist:
+            return f" — {tnm} ({recist})"
+        if tnm:
+            return f" — {tnm}"
     elif model_name == "TumorBiology":
         msi = model_data.get("msi_state")
+        ca = model_data.get("ca19_9")
+        parts = []
         if msi is True:
-            return " — MSI (Instable)"
-        if msi is False:
-            return " — MSS (Stable)"
+            parts.append("MSI (Instable)")
+        elif msi is False:
+            parts.append("MSS (Stable)")
+        if ca:
+            parts.append(f"CA 19-9: {ca}")
+        if parts:
+            return f" — {' · '.join(parts)}"
+    elif model_name == "SurgicalStatus":
+        res = model_data.get("resectability_status")
+        if res:
+            return f" — {translate(res)}"
+    elif model_name == "NutritionalStatus":
+        w = model_data.get("weight_kg")
+        if w is not None and w != "":
+            return f" — {w} kg"
+    elif model_name == "HepaticStatus":
+        bili = model_data.get("bilirubin_umol_l")
+        cp = model_data.get("child_pugh_score")
+        if cp:
+            return f" — Child-Pugh {cp}"
+        if bili is not None and bili != "":
+            return f" — Bilirubine {bili} µmol/L"
     elif model_name == "PatientPerformanceStatus":
         ps = model_data.get("performance_status")
         if ps is not None:

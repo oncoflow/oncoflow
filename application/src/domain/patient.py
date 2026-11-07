@@ -180,6 +180,10 @@ class Patient(BaseModel):
         default_factory=list,
         description="List of associated PatientMDTForm PDF filenames",
     )
+    record_summary: Optional[dict[str, Any]] = Field(
+        default=None,
+        description="Persisted global longitudinal PatientRecord summary snapshot",
+    )
     updated_at: Optional[datetime] = Field(
         default=None, description="Last update timestamp"
     )
@@ -345,6 +349,7 @@ class Patient(BaseModel):
             date_birth=date_birth,
             gender=gender,
             files=files,
+            record_summary=existing_dict.get("record_summary"),
             updated_at=datetime.now(),
         )
 
@@ -356,7 +361,7 @@ class Patient(BaseModel):
 
     def to_persistence(self) -> dict[str, Any]:
         """Serialize this `Patient` aggregate into a persistence dictionary."""
-        return {
+        payload: dict[str, Any] = {
             "patient_id": self.patient_id,
             "name_key": self.name_key,
             "first_name": self.first_name,
@@ -371,3 +376,6 @@ class Patient(BaseModel):
             "files": list(self.files),
             "updated_at": self.updated_at or datetime.now(),
         }
+        if self.record_summary is not None:
+            payload["record_summary"] = dict(self.record_summary)
+        return payload

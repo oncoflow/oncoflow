@@ -11,6 +11,10 @@ import {
   getDomainUserPromptsForAgent,
   resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
+import {
+  buildPatientDashboardFromForms,
+  synthesizePatientSummaryFromForms,
+} from "../../domain/patient-dashboard.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
@@ -29,7 +33,9 @@ import type {
   MdtExpertWindow,
   MdtFormCard,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientRecordSummaryView,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -143,6 +149,7 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
   private resources = new Map<string, ResourceDocument>();
   private bugs = new Map<string, BugReportItem>();
   private jobs = new Map<string, QueueJobItem>();
+  private patientSummaries = new Map<string, PatientRecordSummaryView>();
   private gpuLocksCount = 1;
   private agendas = new Map<
     ClinicalDomain,
@@ -681,6 +688,16 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     for (const f of [jeanne1, jeanne2, jeanne3, paul, leo1, leo2]) {
       this.forms.set(f.file, f);
     }
+
+    // Seed an initial summary for A-1042 generated before jeanne3 so obsolescence detection is demonstrated
+    const jeanneInitialSummary = synthesizePatientSummaryFromForms(
+      "FICTIVE Jeanne",
+      [jeanne1, jeanne2],
+      "oncology",
+      "mistral-nemo",
+    );
+    jeanneInitialSummary.generatedAt = "2026-10-15T10:00:00.000Z";
+    this.patientSummaries.set("oncology:A-1042", jeanneInitialSummary);
 
     // Seed Resources
     this.resources.set("TNCD_Pancreas_2026.pdf", {
@@ -2015,5 +2032,66 @@ export class InMemoryOncoflowApiFake implements OncoflowApiPort {
     }
     st.updatedAt = new Date().toISOString();
     return this.getMdtAgenda(domain);
+  }
+
+  async getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null> {
+    const forms = await this.getPatientForms(patientId, domain);
+    if (forms.length === 0) return null;
+    const latest = forms[0]!;
+    const admin = latest.sections.PatientAdministrative ?? {};
+    const patientName =
+      `${String(admin.last_name ?? "")} ${String(admin.first_name ?? "")}`.trim() || patientId;
+    const summary = this.patientSummaries.get(`${domain}:${patientId}`) ?? null;
+    return buildPatientDashboardFromForms(patientId, patientName, domain, forms, summary);
+  }
+
+  async triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    _force = false,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }> {
+    const forms = await this.getPatientForms(patientId, domain);
+    if (forms.length === 0) {
+      return { queued: false, alreadyQueued: false, jobId: null, summary: null };
+    }
+    const latest = forms[0]!;
+    const admin = latest.sections.PatientAdministrative ?? {};
+    const patientName =
+      `${String(admin.last_name ?? "")} ${String(admin.first_name ?? "")}`.trim() || patientId;
+
+    const jobId = `job_summary_${patientId}_${Date.now()}`;
+    const nowIso = new Date().toISOString();
+    this.jobs.set(jobId, {
+      jobId,
+      jobType: "PATIENT_SUMMARY",
+      status: "COMPLETED",
+      priority: 85,
+      domain,
+      filename: patientId,
+      section: "PatientRecordSummary",
+      progressPct: 100,
+      step: "Résumé global du dossier généré",
+      createdAt: nowIso,
+      startedAt: nowIso,
+      completedAt: nowIso,
+      error: null,
+    });
+
+    const generated = synthesizePatientSummaryFromForms(patientName, forms, domain);
+    this.patientSummaries.set(`${domain}:${patientId}`, generated);
+    return {
+      queued: true,
+      alreadyQueued: false,
+      jobId,
+      summary: generated,
+    };
   }
 }

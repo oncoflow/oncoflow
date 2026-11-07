@@ -41,15 +41,170 @@ class PatientMDTOncologicForm(PatientMDTForm):
             "Identify the primary organ where the tumor is located. Search for the principal diagnosis or the primary tumor site."
         )
 
+    class CancerDescription(PatientMDTForm.default_model):
+        """
+        Histological characterization, TNM staging, metastatic spread, and RECIST response
+        """
+
+        type_of_cancer: str = Field(
+            default="Non renseigné",
+            description="Histological type of the tumor (e.g., ductal adenocarcinoma, squamous cell carcinoma, hepatocellular carcinoma, neuroendocrine tumor)",
+        )
+        histological_grade: Optional[str] = Field(
+            default=None,
+            description="Histological differentiation grade (e.g., G1 well differentiated, G2 moderately differentiated, G3 poorly differentiated, or Ki-67 index %)",
+        )
+        tnm_status: Optional[str] = Field(
+            default=None,
+            description="Clinical or pathological TNM classification (e.g., cT3N1M0, ypT1N0M0)",
+        )
+        figo_stage: Optional[str] = Field(
+            default=None,
+            description="Overall stage (AJCC/UICC I-IV or FIGO stage if applicable)",
+        )
+        metastatic_status: Optional[bool] = Field(
+            default=None,
+            description="True if distant metastases are present (M1), False if localized (M0)",
+        )
+        metastatic_sites: list[str] = Field(
+            default_factory=list,
+            description="List of organs affected by distant metastases (e.g., liver, lung, peritoneum, bone, distant lymph nodes)",
+        )
+        target_lesion_size_mm: Optional[float | int | str] = Field(
+            default=None,
+            description="Size of the primary tumor or main target lesion in millimeters (mm)",
+        )
+        recist_response: Optional[str] = Field(
+            default=None,
+            description="Radiological response according to RECIST 1.1: Baseline / Bilan initial, Complete Response (RC), Partial Response (RP), Stable Disease (SD), or Progressive Disease (PD)",
+        )
+
+        question: ClassVar[str] = (
+            "Extract the histological type and differentiation grade of the tumor, the TNM staging (cTNM or ypTNM), whether distant metastases are present and their sites, the size of the primary/target lesion in mm, and the RECIST 1.1 radiological evolution if mentioned."
+        )
+
     class TumorBiology(PatientMDTForm.default_model):
         """
         Biology of the tumor
         """
 
-        msi_state: Optional[bool] = Field(description="Is the tumor MSI or MSS")
+        msi_state: Optional[bool] = Field(
+            default=None,
+            description="Is the tumor MSI (True) or MSS (False)",
+        )
+        ca19_9: Optional[float | int | str] = Field(
+            default=None,
+            description="Serum CA 19-9 tumor marker level (U/mL)",
+        )
+        ace: Optional[float | int | str] = Field(
+            default=None,
+            description="Serum CEA / ACE (Carcinoembryonic Antigen) tumor marker level (ng/mL)",
+        )
+        afp: Optional[float | int | str] = Field(
+            default=None,
+            description="Serum Alpha-Fetoprotein (AFP) tumor marker level (ng/mL, crucial for hepatocellular carcinoma)",
+        )
+        dpd_uracilemia: Optional[float | int | str] = Field(
+            default=None,
+            description="Pre-therapeutic plasma uracilemia (ng/mL) or DPD deficiency status (mandatory in France before 5-FU / capecitabine)",
+        )
+        ras_braf_status: Optional[str] = Field(
+            default=None,
+            description="KRAS, NRAS, and BRAF molecular mutation status (e.g., KRAS G12D mutated, RAS/BRAF wild-type)",
+        )
+        her2_status: Optional[str] = Field(
+            default=None,
+            description="HER2 overexpression/amplification and PD-L1 CPS/TPS status if tested",
+        )
 
         question: ClassVar[str] = (
-            "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)? Search for 'MSI', 'MSS', 'instabilité microsatellitaire', or 'statut MMR'. If not mentioned, state it."
+            "Extract tumor biology and biomarkers: MSI/MSS (MMR) status, serum tumor markers (CA 19-9 in U/mL, ACE/CEA in ng/mL, AFP in ng/mL), pre-therapeutic DPD / uracilemia (ng/mL), and molecular alterations (KRAS, NRAS, BRAF, HER2, PD-L1 CPS). Set missing items to null."
+        )
+
+    class SurgicalStatus(PatientMDTForm.default_model):
+        """
+        Vascular resectability assessment and surgical margin status
+        """
+
+        resectability_status: Optional[str] = Field(
+            default=None,
+            description="Surgical and vascular resectability status according to TNCD criteria: Resectable, Borderline, Locally advanced, Unresectable, or Metastatic",
+            json_schema_extra={
+                "options": [
+                    "Resectable",
+                    "Borderline",
+                    "Locally advanced",
+                    "Unresectable",
+                    "Metastatic",
+                ]
+            },
+        )
+        surgery_done: bool = Field(
+            default=False,
+            description="Has a tumor resection surgery been performed?",
+        )
+        resection_margin: Optional[str] = Field(
+            default=None,
+            description="Pathological resection margin status if operated: R0 (clear margins), R1 (microscopic residual tumor), or R2 (macroscopic residual tumor)",
+            json_schema_extra={
+                "options": [
+                    "R0",
+                    "R1",
+                    "R2",
+                ]
+            },
+        )
+
+        question: ClassVar[str] = (
+            "Determine the surgical resectability status of the tumor (Resectable, Borderline, Locally advanced, Unresectable, or Metastatic based on vascular contact and staging), whether tumor resection was performed, and the resection margin status (R0, R1, R2) if available."
+        )
+
+    class NutritionalStatus(PatientMDTForm.default_model):
+        """
+        Nutritional assessment, weight evolution, and body mass index
+        """
+
+        weight_kg: Optional[float | int | str] = Field(
+            default=None,
+            description="Current patient weight in kilograms (kg)",
+        )
+        weight_loss_percent: Optional[float | int | str] = Field(
+            default=None,
+            description="Percentage of weight loss compared to baseline weight (%)",
+        )
+        bmi: Optional[float | int | str] = Field(
+            default=None,
+            description="Body Mass Index (BMI / IMC) in kg/m²",
+        )
+        nutritional_status: Optional[str] = Field(
+            default=None,
+            description="Overall nutritional status (Normal, Moderate malnutrition / Dénutrition modérée, Severe malnutrition / Dénutrition sévère)",
+        )
+
+        question: ClassVar[str] = (
+            "Extract the patient's nutritional parameters: current weight (kg), weight loss percentage (%), BMI (IMC in kg/m²), and overall nutritional status."
+        )
+
+    class HepaticStatus(PatientMDTForm.default_model):
+        """
+        Hepatic biological function, bilirubin level, Child-Pugh score, and BCLC stage
+        """
+
+        bilirubin_umol_l: Optional[float | int | str] = Field(
+            default=None,
+            description="Total serum bilirubin level in µmol/L (crucial for jaundice, biliary drainage indication, and chemotherapy eligibility)",
+        )
+        child_pugh_score: Optional[str] = Field(
+            default=None,
+            description="Child-Pugh liver function class and score (e.g., A5, A6, B7, B8, C10) if cirrhosis or hepatocellular carcinoma",
+        )
+        bclc_stage: Optional[str] = Field(
+            default=None,
+            description="Barcelona Clinic Liver Cancer (BCLC) stage (0, A, B, C, D) for hepatocellular carcinoma",
+        )
+
+        question: ClassVar[str] = (
+            "Extract hepatic function indicators: total bilirubin level (µmol/L), Child-Pugh score/class (A5 to C15), and BCLC stage if applicable."
         )
 
     class RadiologicExams(PatientMDTForm.default_model):
@@ -108,37 +263,12 @@ class PatientMDTOncologicForm(PatientMDTForm):
             "Has the patient received any chemotherapy for this tumor? If yes, provide details of the treatments."
         )
 
-    class ExpertAnswer(PatientMDTForm.default_model):
+    class ExpertAnswer(PatientMDTForm.ExpertAnswer):
         agents: ClassVar[list[type[OncowflowAgent]]] = [
             Agents.Pancreas_expert_agent,
             Agents.Oesophagus_expert_agent,
             Agents.Hepatocellular_expert_agent,
         ]
-
-        expert_relevant: bool = Field(
-            description="Is your expertise relevant for this patient's case?"
-        )
-
-        patient_priority: PatientPriority = Field(  # noqa: F405
-            description="Urgency of the patient's treatment"
-        )
-
-        why_relevant: str = Field(
-            description="Explain why your expertise is relevant (or not) for this patient and justify the priority given."
-        )
-
-        sources_relevant: list[Reference] = Field(  # noqa: F405
-            description="Give the sources of your relevant answer"
-        )
-
-        suggestions: list[ExpertSuggestion] = Field(  # noqa: F405
-            description="List of suggestions. Empty if expert is not relevant."
-        )
-
-        question: ClassVar[str] = """
-            As an expert in your field, determine if the patient requires urgent treatment. Assess if your expertise is relevant to this case and explain your reasoning.
-            You can use tools multiple times for each element and have more scientific elements.
-            """
 
     class MTDCompleted(PatientMDTForm.MTDCompleted):
         agents: ClassVar[list[type[OncowflowAgent]]] = Agents().expert_agents

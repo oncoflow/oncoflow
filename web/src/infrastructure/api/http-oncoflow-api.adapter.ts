@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type {
   ChatReply,
   MissingItemsUpdateInput,
@@ -12,6 +13,7 @@ import {
   getDomainUserPromptsForAgent,
   resolveCanonicalSectionName,
 } from "../../domain/catalog.js";
+import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import { normalizePriorityLevel } from "../../domain/triage.js";
 import type {
   AgentModuleInfo,
@@ -27,7 +29,11 @@ import type {
   MdtAgendaView,
   MdtFormCard,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientMetricPointView,
+  PatientMetricSeriesView,
+  PatientRecordSummaryView,
   QueueJobItem,
   QueueStats,
   ResourceDocument,
@@ -40,6 +46,15 @@ import {
   RawResourceSchema,
 } from "../validation/schemas.js";
 
+export interface BffRequestForwardContext {
+  clientIp?: string;
+  userId?: string;
+  userName?: string;
+  requestId?: string;
+}
+
+export const bffRequestContext = new AsyncLocalStorage<BffRequestForwardContext>();
+
 export interface HttpOncoflowApiAdapterOptions {
   baseUrl: string;
   apiToken?: string;
@@ -48,6 +63,7 @@ export interface HttpOncoflowApiAdapterOptions {
   fallbackPort?: OncoflowApiPort;
   timeoutMs?: number;
   chatTimeoutMs?: number;
+  cacheTtlMs?: number;
 }
 
 export class HttpOncoflowApiAdapter implements OncoflowApiPort {
@@ -58,7 +74,22 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   private readonly fallback?: OncoflowApiPort;
   private readonly timeoutMs: number;
   private readonly chatTimeoutMs: number;
+  private readonly cacheTtlMs: number;
   private readonly domainSchemaCache = new Map<ClinicalDomain, DomainFormSchema>();
+  private readonly agentsCache = new Map<string, { expiresAt: number; data: AgentModuleInfo[] }>();
+  private readonly patientsListCache = new Map<
+    string,
+    { expiresAt: number; data: PatientListItem[] }
+  >();
+  private readonly patientFormsCache = new Map<
+    string,
+    { expiresAt: number; data: MdtFormDetail[] }
+  >();
+  private readonly patientDashboardCache = new Map<
+    string,
+    { expiresAt: number; data: PatientDashboardView | null }
+  >();
+  private readonly pdfBufferCache = new Map<string, { expiresAt: number; data: Buffer }>();
 
   constructor(options: HttpOncoflowApiAdapterOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
@@ -68,6 +99,14 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     this.fallback = options.fallbackPort;
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.chatTimeoutMs = options.chatTimeoutMs ?? Math.max(this.timeoutMs, 300_000);
+    this.cacheTtlMs = options.cacheTtlMs ?? 15_000;
+  }
+
+  private invalidateDossierCaches(): void {
+    this.patientsListCache.clear();
+    this.patientFormsCache.clear();
+    this.patientDashboardCache.clear();
+    this.pdfBufferCache.clear();
   }
 
   private buildHeaders(
@@ -79,6 +118,20 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       "X-Oncoflow-Domain": domain,
       ...extra,
     };
+    const ctx = bffRequestContext.getStore();
+    if (ctx?.clientIp && !headers["X-Forwarded-For"]) {
+      headers["X-Forwarded-For"] = ctx.clientIp;
+      headers["X-Real-IP"] = ctx.clientIp;
+    }
+    if (ctx?.userId && !headers["X-Oncoflow-User"]) {
+      headers["X-Oncoflow-User"] = ctx.userId;
+    }
+    if (ctx?.userName && !headers["X-Oncoflow-User-Name"]) {
+      headers["X-Oncoflow-User-Name"] = ctx.userName;
+    }
+    if (ctx?.requestId && !headers["X-Request-ID"]) {
+      headers["X-Request-ID"] = ctx.requestId;
+    }
     if (this.apiToken) {
       headers.Authorization = `Bearer ${this.apiToken}`;
       headers["X-API-Key"] = this.apiToken;
@@ -398,12 +451,18 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   }
 
   async listPatients(domain: ClinicalDomain, identifiedOnly = false): Promise<PatientListItem[]> {
+    const cacheKey = `${domain}:${String(identifiedOnly)}`;
+    const now = Date.now();
+    const cached = this.patientsListCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
     try {
       const rows = await this.requestJson<Array<Record<string, unknown>>>(
         `/api/v1/patientmdtform/patients?domain=${encodeURIComponent(domain)}&identified_only=${String(identifiedOnly)}`,
         domain,
       );
-      return rows.map((r) => ({
+      const data = rows.map((r) => ({
         id: String(r.patient_id ?? r.id ?? ""),
         firstName: r.first_name && r.first_name !== "Not_given" ? String(r.first_name) : "",
         lastName:
@@ -415,6 +474,13 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         gender: r.gender && r.gender !== "Not_given" ? String(r.gender) : null,
         rcpCount: Number(r.rcp_count ?? 1),
       }));
+      if (this.cacheTtlMs > 0) {
+        this.patientsListCache.set(cacheKey, {
+          expiresAt: now + Math.min(this.cacheTtlMs, 15_000),
+          data,
+        });
+      }
+      return data;
     } catch (err) {
       if (this.fallback) return this.fallback.listPatients(domain, identifiedOnly);
       throw err;
@@ -422,6 +488,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   }
 
   async deletePatient(patientId: string, domain: ClinicalDomain): Promise<void> {
+    this.invalidateDossierCaches();
     try {
       await this.requestJson(
         `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(domain)}`,
@@ -435,6 +502,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   }
 
   async deleteForm(filename: string, domain: ClinicalDomain): Promise<void> {
+    this.invalidateDossierCaches();
     try {
       await this.requestJson(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}?domain=${encodeURIComponent(domain)}`,
@@ -537,6 +605,12 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   }
 
   async getPatientForms(patientId: string, domain: ClinicalDomain): Promise<MdtFormDetail[]> {
+    const cacheKey = `${domain}:${patientId}`;
+    const now = Date.now();
+    const cached = this.patientFormsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
     try {
       const res = await this.requestJson<Record<string, unknown> | Array<Record<string, unknown>>>(
         `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}?domain=${encodeURIComponent(domain)}`,
@@ -560,13 +634,20 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
             : Array.isArray(res.rcps)
               ? (res.rcps as Array<Record<string, unknown>>)
               : [res];
-      return list.map((item) => {
+      const data = list.map((item) => {
         const mapped = this.mapRawDetail(item, domain);
         if (!mapped.patientId && topPatientId) {
           mapped.patientId = topPatientId;
         }
         return mapped;
       });
+      if (this.cacheTtlMs > 0) {
+        this.patientFormsCache.set(cacheKey, {
+          expiresAt: now + Math.min(this.cacheTtlMs, 5_000),
+          data,
+        });
+      }
+      return data;
     } catch (err) {
       if (this.fallback) return this.fallback.getPatientForms(patientId, domain);
       if (
@@ -586,6 +667,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     editedBy: string,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
+    this.invalidateDossierCaches();
     try {
       const canonicalSection = resolveCanonicalSectionName(section);
       const domainSchema = await this.getDomainSchema(domain).catch(() => null);
@@ -625,6 +707,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     section: string,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
+    this.invalidateDossierCaches();
     try {
       const canonicalSection = resolveCanonicalSectionName(section);
       const res = await this.requestJson<Record<string, unknown>>(
@@ -648,6 +731,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     input: MissingItemsUpdateInput,
     domain: ClinicalDomain,
   ): Promise<MdtFormDetail> {
+    this.invalidateDossierCaches();
     try {
       const res = await this.requestJson<Record<string, unknown>>(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}/missing-items?domain=${encodeURIComponent(domain)}`,
@@ -679,6 +763,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     preserveManualEdits: boolean,
     domain: ClinicalDomain,
   ): Promise<{ jobId: string; preserveManualEdits: boolean }> {
+    this.invalidateDossierCaches();
     const canonicalSection = resolveCanonicalSectionName(section);
     try {
       const res = await this.requestJson<Record<string, unknown>>(
@@ -711,6 +796,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     preserveManualEdits: boolean,
     domain: ClinicalDomain,
   ): Promise<{ jobId: string }> {
+    this.invalidateDossierCaches();
     try {
       const res = await this.requestJson<Record<string, unknown>>(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}/process?domain=${encodeURIComponent(domain)}`,
@@ -741,6 +827,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     patientId: string | null,
     domain: ClinicalDomain,
   ): Promise<void> {
+    this.invalidateDossierCaches();
     try {
       await this.requestJson(
         `/api/v1/patientmdtform/${encodeURIComponent(filename)}/link-patient?domain=${encodeURIComponent(domain)}`,
@@ -765,6 +852,12 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     domain: ClinicalDomain,
     variant: "plain" | "bbox" = "plain",
   ): Promise<Buffer | null> {
+    const cacheKey = `${domain}:${variant}:${filename}`;
+    const now = Date.now();
+    const cached = this.pdfBufferCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
     try {
       const url = `${this.baseUrl}/api/v1/patientmdtform/${encodeURIComponent(filename)}/pdf?inline=true&variant=${variant}&domain=${encodeURIComponent(domain)}`;
       const resp = await this.fetchImpl(url, {
@@ -775,7 +868,18 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
         return null;
       }
       const arr = await resp.arrayBuffer();
-      return Buffer.from(arr);
+      const buf = Buffer.from(arr);
+      if (this.cacheTtlMs > 0) {
+        if (this.pdfBufferCache.size >= 16) {
+          const oldestKey = this.pdfBufferCache.keys().next().value;
+          if (oldestKey) this.pdfBufferCache.delete(oldestKey);
+        }
+        this.pdfBufferCache.set(cacheKey, {
+          expiresAt: now + Math.min(this.cacheTtlMs * 2, 30_000),
+          data: buf,
+        });
+      }
+      return buf;
     } catch (err) {
       if (this.fallback) return this.fallback.getFormPdfBuffer(filename, domain, variant);
       throw err;
@@ -837,6 +941,7 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
     batchId: string,
     domain: ClinicalDomain,
   ): Promise<{ batchId: string; filenames: string[] }> {
+    this.invalidateDossierCaches();
     try {
       const filenames: string[] = [];
       for (const f of files) {
@@ -1028,12 +1133,18 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
   }
 
   async listAgents(domain: ClinicalDomain, language: Language): Promise<AgentModuleInfo[]> {
+    const cacheKey = `${domain}:${language}`;
+    const now = Date.now();
+    const cached = this.agentsCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
     try {
       const rows = await this.requestJson<Array<Record<string, unknown>>>(
         `/api/v1/agents?domain=${encodeURIComponent(domain)}`,
         domain,
       );
-      return rows.map((r) => {
+      const data = rows.map((r) => {
         const name = String(r.name ?? r.id ?? "");
         const pres = getAgentPresentation(name, language);
         const resourcesList = Array.isArray(r.resources)
@@ -1053,6 +1164,13 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
           userPrompts: getDomainUserPromptsForAgent(name, domain, language),
         };
       });
+      if (this.cacheTtlMs > 0) {
+        this.agentsCache.set(cacheKey, {
+          expiresAt: now + Math.max(this.cacheTtlMs, 30_000),
+          data,
+        });
+      }
+      return data;
     } catch (err) {
       if (this.fallback) return this.fallback.listAgents(domain, language);
       throw err;
@@ -1612,6 +1730,210 @@ export class HttpOncoflowApiAdapter implements OncoflowApiPort {
       return this.mapRawAgenda(res, domain);
     } catch (err) {
       if (this.fallback) return this.fallback.movePatientInMdtAgenda(patientId, input, domain);
+      throw err;
+    }
+  }
+
+  private mapRawSummary(raw: Record<string, unknown> | null | undefined): PatientRecordSummaryView {
+    if (!raw || typeof raw !== "object") {
+      return {
+        hasSummary: false,
+        generatedAt: null,
+        coveredFormIds: [],
+        latestFormIdAtGeneration: null,
+        latestFormDateAtGeneration: null,
+        modelUsed: null,
+        isObsolete: false,
+        obsoleteReasons: [],
+        newFormsSinceSummary: [],
+        removedFormsSinceSummary: [],
+        modifiedFormsSinceSummary: [],
+        content: null,
+        activeJob: null,
+      };
+    }
+    const rawContent =
+      raw.content && typeof raw.content === "object"
+        ? (raw.content as Record<string, unknown>)
+        : null;
+    return {
+      hasSummary: Boolean(raw.has_summary ?? rawContent !== null),
+      generatedAt: raw.generated_at ? String(raw.generated_at) : null,
+      coveredFormIds: Array.isArray(raw.covered_form_ids)
+        ? (raw.covered_form_ids as unknown[]).map(String)
+        : [],
+      latestFormIdAtGeneration: raw.latest_form_id_at_generation
+        ? String(raw.latest_form_id_at_generation)
+        : null,
+      latestFormDateAtGeneration: raw.latest_form_date_at_generation
+        ? String(raw.latest_form_date_at_generation)
+        : null,
+      modelUsed: raw.model_used ? String(raw.model_used) : null,
+      isObsolete: Boolean(raw.is_obsolete),
+      obsoleteReasons: Array.isArray(raw.obsolete_reasons)
+        ? (raw.obsolete_reasons as unknown[]).map(String)
+        : [],
+      newFormsSinceSummary: Array.isArray(raw.new_forms_since_summary)
+        ? (raw.new_forms_since_summary as unknown[]).map(String)
+        : [],
+      removedFormsSinceSummary: Array.isArray(raw.removed_forms_since_summary)
+        ? (raw.removed_forms_since_summary as unknown[]).map(String)
+        : [],
+      modifiedFormsSinceSummary: Array.isArray(raw.modified_forms_since_summary)
+        ? (raw.modified_forms_since_summary as unknown[]).map(String)
+        : [],
+      content: rawContent
+        ? {
+            clinicalTrajectoryOverview: String(rawContent.clinical_trajectory_overview ?? ""),
+            diseaseAndTreatmentEvolution: String(rawContent.disease_and_treatment_evolution ?? ""),
+            notableMetricChanges: Array.isArray(rawContent.notable_metric_changes)
+              ? (rawContent.notable_metric_changes as unknown[]).map(String)
+              : [],
+            unresolvedVigilancePoints: Array.isArray(rawContent.unresolved_vigilance_points)
+              ? (rawContent.unresolved_vigilance_points as unknown[]).map(String)
+              : [],
+            mdtDecisionsRecap: Array.isArray(rawContent.mdt_decisions_recap)
+              ? (rawContent.mdt_decisions_recap as unknown[]).map(String)
+              : [],
+            sourcesUsed: Array.isArray(rawContent.sources_used)
+              ? (rawContent.sources_used as unknown[]).map(String)
+              : [],
+          }
+        : null,
+      activeJob:
+        raw.active_job && typeof raw.active_job === "object"
+          ? (raw.active_job as Record<string, unknown>)
+          : null,
+    };
+  }
+
+  async getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null> {
+    const cacheKey = `${domain}:${patientId}`;
+    const now = Date.now();
+    const cached = this.patientDashboardCache.get(cacheKey);
+    if (cached && cached.expiresAt > now) {
+      return cached.data;
+    }
+    try {
+      const raw = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}/dashboard?domain=${encodeURIComponent(domain)}`,
+        domain,
+      );
+      const patientObj =
+        raw.patient && typeof raw.patient === "object"
+          ? (raw.patient as Record<string, unknown>)
+          : {};
+      const patientName =
+        `${String(patientObj.last_name ?? "")} ${String(patientObj.first_name ?? "")}`.trim() ||
+        patientId;
+      const rawSeries = Array.isArray(raw.metrics)
+        ? (raw.metrics as Record<string, unknown>[])
+        : [];
+      const metrics: PatientMetricSeriesView[] = rawSeries.map((s) => ({
+        metricKey: String(s.metric_key ?? ""),
+        section: String(s.section ?? ""),
+        field: String(s.field ?? ""),
+        label: String(s.label ?? ""),
+        unit: String(s.unit ?? ""),
+        scaleMin: typeof s.scale_min === "number" ? s.scale_min : null,
+        scaleMax: typeof s.scale_max === "number" ? s.scale_max : null,
+        polarity: String(s.polarity ?? "neutral"),
+        valueType: String(s.value_type ?? "numeric_or_mixed"),
+        points: Array.isArray(s.points)
+          ? (s.points as Record<string, unknown>[]).map(
+              (p): PatientMetricPointView => ({
+                formId: String(p.form_id ?? ""),
+                formDate: p.form_date ? String(p.form_date) : null,
+                formDateLabel: String(p.form_date_label ?? ""),
+                daysSinceFirstRcp: Number(p.days_since_first_rcp ?? 0),
+                xRatio: Number(p.x_ratio ?? 0),
+                rawValue: p.raw_value,
+                displayValue: String(p.display_value ?? ""),
+                numericValue: typeof p.numeric_value === "number" ? p.numeric_value : null,
+                subValues:
+                  p.sub_values && typeof p.sub_values === "object"
+                    ? (p.sub_values as Record<string, number>)
+                    : null,
+                isAnnotativeOnly: Boolean(p.is_annotative_only),
+                isManual: Boolean(p.is_manual),
+                editedBy: p.edited_by ? String(p.edited_by) : null,
+                editedAt: p.edited_at ? String(p.edited_at) : null,
+                deltaNumeric: typeof p.delta_numeric === "number" ? p.delta_numeric : null,
+                deltaDisplay: p.delta_display ? String(p.delta_display) : null,
+              }),
+            )
+          : [],
+      }));
+
+      const data: PatientDashboardView = {
+        patientId: String(patientObj.patient_id ?? patientId),
+        patientName,
+        domain,
+        latestFile: raw.latest_file ? String(raw.latest_file) : null,
+        rcpCount: Number(raw.rcp_count ?? 0),
+        metrics,
+        summary: this.mapRawSummary(
+          raw.summary && typeof raw.summary === "object"
+            ? (raw.summary as Record<string, unknown>)
+            : null,
+        ),
+      };
+      if (this.cacheTtlMs > 0 && !data.summary.activeJob) {
+        this.patientDashboardCache.set(cacheKey, {
+          expiresAt: now + Math.min(this.cacheTtlMs, 5_000),
+          data,
+        });
+      }
+      return data;
+    } catch (_err) {
+      if (this.fallback) return this.fallback.getPatientDashboard(patientId, domain);
+      const forms = await this.getPatientForms(patientId, domain);
+      if (forms.length === 0) return null;
+      const admin = forms[0]?.sections.PatientAdministrative ?? {};
+      const patientName =
+        `${String(admin.last_name ?? "")} ${String(admin.first_name ?? "")}`.trim() || patientId;
+      return buildPatientDashboardFromForms(patientId, patientName, domain, forms, null);
+    }
+  }
+
+  async triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    force = false,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }> {
+    this.invalidateDossierCaches();
+    try {
+      const res = await this.requestJson<Record<string, unknown>>(
+        `/api/v1/patientmdtform/patients/${encodeURIComponent(patientId)}/summary?domain=${encodeURIComponent(domain)}`,
+        domain,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force }),
+        },
+      );
+      const jobObj =
+        res.job && typeof res.job === "object" ? (res.job as Record<string, unknown>) : null;
+      return {
+        queued: Boolean(res.queued ?? true),
+        alreadyQueued: Boolean(res.already_queued ?? false),
+        jobId: jobObj?.job_id ? String(jobObj.job_id) : null,
+        summary: this.mapRawSummary(
+          res.summary && typeof res.summary === "object"
+            ? (res.summary as Record<string, unknown>)
+            : null,
+        ),
+      };
+    } catch (err) {
+      if (this.fallback) return this.fallback.triggerPatientSummary(patientId, domain, force);
       throw err;
     }
   }

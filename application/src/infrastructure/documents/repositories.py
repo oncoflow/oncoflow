@@ -69,12 +69,20 @@ class InMemoryPatientRepository:
         if filename and filename not in files:
             files.append(filename)
 
+        preserved_summary = (
+            patient.record_summary
+            if patient.record_summary is not None
+            else (existing.record_summary if existing else None)
+        )
         updated = patient.model_copy(
             update={
                 "files": files,
                 "name_key": Patient.build_name_key(
                     patient.first_name, patient.last_name
                 ),
+                "record_summary": deepcopy(preserved_summary)
+                if preserved_summary is not None
+                else None,
                 "updated_at": patient.updated_at or datetime.now(),
             },
             deep=True,

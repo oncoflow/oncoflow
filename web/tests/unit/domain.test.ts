@@ -21,6 +21,13 @@ import {
 } from "../../src/domain/catalog.js";
 import { t, translateValue } from "../../src/domain/i18n.js";
 import {
+  buildPatientDashboardFromForms,
+  evaluatePatientSummaryObsolescence,
+  parseRawMetricObservation,
+  SMA_METRIC_SPECS,
+  synthesizePatientSummaryFromForms,
+} from "../../src/domain/patient-dashboard.js";
+import {
   computeLongitudinalDeltas,
   computeWorklistKpis,
   deriveCompletenessInfo,
@@ -30,6 +37,7 @@ import {
   priorityRank,
 } from "../../src/domain/triage.js";
 import type { MdtFormCard, MdtFormDetail } from "../../src/domain/types.js";
+import { renderPatientDashboardPanel } from "../../src/ui/components/patient-dashboard.component.js";
 
 describe("Domain Triage & Medico-Legal Rules (ML-1..ML-3)", () => {
   it("normalizes priority strings and ranks high > medium > low > none", () => {
@@ -541,5 +549,538 @@ describe("Domain Catalog & i18n (FR / EN)", () => {
     expect(adminCoerced.extra_field).toBe("extra");
     const strictAdmin = buildStrictBackendSectionPayload("PatientAdministrative", adminCoerced);
     expect(strictAdmin).not.toHaveProperty("extra_field");
+  });
+
+  it("supports raw non-integer RULM/HFMSE observations, multi-year series, and obsolescence detection", () => {
+    const smaSchema = buildDefaultDomainFormSchema("sma");
+    const coercedRatio = coerceSectionUpdatePayload(
+      "MotorFunctionStatus",
+      {
+        best_motor_function: "Sitter",
+        rulm_score: "34/37",
+        hfmse_score: "31.5",
+        chop_intend_score: "Non testable (fatigue)",
+      },
+      {},
+      smaSchema,
+    );
+    expect(coercedRatio.rulm_score).toBe("34/37");
+    expect(coercedRatio.hfmse_score).toBe(31.5);
+    expect(coercedRatio.chop_intend_score).toBe("Non testable (fatigue)");
+
+    const rulmSpec = SMA_METRIC_SPECS[0]!;
+    const obsRatio = parseRawMetricObservation("34/37", rulmSpec);
+    expect(obsRatio.numericValue).toBe(34);
+    expect(obsRatio.displayValue).toBe("34/37");
+
+    const obsBilateral = parseRawMetricObservation("28 (D) / 30 (G)", rulmSpec);
+    expect(obsBilateral.numericValue).toBe(29);
+    expect(obsBilateral.subValues).toEqual({ D: 28, G: 30 });
+
+    const obsAnnot = parseRawMetricObservation("Non testable (douleur épaule)", rulmSpec);
+    expect(obsAnnot.numericValue).toBeNull();
+    expect(obsAnnot.isAnnotativeOnly).toBe(true);
+
+    const smaForms: MdtFormDetail[] = [
+      {
+        file: "sma_2022_03_10.pdf",
+        patientId: "S-0007",
+        domain: "sma",
+        mdtDate: "2022-03-10",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Léo",
+            last_name: "Test",
+            date_rcp: "2022-03-10",
+          },
+          MotorFunctionStatus: {
+            rulm_score: "28 (D) / 30 (G)",
+            hfmse_score: 40,
+            best_motor_function: "Assis sans appui (Sitter)",
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+      {
+        file: "sma_2026_11_05.pdf",
+        patientId: "S-0007",
+        domain: "sma",
+        mdtDate: "2026-11-05",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Léo",
+            last_name: "Test",
+            date_rcp: "2026-11-05",
+          },
+          MotorFunctionStatus: {
+            rulm_score: "34/37",
+            hfmse_score: 46.5,
+            best_motor_function: "Assis sans appui (Sitter)",
+          },
+        },
+        manualEdits: {
+          MotorFunctionStatus: { edited_by: "Dr. Martin", edited_at: "2026-11-05T10:00:00Z" },
+        },
+        executionTimes: {},
+        metrics: {},
+      },
+    ];
+
+    const summary2022 = synthesizePatientSummaryFromForms("Léo Test", smaForms.slice(0, 1), "sma");
+    const evaluatedObsolete = evaluatePatientSummaryObsolescence(summary2022, smaForms);
+    expect(evaluatedObsolete.isObsolete).toBe(true);
+    expect(evaluatedObsolete.newFormsSinceSummary).toEqual(["sma_2026_11_05.pdf"]);
+
+    const dashboard = buildPatientDashboardFromForms(
+      "S-0007",
+      "Léo Test",
+      "sma",
+      smaForms,
+      summary2022,
+    );
+    const rulmSeries = dashboard.metrics.find(
+      (m) => m.metricKey === "MotorFunctionStatus.rulm_score",
+    );
+    expect(rulmSeries).toBeDefined();
+    expect(rulmSeries?.points).toHaveLength(2);
+    expect(rulmSeries?.points[0]?.displayValue).toBe("28 (D) / 30 (G)");
+    expect(rulmSeries?.points[1]?.displayValue).toBe("34/37");
+    expect(rulmSeries?.points[1]?.isManual).toBe(true);
+    expect(rulmSeries?.points[1]?.daysSinceFirstRcp).toBeGreaterThan(1500);
+  });
+
+  it("extracts oncology longitudinal metric series across CancerDescription, TumorBiology, SurgicalStatus, NutritionalStatus, and HepaticStatus", () => {
+    const oncoForms: MdtFormDetail[] = [
+      {
+        file: "onco_2026_01_15.pdf",
+        patientId: "O-101",
+        domain: "oncology",
+        mdtDate: "2026-01-15",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Jean",
+            last_name: "DUPONT",
+            date_rcp: "2026-01-15",
+          },
+          TumorLocation: { tumor_location: "Pancreas" },
+          CancerDescription: {
+            type_of_cancer: "Adénocarcinome canalaire pancréatique",
+            tnm_status: "cT3N1M0",
+            target_lesion_size_mm: 36.0,
+            recist_response: "Baseline",
+          },
+          TumorBiology: {
+            msi_state: false,
+            ca19_9: 1450.0,
+            ace: 14.2,
+            dpd_uracilemia: 9.5,
+          },
+          SurgicalStatus: {
+            resectability_status: "Borderline",
+            surgery_done: false,
+          },
+          NutritionalStatus: {
+            weight_kg: 68.0,
+            weight_loss_percent: 11.5,
+            bmi: 22.1,
+          },
+          HepaticStatus: {
+            bilirubin_umol_l: 85.0,
+            child_pugh_score: "A6",
+          },
+          PatientPerformanceStatus: { performance_status: 1 },
+          ChemotherapyTreament: {
+            chemotherapy: true,
+            chemotherapy_list: [
+              {
+                chemotherapy_name: "FOLFIRINOX",
+                chemotherapy_tolerance: "Good",
+              },
+            ],
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+      {
+        file: "onco_2026_05_15.pdf",
+        patientId: "O-101",
+        domain: "oncology",
+        mdtDate: "2026-05-15",
+        processingStatus: "COMPLETED",
+        processingStep: null,
+        processingProgressPct: 100,
+        sections: {
+          PatientAdministrative: {
+            first_name: "Jean",
+            last_name: "DUPONT",
+            date_rcp: "2026-05-15",
+          },
+          TumorLocation: { tumor_location: "Pancreas" },
+          CancerDescription: {
+            type_of_cancer: "Adénocarcinome canalaire pancréatique",
+            tnm_status: "ypT2N0M0",
+            target_lesion_size_mm: 21.0,
+            recist_response: "PR",
+          },
+          TumorBiology: {
+            msi_state: false,
+            ca19_9: 185.0,
+            ace: 4.1,
+            dpd_uracilemia: 9.5,
+          },
+          SurgicalStatus: {
+            resectability_status: "Resectable",
+            surgery_done: true,
+            resection_margin: "R0",
+          },
+          NutritionalStatus: {
+            weight_kg: 71.5,
+            weight_loss_percent: 3.0,
+            bmi: 23.2,
+          },
+          HepaticStatus: {
+            bilirubin_umol_l: 14.0,
+            child_pugh_score: "A5",
+          },
+          PatientPerformanceStatus: { performance_status: 0 },
+          ChemotherapyTreament: {
+            chemotherapy: true,
+            chemotherapy_list: [
+              {
+                chemotherapy_name: "FOLFIRINOX",
+                chemotherapy_tolerance: "Good",
+              },
+            ],
+          },
+        },
+        manualEdits: {},
+        executionTimes: {},
+        metrics: {},
+      },
+    ];
+
+    const dashboard = buildPatientDashboardFromForms(
+      "O-101",
+      "Jean DUPONT",
+      "oncology",
+      oncoForms,
+      null,
+    );
+    const byKey = new Map(dashboard.metrics.map((m) => [m.metricKey, m]));
+
+    expect(byKey.get("TumorBiology.ca19_9")?.points.map((p) => p.numericValue)).toEqual([
+      1450.0, 185.0,
+    ]);
+    expect(
+      byKey.get("CancerDescription.target_lesion_size_mm")?.points.map((p) => p.numericValue),
+    ).toEqual([36.0, 21.0]);
+    expect(
+      byKey.get("CancerDescription.recist_response")?.points.map((p) => p.displayValue),
+    ).toEqual(["Baseline", "PR"]);
+    expect(
+      byKey.get("SurgicalStatus.resectability_status")?.points.map((p) => p.displayValue),
+    ).toEqual(["Borderline (limite)", "Résécable"]);
+    expect(byKey.get("SurgicalStatus.resection_margin")?.points.map((p) => p.displayValue)).toEqual(
+      ["R0"],
+    );
+    expect(byKey.get("NutritionalStatus.weight_kg")?.points.map((p) => p.numericValue)).toEqual([
+      68.0, 71.5,
+    ]);
+    expect(byKey.get("HepaticStatus.bilirubin_umol_l")?.points.map((p) => p.numericValue)).toEqual([
+      85.0, 14.0,
+    ]);
+    expect(byKey.get("Chemotherapy.chemotherapy_name")?.points.map((p) => p.displayValue)).toEqual([
+      "FOLFIRINOX",
+      "FOLFIRINOX",
+    ]);
+  });
+
+  it("renders patient dashboard panel and ECharts SSR SVG across FR/EN, summary states, bilateral series, and qualitative swimlanes", () => {
+    // 1. Empty metrics + queued AI job in English
+    const emptyEnHtml = renderPatientDashboardPanel(
+      {
+        patientId: "P-EMPTY",
+        patientName: "Alice Martin",
+        domain: "sma",
+        latestFile: null,
+        rcpCount: 0,
+        metrics: [],
+        summary: {
+          hasSummary: false,
+          isObsolete: false,
+          obsoleteReasons: [],
+          newFormsSinceSummary: [],
+          modifiedFormsSinceSummary: [],
+          removedFormsSinceSummary: [],
+          generatedAt: null,
+          coveredFormIds: [],
+          latestFormIdAtGeneration: null,
+          latestFormDateAtGeneration: null,
+          modelUsed: null,
+          content: null,
+          activeJob: {
+            job_id: "J-99",
+            status: "RUNNING",
+            current_step: null,
+          },
+        },
+      },
+      "en",
+    );
+    expect(emptyEnHtml).toContain("No raw longitudinal metrics found");
+    expect(emptyEnHtml).toContain("Queued in AI Worker");
+    expect(emptyEnHtml).toContain("Task queued in AI PriorityQueue");
+    expect(emptyEnHtml).toContain("Longitudinal synthesis waiting for AI worker");
+    expect(emptyEnHtml).toContain("Generating in AI queue");
+
+    // 2. Full dashboard with obsolete summary (new forms + modified forms), bilateral D/G, manual edits, annotative-only points, multi-year span, and qualitative step changes in FR & EN
+    const richDashboard = {
+      patientId: "P-RICH",
+      patientName: "Lucas Bernard",
+      domain: "sma" as const,
+      latestFile: "f3.pdf",
+      rcpCount: 3,
+      metrics: [
+        {
+          metricKey: "OrthopedicStatus.cobb_angle",
+          section: "OrthopedicStatus",
+          field: "cobb_angle",
+          label: "OrthopedicStatus.cobb_angle",
+          unit: "°",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "lower_is_better" as const,
+          scaleMin: 0,
+          scaleMax: 90,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2024-01-10",
+              formDateLabel: "2024-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: "D: 18°, G: 14°",
+              displayValue: "D: 18°, G: 14°",
+              numericValue: 18,
+              subValues: { D: 18, G: 14 },
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2025-06-15",
+              formDateLabel: "",
+              daysSinceFirstRcp: 522,
+              xRatio: 0.5,
+              rawValue: "D: 22°, G: 19°",
+              displayValue: "22",
+              numericValue: 22,
+              subValues: { D: 22, G: 19 },
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2025-06-16T10:00:00Z",
+              deltaNumeric: 4,
+              deltaDisplay: "+4",
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f3.pdf",
+              formDate: null,
+              formDateLabel: "Date non renseignée",
+              daysSinceFirstRcp: 0,
+              xRatio: 1,
+              rawValue: "Corset Garchois porté",
+              displayValue: "Corset Garchois porté",
+              numericValue: null,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: true,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.hfmse_score",
+          section: "MotorFunctionStatus",
+          field: "hfmse_score",
+          label: "Score HFMSE",
+          unit: "/66",
+          valueType: "numeric_or_mixed" as const,
+          polarity: "higher_is_better" as const,
+          scaleMin: null,
+          scaleMax: null,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2026-01-10",
+              formDateLabel: "2026-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: 40,
+              displayValue: "40/66",
+              numericValue: 40,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2026-02-10",
+              formDateLabel: "2026-02-10",
+              daysSinceFirstRcp: 31,
+              xRatio: 1,
+              rawValue: 42,
+              displayValue: "42/66",
+              numericValue: 42,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: 2,
+              deltaDisplay: "+2",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+        {
+          metricKey: "MotorFunctionStatus.current_motor_milestone",
+          section: "MotorFunctionStatus",
+          field: "current_motor_milestone",
+          label: "Statut moteur actuel",
+          unit: "",
+          valueType: "categorical" as const,
+          polarity: "neutral" as const,
+          scaleMin: null,
+          scaleMax: null,
+          points: [
+            {
+              formId: "f1.pdf",
+              formDate: "2024-01-10",
+              formDateLabel: "2024-01-10",
+              daysSinceFirstRcp: 0,
+              xRatio: 0,
+              rawValue: ["Sitter", "Assisted standing"],
+              displayValue: "Sitter, Assisted standing",
+              numericValue: null,
+              subValues: null,
+              isManual: false,
+              editedBy: null,
+              editedAt: null,
+              deltaNumeric: null,
+              deltaDisplay: null,
+              isAnnotativeOnly: false,
+            },
+            {
+              formId: "f2.pdf",
+              formDate: "2025-06-15",
+              formDateLabel: "2025-06-15",
+              daysSinceFirstRcp: 522,
+              xRatio: 1,
+              rawValue: "",
+              displayValue: "Non-sitter",
+              numericValue: null,
+              subValues: null,
+              isManual: true,
+              editedBy: "Dr. Martin",
+              editedAt: "2025-06-16T10:00:00Z",
+              deltaNumeric: null,
+              deltaDisplay: "Assis sans appui → Non-assis",
+              isAnnotativeOnly: false,
+            },
+          ],
+        },
+      ],
+      summary: {
+        hasSummary: true,
+        isObsolete: true,
+        obsoleteReasons: ["1 nouvelle séance RCP"],
+        newFormsSinceSummary: ["f3.pdf"],
+        modifiedFormsSinceSummary: ["f2.pdf"],
+        removedFormsSinceSummary: [],
+        generatedAt: "2026-06-15T14:30:00Z",
+        coveredFormIds: ["f1.pdf", "f2.pdf"],
+        latestFormIdAtGeneration: "f2.pdf",
+        latestFormDateAtGeneration: "2025-06-15",
+        modelUsed: "mistral-nemo",
+        content: {
+          clinicalTrajectoryOverview: "Suivi longitudinal SMA sur 3 séances.",
+          diseaseAndTreatmentEvolution: "Stabilisation sous Risdiplam.",
+          notableMetricChanges: ["HFMSE : 40 → 42 (+2)"],
+          unresolvedVigilancePoints: ["EFR à contrôler"],
+          mdtDecisionsRecap: ["2025-06-15 : Poursuite Risdiplam"],
+          sourcesUsed: ["f1.pdf", "f2.pdf"],
+        },
+        activeJob: null,
+      },
+    };
+
+    const frHtml = renderPatientDashboardPanel(richDashboard, "fr");
+    expect(frHtml).toContain("Résumé global obsolète");
+    expect(frHtml).toContain("1 nouvelle(s) séance(s) RCP");
+    expect(frHtml).toContain("Suivi longitudinal SMA sur 3 séances.");
+    expect(frHtml).toContain("HFMSE : 40 → 42 (+2)");
+    expect(frHtml).toContain("EFR à contrôler");
+    expect(frHtml).toContain("2025-06-15 : Poursuite Risdiplam");
+    expect(frHtml).toContain("<svg");
+    expect(frHtml).toContain("D: 18°, G: 14°");
+
+    // Test EN rendering with up-to-date summary and modified-only obsolete branch
+    const enHtml = renderPatientDashboardPanel(
+      {
+        ...richDashboard,
+        summary: {
+          ...richDashboard.summary,
+          isObsolete: true,
+          newFormsSinceSummary: [],
+          generatedAt: "invalid-date-format",
+        },
+      },
+      "en",
+    );
+    expect(enHtml).toContain("One or more MDT sessions were updated since invalid-date-format.");
+    expect(enHtml).toContain("<svg");
+
+    const upToDateEnHtml = renderPatientDashboardPanel(
+      {
+        ...richDashboard,
+        metrics: [
+          richDashboard.metrics[0]!.points[0]
+            ? { ...richDashboard.metrics[0]!, points: [richDashboard.metrics[0]!.points[0]!] }
+            : richDashboard.metrics[0]!,
+        ],
+        summary: {
+          ...richDashboard.summary,
+          isObsolete: false,
+          generatedAt: "2026-06-15T14:30:00Z",
+        },
+      },
+      "en",
+    );
+    expect(upToDateEnHtml).toContain("Up to date");
+    expect(upToDateEnHtml).toContain("Regenerate global summary");
+    expect(upToDateEnHtml).toContain("1 session");
   });
 });

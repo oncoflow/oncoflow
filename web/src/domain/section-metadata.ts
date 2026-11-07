@@ -77,6 +77,18 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
       "Identify the primary organ where the tumor is located. Search for the principal diagnosis or the primary tumor site.",
     domains: ["oncology"],
   },
+  CancerDescription: {
+    icon: "ic-microscope",
+    pole: "clinical",
+    tab: "clinical",
+    editable: true,
+    order: 42,
+    titleFr: "Caractérisation tumorale, TNM & Réponse RECIST",
+    titleEn: "Tumor Characterization, TNM Staging & RECIST Response",
+    defaultUserPrompt:
+      "Extract the histological type and differentiation grade of the tumor, the TNM staging (cTNM or ypTNM), whether distant metastases are present and their sites, the size of the primary/target lesion in mm, and the RECIST 1.1 radiological evolution if mentioned.",
+    domains: ["oncology"],
+  },
   GeneticDiagnosis: {
     icon: "ic-dna",
     pole: "clinical",
@@ -98,7 +110,19 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     titleFr: "Biologie tumorale (Statut MSI / MSS & Biomarqueurs)",
     titleEn: "Tumor Biology (MSI / MSS Status & Biomarkers)",
     defaultUserPrompt:
-      "Is the tumor classified as MSI (Microsatellite Instability) or MSS (Microsatellite Stable)? Search for 'MSI', 'MSS', 'instabilité microsatellitaire', or 'statut MMR'. If not mentioned, state it.",
+      "Extract tumor biology and biomarkers: MSI/MSS (MMR) status, serum tumor markers (CA 19-9 in U/mL, ACE/CEA in ng/mL, AFP in ng/mL), pre-therapeutic DPD / uracilemia (ng/mL), and molecular alterations (KRAS, NRAS, BRAF, HER2, PD-L1 CPS). Set missing items to null.",
+    domains: ["oncology"],
+  },
+  HepaticStatus: {
+    icon: "ic-flask",
+    pole: "clinical",
+    tab: "clinical",
+    editable: true,
+    order: 55,
+    titleFr: "Bilan hépatique, Child-Pugh & BCLC",
+    titleEn: "Hepatic Function, Child-Pugh & BCLC Stage",
+    defaultUserPrompt:
+      "Extract hepatic function indicators: total bilirubin level (µmol/L), Child-Pugh score/class (A5 to C15), and BCLC stage if applicable.",
     domains: ["oncology"],
   },
   PatientPerformanceStatus: {
@@ -111,6 +135,18 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     titleEn: "WHO / ECOG Performance Status",
     defaultUserPrompt:
       "Determine the WHO performance status of the patient (0-4). Look for 'OMS', 'WHO', or 'Performance Status' in the document. If not found, indicate it.",
+  },
+  NutritionalStatus: {
+    icon: "ic-activity",
+    pole: "clinical",
+    tab: "clinical",
+    editable: true,
+    order: 62,
+    titleFr: "Statut nutritionnel & évolution pondérale",
+    titleEn: "Nutritional Status & Weight Evolution",
+    defaultUserPrompt:
+      "Extract the patient's nutritional parameters: current weight (kg), weight loss percentage (%), BMI (IMC in kg/m²), and overall nutritional status.",
+    domains: ["oncology"],
   },
   MotorFunctionStatus: {
     icon: "ic-brain",
@@ -181,6 +217,18 @@ const SECTION_CATALOG: Record<string, CatalogEntry> = {
     titleEn: "Radiological Examinations",
     defaultUserPrompt:
       "List all radiological exams found in the documents. Include date, name, type, and a summary of results for each.",
+  },
+  SurgicalStatus: {
+    icon: "ic-pill",
+    pole: "treatments",
+    tab: "clinical",
+    editable: true,
+    order: 95,
+    titleFr: "Statut chirurgical & résécabilité",
+    titleEn: "Surgical Status & Resectability",
+    defaultUserPrompt:
+      "Assess the tumor resectability status (Resectable, Borderline, Locally advanced, Unresectable, or Metastatic), whether curative surgery was performed, and the surgical resection margin (R0, R1, or R2) if operated.",
+    domains: ["oncology"],
   },
   PreviousCurativeSurgery: {
     icon: "ic-pill",

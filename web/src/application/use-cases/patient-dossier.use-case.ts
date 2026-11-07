@@ -15,6 +15,7 @@ import {
   type SectionPresentationMeta,
 } from "../../domain/catalog.js";
 import { translateValue } from "../../domain/i18n.js";
+import { buildPatientDashboardFromForms } from "../../domain/patient-dashboard.js";
 import {
   computeLongitudinalDeltas,
   deriveCompletenessInfo,
@@ -33,7 +34,9 @@ import type {
   LongitudinalDelta,
   ManualEditMetadata,
   MdtFormDetail,
+  PatientDashboardView,
   PatientListItem,
+  PatientRecordSummaryView,
   PriorityLevel,
   SpecialtyOpinionItem,
 } from "../../domain/types.js";
@@ -103,6 +106,7 @@ export interface TimelineSessionItem {
   priorityLevel: PriorityLevel;
   priorityLabel: string;
   orientationLabel: string;
+  durationSec: number | null;
 }
 
 export interface PatientDossierView {
@@ -149,6 +153,7 @@ export interface PatientDossierView {
   };
   allPatients: PatientListItem[];
   agents: AgentModuleInfo[];
+  dashboard: PatientDashboardView;
 }
 
 const LONG_TEXT_KEYS = new Set([
@@ -306,11 +311,21 @@ export class PatientDossierUseCase {
       : [];
     const specialties = rawSpecs.map((s) => getAgentPresentation(s, lang));
 
-    const [allPatients, agents, domainSchema] = await Promise.all([
+    const resolvedPatientId =
+      currentForm.patientId ?? (!target.toLowerCase().endsWith(".pdf") ? target : currentForm.file);
+
+    const [allPatients, agents, domainSchema, apiDashboard] = await Promise.all([
       this.api.listPatients(domain, false),
       this.api.listAgents(domain, lang),
       this.api.getDomainSchema(domain).catch(() => null),
+      typeof this.api.getPatientDashboard === "function"
+        ? this.api.getPatientDashboard(resolvedPatientId, domain).catch(() => null)
+        : Promise.resolve(null),
     ]);
+
+    const dashboard: PatientDashboardView =
+      apiDashboard ??
+      buildPatientDashboardFromForms(resolvedPatientId, patientName, domain, sorted, null);
 
     const deltas = computeLongitudinalDeltas(currentForm, previousForm, lang);
     const synopticMarkers = this.buildSynopticMarkers(currentForm, deltas, lang);
@@ -332,6 +347,10 @@ export class PatientDossierUseCase {
         },
         lang,
       );
+      const fExecSum = Object.values(f.executionTimes ?? {}).reduce(
+        (acc, v) => acc + (typeof v === "number" && Number.isFinite(v) ? v : 0),
+        0,
+      );
       return {
         file: f.file,
         mdtDate: f.mdtDate ? translateValue(f.mdtDate, lang) : f.file,
@@ -340,6 +359,7 @@ export class PatientDossierUseCase {
         priorityLevel: fPrio,
         priorityLabel: fPrioInfo.label,
         orientationLabel: fOrient.label,
+        durationSec: fExecSum > 0 ? Math.round(fExecSum * 10) / 10 : null,
       };
     });
 
@@ -396,6 +416,7 @@ export class PatientDossierUseCase {
       },
       allPatients,
       agents,
+      dashboard,
     };
   }
 
@@ -511,10 +532,61 @@ export class PatientDossierUseCase {
     if (sectionName === "TumorLocation") {
       return translateValue(rawObj.tumor_location, lang);
     }
-    if (sectionName === "TumorBiology") {
-      const parts = [rawObj.msi_state, rawObj.ca19_9]
+    if (sectionName === "CancerDescription") {
+      const parts = [
+        rawObj.type_of_cancer,
+        rawObj.tnm_status,
+        rawObj.recist_response,
+        rawObj.target_lesion_size_mm !== undefined && rawObj.target_lesion_size_mm !== null
+          ? `${rawObj.target_lesion_size_mm} mm`
+          : null,
+      ]
         .filter((v) => v !== undefined && v !== null && v !== "")
         .map((v) => translateValue(v, lang));
+      return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "TumorBiology") {
+      const parts = [
+        rawObj.msi_state !== undefined && rawObj.msi_state !== null
+          ? translateValue(rawObj.msi_state, lang)
+          : null,
+        rawObj.ca19_9 !== undefined && rawObj.ca19_9 !== null
+          ? `CA 19-9: ${rawObj.ca19_9} U/mL`
+          : null,
+        rawObj.ace !== undefined && rawObj.ace !== null ? `ACE: ${rawObj.ace} ng/mL` : null,
+        rawObj.dpd_uracilemia !== undefined && rawObj.dpd_uracilemia !== null
+          ? `Uracilémie: ${rawObj.dpd_uracilemia} ng/mL`
+          : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.slice(0, 3).join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "HepaticStatus") {
+      const parts = [
+        rawObj.child_pugh_score ? `Child-Pugh ${rawObj.child_pugh_score}` : null,
+        rawObj.bclc_stage ? `BCLC ${rawObj.bclc_stage}` : null,
+        rawObj.bilirubin_umol_l !== undefined && rawObj.bilirubin_umol_l !== null
+          ? `${rawObj.bilirubin_umol_l} µmol/L`
+          : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "NutritionalStatus") {
+      const parts = [
+        rawObj.weight_kg !== undefined && rawObj.weight_kg !== null
+          ? `${rawObj.weight_kg} kg`
+          : null,
+        rawObj.weight_loss_percent !== undefined && rawObj.weight_loss_percent !== null
+          ? `-${rawObj.weight_loss_percent} %`
+          : null,
+        rawObj.bmi !== undefined && rawObj.bmi !== null ? `IMC ${rawObj.bmi}` : null,
+      ].filter((v): v is string => Boolean(v));
+      return parts.join(" · ") || translateValue(null, lang);
+    }
+    if (sectionName === "SurgicalStatus") {
+      const parts = [
+        rawObj.resectability_status ? translateValue(rawObj.resectability_status, lang) : null,
+        rawObj.resection_margin ? String(rawObj.resection_margin) : null,
+      ].filter((v): v is string => Boolean(v));
       return parts.join(" · ") || translateValue(null, lang);
     }
     if (sectionName === "PatientPerformanceStatus") {
@@ -1004,5 +1076,25 @@ export class PatientDossierUseCase {
     agentName?: string,
   ): Promise<ChatReply> {
     return this.api.askDossierQuestion(target, question, domain, lang, agentName);
+  }
+
+  async getPatientDashboard(
+    patientId: string,
+    domain: ClinicalDomain,
+  ): Promise<PatientDashboardView | null> {
+    return this.api.getPatientDashboard(patientId, domain);
+  }
+
+  async triggerPatientSummary(
+    patientId: string,
+    domain: ClinicalDomain,
+    force = false,
+  ): Promise<{
+    queued: boolean;
+    alreadyQueued: boolean;
+    jobId?: string | null;
+    summary: PatientRecordSummaryView | null;
+  }> {
+    return this.api.triggerPatientSummary(patientId, domain, force);
   }
 }

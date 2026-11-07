@@ -133,6 +133,15 @@ def test_rate_limiting_returns_429_and_exempts_health(client, monkeypatch):
         limited = client.get("/api/v1/openapi.json")
         assert limited.status_code == 429
         assert "retry-after" in limited.headers
+        # Different user or forwarded client IP gets its own rate-limit bucket
+        other_user = client.get(
+            "/api/v1/openapi.json",
+            headers={
+                "X-Forwarded-For": "10.0.0.15",
+                "X-Oncoflow-User": "dr.autre",
+            },
+        )
+        assert other_user.status_code == 200
         # /health must remain exempt even when rate limit is reached
         assert client.get("/health").status_code == 200
     finally:

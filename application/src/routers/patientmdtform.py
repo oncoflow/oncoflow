@@ -41,10 +41,14 @@ from src.models.rcp import (
     MessageResponse,
     MissingItemsUpdateRequest,
     PatientCardResponse,
+    PatientDashboardResponse,
     PatientDetailResponse,
     PatientMDTFormDetailResponse,
     PatientMDTFormStatusResponse,
+    PatientRecordSummaryStateResponse,
     PatientResolveResponse,
+    PatientSummaryTriggerRequest,
+    PatientSummaryTriggerResponse,
     ProcessRequest,
     ProcessResponse,
     RCPCardResponse,
@@ -183,6 +187,62 @@ def get_patient_detail(patient_id: str, record_service: RecordServiceDep):
         "latest_file": detail["latest_file"],
         "rcps": [serialize_mongo_doc(d) for d in detail["rcps"]],
     }
+
+
+@router.get(
+    "/patients/{patient_id}/dashboard",
+    response_model=PatientDashboardResponse,
+)
+def get_patient_dashboard_endpoint(
+    patient_id: str,
+    record_service: RecordServiceDep,
+):
+    """Return the longitudinal `PatientRecord` dashboard (multi-year raw metrics series + global summary state)."""
+    dashboard = record_service.get_patient_record_dashboard(patient_id)
+    if not dashboard:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        )
+    return dashboard
+
+
+@router.get(
+    "/patients/{patient_id}/summary",
+    response_model=PatientRecordSummaryStateResponse,
+)
+def get_patient_summary_endpoint(
+    patient_id: str,
+    record_service: RecordServiceDep,
+):
+    """Return the global longitudinal summary state and obsolescence flags for `patient_id`."""
+    dashboard = record_service.get_patient_record_dashboard(patient_id)
+    if not dashboard:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        )
+    return dashboard["summary"]
+
+
+@router.post(
+    "/patients/{patient_id}/summary",
+    response_model=PatientSummaryTriggerResponse,
+)
+def trigger_patient_summary_endpoint(
+    patient_id: str,
+    record_service: RecordServiceDep,
+    request: PatientSummaryTriggerRequest | None = None,
+):
+    """Enqueue an on-demand global `PatientRecord` summary synthesis job in the AI `PriorityQueue`."""
+    force = request.force if request is not None else False
+    result = record_service.trigger_patient_record_summary(patient_id, force=force)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Le dossier patient '{patient_id}' n'a pas été trouvé.",
+        )
+    return result
 
 
 @router.get("/schema", response_model=DomainFormSchemaResponse)

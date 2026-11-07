@@ -23,6 +23,12 @@ repos:
         entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/ruff ]; then exec application/.venv/bin/ruff format --config application/pyproject.toml "$@"; elif [ -x .venv/bin/ruff ]; then exec .venv/bin/ruff format --config pyproject.toml "$@"; fi' --
         language: system
         types: [python]
+    -   id: pyrefly
+        name: pyrefly check
+        entry: bash -c 'PATH="$HOME/.local/bin:$PATH"; if [ -x application/.venv/bin/pyrefly ]; then cd application && exec ./.venv/bin/pyrefly check --min-severity=warn src; elif [ -x .venv/bin/pyrefly ]; then exec ./.venv/bin/pyrefly check --min-severity=warn src; else cd application && exec uv run --frozen pyrefly check --min-severity=warn src; fi' --
+        language: system
+        types: [python]
+        pass_filenames: false
     -   id: web-format
         name: web format (Biome)
         entry: npm --prefix web run format
